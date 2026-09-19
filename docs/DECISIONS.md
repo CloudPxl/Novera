@@ -80,3 +80,16 @@ the run logic is tested without a database.
 the policy text, the system prompt and internal ids are never read. `assertPublishable`
 then fails the build if any of them appear anyway. Findings carry the judge's
 rationale rather than the conversation.
+
+## 2026-09-19 — A deliberately flawed local fixture stands in for a customer agent
+`src/app/api/test-agent/route.ts` is a scripted support agent with planted failures
+(executes deletion without verification, adopts injected instructions, treats a claim
+of seniority as authentication, reissues a refund blind, invents a discount, confirms
+an undocumented feature). It lets us prove the pipeline end to end without a real
+customer agent. It carries `fixture: true` and a notice in every response, and refuses
+to run when NODE_ENV is production, so it can never be shown as a real result.
+
+## 2026-09-19 — tsconfig: allowImportingTsExtensions
+Node's type stripping needs explicit `.ts` in relative imports; TypeScript rejects
+that unless this flag is on (it requires noEmit, which Next already sets). Turbopack
+resolves the explicit extensions without complaint — verified by `npm run build`.

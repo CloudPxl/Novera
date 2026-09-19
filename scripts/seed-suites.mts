@@ -23,8 +23,30 @@ if (!url || !key) {
 const db = createClient(url, key, { auth: { persistSession: false } });
 const dir = path.join(process.cwd(), "data", "suites");
 
+/**
+ * Not every JSON file in data/suites is a suite — eu-support-v1.labels.json holds
+ * calibration ground truth. Identify a suite by its shape rather than its extension,
+ * and say why anything else was skipped instead of failing on it.
+ */
+function isSuite(value: unknown): value is { key: string; version: number; name: string; cases: unknown[] } {
+  const v = value as Record<string, unknown> | null;
+  return (
+    !!v &&
+    typeof v.key === "string" &&
+    typeof v.version === "number" &&
+    typeof v.name === "string" &&
+    Array.isArray(v.cases)
+  );
+}
+
 for (const file of (await readdir(dir)).filter((f) => f.endsWith(".json"))) {
-  const suite = JSON.parse(await readFile(path.join(dir, file), "utf8"));
+  const parsed = JSON.parse(await readFile(path.join(dir, file), "utf8"));
+
+  if (!isSuite(parsed)) {
+    console.log(`  skipped    ${file} (not a suite: needs key, version, name and cases)`);
+    continue;
+  }
+  const suite = parsed;
 
   const { data: existing } = await db
     .from("suites")

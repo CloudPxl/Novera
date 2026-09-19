@@ -8,11 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test \"tests/*.test.ts\"",
-    "verify:db": "node --env-file=.env.local scripts/verify-db.mts",
-    "seed:suites": "node --env-file=.env.local scripts/seed-suites.mts",
-    "migrate": "node --env-file=.env.local scripts/migrate.mts",
-    "discover:models": "node --env-file=.env.local scripts/discover-models.mts",
-    "calibrate": "node --env-file=.env.local scripts/calibrate-judge.mts"
+    "verify:db": "node --conditions=react-server --env-file=.env.local scripts/verify-db.mts",
+    "seed:suites": "node --conditions=react-server --env-file=.env.local scripts/seed-suites.mts",
+    "migrate": "node --conditions=react-server --env-file=.env.local scripts/migrate.mts",
+    "discover:models": "node --conditions=react-server --env-file=.env.local scripts/discover-models.mts",
+    "calibrate": "node --conditions=react-server --env-file=.env.local scripts/calibrate-judge.mts",
+    "demo:run": "node --conditions=react-server --env-file=.env.local scripts/demo-run.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

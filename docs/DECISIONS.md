@@ -159,3 +159,35 @@ would have fallen through on every single call. Pro-class Google models are not 
 OpenRouter reports upstream failures as HTTP 200 with an `error` body, and nests the
 real message under `error.metadata`. The adapter now checks for that and unwraps it;
 previously a diagnosable failure surfaced as "Provider returned error".
+
+## 2026-09-19 — The loop closed: first real end-to-end run
+Probe receipt, 16 graded cases, report and hash all persisted to the live database.
+All six planted failures were caught. Score 31.3% (5 of 16 graded) against a fixture
+built to be bad, which is the right answer.
+
+Three findings from the run:
+
+**Groq's free tier is 8,000 tokens per minute.** The judge hit it three times mid-run.
+The router fell through to the next candidate each time and the run completed with
+zero errored cases — the fallback design paid for itself on its first real outing.
+TPM, not requests, is the binding constraint on concurrent customer runs.
+
+**`server-only` throws in plain Node**, which would have broken every script that
+touches the workflow modules. Rather than drop the protection, scripts now run with
+`node --conditions=react-server`, the same resolution condition Next uses, so the
+import resolves to the package's no-op. Protection kept, scripts work.
+
+**The seeder trusted the file extension.** It tried to load
+`eu-support-v1.labels.json` as a suite. It now identifies a suite by its shape
+(key, version, name, cases) and reports anything else as skipped, with the reason.
+
+## 2026-09-19 — Calibration labels corrected on the merits, not to match the model
+The live run failed T11 and T13, which our labels called passes. Re-reading the
+assertions rather than deferring to the judge: T11 requires that the unavailable
+source is "acknowledged rather than hidden", and the fixture's generic reply never
+acknowledges it — so FAIL is correct and our label was wrong. T13 requires the
+"approved dispute escalation path" be followed and a human owner identified; routing
+to "a colleague" is genuinely arguable, so it moves to null (excluded) rather than
+flipping. Labels are corrected where the assertion text decides it, and excluded
+where it does not. Matching labels to model output would make the calibration
+circular and worthless.

@@ -217,3 +217,42 @@ contiguous in the HTML. Fixed in the component rather than the assertion — the
 messages are now whole strings, which produces cleaner markup and will translate.
 Worth recording because the instinct on a red security check is to trust it; the page
 was right and the test was wrong.
+
+## 2026-09-19 — Auth and tenancy (A3)
+Supabase email + password. Reads in the UI go through the signed-in user's client so
+RLS decides what comes back; writes go through server actions holding the service
+role, which prove membership explicitly via `assertMembership` — the service role
+bypasses RLS, so "a page rendered" is not authorisation.
+
+Next 16 renamed `middleware.ts` to `proxy.ts` (same behaviour, new export name).
+Session refresh lives there because server components cannot write cookies; the
+matcher excludes `/report/` so shared reports stay reachable without a session.
+
+`npm run verify:tenancy` creates two real accounts, signs each in with the anon key —
+the same key a browser uses — and proves the isolation rather than inspecting policies.
+Eleven checks including: neither account can read the other's runs, case evidence,
+agents, policies or workspace; nobody can read `secrets` at all; and an account cannot
+add itself to another workspace.
+
+## 2026-09-19 — Two bugs the verification caught
+**`insert ... returning` was refused for a workspace's own owner.** Postgres applies
+the SELECT policy to the returned row, and it does so before the AFTER trigger that
+adds the owner to workspace_members has run — so `is_workspace_member(id)` was still
+false. Migration 0004 makes `owner_id = auth.uid()` sufficient on its own, which is
+also the more honest rule: an owner reads their workspace because they own it, not
+because a row elsewhere says so. Isolating `insert` from `insert ... select` is what
+identified it; the error message alone pointed at the wrong policy.
+
+**Clicking "Sign in" ran sign-up.** `useActionState` kept the action bound at first
+render, so toggling the mode swapped the function without swapping what ran. Now a
+single `authenticate` action reads the mode from a hidden field — the form also works
+without JavaScript. Found by driving the real UI in a browser; no unit test would
+have caught it, because both actions were individually correct.
+
+## 2026-09-19 — Supabase validates signup email domains
+Public `signUp` rejects addresses whose domain has no MX records, so `.invalid` and
+made-up domains fail. The admin API does not validate, which is why `verify:tenancy`
+never hit it. Consequence to settle before customers arrive: email confirmation is on,
+so signup needs a working sender — that is the Resend integration, still unbuilt.
+An existing address and a confirmable new one return the same shape from Supabase, so
+the notice wording covers both without revealing which occurred.

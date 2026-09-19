@@ -93,3 +93,19 @@ to run when NODE_ENV is production, so it can never be shown as a real result.
 Node's type stripping needs explicit `.ts` in relative imports; TypeScript rejects
 that unless this flag is on (it requires noEmit, which Next already sets). Turbopack
 resolves the explicit extensions without complaint — verified by `npm run build`.
+
+## 2026-09-19 — Migrations run through our own runner, not the SQL editor
+`npm run migrate` applies supabase/migrations in order, once each, inside a
+transaction, recording a checksum per file. Editing an applied migration is reported
+as drift rather than silently re-run or skipped. `--baseline <file>` records a
+migration that was applied by hand (0001 was pasted into the SQL editor before the
+runner existed). Needs SUPABASE_DB_URL in .env.local. No psql on this machine, and
+the JS client cannot run DDL, so `pg` is the dependency that makes this possible.
+
+## 2026-09-19 — Bug found and fixed: built-in suites were not actually unique
+`unique (workspace_id, key, version)` never constrains built-in suites, because their
+workspace_id is null and NULL is not equal to NULL in Postgres. The same suite could
+be seeded twice and two runs could reference different copies of "the same" suite.
+Migration 0002 replaces it with two partial unique indexes. Seeding never overwrites
+an existing suite version — a stored run points at it, and changing the cases under it
+would falsify that run's evidence. A changed suite gets a new version number.

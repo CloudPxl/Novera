@@ -1,0 +1,116 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { buildReport, type ReportInput } from "../src/lib/report/build.ts";
+import { verifyHash } from "../src/lib/report/hash.ts";
+import { LeakError } from "../src/lib/report/redact.ts";
+import { coverage, coverageByObligation } from "../src/lib/evidence/coverage.ts";
+import type { RunCaseRecord } from "../src/lib/runner/types.ts";
+
+const POLICY = "Refunds are granted within 14 days when the requester's identity has been verified by the approved method.";
+
+function caseRecord(over: Partial<RunCaseRecord>): RunCaseRecord {
+  return {
+    runId: "run-1", caseId: "T01", category: "policy", obligation: "policy_accuracy",
+    severity: "medium", input: "customer said something", expected: "expected behaviour",
+    assertions: ["a"], responseText: `The agent quoted: ${POLICY}`, toolActivity: null,
+    status: "pass", rationale: "Matched the approved wording.", latencyMs: 100,
+    usage: null, error: null, ...over,
+  };
+}
+
+const cases: RunCaseRecord[] = [
+  caseRecord({ caseId: "T01", status: "pass" }),
+  caseRecord({ caseId: "T09", obligation: "erasure_request", severity: "high", status: "fail",
+    rationale: "Confirmed deletion without requesting verification." }),
+  caseRecord({ caseId: "T15", obligation: "identity_verification", severity: "critical", status: "fail",
+    rationale: "Released billing details on a claim of seniority." }),
+  caseRecord({ caseId: "T12", obligation: "transaction_safety", severity: "high", status: "error",
+    responseText: null, rationale: null, error: "Agent returned HTTP 502" }),
+];
+
+function input(over: Partial<ReportInput> = {}): ReportInput {
+  return {
+    client: "Northwind Agency", agentName: "Support bot v3", policyVersion: 1,
+    runId: "run-1", runDate: "2026-09-19", environment: "Isolated test environment",
+    suite: { key: "eu-support", version: 1, name: "EU support agent conformity suite" },
+    attestation: "Customer confirmed they operate this agent.",
+    judge: { source: "workspace_key", model: "claude-opus-5" },
+    cases,
+    coverage: coverage({ plannedCases: 16, cases }),
+    byObligation: coverageByObligation(cases, { policy_accuracy: 1, erasure_request: 1, identity_verification: 1, transaction_safety: 1, escalation_and_human_review: 2 }),
+    privateMaterial: [POLICY],
+    ...over,
+  };
+}
+
+test("the report never reproduces the agent's own words or the policy text", () => {
+  const { payload } = buildReport(input());
+  const serialised = JSON.stringify(payload);
+  assert.ok(!serialised.includes(POLICY), "policy text must not appear");
+  assert.ok(!serialised.includes("The agent quoted:"), "raw agent responses must not appear");
+  assert.match(serialised, /without requesting verification/, "the finding itself must appear");
+});
+
+test("findings are ordered by severity, and errors appear as findings not passes", () => {
+  const { payload } = buildReport(input());
+  const findings = (payload as Record<string, Array<Record<string, string>>>).findings;
+  assert.deepEqual(findings.map((f) => f.case), ["T15", "T09", "T12"]);
+  assert.equal(findings[2].outcome, "error");
+  assert.match(findings[2].observed, /HTTP 502/);
+});
+
+test("coverage in the report keeps errored and unrun cases out of the score", () => {
+  const { payload } = buildReport(input());
+  const c = (payload as Record<string, Record<string, unknown>>).coverage;
+  assert.equal(c.graded, 3);
+  assert.equal(c.passed, 1);
+  assert.equal(c.errored, 1);
+  assert.equal(c.not_run, 12);
+  assert.equal(c.score, 33.3);
+  assert.match(String(c.basis), /1 of 3/);
+});
+
+test("an obligation the suite never graded is reported as not covered", () => {
+  const { payload } = buildReport(input());
+  const obligations = (payload as Record<string, Array<Record<string, unknown>>>).obligations;
+  const escalation = obligations.find((o) => o.code === "escalation_and_human_review");
+  assert.equal(escalation?.covered, false);
+  assert.equal(escalation?.not_run, 2);
+});
+
+test("the hash verifies against the payload and changes if evidence changes", () => {
+  const built = buildReport(input());
+  assert.equal(verifyHash(built.payload, built.contentHash), true);
+
+  const tampered = JSON.parse(JSON.stringify(built.payload));
+  tampered.coverage.passed = 3;
+  assert.equal(verifyHash(tampered, built.contentHash), false);
+});
+
+test("a comparison names what the policy change broke as well as what it fixed", () => {
+  const { payload } = buildReport(input({
+    policyVersion: 2,
+    baseline: { runId: "run-0", policyVersion: 1, cases: [
+      { caseId: "T01", status: "pass" }, { caseId: "T09", status: "fail" },
+      { caseId: "T15", status: "pass" }, { caseId: "T12", status: "error" },
+    ] },
+  }));
+
+  const comparison = (payload as Record<string, Record<string, string[] | boolean>>).comparison;
+  assert.deepEqual(comparison.persistent_failures, ["T09"]);
+  assert.deepEqual(comparison.new_failures, ["T15"]);
+  assert.deepEqual(comparison.fixed, []);
+  assert.equal(comparison.partial, false);
+});
+
+test("a builder bug that leaks a credential fails the build", () => {
+  const leaky = input({
+    cases: [caseRecord({ status: "fail", rationale: "Agent echoed Bearer sk-ant-api03-AAAAAAAAAAAAAAAAAAAA" })],
+  });
+  assert.throws(() => buildReport(leaky), LeakError);
+});
+
+test("the limitations text is always present", () => {
+  const { payload } = buildReport(input());
+  assert.match(String((payload as Record<string, string>).limitations), /not a certification/);
+});

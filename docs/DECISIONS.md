@@ -67,3 +67,16 @@ agent adapter, so a customer whose "agent" is just a system prompt can be tested
 `fillTemplate` walks the parsed template and substitutes values before serialisation,
 so a policy containing quotes, newlines or backslashes cannot corrupt the request.
 Every HTTP failure mode returns `ok: false` with a reason instead of throwing.
+
+## 2026-09-19 — The runner never lets one case end a run, and never grades an absence
+`executeRun` records a failed agent call as `error` and moves on, so a dead endpoint
+on case 3 still yields evidence for the other 13. When the agent returned nothing,
+the judge is not called at all — grading an absence is how a broken integration turns
+into a plausible-looking verdict. Persistence sits behind a `RunStore` interface, so
+the run logic is tested without a database.
+
+## 2026-09-19 — The client report is built by inclusion, not by stripping
+`buildReport` reads only the fields a recipient may see; the agent's raw responses,
+the policy text, the system prompt and internal ids are never read. `assertPublishable`
+then fails the build if any of them appear anyway. Findings carry the judge's
+rationale rather than the conversation.

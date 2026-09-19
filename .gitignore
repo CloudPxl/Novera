@@ -45,3 +45,6 @@ next-env.d.ts
 
 # Playwright MCP session output
 .playwright-mcp/
+
+# Local-only credentials file (never committed)
+.local-credentials.md

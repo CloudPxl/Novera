@@ -24,3 +24,86 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
+
+/* ---------------------------------------------------------------- motion
+   Every animation here is decoration over content that is already present and
+   readable. If motion is reduced, the decoration disappears and nothing else
+   changes — no element depends on an animation to become visible. */
+
+@keyframes novera-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes novera-sheen {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+@keyframes novera-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 35%, transparent); }
+  70%  { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* Applied by the Reveal component once an element scrolls into view. */
+.novera-reveal {
+  opacity: 0;
+}
+.novera-reveal[data-shown="true"] {
+  animation: novera-rise 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Skeleton placeholders: light on light, because there is no content yet. */
+.novera-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-slate-100) 25%,
+    var(--color-slate-200) 37%,
+    var(--color-slate-100) 63%
+  );
+  background-size: 200% 100%;
+  animation: novera-sheen 1.4s ease-in-out infinite;
+}
+
+/* An in-flight progress fill. Needs its own dark gradient: reusing the skeleton
+   shimmer made the fill invisible against the slate-100 track, so a run in progress
+   looked like a run that had not started. */
+.novera-progress {
+  background: linear-gradient(
+    90deg,
+    var(--color-slate-700) 25%,
+    var(--color-slate-400) 50%,
+    var(--color-slate-700) 75%
+  );
+  background-size: 200% 100%;
+  animation: novera-sheen 1.6s linear infinite;
+}
+
+.novera-live {
+  animation: novera-pulse-ring 2s ease-out infinite;
+}
+
+/* Smooth width changes on the run progress bar. */
+.novera-bar {
+  transition: width 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .novera-reveal,
+  .novera-reveal[data-shown="true"] {
+    opacity: 1;
+    animation: none;
+  }
+  .novera-shimmer,
+  .novera-progress,
+  .novera-live {
+    animation: none;
+  }
+  .novera-progress {
+    background: var(--color-slate-700);
+  }
+  .novera-bar {
+    transition: none;
+  }
+}

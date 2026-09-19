@@ -291,3 +291,34 @@ regression. Options, none yet chosen: consensus grading for the cases that matte
 reporting a verdict's stability across repeats, or stating the variance in the
 report. Worth measuring before choosing — the calibration harness can repeat a
 candidate N times and report how often it agrees with itself.
+
+## 2026-09-19 — Operator UI (A4)
+Connect an agent → probe receipt → policy version → run the suite live → client report,
+all working through the browser. `src/components/ui/` holds the primitives; pages are
+server components that read through the user's own Supabase client so RLS decides what
+renders, with small client components for the interactive parts.
+
+**Motion is decoration over content that is already there.** `Reveal` uses an
+IntersectionObserver but shows its children immediately when the observer is missing,
+when motion is reduced, or for a bot — an animation must never be the thing that makes
+content appear. Every keyframe is disabled under `prefers-reduced-motion`.
+
+**Live progress is read from the database, not pushed from the executing request.**
+A refreshed tab, a second window and a colleague opening the same run all see the same
+truth, and closing the browser mid-run loses nothing that was already graded. The
+execute endpoint is idempotent by status, so a double submit cannot start two graders
+writing the same cases.
+
+## 2026-09-19 — A run in progress looked like a run that had not started
+The progress fill reused the skeleton shimmer, whose gradient is slate-100 to
+slate-200 — invisible against a slate-100 track. At 7 of 16 scenarios the bar read as
+empty. Skeletons are light on light because there is no content yet; a progress fill
+is not a skeleton and needs its own dark gradient. Caught by looking at a screenshot
+of the real page mid-run, not by any test.
+
+## 2026-09-19 — Score variance is now visible across three runs
+The same fixture on the same policy has scored 31.3%, 37.5% and 25%. This is the
+non-determinism recorded earlier, and the spread is wider than is comfortable for a
+document a client files. It needs addressing before customers compare two reports —
+consensus grading on the cases that matter is the obvious candidate, and the
+calibration harness can measure whether it actually narrows the spread.

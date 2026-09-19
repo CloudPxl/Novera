@@ -36,6 +36,10 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
         rationale: record.rationale,
         latency_ms: record.latencyMs,
         usage: record.usage,
+        // Grading provenance belongs in the row: a report rebuilt from stored
+        // evidence must still be able to say which model decided each verdict.
+        judge_model: record.judgeModel,
+        judge_attempts: record.judgeAttempts,
         error: record.error,
       });
       if (error) throw new Error(`Could not save case ${record.caseId}: ${error.message}`);

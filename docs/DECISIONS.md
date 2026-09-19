@@ -256,3 +256,38 @@ never hit it. Consequence to settle before customers arrive: email confirmation 
 so signup needs a working sender — that is the Resend integration, still unbuilt.
 An existing address and a confirmable new one return the same shape from Supabase, so
 the notice wording covers both without revealing which occurred.
+
+## 2026-09-19 — Erasure: the product could not do what it sells (fixed)
+The append-only triggers made a workspace undeletable — any cascade reached policies,
+probes, run_cases or reports and was refused. Novera evidences how agents handle
+erasure requests while being unable to honour one itself. GDPR Article 17 applies to
+us as a controller, so this was a defect, not a trade-off.
+
+Resolved by stating the requirement precisely: **no piecemeal deletion, complete
+erasure permitted.** A verdict, a policy version or a report can never be removed
+individually to make an agent look better. A whole workspace can be erased in one
+authorised act. Migration 0005: the triggers allow DELETE only while a
+transaction-local flag is set, and only `erase_workspace()` sets it (`set_config`
+with is_local = true, so it cannot leak to later work on the same connection).
+`erasure_log` keeps proof that an erasure happened, with no personal data in it.
+`verify:access` proves both halves: piecemeal deletion is refused before, during and
+after an erasure, and the erasure removes everything.
+
+## 2026-09-19 — Grading provenance was never persisted (fixed)
+`run_cases` had no column for which model produced a verdict, so the information
+existed only in memory while a run executed. The first demo report displayed it only
+because it was built from the in-memory summary — rebuilt from stored rows a month
+later, the provenance would have been gone, and with it any way to see that a
+fallback changed graders mid-run. Migration 0006 adds `judge_model` and
+`judge_attempts`; the store now writes both, failed attempts and their error text
+included. Found because a test insert of those columns failed silently.
+
+## 2026-09-19 — Judge verdicts are not deterministic
+Two identical runs against the same fixture on the same policy scored 31.3% and
+37.5%. Same inputs, different verdicts on a handful of borderline cases. This is a
+real property of the product, not a bug, and it has to be handled honestly rather
+than hidden: a client comparing two reports must not read run-to-run variance as a
+regression. Options, none yet chosen: consensus grading for the cases that matter,
+reporting a verdict's stability across repeats, or stating the variance in the
+report. Worth measuring before choosing — the calibration harness can repeat a
+candidate N times and report how often it agrees with itself.

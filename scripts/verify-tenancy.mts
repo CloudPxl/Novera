@@ -21,6 +21,16 @@ function check(ok: boolean, label: string, detail = "") {
   if (!ok) failures++;
 }
 
+// A run that throws before its finally block can leave accounts behind. Sweep any
+// from previous runs before creating new ones.
+const { data: before } = await admin.auth.admin.listUsers();
+for (const u of before?.users ?? []) {
+  if (u.email?.startsWith("tenancy-")) {
+    await admin.from("workspaces").delete().eq("owner_id", u.id);
+    await admin.auth.admin.deleteUser(u.id);
+  }
+}
+
 const stamp = Date.now();
 const people = [
   { email: `tenancy-a+${stamp}@novera.invalid`, password: crypto.randomUUID() },

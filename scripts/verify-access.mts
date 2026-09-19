@@ -72,5 +72,51 @@ check(!!hashErr, "a report hash cannot be rewritten");
 const { error: caseErr } = await db.from("run_cases").update({ status: "pass" }).eq("run_id", report.run_id);
 check(!!caseErr, "a recorded verdict cannot be flipped to pass", caseErr?.message.slice(0, 64));
 
+const { error: caseDelErr } = await db.from("run_cases").delete().eq("run_id", report.run_id);
+check(!!caseDelErr, "a failing case cannot be deleted from a run", caseDelErr?.message.slice(0, 64));
+
+const { error: reportDelErr } = await db.from("reports").delete().eq("token", report.token);
+check(!!reportDelErr, "a report cannot be deleted, only revoked", reportDelErr?.message.slice(0, 64));
+
+// Erasure exists so a customer can be forgotten; it must not become a way to quietly
+// drop inconvenient evidence. Prove a whole workspace goes, and only as one act.
+console.log("\nErasure (GDPR Article 17), on a throwaway workspace");
+const { data: ownerData, error: ownerErr } = await db.auth.admin.createUser({
+  email: `erasure-${Date.now()}@novera.invalid`, password: crypto.randomUUID(), email_confirm: true,
+});
+if (ownerErr || !ownerData.user) throw new Error(`Could not create the erasure test user: ${ownerErr?.message}`);
+const owner = ownerData.user;
+const { data: ws } = await db
+  .from("workspaces").insert({ name: "erasure test", owner_id: owner.id }).select("id").single();
+const { data: ag } = await db
+  .from("agents").insert({ workspace_id: ws!.id, name: "a", kind: "http", config: {} }).select("id").single();
+const { data: pol } = await db
+  .from("policies").insert({ workspace_id: ws!.id, agent_id: ag!.id, version: 1, body: "p" }).select("id").single();
+const { data: st } = await db
+  .from("suites").select("id").is("workspace_id", null).eq("key", "eu-support").eq("version", 1).single();
+const { data: rn } = await db
+  .from("runs").insert({ workspace_id: ws!.id, agent_id: ag!.id, policy_id: pol!.id, suite_id: st!.id, status: "completed" })
+  .select("id").single();
+await db.from("run_cases").insert({
+  workspace_id: ws!.id, run_id: rn!.id, case_id: "T01", category: "policy", obligation: "policy_accuracy",
+  severity: "low", input: "i", expected: "e", assertions: [], status: "fail", judge_attempts: [],
+});
+
+const { error: pieceErr } = await db.from("policies").delete().eq("id", pol!.id);
+check(!!pieceErr, "a single policy version still cannot be deleted on its own", pieceErr?.message.slice(0, 64));
+
+const { data: erasure, error: eraseErr } = await db.rpc("erase_workspace", { target: ws!.id, requested_by: owner.id });
+check(!eraseErr, "an authorised erasure removes the whole workspace", eraseErr?.message.slice(0, 80));
+check(erasure?.cases_removed === 1 && erasure?.runs_removed === 1, "the erasure log records what was removed",
+  `agents ${erasure?.agents_removed}, runs ${erasure?.runs_removed}, cases ${erasure?.cases_removed}`);
+
+const { count: leftover } = await db.from("run_cases").select("*", { count: "exact", head: true }).eq("workspace_id", ws!.id);
+check(leftover === 0, "no case evidence survives the erasure", `${leftover} row(s) left`);
+
+const { error: afterErr } = await db.from("run_cases").delete().eq("run_id", report.run_id);
+check(!!afterErr, "piecemeal deletion is refused again once the erasure is over", afterErr?.message.slice(0, 64));
+
+await db.auth.admin.deleteUser(owner.id);
+
 console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) failed.\n`);
 process.exit(failures === 0 ? 0 : 1);

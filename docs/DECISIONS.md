@@ -47,3 +47,23 @@ tested modules use explicit `.ts` extensions.
 RLS but not triggers, so a bug in our own server code cannot rewrite history. For a
 product whose value is that its output can be trusted, this belongs below the
 application. See supabase/migrations/0001_init.sql.
+
+## 2026-09-19 — Judge verdicts are parsed defensively; an unreadable verdict is an error
+The judge returns a JSON object. The parser recovers it from code fences and
+surrounding prose, but refuses anything without both a valid verdict and a rationale.
+A judge call that fails, or a reply that cannot be read, produces `status: "error"` —
+never a pass and never a fail. Grader failure is not agent failure, and must not
+enter the score. Anthropic structured outputs (`output_config.format`) would be
+stricter but are provider-specific; one parser covers all three providers today.
+
+## 2026-09-19 — Three providers behind one chat interface
+Anthropic (official SDK, default `claude-opus-5`), Google (REST, funds trial runs
+from its free tier), and any OpenAI-compatible `/v1/chat/completions` endpoint. Model
+ids are always configuration, never hard-coded, so a provider changing its free-tier
+line-up is an env edit. The same interface serves both the judge and the `model`
+agent adapter, so a customer whose "agent" is just a system prompt can be tested too.
+
+## 2026-09-19 — HTTP agent bodies are built as objects, not string templates
+`fillTemplate` walks the parsed template and substitutes values before serialisation,
+so a policy containing quotes, newlines or backslashes cannot corrupt the request.
+Every HTTP failure mode returns `ok: false` with a reason instead of throwing.

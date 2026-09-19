@@ -60,7 +60,14 @@ data/suites/          versioned scenario suites
   failures with their output.
 
 ## Status
-Phase 0 (foundations) complete. Phase 1 = the single end-to-end workflow:
-connect agent -> probe -> policy version -> run suite -> grade -> inspect failure ->
-diagnose -> approve policy v2 -> rerun -> compare -> report. Nothing else is built
-until Phase 1 passes its acceptance criteria (see the approved plan).
+Phase 1 in progress. Built and under test (`npm test`): the 16-case conformity suite
+(`data/suites/`), the schema with append-only evidence (`supabase/migrations/`),
+coverage and comparison arithmetic, report hashing and the pre-publish leak guard,
+three model providers, the judge, and both agent adapters.
+
+Next: the run orchestrator behind a storage interface, then the Supabase
+implementation of it, then the UI. Phase 1 is done when the full path runs —
+connect -> probe -> policy version -> run -> grade -> inspect -> diagnose ->
+approve v2 -> rerun -> compare -> report — and passes the plan's acceptance criteria.
+
+Blocked on the user: Supabase project (Frankfurt), GitHub repo, Vercel account.

@@ -10,7 +10,8 @@
     "test": "node --test \"tests/*.test.ts\"",
     "verify:db": "node --env-file=.env.local scripts/verify-db.mts",
     "seed:suites": "node --env-file=.env.local scripts/seed-suites.mts",
-    "migrate": "node --env-file=.env.local scripts/migrate.mts"
+    "migrate": "node --env-file=.env.local scripts/migrate.mts",
+    "discover:models": "node --env-file=.env.local scripts/discover-models.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

@@ -1,5 +1,6 @@
 import type { AgentAdapter } from "../agents/types.ts";
-import type { Provider } from "../providers/types.ts";
+import type { RoutedChat } from "../router/execute.ts";
+import { taskForSeverity } from "../router/routes.ts";
 import { judgeCase } from "../judge/index.ts";
 import { coverage, coverageByObligation, type Coverage, type ObligationCoverage } from "../evidence/coverage.ts";
 import type { RunCaseRecord, RunStore, Suite } from "./types.ts";
@@ -10,7 +11,8 @@ export interface ExecuteRunArgs {
   agent: AgentAdapter;
   /** The approved policy text for this run; a run always names its policy version. */
   policy: string;
-  judge: { provider: Provider; apiKey: string; model: string };
+  /** Routed chat: the severity of each case decides which route grades it. */
+  judge: RoutedChat;
   store: RunStore;
   /** Kept low by default: customer endpoints and free judge tiers both rate-limit. */
   concurrency?: number;
@@ -71,6 +73,9 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
           rationale: null,
           latencyMs: agentResult.latencyMs,
           usage: null,
+          // The judge was never called: there was nothing to grade.
+          judgeModel: null,
+          judgeAttempts: [],
           error: agentResult.error ?? "The agent produced no response.",
         };
         await store.saveCase(records[index]);
@@ -78,9 +83,8 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
       }
 
       const verdict = await judgeCase({
-        provider: judge.provider,
-        apiKey: judge.apiKey,
-        model: judge.model,
+        chat: judge,
+        task: taskForSeverity(testCase.severity),
         testCase: {
           caseId: testCase.id,
           input: testCase.input,
@@ -102,8 +106,9 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         usage: {
           agent: agentResult.usage ?? null,
           judge: verdict.usage,
-          judgeModel: verdict.judgeModel,
         },
+        judgeModel: verdict.servedBy ? `${verdict.servedBy.connection}/${verdict.servedBy.model}` : null,
+        judgeAttempts: verdict.attempts,
         error: verdict.error,
       };
       await store.saveCase(records[index]);

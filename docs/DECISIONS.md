@@ -109,3 +109,24 @@ be seeded twice and two runs could reference different copies of "the same" suit
 Migration 0002 replaces it with two partial unique indexes. Seeding never overwrites
 an existing suite version — a stored run points at it, and changing the cases under it
 would falsify that run's evidence. A changed suite gets a new version number.
+
+## 2026-09-19 — Model routing by task and severity, with recorded fallback
+Four named tasks (judge, judge_critical, diagnose, draft), each a preference-ordered
+list of candidates in `src/lib/router/routes.ts`. Critical and high-severity scenarios
+take the stronger route, because a wrong verdict there is the expensive error.
+Every candidate is on a free tier, so later candidates exist for availability, not
+cost: a rate limit must not become an errored case in a customer's report.
+
+The ordering is a hypothesis, not a claim. Several of these models postdate what
+Claude can assess, so the table is data and `scripts/calibrate-judge.mts` measures it
+against ground truth rather than anyone asserting which model is "strongest".
+
+Integrity consequence, which drove the design: if a fallback happens partway through
+a run, the evidence was not graded uniformly. `judgeModel` is recorded per case and
+the report derives `graded_by` from the cases themselves, sets `graded_uniformly:
+false` when they differ, and adds a paragraph to the limitations saying so.
+
+## 2026-09-19 — Connections are named, not typed
+Groq and OpenRouter both speak the OpenAI-compatible shape but need different keys,
+base URLs and model names, so a credential is identified by connection name
+("google", "groq", "openrouter") rather than by provider kind.

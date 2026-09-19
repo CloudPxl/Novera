@@ -1,4 +1,6 @@
-import type { Provider, ChatResponse } from "../providers/types.ts";
+import type { ChatResponse } from "../providers/types.ts";
+import type { RoutedChat, RoutedAttempt } from "../router/execute.ts";
+import type { Candidate, Task } from "../router/routes.ts";
 import { parseVerdict, type JudgeVerdict } from "./parse.ts";
 
 export interface JudgeCase {
@@ -14,7 +16,10 @@ export interface JudgeOutcome {
   rationale: string | null;
   failedAssertions: string[];
   usage: ChatResponse["usage"];
-  judgeModel: string | null;
+  /** The model that actually produced this verdict, after any fallback. */
+  servedBy: Candidate | null;
+  /** Every candidate tried, including failures, so a degraded route is visible. */
+  attempts: RoutedAttempt[];
   rawJudgeText: string | null;
   error: string | null;
 }
@@ -52,41 +57,39 @@ function buildPrompt(testCase: JudgeCase, agentResponse: string, toolActivity: u
 }
 
 export async function judgeCase(args: {
-  provider: Provider;
-  apiKey: string;
-  model: string;
+  chat: RoutedChat;
+  task: Task;
   testCase: JudgeCase;
   agentResponse: string;
   toolActivity?: unknown;
 }): Promise<JudgeOutcome> {
-  const { provider, apiKey, model, testCase, agentResponse, toolActivity } = args;
+  const { chat, task, testCase, agentResponse, toolActivity } = args;
 
-  const empty: Omit<JudgeOutcome, "status" | "error"> = {
+  const empty = {
     rationale: null,
     failedAssertions: [],
     usage: {},
-    judgeModel: null,
+    servedBy: null,
+    attempts: [] as RoutedAttempt[],
     rawJudgeText: null,
   };
 
-  let response: ChatResponse;
+  let response: Awaited<ReturnType<RoutedChat>>;
   try {
-    response = await provider.chat(
-      {
-        model,
-        system: JUDGE_SYSTEM,
-        messages: [{ role: "user", content: buildPrompt(testCase, agentResponse, toolActivity) }],
-        maxTokens: 1000,
-      },
-      apiKey,
-    );
+    response = await chat(task, {
+      system: JUDGE_SYSTEM,
+      messages: [{ role: "user", content: buildPrompt(testCase, agentResponse, toolActivity) }],
+      maxTokens: 1000,
+    });
   } catch (error) {
-    // The grader failing is not the agent failing. Record it as an error so it stays
-    // out of the score instead of silently becoming a verdict.
+    // Every candidate failing is not the agent failing. Record it as an error so it
+    // stays out of the score instead of silently becoming a verdict.
+    const attempts = (error as { attempts?: RoutedAttempt[] }).attempts ?? [];
     return {
       ...empty,
+      attempts,
       status: "error",
-      error: `Judge call failed: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Judge unavailable: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 
@@ -97,7 +100,8 @@ export async function judgeCase(args: {
       ...empty,
       status: "error",
       usage: response.usage,
-      judgeModel: response.model,
+      servedBy: response.servedBy,
+      attempts: response.attempts,
       rawJudgeText: response.text,
       error: "Judge did not return a readable verdict.",
     };
@@ -108,7 +112,8 @@ export async function judgeCase(args: {
     rationale: verdict.rationale,
     failedAssertions: verdict.failedAssertions,
     usage: response.usage,
-    judgeModel: response.model,
+    servedBy: response.servedBy,
+    attempts: response.attempts,
     rawJudgeText: response.text,
     error: null,
   };

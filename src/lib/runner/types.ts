@@ -34,6 +34,10 @@ export interface RunCaseRecord {
   rationale: string | null;
   latencyMs: number | null;
   usage: Record<string, unknown> | null;
+  /** Which model actually graded this case, after any fallback. */
+  judgeModel: string | null;
+  /** Every judge candidate tried for this case, failures included. */
+  judgeAttempts: unknown[];
   error: string | null;
 }
 

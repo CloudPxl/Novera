@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { executeRun } from "../src/lib/runner/execute.ts";
 import type { RunCaseRecord, RunStore, Suite } from "../src/lib/runner/types.ts";
 import type { AgentAdapter, AgentResult } from "../src/lib/agents/types.ts";
-import type { Provider } from "../src/lib/providers/types.ts";
+import type { RoutedChat } from "../src/lib/router/execute.ts";
 
 const suite: Suite = {
   key: "test", version: 1, name: "test suite",
@@ -36,22 +36,28 @@ function agentReturning(byInput: Record<string, Partial<AgentResult>>): AgentAda
   return { probe: async () => make("probe"), send: async ({ input }) => make(input) };
 }
 
-function judgeReturning(verdicts: Record<string, "pass" | "fail">, calls: string[] = []): Provider {
-  return {
-    id: "anthropic", label: "stub",
-    async chat(request) {
-      const body = request.messages[0].content;
-      const caseId = Object.keys(verdicts).find((id) => body.includes(`reply to in${id.slice(1)}`)) ?? "?";
-      calls.push(caseId);
-      return {
-        text: JSON.stringify({ verdict: verdicts[caseId] ?? "pass", rationale: "because." }),
-        model: "stub", usage: {}, raw: {},
-      };
-    },
+function judgeReturning(
+  verdicts: Record<string, "pass" | "fail">,
+  calls: string[] = [],
+  tasks: string[] = [],
+): RoutedChat {
+  return async (task, request) => {
+    const body = request.messages[0].content;
+    const caseId = Object.keys(verdicts).find((id) => body.includes(`reply to in${id.slice(1)}`)) ?? "?";
+    calls.push(caseId);
+    tasks.push(task);
+    return {
+      text: JSON.stringify({ verdict: verdicts[caseId] ?? "pass", rationale: "because." }),
+      model: "stub",
+      usage: {},
+      raw: {},
+      servedBy: { connection: "stub", model: "stub-model" },
+      attempts: [{ connection: "stub", model: "stub-model", ok: true, ms: 1 }],
+    };
   };
 }
 
-const judgeArgs = (provider: Provider) => ({ provider, apiKey: "k", model: "m" });
+const judgeArgs = (chat: RoutedChat) => chat;
 
 test("a dead endpoint on one case does not cost the rest of the run", async () => {
   const { store, saved, events } = memoryStore();

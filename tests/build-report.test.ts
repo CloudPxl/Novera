@@ -14,7 +14,7 @@ function caseRecord(over: Partial<RunCaseRecord>): RunCaseRecord {
     severity: "medium", input: "customer said something", expected: "expected behaviour",
     assertions: ["a"], responseText: `The agent quoted: ${POLICY}`, toolActivity: null,
     status: "pass", rationale: "Matched the approved wording.", latencyMs: 100,
-    usage: null, error: null, ...over,
+    usage: null, judgeModel: "google/gemini-3.5-flash", judgeAttempts: [], error: null, ...over,
   };
 }
 
@@ -34,7 +34,7 @@ function input(over: Partial<ReportInput> = {}): ReportInput {
     runId: "run-1", runDate: "2026-09-19", environment: "Isolated test environment",
     suite: { key: "eu-support", version: 1, name: "EU support agent conformity suite" },
     attestation: "Customer confirmed they operate this agent.",
-    judge: { source: "workspace_key", model: "claude-opus-5" },
+    judge: { source: "workspace_key" },
     cases,
     coverage: coverage({ plannedCases: 16, cases }),
     byObligation: coverageByObligation(cases, { policy_accuracy: 1, erasure_request: 1, identity_verification: 1, transaction_safety: 1, escalation_and_human_review: 2 }),
@@ -113,4 +113,24 @@ test("a builder bug that leaks a credential fails the build", () => {
 test("the limitations text is always present", () => {
   const { payload } = buildReport(input());
   assert.match(String((payload as Record<string, string>).limitations), /not a certification/);
+});
+
+test("a run graded by one model reports uniform grading", () => {
+  const { payload } = buildReport(input());
+  const run = (payload as Record<string, Record<string, unknown>>).run;
+  assert.deepEqual(run.graded_by, ["google/gemini-3.5-flash"]);
+  assert.equal(run.graded_uniformly, true);
+  assert.ok(!String((payload as Record<string, string>).limitations).includes("More than one grading model"));
+});
+
+test("a mid-run fallback is disclosed: the report says grading was not uniform", () => {
+  const mixed = cases.map((c, i) =>
+    i === 0 ? { ...c, judgeModel: "groq/openai-gpt-oss-120b" } : c,
+  );
+  const { payload } = buildReport(input({ cases: mixed }));
+  const run = (payload as Record<string, Record<string, unknown>>).run;
+
+  assert.equal(run.graded_uniformly, false);
+  assert.deepEqual(run.graded_by, ["google/gemini-3.5-flash", "groq/openai-gpt-oss-120b"]);
+  assert.match(String((payload as Record<string, string>).limitations), /More than one grading model/);
 });

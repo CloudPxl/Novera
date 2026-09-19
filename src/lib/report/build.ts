@@ -21,7 +21,7 @@ export interface ReportInput {
   environment: string;
   suite: { key: string; version: number; name: string };
   attestation: string | null;
-  judge: { source: "trial_free" | "workspace_key"; model: string | null };
+  judge: { source: "trial_free" | "workspace_key" };
   cases: RunCaseRecord[];
   coverage: Coverage;
   byObligation: ObligationCoverage[];
@@ -38,6 +38,9 @@ export interface BuiltReport {
 const LIMITATIONS =
   "This report records how the named agent behaved on the listed scenarios, under the recorded configuration, on the date shown. It does not cover untested interactions, does not predict future behaviour, and is not a certification or a statement of legal compliance. Obligation codes group the evidence; they do not determine which obligations apply to your organisation.";
 
+const MIXED_GRADING_NOTE =
+  "More than one grading model was used in this run, because a provider was unavailable partway through. The verdicts are therefore not uniformly graded. Rerun the suite if you need a single-model result.";
+
 export function buildReport(input: ReportInput): BuiltReport {
   const findings = input.cases
     .filter((c) => c.status !== "pass")
@@ -52,6 +55,10 @@ export function buildReport(input: ReportInput): BuiltReport {
       observed: c.status === "error" ? (c.error ?? "The case did not produce a result.") : (c.rationale ?? "No rationale recorded."),
       outcome: c.status,
     }));
+
+  const gradedBy = [
+    ...new Set(input.cases.map((c) => c.judgeModel).filter((m): m is string => Boolean(m))),
+  ].sort();
 
   let comparison: Comparison | null = null;
   if (input.baseline) {
@@ -74,7 +81,10 @@ export function buildReport(input: ReportInput): BuiltReport {
       id: input.runId,
       date: input.runDate,
       suite: `${input.suite.name} (${input.suite.key} v${input.suite.version})`,
-      graded_by: input.judge.model ?? "unknown",
+      // Derived from the cases, not from what was intended. A fallback mid-run means
+      // the evidence was not graded uniformly, and a reader has to be told.
+      graded_by: gradedBy,
+      graded_uniformly: gradedBy.length <= 1,
       grading_funded_by: input.judge.source === "trial_free" ? "Novera trial allowance" : "customer-supplied model key",
     },
     coverage: {
@@ -113,7 +123,7 @@ export function buildReport(input: ReportInput): BuiltReport {
             : `The suite changed between runs. Added: ${comparison.notInBaseline.join(", ") || "none"}. Removed: ${comparison.missingFromCurrent.join(", ") || "none"}.`,
         }
       : null,
-    limitations: LIMITATIONS,
+    limitations: gradedBy.length > 1 ? `${LIMITATIONS} ${MIXED_GRADING_NOTE}` : LIMITATIONS,
   } satisfies Json;
 
   assertPublishable(payload, input.privateMaterial ?? []);

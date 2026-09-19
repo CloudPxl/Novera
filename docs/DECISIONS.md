@@ -130,3 +130,32 @@ false` when they differ, and adds a paragraph to the limitations saying so.
 Groq and OpenRouter both speak the OpenAI-compatible shape but need different keys,
 base URLs and model names, so a credential is identified by connection name
 ("google", "groq", "openrouter") rather than by provider kind.
+
+## 2026-09-19 — Judge models chosen by measurement, not assertion
+`npm run calibrate` runs each candidate over the scripted fixture, whose failures are
+planted, and counts agreement with `data/suites/eu-support-v1.labels.json`. Four of
+the 16 cases are labelled null and excluded because a correct verdict is genuinely
+arguable — better a smaller honest measurement than a bigger indefensible one.
+
+First run (12 labelled cases):
+  groq/openai/gpt-oss-120b     10/12   0.9s/case
+  google/gemini-3.5-flash-lite  9/12   0.8s/case
+  groq/openai/gpt-oss-20b       9/12   0.7s/case
+  openrouter/nemotron-3-super   9/12   6.4s/case, 3 unreadable
+  google/gemini-3.5-flash       5/12  11.3s/case, rate-limited
+  openrouter/glm-5.2:free       1/12   upstream errors
+  google/gemini-pro-latest      0/12   not on the free tier
+
+**Zero false passes anywhere**: every model caught all six planted failures. That is
+the metric that matters, because a missed failure is the one a customer cannot detect.
+All disagreement is false fails, clustered on cases where the fixture's generic reply
+is borderline — some of that is probably our labels being generous, not model error.
+
+The measurement overturned the routes written from assumption: `gemini-pro-latest`
+was the first choice for critical cases and is not on the free tier at all, so it
+would have fallen through on every single call. Pro-class Google models are not free.
+
+## 2026-09-19 — OpenAI-compatible errors: 200 does not mean success
+OpenRouter reports upstream failures as HTTP 200 with an `error` body, and nests the
+real message under `error.metadata`. The adapter now checks for that and unwraps it;
+previously a diagnosable failure surfaced as "Provider returned error".

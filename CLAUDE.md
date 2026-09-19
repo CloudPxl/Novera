@@ -71,9 +71,17 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
 policy text and no raw agent response, with expiry and revocation enforced.
 
-Next (see the approved plan): A3 auth and tenancy, A4 operator UI (connect, probe,
-policy version, run, inspect, diagnose, approve, rerun, compare — the `diagnose` route
-exists and has no caller yet), A5 self-serve, A6 sales and support.
+A3 done: email + password auth, workspaces created on first sign-in, session refresh
+in `src/proxy.ts` (Next 16 renamed `middleware` to `proxy`). Reads use the user's
+client so RLS applies; writes use server actions with the service role and prove
+membership via `assertMembership`. `npm run verify:tenancy` — 11 checks, all green.
+
+Next: A4 operator UI (connect, probe, policy version, run, inspect, diagnose, approve,
+rerun, compare — the `diagnose` route exists and still has no caller), A5 self-serve,
+A6 sales and support.
+
+Before customers: email confirmation is on and there is no sender configured, so
+public signup cannot complete. That is the Resend integration, still unbuilt.
 
 Free-tier ceiling worth remembering: Groq is 8,000 tokens/minute and the judge hits it
 mid-run. The router falls through and the run still completes with zero errors.

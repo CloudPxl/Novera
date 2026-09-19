@@ -13,7 +13,8 @@
     "migrate": "node --conditions=react-server --env-file=.env.local scripts/migrate.mts",
     "discover:models": "node --conditions=react-server --env-file=.env.local scripts/discover-models.mts",
     "calibrate": "node --conditions=react-server --env-file=.env.local scripts/calibrate-judge.mts",
-    "demo:run": "node --conditions=react-server --env-file=.env.local scripts/demo-run.mts"
+    "demo:run": "node --conditions=react-server --env-file=.env.local scripts/demo-run.mts",
+    "verify:access": "node --conditions=react-server --env-file=.env.local scripts/verify-access.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

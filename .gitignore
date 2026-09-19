@@ -42,3 +42,6 @@ next-env.d.ts
 
 # keep the empty template in git (real .env files stay ignored above)
 !.env.example
+
+# Playwright MCP session output
+.playwright-mcp/

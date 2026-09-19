@@ -191,3 +191,29 @@ to "a colleague" is genuinely arguable, so it moves to null (excluded) rather th
 flipping. Labels are corrected where the assertion text decides it, and excluded
 where it does not. Matching labels to model output would make the calibration
 circular and worthless.
+
+## 2026-09-19 — The report page: a document, not a dashboard
+`src/app/report/[token]/page.tsx` renders explicitly light-on-white and print-friendly,
+because the artifact is something a client files, not something an engineer monitors.
+No client JavaScript, `robots: noindex` (the token is the access control), and the
+three refusal states — unknown (404), expired, revoked — each say what happened.
+
+Two deliberate choices:
+- **No automated verdict.** Nate's template has a READY / CONDITIONAL / BLOCKED status.
+  A test suite declaring an agent "ready" is exactly the overclaim our own limitations
+  block disclaims. The decision belongs to the agency; we supply the evidence.
+- **Three obligation states, not two.** The first render said "Covered" on every graded
+  obligation, including ones with zero passes and a failure — which reads like a green
+  light next to a failure. Now: Met / Issues found / Not covered.
+
+`npm run verify:access` proves the access rules and immutability against the live
+database on every change: revoked and expired links refuse and render no findings, an
+unknown token 404s, and the service role cannot rewrite a payload, a hash, or a verdict.
+
+## 2026-09-19 — A failing check that was the check's fault
+`verify:access` first reported revoked and expired links as leaking. They were not:
+React splits `no longer {expr}` with a `<!-- -->` marker, so the phrase was never
+contiguous in the HTML. Fixed in the component rather than the assertion — the
+messages are now whole strings, which produces cleaner markup and will translate.
+Worth recording because the instinct on a red security check is to trust it; the page
+was right and the test was wrong.

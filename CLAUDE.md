@@ -60,14 +60,20 @@ data/suites/          versioned scenario suites
   failures with their output.
 
 ## Status
-Phase 1 in progress. Built and under test (`npm test`): the 16-case conformity suite
-(`data/suites/`), the schema with append-only evidence (`supabase/migrations/`),
-coverage and comparison arithmetic, report hashing and the pre-publish leak guard,
-three model providers, the judge, and both agent adapters.
+**The loop is closed.** A real run against the live database: probe receipt, 16 graded
+cases, hash-sealed report, all persisted. All six planted fixture failures caught.
 
-Next: the run orchestrator behind a storage interface, then the Supabase
-implementation of it, then the UI. Phase 1 is done when the full path runs —
-connect -> probe -> policy version -> run -> grade -> inspect -> diagnose ->
-approve v2 -> rerun -> compare -> report — and passes the plan's acceptance criteria.
+Working end to end: `npm run demo:run` (full path), `npm run verify:db`,
+`npm run verify:access`, `npm run calibrate`, `npm run migrate`, `npm run seed:suites`.
+Scripts run with `--conditions=react-server` so `server-only` resolves to its no-op.
+`npm test` — 59 passing.
 
-Blocked on the user: Supabase project (Frankfurt), GitHub repo, Vercel account.
+The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
+policy text and no raw agent response, with expiry and revocation enforced.
+
+Next (see the approved plan): A3 auth and tenancy, A4 operator UI (connect, probe,
+policy version, run, inspect, diagnose, approve, rerun, compare — the `diagnose` route
+exists and has no caller yet), A5 self-serve, A6 sales and support.
+
+Free-tier ceiling worth remembering: Groq is 8,000 tokens/minute and the judge hits it
+mid-run. The router falls through and the run still completes with zero errors.

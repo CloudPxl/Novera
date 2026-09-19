@@ -31,3 +31,19 @@ is "novera"; the directory name is cosmetic.
 node_modules/next/dist/docs/ holds the authoritative guides and AGENTS.md instructs
 reading them before writing route handlers, server actions or caching code. Read the
 relevant guide rather than relying on recalled Next.js conventions.
+
+## 2026-09-19 — Tests run on Node's native type stripping, no test framework
+`npm test` = `node --test "tests/*.test.ts"`. Zero dependencies, zero config, and it
+keeps the evidence logic (coverage arithmetic, run comparison, report hashing,
+leak guard) under test from the start.
+Constraint this imposes: strip-only mode rejects TypeScript that needs code
+generation — **no parameter properties** (`constructor(readonly x: string)`), no
+`enum`, no `namespace`. Hit this immediately in LeakError. Relative imports inside
+tested modules use explicit `.ts` extensions.
+
+## 2026-09-19 — Evidence integrity enforced in the database, not just in code
+`policies`, `run_cases` and `probes` carry triggers that refuse UPDATE and DELETE;
+`reports` allows only `revoked_at` / `expires_at` to change. The service role bypasses
+RLS but not triggers, so a bug in our own server code cannot rewrite history. For a
+product whose value is that its output can be trusted, this belongs below the
+application. See supabase/migrations/0001_init.sql.

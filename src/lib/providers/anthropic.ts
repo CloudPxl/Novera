@@ -15,6 +15,7 @@ export const anthropicProvider: Provider = {
       const response = await client.messages.create({
         model: request.model || DEFAULT_ANTHROPIC_MODEL,
         max_tokens: request.maxTokens ?? 4000,
+        ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
         ...(request.system ? { system: request.system } : {}),
         messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
       });

@@ -1,7 +1,6 @@
 import type { AgentAdapter } from "../agents/types.ts";
 import type { RoutedChat } from "../router/execute.ts";
-import { taskForSeverity } from "../router/routes.ts";
-import { judgeCase } from "../judge/index.ts";
+import { gradeCase } from "../judge/consensus.ts";
 import { coverage, coverageByObligation, type Coverage, type ObligationCoverage } from "../evidence/coverage.ts";
 import type { RunCaseRecord, RunStore, Suite } from "./types.ts";
 
@@ -76,15 +75,20 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
           // The judge was never called: there was nothing to grade.
           judgeModel: null,
           judgeAttempts: [],
+          judgeVotes: [],
+          judgeAgreement: null,
           error: agentResult.error ?? "The agent produced no response.",
         };
         await store.saveCase(records[index]);
         continue;
       }
 
-      const verdict = await judgeCase({
+      // Two models must agree. A single judge was measured at 25% verdict drift on
+      // identical responses (npm run measure:stability), which would have shown up
+      // in a customer's rerun as fixes and regressions that never happened.
+      const verdict = await gradeCase({
         chat: judge,
-        task: taskForSeverity(testCase.severity),
+        severity: testCase.severity,
         testCase: {
           caseId: testCase.id,
           input: testCase.input,
@@ -109,6 +113,8 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         },
         judgeModel: verdict.servedBy ? `${verdict.servedBy.connection}/${verdict.servedBy.model}` : null,
         judgeAttempts: verdict.attempts,
+        judgeVotes: verdict.votes,
+        judgeAgreement: verdict.agreement,
         error: verdict.error,
       };
       await store.saveCase(records[index]);

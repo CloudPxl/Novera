@@ -60,28 +60,41 @@ data/suites/          versioned scenario suites
   failures with their output.
 
 ## Status
-**The loop is closed.** A real run against the live database: probe receipt, 16 graded
-cases, hash-sealed report, all persisted. All six planted fixture failures caught.
+**The loop is closed and the operator can drive it.** Connect an agent → probe receipt
+→ policy version → run the suite live → inspect a failure → ask why it failed →
+approve the proposed change as a new policy version → rerun → compare. Verified in a
+real browser against the live database, not by inspection.
 
-Working end to end: `npm run demo:run` (full path), `npm run verify:db`,
-`npm run verify:access`, `npm run calibrate`, `npm run migrate`, `npm run seed:suites`.
-Scripts run with `--conditions=react-server` so `server-only` resolves to its no-op.
-`npm test` — 59 passing.
+**A verdict is the finding of two models, not one.** A single judge was measured
+drifting on 25% of scenarios when re-grading byte-identical agent responses, which the
+comparison had been reporting to the operator as fixes and regressions that never
+happened. Grading is pinned to temperature 0 and every verdict goes to two independent
+models, with a third to settle a disagreement; an unsettleable disagreement is an
+error, never a guess. Measured 25% → 6.3% instability by `npm run measure:stability`.
+A report states how many verdicts agreed, how many a third settled, and how many could
+not be corroborated.
+
+**A diagnosis is a proposal, never an edit.** The model may not quote policy text that
+is not in the policy, and a proposal whose target has since moved is refused rather
+than applied nearby. Migration 0007 freezes the analysis at insert and allows exactly
+one recorded decision.
+
+Working end to end: `npm run demo:run`, `npm run verify:db`, `npm run verify:access`,
+`npm run verify:tenancy`, `npm run calibrate`, `npm run measure:stability`,
+`npm run migrate`, `npm run seed:suites`. Scripts run with `--conditions=react-server`
+so `server-only` resolves to its no-op. `npm test` — 73 passing.
 
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
 policy text and no raw agent response, with expiry and revocation enforced.
 
-A3 done: email + password auth, workspaces created on first sign-in, session refresh
-in `src/proxy.ts` (Next 16 renamed `middleware` to `proxy`). Reads use the user's
-client so RLS applies; writes use server actions with the service role and prove
-membership via `assertMembership`. `npm run verify:tenancy` — 11 checks, all green.
-
-Next: A4 operator UI (connect, probe, policy version, run, inspect, diagnose, approve,
-rerun, compare — the `diagnose` route exists and still has no caller), A5 self-serve,
-A6 sales and support.
+Next: A5 self-serve (signup → connect → trial run → report; BYOK to leave trial),
+then A6 sales and support surfaces.
 
 Before customers: email confirmation is on and there is no sender configured, so
-public signup cannot complete. That is the Resend integration, still unbuilt.
+public signup cannot complete. That is the Resend integration, still unbuilt, and it
+blocks A5.
 
-Free-tier ceiling worth remembering: Groq is 8,000 tokens/minute and the judge hits it
-mid-run. The router falls through and the run still completes with zero errors.
+Free-tier ceiling worth remembering: Groq is 8,000 tokens/minute and consensus grading
+doubles the judge calls, so the router falls through to Google mid-run more often than
+before. Runs still complete with zero errors, but throughput is the thing to measure
+before promising concurrent customer runs.

@@ -87,8 +87,64 @@ if (userErr || !created?.user) {
     report(!!policyErr, "policies refuses UPDATE (a policy version is immutable)",
       policyErr?.message.slice(0, 70) ?? "the update SUCCEEDED, which is wrong");
 
-    await db.from("workspaces").delete().eq("id", ws.id);
-    console.log("  cleaned up the verification workspace");
+    // A diagnosis is the one evidence row that has to change state, so the rule it
+    // follows is narrower than append-only: frozen content, one decision, no deletes.
+    const { data: builtIn } = await db
+      .from("suites").select("id").is("workspace_id", null).limit(1).single();
+    if (!builtIn) throw new Error("no built-in suite is seeded; run npm run seed:suites");
+    const suiteId = builtIn.id;
+    const { data: run } = await db
+      .from("runs")
+      .insert({ workspace_id: ws.id, agent_id: agent.id, policy_id: policy!.id, suite_id: suiteId, status: "completed" })
+      .select("id")
+      .single();
+    const { data: runCase } = await db
+      .from("run_cases")
+      .insert({
+        workspace_id: ws.id, run_id: run!.id, case_id: "V01", category: "verify",
+        obligation: "policy_accuracy", severity: "low", input: "x", expected: "y",
+        assertions: [], status: "fail",
+      })
+      .select("id")
+      .single();
+    const { data: diagnosis } = await db
+      .from("diagnoses")
+      .insert({ workspace_id: ws.id, run_case_id: runCase!.id, analysis: "because", proposed_new: "do better" })
+      .select("id")
+      .single();
+
+    const { error: analysisErr } = await db
+      .from("diagnoses").update({ analysis: "rewritten after the fact" }).eq("id", diagnosis!.id);
+    report(!!analysisErr, "diagnoses refuses an edit to the analysis",
+      analysisErr?.message.slice(0, 70) ?? "the update SUCCEEDED, which is wrong");
+
+    const { error: unsignedErr } = await db
+      .from("diagnoses").update({ status: "rejected" }).eq("id", diagnosis!.id);
+    report(!!unsignedErr, "diagnoses refuses a decision with no decider recorded",
+      unsignedErr?.message.slice(0, 70) ?? "the update SUCCEEDED, which is wrong");
+
+    const { error: decideErr } = await db
+      .from("diagnoses")
+      .update({ status: "rejected", decided_by: userId, decided_at: new Date().toISOString() })
+      .eq("id", diagnosis!.id);
+    report(!decideErr, "diagnoses accepts exactly one decision", decideErr?.message.slice(0, 70) ?? "");
+
+    const { error: redecideErr } = await db
+      .from("diagnoses")
+      .update({ status: "approved", decided_by: userId, decided_at: new Date().toISOString() })
+      .eq("id", diagnosis!.id);
+    report(!!redecideErr, "diagnoses refuses a second decision",
+      redecideErr?.message.slice(0, 70) ?? "the update SUCCEEDED, which is wrong");
+
+    const { error: diagDeleteErr } = await db.from("diagnoses").delete().eq("id", diagnosis!.id);
+    report(!!diagDeleteErr, "diagnoses refuses DELETE outside an erasure",
+      diagDeleteErr?.message.slice(0, 70) ?? "the delete SUCCEEDED, which is wrong");
+
+    // Cleanup goes through the one authorised erasure path. A plain delete is refused
+    // by the append-only triggers, and this script used to announce a cleanup it had
+    // not performed because it never looked at the error.
+    const { error: eraseErr } = await db.rpc("erase_workspace", { target: ws.id });
+    report(!eraseErr, "the verification workspace was erased", eraseErr?.message.slice(0, 70) ?? "");
   } catch (error) {
     report(false, "integrity checks could not run", error instanceof Error ? error.message : String(error));
   } finally {

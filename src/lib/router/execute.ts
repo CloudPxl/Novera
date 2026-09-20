@@ -40,18 +40,32 @@ export interface RouterOptions {
   onFallback?: (attempt: RoutedAttempt) => void;
 }
 
+export interface RouteRequestOptions {
+  /**
+   * Candidates to skip. Consensus grading uses this to get a genuinely second
+   * opinion: asking the same model twice is not corroboration.
+   */
+  exclude?: Candidate[];
+}
+
 export type RoutedChat = (
   task: Task,
   request: Omit<ChatRequest, "model">,
+  options?: RouteRequestOptions,
 ) => Promise<RoutedResponse>;
 
 export function createRoutedChat(options: RouterOptions): RoutedChat {
   const { connections, routes, onFallback } = options;
 
-  return async function routedChat(task, request) {
+  return async function routedChat(task, request, options) {
     const attempts: RoutedAttempt[] = [];
 
     for (const candidate of routes[task] ?? []) {
+      const excluded = options?.exclude?.some(
+        (e) => e.connection === candidate.connection && e.model === candidate.model,
+      );
+      if (excluded) continue;
+
       const connection = connections.get(candidate.connection);
 
       if (!connection) {

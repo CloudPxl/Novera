@@ -20,6 +20,13 @@ export interface ReportPayload {
     suite: string;
     graded_by: string[];
     graded_uniformly: boolean;
+    corroboration: {
+      method: string;
+      agreed: number;
+      majority: number;
+      uncorroborated: number;
+      unresolved: number;
+    };
     grading_funded_by: string;
   };
   coverage: {

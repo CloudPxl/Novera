@@ -40,6 +40,8 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
         // evidence must still be able to say which model decided each verdict.
         judge_model: record.judgeModel,
         judge_attempts: record.judgeAttempts,
+        judge_votes: record.judgeVotes,
+        judge_agreement: record.judgeAgreement,
         error: record.error,
       });
       if (error) throw new Error(`Could not save case ${record.caseId}: ${error.message}`);

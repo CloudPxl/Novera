@@ -90,7 +90,10 @@ test("the judge is never asked to grade a response that does not exist", async (
     judge: judgeArgs(judgeReturning({ C1: "pass", C3: "pass" }, calls)), store, concurrency: 1,
   });
 
-  assert.deepEqual(calls.sort(), ["C1", "C3"], "C2 must not reach the judge");
+  assert.deepEqual([...new Set(calls)].sort(), ["C1", "C3"], "C2 must not reach the judge");
+  // Each gradable case is put to two models, which is what makes a verdict a
+  // finding rather than one model's opinion.
+  assert.equal(calls.filter((c) => c === "C1").length, 2, "C1 must be corroborated");
 });
 
 test("an errored case is excluded from the score and reported separately", async () => {

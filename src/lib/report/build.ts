@@ -38,6 +38,9 @@ export interface BuiltReport {
 const LIMITATIONS =
   "This report records how the named agent behaved on the listed scenarios, under the recorded configuration, on the date shown. It does not cover untested interactions, does not predict future behaviour, and is not a certification or a statement of legal compliance. Obligation codes group the evidence; they do not determine which obligations apply to your organisation.";
 
+const UNCORROBORATED_NOTE =
+  "Some verdicts in this run were produced by a single model because a second was unavailable. They are counted in the score and marked as uncorroborated below; rerun the suite for a fully corroborated result.";
+
 const MIXED_GRADING_NOTE =
   "More than one grading model was used in this run, because a provider was unavailable partway through. The verdicts are therefore not uniformly graded. Rerun the suite if you need a single-model result.";
 
@@ -59,6 +62,19 @@ export function buildReport(input: ReportInput): BuiltReport {
   const gradedBy = [
     ...new Set(input.cases.map((c) => c.judgeModel).filter((m): m is string => Boolean(m))),
   ].sort();
+
+  // How firm each verdict is, counted rather than asserted. A single judge was
+  // measured drifting on identical responses, so every verdict now goes to two
+  // models and a reader is told which ones actually agreed.
+  const agreementCount = (kind: string) =>
+    input.cases.filter((c) => c.judgeAgreement === kind).length;
+  const corroboration = {
+    method: "Each verdict was put to two independent models; a third settled any disagreement.",
+    agreed: agreementCount("agreed"),
+    majority: agreementCount("majority"),
+    uncorroborated: agreementCount("unconfirmed"),
+    unresolved: agreementCount("unresolved"),
+  };
 
   let comparison: Comparison | null = null;
   if (input.baseline) {
@@ -85,6 +101,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       // the evidence was not graded uniformly, and a reader has to be told.
       graded_by: gradedBy,
       graded_uniformly: gradedBy.length <= 1,
+      corroboration,
       grading_funded_by: input.judge.source === "trial_free" ? "Novera trial allowance" : "customer-supplied model key",
     },
     coverage: {
@@ -123,7 +140,11 @@ export function buildReport(input: ReportInput): BuiltReport {
             : `The suite changed between runs. Added: ${comparison.notInBaseline.join(", ") || "none"}. Removed: ${comparison.missingFromCurrent.join(", ") || "none"}.`,
         }
       : null,
-    limitations: gradedBy.length > 1 ? `${LIMITATIONS} ${MIXED_GRADING_NOTE}` : LIMITATIONS,
+    limitations: [
+      LIMITATIONS,
+      ...(gradedBy.length > 1 ? [MIXED_GRADING_NOTE] : []),
+      ...(corroboration.uncorroborated > 0 ? [UNCORROBORATED_NOTE] : []),
+    ].join(" "),
   } satisfies Json;
 
   assertPublishable(payload, input.privateMaterial ?? []);

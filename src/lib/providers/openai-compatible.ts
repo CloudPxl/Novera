@@ -55,6 +55,7 @@ export function openAiCompatibleProvider(baseUrl: string): {
             model: request.model,
             messages,
             max_tokens: request.maxTokens ?? 4000,
+            ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
           }),
         });
       } catch (error) {

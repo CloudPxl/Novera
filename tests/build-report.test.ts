@@ -14,7 +14,8 @@ function caseRecord(over: Partial<RunCaseRecord>): RunCaseRecord {
     severity: "medium", input: "customer said something", expected: "expected behaviour",
     assertions: ["a"], responseText: `The agent quoted: ${POLICY}`, toolActivity: null,
     status: "pass", rationale: "Matched the approved wording.", latencyMs: 100,
-    usage: null, judgeModel: "google/gemini-3.5-flash", judgeAttempts: [], error: null, ...over,
+    usage: null, judgeModel: "google/gemini-3.5-flash", judgeAttempts: [],
+    judgeVotes: [], judgeAgreement: "agreed", error: null, ...over,
   };
 }
 

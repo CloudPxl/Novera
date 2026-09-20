@@ -322,3 +322,78 @@ non-determinism recorded earlier, and the spread is wider than is comfortable fo
 document a client files. It needs addressing before customers compare two reports —
 consensus grading on the cases that matter is the obvious candidate, and the
 calibration harness can measure whether it actually narrows the spread.
+
+## 2026-09-20 — Diagnose → approve → rerun → compare closes A4
+The `diagnose` route finally has a caller. A failed scenario can be sent to a model
+with the policy version the run actually used; it returns an analysis, a minimal
+change and the risks of that change. Approving it creates the next policy version,
+with `derived_from` set; rerunning names the run it was measured from, so the
+comparison answers the question the operator asked rather than "whatever ran last".
+
+**The model never edits a policy.** Its output is stored as `proposed` and a person
+decides. Two guards make that real rather than ceremonial:
+
+*A proposal may not quote policy text that does not exist.* `parsePolicyChange`
+locates the quoted span in the actual policy body — tolerating reflowed whitespace,
+because models reflow quotes, but anchored to every non-whitespace character — and
+refuses the proposal outright if it is not there. A confident diff against a document
+the operator does not have is worse than no diff.
+
+*A stale proposal is refused, not applied nearby.* If an earlier approval moved the
+text a later proposal quotes, `applyPolicyChange` returns null and the approval is
+refused with an instruction to re-diagnose. Patching a shifted target silently turns
+an approved change into a different change.
+
+## 2026-09-20 — A diagnosis is mutable exactly once (migration 0007)
+`diagnoses` was the one evidence table left mutable, because it genuinely has to move
+from `proposed` to a decision. "Mutable once, in one direction" is much narrower than
+"mutable" and nothing was enforcing the difference: an approved change could have been
+flipped to rejected after a bad rerun, or the analysis edited to match whatever the
+policy ended up saying. The trigger now freezes the analysis at insert, requires a
+decision to record who made it and when, requires an approval to name the policy
+version it produced, refuses a second decision, and refuses deletion outside an
+authorised erasure. Verified against the live database by `npm run verify:db`.
+
+## 2026-09-20 — verify:db announced a cleanup it had not performed
+It printed "cleaned up the verification workspace" and left the workspace behind: the
+plain delete had been refused by the append-only triggers since migration 0005, and
+the script never read the error. Same false-success pattern as the throwaway scripts
+that led to the erasure discovery. Cleanup now goes through `erase_workspace` and the
+result is reported like any other check.
+
+## 2026-09-20 — The comparison was reporting fixes that never happened
+Measured, not suspected. Two runs of the same fixture, one on policy v1 and one on
+v2: **all 16 agent replies were byte-identical, and three verdicts still changed.**
+The fixture never receives the policy over the HTTP adapter, so the policy change
+could not have affected a single reply. Every "fix" and "regression" the comparison
+reported was the grader disagreeing with itself.
+
+This made baseline comparison — the feature that makes a rerun worth paying for —
+actively misleading, and it took A4 from done to blocked.
+
+**Cause one: nothing ever set a temperature.** `ChatRequest` had no such field, so
+every provider applied its own default, 1.0 on the OpenAI-compatible hosts. Grading is
+not a creative task. Pinned to 0.
+
+**That was not enough.** `npm run measure:stability` re-grades stored responses, so
+nothing about the agent varies: at temperature 0 a single judge still moved on
+**4 of 16 scenarios (25%)**. These are MoE models served with batching, where
+temperature 0 does not buy determinism.
+
+**Cause two: one opinion is not a finding.** Consensus grading now puts every verdict
+to two independent models, with a third to settle a disagreement. Re-measured on the
+same stored responses: **25% → 6.3%**, and the single case still moving (T02) is one
+of the five we already labelled arguable during calibration. Confirmed live — the same
+rerun that previously invented two fixes now reports none.
+
+The deferral condition written into the plan ("revisit when a real agent produces a
+disputed verdict") was met, so the deferral ended.
+
+## 2026-09-20 — Corroboration is part of the evidence (migration 0008)
+A verdict now travels with what each model said and whether they agreed, stored on
+`run_cases` and carried into the report: how many agreed on first reading, how many a
+third model settled, how many were graded by one model because no second was
+reachable, and how many were left unresolved. Unresolved is an `error` — excluded from
+the score, reported separately — never a coin toss printed as a verdict. The operator
+UI says the same thing per case rather than the flat "graded by X", which would
+overstate a single-model verdict and understate one that took three.

@@ -10,6 +10,12 @@ export interface ChatRequest {
   system?: string;
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   maxTokens?: number;
+  /**
+   * Sampling temperature. Grading passes 0: a verdict that changes between two runs
+   * over an identical response is not evidence, and leaving this unset meant every
+   * provider's own default applied — 1.0 on the OpenAI-compatible hosts.
+   */
+  temperature?: number;
 }
 
 export interface ChatResponse {

@@ -62,8 +62,10 @@ export async function judgeCase(args: {
   testCase: JudgeCase;
   agentResponse: string;
   toolActivity?: unknown;
+  /** Models already consulted on this case, so a second opinion is a different one. */
+  exclude?: Candidate[];
 }): Promise<JudgeOutcome> {
-  const { chat, task, testCase, agentResponse, toolActivity } = args;
+  const { chat, task, testCase, agentResponse, toolActivity, exclude } = args;
 
   const empty = {
     rationale: null,
@@ -80,7 +82,11 @@ export async function judgeCase(args: {
       system: JUDGE_SYSTEM,
       messages: [{ role: "user", content: buildPrompt(testCase, agentResponse, toolActivity) }],
       maxTokens: 1000,
-    });
+      // Grading is not a creative task. Sampling at a provider's default meant two
+      // runs over an identical agent response could disagree, which makes a baseline
+      // comparison report fixes and regressions that never happened.
+      temperature: 0,
+    }, exclude ? { exclude } : undefined);
   } catch (error) {
     // Every candidate failing is not the agent failing. Record it as an error so it
     // stays out of the score instead of silently becoming a verdict.

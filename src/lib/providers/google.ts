@@ -21,7 +21,10 @@ export const googleProvider: Provider = {
         role: m.role === "assistant" ? "model" : "user",
         parts: [{ text: m.content }],
       })),
-      generationConfig: { maxOutputTokens: request.maxTokens ?? 4000 },
+      generationConfig: {
+        maxOutputTokens: request.maxTokens ?? 4000,
+        ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+      },
     };
     if (request.system) {
       body.systemInstruction = { parts: [{ text: request.system }] };

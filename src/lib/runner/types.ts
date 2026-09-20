@@ -38,6 +38,10 @@ export interface RunCaseRecord {
   judgeModel: string | null;
   /** Every judge candidate tried for this case, failures included. */
   judgeAttempts: unknown[];
+  /** What each model consulted on this case said. */
+  judgeVotes: unknown[];
+  /** Whether the models agreed, a third settled it, or it could not be settled. */
+  judgeAgreement: string | null;
   error: string | null;
 }
 

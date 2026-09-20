@@ -5,6 +5,11 @@ import { revalidatePath } from "next/cache";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { storeSecret } from "@/lib/store/secrets.ts";
 import { probeAgent } from "@/lib/workflow/run.ts";
+import { diagnoseFailure } from "@/lib/diagnose/index.ts";
+import { applyPolicyChange } from "@/lib/diagnose/parse.ts";
+import { createRoutedChat } from "@/lib/router/execute.ts";
+import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
+import { connectionsFromEnv } from "@/lib/providers/registry.ts";
 import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
 
 export interface FormState {
@@ -185,6 +190,225 @@ export async function createRun(formData: FormData): Promise<void> {
     .select("id").single();
 
   if (error) throw new Error(`Could not start the run: ${error.message}`);
+
+  redirect(`/runs/${run.id}`);
+}
+
+/**
+ * Asks a model why one scenario failed and what policy change would have prevented it.
+ *
+ * The diagnosis is written against the policy version the run actually used, not the
+ * latest one, because it is explaining something that already happened. It is stored
+ * as `proposed`: nothing here changes a policy.
+ */
+export async function requestDiagnosis(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const runCaseId = String(form.get("runCaseId") ?? "");
+  const admin = await assertMembership(user.id, workspace.id);
+
+  const { data: runCase, error } = await admin
+    .from("run_cases")
+    .select("id, run_id, case_id, obligation, severity, input, expected, assertions, response_text, rationale, status")
+    .eq("id", runCaseId)
+    .eq("workspace_id", workspace.id)
+    .single();
+
+  if (error || !runCase) return { error: "That scenario could not be found." };
+  if (runCase.status === "pass") return { error: "That scenario passed; there is nothing to diagnose." };
+
+  const { data: run } = await admin
+    .from("runs").select("policy_id").eq("id", runCase.run_id).single();
+  const { data: policy } = run
+    ? await admin.from("policies").select("id, body").eq("id", run.policy_id).single()
+    : { data: null };
+
+  if (!policy) return { error: "The policy this run used could not be loaded." };
+
+  const outcome = await diagnoseFailure({
+    chat: createRoutedChat({ connections: connectionsFromEnv(), routes: DEFAULT_ROUTES }),
+    policyBody: policy.body as string,
+    failure: {
+      caseId: runCase.case_id as string,
+      obligation: runCase.obligation as string,
+      severity: runCase.severity as string,
+      input: runCase.input as string,
+      expected: runCase.expected as string,
+      assertions: Array.isArray(runCase.assertions) ? (runCase.assertions as string[]) : [],
+      responseText: (runCase.response_text as string | null) ?? null,
+      rationale: (runCase.rationale as string | null) ?? null,
+    },
+  });
+
+  if (!outcome.ok || !outcome.change) {
+    // Deliberately not stored. A failed attempt to propose is not a proposal, and a
+    // row saying "the model could not help" would only clutter the decision list.
+    return { error: outcome.error ?? "No usable proposal came back." };
+  }
+
+  const { error: insertError } = await admin.from("diagnoses").insert({
+    workspace_id: workspace.id,
+    run_case_id: runCase.id,
+    analysis: outcome.change.analysis,
+    quoted_old: outcome.change.quotedOld,
+    proposed_new: outcome.change.proposedNew,
+    risks: outcome.change.risks,
+    status: "proposed",
+  });
+
+  if (insertError) return { error: `Could not save the proposal: ${insertError.message}` };
+
+  revalidatePath(`/runs/${runCase.run_id}`);
+  return { notice: `Proposal ready, drafted by ${outcome.servedBy?.connection}/${outcome.servedBy?.model}.` };
+}
+
+/**
+ * Approves or rejects a proposal. An approval is what creates a policy version.
+ *
+ * Approving re-checks the quoted text against the *current* policy rather than the
+ * one the proposal was written against. If an earlier approval already moved that
+ * text, this one is refused outright — applying a stale diff to a shifted target is
+ * how an approved change silently becomes a different change.
+ */
+export async function decideDiagnosis(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const diagnosisId = String(form.get("diagnosisId") ?? "");
+  const decision = String(form.get("decision") ?? "");
+  if (decision !== "approved" && decision !== "rejected") return { error: "Unknown decision." };
+
+  const admin = await assertMembership(user.id, workspace.id);
+
+  const { data: diagnosis, error } = await admin
+    .from("diagnoses")
+    .select("id, run_case_id, analysis, quoted_old, proposed_new, risks, status")
+    .eq("id", diagnosisId)
+    .eq("workspace_id", workspace.id)
+    .single();
+
+  if (error || !diagnosis) return { error: "That proposal could not be found." };
+  if (diagnosis.status !== "proposed") {
+    return { error: `This proposal was already ${diagnosis.status}.` };
+  }
+
+  const { data: runCase } = await admin
+    .from("run_cases").select("run_id").eq("id", diagnosis.run_case_id).single();
+  const { data: run } = runCase
+    ? await admin.from("runs").select("agent_id, policy_id").eq("id", runCase.run_id).single()
+    : { data: null };
+  if (!run) return { error: "The run this proposal belongs to could not be loaded." };
+
+  const decidedAt = new Date().toISOString();
+
+  if (decision === "rejected") {
+    const { error: rejectError } = await admin
+      .from("diagnoses")
+      .update({ status: "rejected", decided_by: user.id, decided_at: decidedAt })
+      .eq("id", diagnosis.id);
+    if (rejectError) return { error: `Could not record the rejection: ${rejectError.message}` };
+    revalidatePath(`/runs/${runCase!.run_id}`);
+    return { notice: "Rejected. The policy is unchanged." };
+  }
+
+  const { data: latest } = await admin
+    .from("policies")
+    .select("id, version, body")
+    .eq("agent_id", run.agent_id)
+    .order("version", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!latest) return { error: "No policy version to apply this to." };
+
+  const nextBody = applyPolicyChange(latest.body as string, {
+    analysis: diagnosis.analysis as string,
+    quotedOld: (diagnosis.quoted_old as string | null) ?? null,
+    proposedNew: diagnosis.proposed_new as string,
+    risks: [],
+  });
+
+  if (nextBody === null) {
+    return {
+      error:
+        "The text this proposal quotes is no longer in the current policy — another change moved it. Ask for a fresh diagnosis against the latest version.",
+    };
+  }
+
+  const nextVersion = (latest.version as number) + 1;
+
+  const { data: created, error: policyError } = await admin
+    .from("policies")
+    .insert({
+      workspace_id: workspace.id,
+      agent_id: run.agent_id,
+      version: nextVersion,
+      body: nextBody,
+      derived_from: latest.id,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (policyError || !created) {
+    return { error: `Could not create the policy version: ${policyError?.message}` };
+  }
+
+  const { error: approveError } = await admin
+    .from("diagnoses")
+    .update({
+      status: "approved",
+      resulting_policy_id: created.id,
+      decided_by: user.id,
+      decided_at: decidedAt,
+    })
+    .eq("id", diagnosis.id);
+
+  if (approveError) return { error: `The policy was saved but the decision was not: ${approveError.message}` };
+
+  revalidatePath(`/runs/${runCase!.run_id}`);
+  revalidatePath(`/agents/${run.agent_id}`);
+  return { notice: `Approved. Policy version ${nextVersion} created.` };
+}
+
+/**
+ * Reruns the suite against the latest policy, comparing back to this run.
+ *
+ * The baseline is the run being rerun from, explicitly, rather than "the most recent
+ * completed run" — so the comparison answers the question the operator actually
+ * asked: did the change I just approved fix this?
+ */
+export async function rerunFrom(formData: FormData): Promise<void> {
+  const { user, workspace } = await requireWorkspace();
+  const baselineRunId = String(formData.get("runId") ?? "");
+  const admin = await assertMembership(user.id, workspace.id);
+
+  const { data: baseline } = await admin
+    .from("runs")
+    .select("agent_id, suite_id, attestation_text")
+    .eq("id", baselineRunId)
+    .eq("workspace_id", workspace.id)
+    .single();
+  if (!baseline) throw new Error("That run could not be found.");
+
+  const { data: policy } = await admin
+    .from("policies").select("id").eq("agent_id", baseline.agent_id)
+    .order("version", { ascending: false }).limit(1).single();
+  if (!policy) throw new Error("There is no policy version to run against.");
+
+  const { data: run, error } = await admin
+    .from("runs")
+    .insert({
+      workspace_id: workspace.id,
+      agent_id: baseline.agent_id,
+      policy_id: policy.id,
+      suite_id: baseline.suite_id,
+      baseline_run_id: baselineRunId,
+      status: "queued",
+      judge_source: "trial_free",
+      attestation_text: baseline.attestation_text,
+      created_by: user.id,
+    })
+    .select("id").single();
+
+  if (error) throw new Error(`Could not start the rerun: ${error.message}`);
 
   redirect(`/runs/${run.id}`);
 }

@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { browserClient } from "@/lib/supabase/browser.ts";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { Spinner } from "@/components/ui/button.tsx";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { obligationLabel } from "@/lib/report/payload.ts";
+import { gradingNote } from "./grading-note.ts";
 
 type Status = "queued" | "running" | "completed" | "aborted";
 
@@ -18,6 +20,7 @@ interface CaseRow {
   rationale: string | null;
   error: string | null;
   judge_model: string | null;
+  judge_agreement: string | null;
 }
 
 /**
@@ -47,11 +50,12 @@ export function LiveRun({
   const [token, setToken] = useState(reportToken);
   const [failure, setFailure] = useState(initialError);
   const started = useRef(false);
+  const router = useRouter();
 
   const poll = useCallback(async () => {
     const db = browserClient();
     const [{ data: rows }, { data: run }] = await Promise.all([
-      db.from("run_cases").select("case_id, obligation, severity, status, rationale, error, judge_model")
+      db.from("run_cases").select("case_id, obligation, severity, status, rationale, error, judge_model, judge_agreement")
         .eq("run_id", runId).order("case_id"),
       db.from("runs").select("status, error").eq("id", runId).maybeSingle(),
     ]);
@@ -89,7 +93,13 @@ export function LiveRun({
 
       while (!cancelled) {
         const done = await poll();
-        if (done) break;
+        if (done) {
+          // Hand the page back to the server. A settled run is rendered there, with
+          // the comparison and the decision controls that only make sense once every
+          // verdict is in — this view's job was to show the run happening.
+          if (!cancelled) router.refresh();
+          break;
+        }
         await new Promise((r) => setTimeout(r, 1200));
       }
     }
@@ -200,7 +210,9 @@ export function LiveRun({
                     <p className="mt-2 text-sm leading-relaxed text-slate-700">{c.rationale ?? c.error}</p>
                   )}
                   {c.judge_model && (
-                    <p className="mt-1.5 font-mono text-[11px] text-slate-400">graded by {c.judge_model}</p>
+                    <p className="mt-1.5 font-mono text-[11px] text-slate-400">
+                      {gradingNote(c.judge_model, c.judge_agreement)}
+                    </p>
                   )}
                 </Card>
               </Reveal>

@@ -175,6 +175,22 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         <dl className="mt-4 space-y-2 text-sm text-slate-600">
           <Line label="Authorisation" value={subject.authorisation} />
           <Line label="Graded by" value={run.graded_by.join(", ") || "not recorded"} />
+          <Line label="How verdicts were reached" value={run.corroboration.method} />
+          <Line
+            label="Corroboration"
+            value={[
+              `${run.corroboration.agreed} agreed on first reading`,
+              ...(run.corroboration.majority > 0
+                ? [`${run.corroboration.majority} settled by a third model`]
+                : []),
+              ...(run.corroboration.uncorroborated > 0
+                ? [`${run.corroboration.uncorroborated} graded by one model only`]
+                : []),
+              ...(run.corroboration.unresolved > 0
+                ? [`${run.corroboration.unresolved} left unresolved and excluded from the score`]
+                : []),
+            ].join("; ")}
+          />
           {!run.graded_uniformly && (
             <Line
               label="Grading"

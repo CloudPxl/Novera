@@ -397,3 +397,39 @@ reachable, and how many were left unresolved. Unresolved is an `error` — exclu
 the score, reported separately — never a coin toss printed as a verdict. The operator
 UI says the same thing per case rather than the flat "graded by X", which would
 overstate a single-model verdict and understate one that took three.
+
+## 2026-09-20 — A5: the trial is a cap, not a paywall
+Three runs on our free-tier key, then the workspace connects its own model key and the
+cap is gone. Nothing is ever charged by us, so there is no billing code, no payment
+provider and no card — the boundary is purely about whose allowance funds the grading.
+
+The rule lives in `src/lib/auth/entitlement.ts` because two server actions create runs
+and a limit each checks in its own way is a limit that eventually disagrees with
+itself. Queued and running rows count: three runs started at once is still three runs.
+
+**A workspace on its own key is graded on that key alone.** Falling back to our free
+tier when the customer's provider rate-limits would print "funded by customer-supplied
+model key" over evidence our allowance paid for. The cost of that honesty is fewer
+fallback candidates, so a rate limit becomes an errored case — which is reported as
+one. A visible gap beats a false attribution.
+
+A key is proved before it is stored: saving one that does not work would move the
+workspace off the trial and onto a credential that cannot grade anything, turning
+every later run into a page of errors. Verified live by `npm run verify:byok`,
+including that our own keys are *not* reachable from a BYOK workspace.
+
+## 2026-09-20 — The landing page claims nothing the product does not do
+Every number and behaviour on `/` is one the running code produces: the suite size,
+append-only storage, the two-model verdict, the sealed hash, errored cases never
+counting as passes. The sample report is labelled "Example — illustrative figures, not
+a real agent" in the frame itself, on every tab, because showing invented figures as a
+customer's results is precisely what this product exists to make impossible.
+
+There is no pricing on the page. It has not been decided, and inventing a number to
+fill a section would have been the first dishonest thing on the site.
+
+## 2026-09-20 — A refusal has to explain itself
+The trial cap was enforced server-side and correctly refused a fourth run — by
+throwing, which gave the operator an unhandled error page. The agent page now hides
+the run button when the cap is reached and says why, with a link to connect a key.
+Found by clicking the button, not by reading the code.

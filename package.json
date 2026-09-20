@@ -16,7 +16,8 @@
     "demo:run": "node --conditions=react-server --env-file=.env.local scripts/demo-run.mts",
     "verify:access": "node --conditions=react-server --env-file=.env.local scripts/verify-access.mts",
     "verify:tenancy": "node --conditions=react-server --env-file=.env.local scripts/verify-tenancy.mts",
-    "measure:stability": "node --conditions=react-server --env-file=.env.local scripts/measure-judge-stability.mts"
+    "measure:stability": "node --conditions=react-server --env-file=.env.local scripts/measure-judge-stability.mts",
+    "verify:byok": "node --conditions=react-server --env-file=.env.local scripts/verify-byok.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireWorkspace } from "@/lib/auth/session.ts";
+import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
+import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { createRun } from "@/lib/workflow/actions.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
@@ -14,8 +15,12 @@ export const dynamic = "force-dynamic";
 
 export default async function AgentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  await requireWorkspace();
+  const { user, workspace } = await requireWorkspace();
   const db = await sessionClient();
+  const entitlement = await workspaceEntitlement({
+    client: await assertMembership(user.id, workspace.id),
+    workspaceId: workspace.id,
+  });
 
   const { data: agent } = await db
     .from("agents").select("id, name, kind, config, attestation_text, attested_at").eq("id", id).maybeSingle();
@@ -102,7 +107,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
         <section>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold tracking-tight">Runs</h2>
-            {latestPolicy && (
+            {latestPolicy && entitlement.canRun && (
               <form action={createRun}>
                 <input type="hidden" name="agentId" value={agent.id} />
                 <SubmitButton pendingLabel="Starting…" size="sm">
@@ -111,6 +116,19 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
               </form>
             )}
           </div>
+
+          {!entitlement.canRun && (
+            <div
+              role="status"
+              className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900"
+            >
+              {entitlement.blockedReason}{" "}
+              <Link href="/settings" className="font-medium underline underline-offset-2">
+                Connect your key
+              </Link>
+              .
+            </div>
+          )}
 
           {runs && runs.length > 0 ? (
             <ul className="mt-3 space-y-2">

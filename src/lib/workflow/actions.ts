@@ -10,6 +10,8 @@ import { applyPolicyChange } from "@/lib/diagnose/parse.ts";
 import { createRoutedChat } from "@/lib/router/execute.ts";
 import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
 import { connectionsFromEnv } from "@/lib/providers/registry.ts";
+import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
+import { connectionFor } from "@/lib/providers/workspace-connections.ts";
 import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
 
 export interface FormState {
@@ -179,12 +181,15 @@ export async function createRun(formData: FormData): Promise<void> {
   const { data: agent } = await admin
     .from("agents").select("attestation_text").eq("id", agentId).single();
 
+  const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
+  if (!entitlement.canRun) throw new Error(entitlement.blockedReason ?? "This workspace cannot start a run.");
+
   const { data: run, error } = await admin
     .from("runs")
     .insert({
       workspace_id: workspace.id, agent_id: agentId, policy_id: policy.id,
       suite_id: suite!.id, baseline_run_id: previous?.id ?? null, status: "queued",
-      judge_source: "trial_free", attestation_text: agent?.attestation_text ?? null,
+      judge_source: entitlement.judgeSource, attestation_text: agent?.attestation_text ?? null,
       created_by: user.id,
     })
     .select("id").single();
@@ -393,6 +398,9 @@ export async function rerunFrom(formData: FormData): Promise<void> {
     .order("version", { ascending: false }).limit(1).single();
   if (!policy) throw new Error("There is no policy version to run against.");
 
+  const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
+  if (!entitlement.canRun) throw new Error(entitlement.blockedReason ?? "This workspace cannot start a run.");
+
   const { data: run, error } = await admin
     .from("runs")
     .insert({
@@ -402,7 +410,7 @@ export async function rerunFrom(formData: FormData): Promise<void> {
       suite_id: baseline.suite_id,
       baseline_run_id: baselineRunId,
       status: "queued",
-      judge_source: "trial_free",
+      judge_source: entitlement.judgeSource,
       attestation_text: baseline.attestation_text,
       created_by: user.id,
     })
@@ -411,4 +419,77 @@ export async function rerunFrom(formData: FormData): Promise<void> {
   if (error) throw new Error(`Could not start the rerun: ${error.message}`);
 
   redirect(`/runs/${run.id}`);
+}
+
+
+const JUDGE_PROVIDERS = ["groq", "google", "openrouter", "anthropic"] as const;
+
+/**
+ * Stores the workspace's own model key, which is what ends the trial.
+ *
+ * The key is proved before it is kept. Saving a key that does not work would move the
+ * workspace off the trial allowance and onto a credential that cannot grade anything,
+ * turning every subsequent run into a page of errored cases.
+ */
+export async function saveJudgeKey(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const provider = String(form.get("provider") ?? "");
+  const apiKey = String(form.get("apiKey") ?? "").trim();
+
+  if (!JUDGE_PROVIDERS.includes(provider as (typeof JUDGE_PROVIDERS)[number])) {
+    return { error: "Choose which provider this key belongs to." };
+  }
+  if (!apiKey) return { error: "Paste the key." };
+
+  const connection = connectionFor(provider, apiKey);
+  if (!connection) return { error: "That provider is not supported yet." };
+
+  const probeModel = String(form.get("model") ?? "").trim();
+  if (!probeModel) return { error: "Name a model this key can use, so we can test it." };
+
+  try {
+    await connection.provider.chat(
+      {
+        model: probeModel,
+        messages: [{ role: "user", content: "Reply with the single word: ok" }],
+        maxTokens: 16,
+        temperature: 0,
+      },
+      apiKey,
+    );
+  } catch (error) {
+    return {
+      error: `That key did not work: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  const admin = await assertMembership(user.id, workspace.id);
+
+  await storeSecret({
+    client: admin,
+    workspaceId: workspace.id,
+    scope: "judge_key",
+    plaintext: apiKey,
+    provider,
+  });
+
+  revalidatePath("/settings");
+  revalidatePath("/dashboard");
+  return { notice: `Saved. Runs are graded on your ${provider} key from now on, and the trial cap no longer applies.` };
+}
+
+/** Removes the workspace's key, which puts it back on the trial allowance. */
+export async function removeJudgeKey(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  if (String(form.get("confirm")) !== "remove") return { error: "Not removed." };
+
+  const admin = await assertMembership(user.id, workspace.id);
+  const { error } = await admin
+    .from("secrets").delete().eq("workspace_id", workspace.id).eq("scope", "judge_key");
+
+  if (error) return { error: `Could not remove the key: ${error.message}` };
+
+  revalidatePath("/settings");
+  revalidatePath("/dashboard");
+  return { notice: "Removed. Runs go back to the trial allowance, which is capped." };
 }

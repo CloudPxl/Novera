@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { requireWorkspace } from "@/lib/auth/session.ts";
+import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
+import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { signOut } from "../sign-in/actions.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
@@ -24,6 +25,9 @@ export default async function DashboardPage() {
   const agentNames = new Map((agents ?? []).map((a) => [a.id, a.name]));
   const completed = (runs ?? []).filter((r) => r.status === "completed").length;
 
+  const admin = await assertMembership(user.id, workspace.id);
+  const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
+
   return (
     <main className="mx-auto w-full max-w-4xl bg-white px-6 py-10 text-slate-900 sm:px-8">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-6">
@@ -31,18 +35,37 @@ export default async function DashboardPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Novera</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight">{workspace.name}</h1>
           <p className="mt-1 text-sm text-slate-600">
-            {user.email} · {workspace.plan === "trial" ? "Trial" : "Paid"} workspace
+            {user.email} ·{" "}
+            {entitlement.ownKey
+              ? `Graded on your own ${entitlement.provider} key`
+              : `Trial · ${Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed)} of ${TRIAL_RUN_LIMIT} runs left`}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/agents/new">
             <Button size="sm">Connect an agent</Button>
           </Link>
+          <Link href="/settings">
+            <Button variant="secondary" size="sm">Settings</Button>
+          </Link>
           <form action={signOut}>
             <Button type="submit" variant="secondary" size="sm">Sign out</Button>
           </form>
         </div>
       </header>
+
+      {!entitlement.canRun && (
+        <div
+          role="status"
+          className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900"
+        >
+          {entitlement.blockedReason}{" "}
+          <Link href="/settings" className="font-medium underline underline-offset-2">
+            Connect your key
+          </Link>
+          .
+        </div>
+      )}
 
       <Reveal className="mt-8">
         <dl className="grid grid-cols-3 gap-3">

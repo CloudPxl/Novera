@@ -7,7 +7,7 @@ import type { Suite } from "../runner/types.ts";
 import { supabaseRunStore } from "../store/supabase-run-store.ts";
 import { createRoutedChat } from "../router/execute.ts";
 import { DEFAULT_ROUTES } from "../router/routes.ts";
-import { connectionsFromEnv } from "../providers/registry.ts";
+import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
 import { publishReport } from "./run.ts";
 
 /**
@@ -55,7 +55,10 @@ export async function startRunExecution(args: {
     client, workspaceId, agentId: run.agent_id, config: agent.config,
   });
 
-  const judge = createRoutedChat({ connections: connectionsFromEnv(), routes: DEFAULT_ROUTES });
+  // A workspace with its own key grades on that key alone. The run row already
+  // recorded which of the two funded it, at the moment it was created.
+  const { connections } = await connectionsForWorkspace({ client, workspaceId });
+  const judge = createRoutedChat({ connections, routes: DEFAULT_ROUTES });
 
   const summary = await executeRun({
     runId,

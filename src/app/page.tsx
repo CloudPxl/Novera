@@ -1,69 +1,252 @@
-import Image from "next/image";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { currentUser } from "@/lib/auth/session.ts";
+import { Reveal } from "@/components/ui/reveal.tsx";
+import { Card, Badge } from "@/components/ui/primitives.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { SampleReport } from "./sample-report.tsx";
 
-export default function Home() {
+export const metadata: Metadata = {
+  title: "Novera — evidence your AI agent behaves as your policies require",
+  description:
+    "Run a versioned scenario suite against an AI support agent you operate and produce a dated, hash-sealed report you can hand to a client.",
+};
+
+/**
+ * The public front door.
+ *
+ * Deliberately claims nothing the product does not already do. Every number and
+ * behaviour named here is one the running code produces — the suite size, the
+ * append-only storage, the two-model verdict, the sealed hash. There is no pricing on
+ * this page: it has not been decided, and inventing one to fill a section would be
+ * the first dishonest thing on the site.
+ */
+export default async function Home() {
+  if (await currentUser()) redirect("/dashboard");
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <div className="bg-white text-slate-900">
+      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6 sm:px-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Novera</p>
+        <Link href="/sign-in">
+          <Button variant="secondary" size="sm">
+            Sign in
+          </Button>
+        </Link>
+      </header>
+
+      <main>
+        <section className="mx-auto w-full max-w-5xl px-6 pb-20 pt-10 sm:px-8 sm:pt-16">
+          <Reveal>
+            <p className="text-sm font-medium text-slate-500">
+              For agencies and teams who ship AI support agents to clients
+            </p>
+            <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
+              When your client asks how the agent behaves, send them{" "}
+              <span className="bg-gradient-to-r from-slate-900 to-slate-500 bg-clip-text text-transparent">
+                the document
+              </span>
+              .
+            </h1>
+            <p className="mt-5 max-w-2xl text-lg leading-relaxed text-slate-600">
+              Novera runs a versioned scenario suite against an agent you operate, grades every
+              answer against your own written policy, and produces a dated report you can hand over.
+              Not a dashboard you screenshot. A document that stands on its own.
+            </p>
+          </Reveal>
+
+          <Reveal delay={80}>
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Link href="/sign-in">
+                <Button>Start with three free runs</Button>
+              </Link>
+              <span className="text-sm text-slate-500">
+                No card. Bring your own model key to keep going.
+              </span>
+            </div>
+          </Reveal>
+
+          <Reveal delay={160} className="mt-14">
+            <SampleReport />
+          </Reveal>
+        </section>
+
+        <section className="border-y border-slate-200 bg-slate-50/60">
+          <div className="mx-auto w-full max-w-5xl px-6 py-20 sm:px-8">
+            <Reveal>
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                Manual spot-checking covers a fraction of what your agent does
+              </h2>
+              <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-600">
+                You changed the prompt on Tuesday. Something that used to work stopped working, and
+                nobody noticed until the client did. The honest answer to &ldquo;is it still
+                behaving?&rdquo; is usually &ldquo;we think so&rdquo; — which is not an answer you
+                want to give the people paying you.
+              </p>
+            </Reveal>
+
+            <div className="mt-10 grid gap-4 sm:grid-cols-3">
+              {[
+                {
+                  title: "Sixteen scenarios, every time",
+                  body: "Identity checks, deletion requests, data exports, refund limits, prompt extraction, escalation, invented capabilities. The same suite every run, so two reports are comparable.",
+                },
+                {
+                  title: "Graded against your policy",
+                  body: "Not a generic benchmark. You write the policy your agent is supposed to follow, we freeze that version, and every verdict is judged against that text.",
+                },
+                {
+                  title: "A rerun shows what your change did",
+                  body: "Fixed, still failing, and — the one everybody skips — newly broken. A policy edit that quietly makes the agent worse has nowhere to hide.",
+                },
+              ].map((item, i) => (
+                <Reveal key={item.title} delay={i * 70}>
+                  <Card className="h-full p-5">
+                    <h3 className="text-base font-semibold">{item.title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-600">{item.body}</p>
+                  </Card>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto w-full max-w-5xl px-6 py-20 sm:px-8">
+          <Reveal>
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              A report is only worth sending if it cannot be quietly improved
+            </h2>
+            <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-600">
+              The reason to hand this to a client is that neither of you has to take our word for
+              it. These are properties of the system, not promises in a brochure.
+            </p>
+          </Reveal>
+
+          <div className="mt-10 grid gap-4 sm:grid-cols-2">
+            {[
+              {
+                badge: "Append-only",
+                title: "A verdict cannot be edited after the fact",
+                body: "Results, policy versions and reports are append-only in the database itself. A failing case cannot be deleted to flatter a score — not by you, not by us, not with the administrative key.",
+              },
+              {
+                badge: "Two models",
+                title: "A verdict is a finding, not an opinion",
+                body: "Every scenario is graded by two independent models, with a third to settle a disagreement. When they cannot agree, the case is reported as unresolved and left out of the score rather than guessed.",
+              },
+              {
+                badge: "Sealed",
+                title: "The document is hashed to the run behind it",
+                body: "Each report carries a SHA-256 digest of its own evidence. Change any figure or finding and the digest no longer matches the stored run.",
+              },
+              {
+                badge: "Never a pass",
+                title: "A case that did not run is never counted as passing",
+                body: "Timeouts, provider failures and unreadable verdicts are counted separately and named in the report. Coverage is stated, not implied by a percentage.",
+              },
+            ].map((item, i) => (
+              <Reveal key={item.title} delay={i * 70}>
+                <Card className="h-full p-5" interactive>
+                  <Badge tone="neutral">{item.badge}</Badge>
+                  <h3 className="mt-3 text-base font-semibold">{item.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-600">{item.body}</p>
+                </Card>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+
+        <section className="border-y border-slate-200 bg-slate-50/60">
+          <div className="mx-auto w-full max-w-5xl px-6 py-20 sm:px-8">
+            <Reveal>
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                Four steps, about ten minutes
+              </h2>
+            </Reveal>
+            <ol className="mt-10 space-y-4">
+              {[
+                {
+                  step: "Connect the agent",
+                  body: "Point Novera at an HTTP endpoint you operate and confirm you are authorised to test it. We send one harmless request first and save the reply as a receipt, so you can see what we are talking to before a full run.",
+                },
+                {
+                  step: "Write the policy",
+                  body: "The rules the agent is meant to follow, in plain sentences. Saving creates a version; versions are never edited, so a report always names exactly what was tested against.",
+                },
+                {
+                  step: "Run the suite",
+                  body: "Sixteen scenarios go to your agent and come back graded, streaming in as they finish, each showing the verdict, the reasoning, and which models decided it.",
+                },
+                {
+                  step: "Send the report",
+                  body: "One link, expiring and revocable, printable to PDF. It carries the score, the coverage, the findings, the limitations, and the hash — and never your policy text, your keys, or the raw transcript.",
+                },
+              ].map((item, i) => (
+                <Reveal key={item.step} delay={i * 60}>
+                  <li className="flex gap-4">
+                    <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white tabular-nums">
+                      {i + 1}
+                    </span>
+                    <div>
+                      <h3 className="text-base font-semibold">{item.step}</h3>
+                      <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">
+                        {item.body}
+                      </p>
+                    </div>
+                  </li>
+                </Reveal>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        <section className="mx-auto w-full max-w-5xl px-6 py-20 sm:px-8">
+          <Reveal>
+            <Card className="p-8 sm:p-10">
+              <h2 className="text-2xl font-semibold tracking-tight">
+                What Novera is not
+              </h2>
+              <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-600">
+                Novera is evidence of testing. It is not a certification, and it does not tell you
+                which obligations apply to your organisation. Every report says so in its own
+                limitations block, because a document that overstates itself is worth less than one
+                that does not — especially to the person you are handing it to.
+              </p>
+              <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-600">
+                Data stays in the EU: the database runs in Frankfurt. Your model keys are encrypted
+                before storage and only ever decrypted on the server.
+              </p>
+            </Card>
+          </Reveal>
+        </section>
+
+        <section className="border-t border-slate-200">
+          <div className="mx-auto w-full max-w-5xl px-6 py-20 text-center sm:px-8">
+            <Reveal>
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                Run it against your own agent
+              </h2>
+              <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-slate-600">
+                Three runs on us, graded on our key. After that, connect your own model key and keep
+                going — there is nothing to pay us.
+              </p>
+              <div className="mt-8 flex justify-center">
+                <Link href="/sign-in">
+                  <Button>Create an account</Button>
+                </Link>
+              </div>
+            </Reveal>
+          </div>
+        </section>
       </main>
+
+      <footer className="border-t border-slate-200">
+        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-3 px-6 py-8 text-sm text-slate-500 sm:px-8">
+          <p>Novera · Agent conformity evidence</p>
+          <p>Data resident in the EU (Frankfurt)</p>
+        </div>
+      </footer>
     </div>
   );
 }

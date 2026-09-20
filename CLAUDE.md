@@ -87,12 +87,22 @@ so `server-only` resolves to its no-op. `npm test` — 73 passing.
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
 policy text and no raw agent response, with expiry and revocation enforced.
 
-Next: A5 self-serve (signup → connect → trial run → report; BYOK to leave trial),
-then A6 sales and support surfaces.
+A5 is built except for one external step. There is a real landing page, a signup that
+lands on `/auth/confirm`, a settings page for the workspace's own model key, and a
+trial capped at 3 runs. The cap is enforced in `src/lib/auth/entitlement.ts`, which
+both run-creating actions ask, and proved live by `npm run verify:byok`.
 
-Before customers: email confirmation is on and there is no sender configured, so
-public signup cannot complete. That is the Resend integration, still unbuilt, and it
-blocks A5.
+**A workspace with its own key is graded on that key alone.** No silent fallback to
+our free tier, because the report states who funded the grading and that statement has
+to stay true. The cost is that a single-provider key has fewer places to fall back to,
+so a rate limit becomes an errored case — reported as one.
+
+Still blocking public signup: Supabase sends the confirmation email and has no SMTP
+configured, so the link never arrives. That is a dashboard step, not code — verify a
+domain in Resend, create an SMTP credential, paste it into Supabase Auth. Until then
+accounts must be created with the admin API.
+
+Next: A6 sales and support surfaces.
 
 Free-tier ceiling worth remembering: Groq is 8,000 tokens/minute and consensus grading
 doubles the judge calls, so the router falls through to Google mid-run more often than

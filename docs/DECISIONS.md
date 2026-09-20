@@ -545,3 +545,31 @@ model's opinion" would be precisely the dishonesty this product exists to preven
 wrote about ourselves, with four uncorroborated verdicts, against localhost. The honest
 asset here is the story rather than the badge: we ran it on ourselves and it found two
 real defects before any customer met them.
+
+## 2026-09-20 — A run is executed in slices, because serverless functions get killed
+`maxDuration = 300` was written when nothing was deployed. Vercel Hobby stops a
+function at 60 seconds, and a 16-case suite graded by two models does not reliably fit
+in that. The failure mode is the bad kind: the function is killed with no warning and
+no chance to record anything, leaving a run stuck at "running" with half its evidence
+and no explanation.
+
+So a run is now executed in bounded slices. Each invocation grades what fits in a 42
+second budget, saves everything it graded, and reports whether it finished; the page
+keeps asking until it does. Three rules make that safe:
+
+- **The deadline is checked before a case is started, never during one.** A case that
+  has been sent to the agent is always graded and saved, so a half-graded case never
+  reaches the database.
+- **Cases already stored are skipped.** A resumed run can only add evidence, never
+  duplicate or replace it — a second verdict over the same scenario would be new
+  evidence quietly displacing old.
+- **An incomplete run is not finished.** `finishRun` is not called, so no report is
+  published over partial evidence.
+
+A lease on `runs.started_at` decides when a run that says "running" may be taken over:
+"running" cannot be trusted to mean something is running, because the process that set
+it may no longer exist.
+
+The report is now rebuilt from stored rows rather than from the executing process's
+memory. That was already the product rule; once a run can span several invocations it
+is also the only way to get the right numbers.

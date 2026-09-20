@@ -50,6 +50,7 @@ export function LiveRun({
   const [token, setToken] = useState(reportToken);
   const [failure, setFailure] = useState(initialError);
   const started = useRef(false);
+  const lastKick = useRef(0);
   const router = useRouter();
 
   const poll = useCallback(async () => {
@@ -76,20 +77,31 @@ export function LiveRun({
   useEffect(() => {
     let cancelled = false;
 
+    /**
+     * Asks the server to work on this run.
+     *
+     * Called repeatedly rather than once. Each invocation grades what fits in its
+     * time budget and returns; a serverless function that is killed at the ceiling
+     * leaves the run resumable, and this is what resumes it. The server holds a
+     * lease, so calling too eagerly is refused rather than duplicated.
+     */
+    function kick() {
+      if (Date.now() - lastKick.current < 15_000) return;
+      lastKick.current = Date.now();
+      started.current = true;
+
+      fetch(`/api/runs/${runId}/execute`, { method: "POST" })
+        .then(async (res) => {
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            if (!cancelled) setFailure(body.error ?? `The run could not be started (${res.status}).`);
+          }
+        })
+        .catch((e) => !cancelled && setFailure(String(e)));
+    }
+
     async function drive() {
-      if (status === "queued" && !started.current) {
-        started.current = true;
-        // Kick off execution. The response arrives only when the run is finished, so
-        // polling below is what keeps the page informative in the meantime.
-        fetch(`/api/runs/${runId}/execute`, { method: "POST" })
-          .then(async (res) => {
-            if (!res.ok) {
-              const body = await res.json().catch(() => ({}));
-              if (!cancelled) setFailure(body.error ?? `The run could not be started (${res.status}).`);
-            }
-          })
-          .catch((e) => !cancelled && setFailure(String(e)));
-      }
+      if (status === "queued" && !started.current) kick();
 
       while (!cancelled) {
         const done = await poll();
@@ -101,6 +113,9 @@ export function LiveRun({
           break;
         }
         await new Promise((r) => setTimeout(r, 1200));
+        // Keep asking. If the last invocation was killed mid-run, this is what picks
+        // it back up; if one is still working, the server's lease refuses politely.
+        if (!cancelled) kick();
       }
     }
 

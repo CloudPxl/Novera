@@ -15,11 +15,23 @@ export interface ExecuteRunArgs {
   store: RunStore;
   /** Kept low by default: customer endpoints and free judge tiers both rate-limit. */
   concurrency?: number;
+  /** Case ids already recorded by an earlier attempt. Never graded twice. */
+  skipCaseIds?: string[];
+  /**
+   * Stop picking up new cases after this moment.
+   *
+   * Serverless functions are killed at a fixed ceiling with no warning and no chance
+   * to record anything. Stopping ourselves a little early turns that into an ordinary
+   * `incomplete` result the caller can resume, instead of a run stuck at "running"
+   * with half its evidence and no explanation.
+   */
+  deadline?: number;
 }
 
 export interface RunSummary {
   runId: string;
-  status: "completed" | "aborted";
+  /** `incomplete` means the time budget ran out; the run is resumable, not failed. */
+  status: "completed" | "aborted" | "incomplete";
   cases: RunCaseRecord[];
   coverage: Coverage;
   byObligation: ObligationCoverage[];
@@ -37,18 +49,28 @@ export interface RunSummary {
  *    broken integration turns into a plausible-looking verdict.
  */
 export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
-  const { runId, suite, agent, policy, judge, store, concurrency = 3 } = args;
+  const { runId, suite, agent, policy, judge, store, concurrency = 3, skipCaseIds, deadline } = args;
 
   await store.markRunning(runId);
 
+  const alreadyDone = new Set(skipCaseIds ?? []);
   const records = new Array<RunCaseRecord>(suite.cases.length);
   let cursor = 0;
+  let ranOutOfTime = false;
 
   async function worker(): Promise<void> {
     while (true) {
       const index = cursor++;
       if (index >= suite.cases.length) return;
       const testCase = suite.cases[index];
+      if (alreadyDone.has(testCase.id)) continue;
+
+      // Checked before starting a case, never in the middle of one: a case that has
+      // been sent to the agent is always graded and saved.
+      if (deadline !== undefined && Date.now() >= deadline) {
+        ranOutOfTime = true;
+        return;
+      }
 
       const base = {
         runId,
@@ -121,7 +143,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
     }
   }
 
-  let status: "completed" | "aborted" = "completed";
+  let status: "completed" | "aborted" | "incomplete" = "completed";
   let error: string | undefined;
 
   try {
@@ -134,7 +156,14 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   }
 
   const saved = records.filter(Boolean);
-  await store.finishRun(runId, { status, error });
+
+  // Left running on purpose when time ran out: the run is not finished, and marking
+  // it finished would publish a report over partial evidence.
+  if (status === "completed" && ranOutOfTime) {
+    status = "incomplete";
+  } else {
+    await store.finishRun(runId, { status, error });
+  }
 
   const plannedByObligation: Record<string, number> = {};
   for (const c of suite.cases) {

@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentConfig } from "../agents/types.ts";
 import { buildAgentAdapter } from "../agents/factory.ts";
 import { executeRun, type RunSummary } from "../runner/execute.ts";
+import type { RunCaseRecord } from "../runner/types.ts";
+import { coverage, coverageByObligation } from "../evidence/coverage.ts";
 import type { Suite } from "../runner/types.ts";
 import { supabaseRunStore } from "../store/supabase-run-store.ts";
 import { createRoutedChat } from "../router/execute.ts";
@@ -21,8 +23,11 @@ export async function startRunExecution(args: {
   client: SupabaseClient;
   workspaceId: string;
   runId: string;
+  /** How long this invocation may spend before handing back a resumable result. */
+  budgetMs?: number;
 }): Promise<RunSummary> {
-  const { client, workspaceId, runId } = args;
+  const { client, workspaceId, runId, budgetMs } = args;
+  const deadline = budgetMs === undefined ? undefined : Date.now() + budgetMs;
 
   // Separate reads rather than one embedded select: without generated database
   // types the embedded form is untyped, and this is easier to follow anyway.
@@ -60,6 +65,11 @@ export async function startRunExecution(args: {
   const { connections } = await connectionsForWorkspace({ client, workspaceId });
   const judge = createRoutedChat({ connections, routes: DEFAULT_ROUTES });
 
+  // What an earlier attempt already graded. Cases are never re-sent to the agent:
+  // a second verdict over the same scenario would be new evidence replacing old.
+  const { data: existing } = await client
+    .from("run_cases").select("case_id").eq("run_id", runId);
+
   const summary = await executeRun({
     runId,
     suite,
@@ -67,11 +77,20 @@ export async function startRunExecution(args: {
     policy: policy.body,
     judge,
     store: supabaseRunStore(client, workspaceId),
+    skipCaseIds: (existing ?? []).map((c) => c.case_id as string),
+    deadline,
   });
+
+  // Out of time, not out of luck: the caller invokes this again and it picks up.
+  if (summary.status === "incomplete") return summary;
+
+  // Rebuilt from stored rows rather than from this invocation's memory: after a
+  // resume, memory holds only the cases this attempt happened to grade.
+  const whole = await summaryFromStoredRows({ client, runId, suite, status: summary.status, error: summary.error });
 
   // A run with no gradable result is not worth a report; leave it as evidence of the
   // attempt rather than publishing an empty document.
-  if (summary.coverage.graded === 0) return summary;
+  if (whole.coverage.graded === 0) return whole;
 
   let baseline: Parameters<typeof publishReport>[0]["baseline"];
   if (run.baseline_run_id) {
@@ -92,7 +111,7 @@ export async function startRunExecution(args: {
   }
 
   await publishReport({
-    client, workspaceId, runId, summary,
+    client, workspaceId, runId, summary: whole,
     clientName: workspace.name,
     agentName: agent.name,
     policyVersion: policy.version,
@@ -104,5 +123,64 @@ export async function startRunExecution(args: {
     baseline,
   });
 
-  return summary;
+  return whole;
+}
+
+/**
+ * The run as the database holds it.
+ *
+ * Every figure in a report has to come from stored rows — that is a product rule, and
+ * once a run can be executed across more than one invocation it is also the only way
+ * to get the right answer.
+ */
+async function summaryFromStoredRows(args: {
+  client: SupabaseClient;
+  runId: string;
+  suite: Suite;
+  status: RunSummary["status"];
+  error?: string;
+}): Promise<RunSummary> {
+  const { client, runId, suite, status, error } = args;
+
+  const { data: rows } = await client
+    .from("run_cases")
+    .select("case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, error")
+    .eq("run_id", runId)
+    .order("case_id");
+
+  const cases: RunCaseRecord[] = (rows ?? []).map((r) => ({
+    runId,
+    caseId: r.case_id as string,
+    category: r.category as string,
+    obligation: r.obligation as string,
+    severity: r.severity as string,
+    input: r.input as string,
+    expected: r.expected as string,
+    assertions: Array.isArray(r.assertions) ? (r.assertions as string[]) : [],
+    responseText: (r.response_text as string | null) ?? null,
+    toolActivity: r.tool_activity ?? null,
+    status: r.status as RunCaseRecord["status"],
+    rationale: (r.rationale as string | null) ?? null,
+    latencyMs: (r.latency_ms as number | null) ?? 0,
+    usage: r.usage ?? null,
+    judgeModel: (r.judge_model as string | null) ?? null,
+    judgeAttempts: Array.isArray(r.judge_attempts) ? (r.judge_attempts as unknown[]) : [],
+    judgeVotes: Array.isArray(r.judge_votes) ? (r.judge_votes as unknown[]) : [],
+    judgeAgreement: (r.judge_agreement as string | null) ?? null,
+    error: (r.error as string | null) ?? null,
+  }));
+
+  const plannedByObligation: Record<string, number> = {};
+  for (const c of suite.cases) {
+    plannedByObligation[c.obligation] = (plannedByObligation[c.obligation] ?? 0) + 1;
+  }
+
+  return {
+    runId,
+    status,
+    cases,
+    coverage: coverage({ plannedCases: suite.cases.length, cases }),
+    byObligation: coverageByObligation(cases, plannedByObligation),
+    error,
+  };
 }

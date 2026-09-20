@@ -21,13 +21,31 @@ function check(ok: boolean, label: string, detail = "") {
   if (!ok) failures++;
 }
 
+/**
+ * Removes a test account and everything it owns.
+ *
+ * A plain delete on workspaces is refused by the append-only triggers, and because
+ * workspaces.owner_id is ON DELETE RESTRICT that refusal then makes deleting the user
+ * fail too. This script used to do both without reading either error and announce a
+ * cleanup that had not happened — the same false success that hid the erasure defect.
+ */
+async function removeAccount(userId: string): Promise<string | null> {
+  const { data: owned } = await admin.from("workspaces").select("id").eq("owner_id", userId);
+  for (const ws of owned ?? []) {
+    const { error } = await admin.rpc("erase_workspace", { target: ws.id });
+    if (error) return `workspace ${ws.id}: ${error.message}`;
+  }
+  const { error } = await admin.auth.admin.deleteUser(userId);
+  return error ? `user ${userId}: ${error.message}` : null;
+}
+
 // A run that throws before its finally block can leave accounts behind. Sweep any
 // from previous runs before creating new ones.
 const { data: before } = await admin.auth.admin.listUsers();
 for (const u of before?.users ?? []) {
   if (u.email?.startsWith("tenancy-")) {
-    await admin.from("workspaces").delete().eq("owner_id", u.id);
-    await admin.auth.admin.deleteUser(u.id);
+    const problem = await removeAccount(u.id);
+    if (problem) console.log(`  note  could not sweep a leftover account — ${problem}`);
   }
 }
 
@@ -130,10 +148,13 @@ try {
   const { data: builtIn } = await bob.client.from("suites").select("id").is("workspace_id", null);
   check((builtIn ?? []).length > 0, "built-in suites remain readable by any signed-in user");
 
-  await admin.from("workspaces").delete().eq("id", aliceWs.id);
 } finally {
-  for (const id of created) await admin.auth.admin.deleteUser(id);
-  console.log("  cleaned up the test accounts");
+  const problems: string[] = [];
+  for (const id of created) {
+    const problem = await removeAccount(id);
+    if (problem) problems.push(problem);
+  }
+  check(problems.length === 0, "the test accounts were removed", problems.join("; "));
 }
 
 console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) failed.\n`);

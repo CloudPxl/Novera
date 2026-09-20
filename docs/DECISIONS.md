@@ -433,3 +433,30 @@ The trial cap was enforced server-side and correctly refused a fourth run — by
 throwing, which gave the operator an unhandled error page. The agent page now hides
 the run button when the cap is reached and says why, with a link to connect a key.
 Found by clicking the button, not by reading the code.
+
+## 2026-09-20 — Signup verified end to end against the live stack
+nover.space is verified in Resend (`send.nover.space` carries Resend's MX and SPF,
+`resend._domainkey` the DKIM key) and Supabase sends through it. A real signup through
+the form created a genuine unconfirmed user — Supabase returns an error when SMTP
+fails, and it did not — and the confirmation token created a session and landed on the
+dashboard at a clean URL, with the one-time token spent rather than left in history.
+A new workspace was created on first sign-in with a fresh 3-run trial.
+
+All three refusals behave: a reused token and an unknown token both report "expired or
+already used", and an unrecognised `type` reports "not valid". The plus-addressed test
+account produced "Davidrosu72's workspace", so the local-part cleanup holds.
+
+Not provable from here: that the message lands in an inbox rather than spam. The
+Resend key is send-only by design, so it cannot list sent mail. `_dmarc.nover.space` is
+absent — worth adding before any volume, since it is what Gmail and Outlook increasingly
+expect from a new sending domain.
+
+## 2026-09-20 — verify:tenancy was the third script to fake its own cleanup
+Same family as the previous two. `delete from workspaces` is refused by the append-only
+triggers, and because `workspaces.owner_id` is ON DELETE RESTRICT that refusal then made
+`deleteUser` fail as well — neither error was read, and the script printed "cleaned up
+the test accounts" over two surviving accounts. Cleanup now goes through
+`erase_workspace`, and whether it worked is a reported check like any other.
+
+The pattern is worth naming: **every unchecked `error` in a cleanup path has eventually
+turned out to be hiding something.** Three for three.

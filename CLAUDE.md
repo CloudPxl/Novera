@@ -116,8 +116,22 @@ citations, and the erasure rule missed "delete everything you hold about me". Bo
 v2 scores 10/10 with 4 verdicts marked uncorroborated because our own key has no
 fallback, and the report says so.
 
-Remaining: decide a price, and deploy (nothing is public yet — nover.space has no A
-record and no approval to deploy has been given).
+**Live at https://www.nover.space** (apex redirects to www), functions pinned to
+`fra1`. `vercel.json` pins the framework in code — the project was created with preset
+"Other", which built Next.js correctly and then served the empty `public/` folder, so
+every route 404'd while the build log looked perfect.
+
+Verified in production: public pages serve, anonymous visitors are redirected off the
+dashboard and queue, a bad report token 404s, the flawed fixture is disabled, a real
+run completes and publishes, and the published report leaks no key, policy or header.
+
+Runs execute in resumable 42-second slices because Vercel Hobby kills a function at 60.
+The deadline is checked before a case starts, never during one; stored cases are
+skipped on resume; an incomplete run is never finished, so no report is published over
+partial evidence.
+
+Remaining: decide a price. Planned: grow the suite 16 → 24 → 30+ as new versions
+(see DECISIONS for the three constraints that should shape it).
 
 Free-tier ceiling worth remembering: Groq is 8,000 tokens/minute and consensus grading
 doubles the judge calls, so the router falls through to Google mid-run more often than

@@ -573,3 +573,38 @@ it may no longer exist.
 The report is now rebuilt from stored rows rather than from the executing process's
 memory. That was already the product rule; once a run can span several invocations it
 is also the only way to get the right numbers.
+
+## 2026-09-20 — Live at nover.space
+Deployed, and verified in production rather than assumed: public pages serve, the
+queue and dashboard redirect anonymous visitors, a bad report token is refused, the
+**deliberately flawed fixture is disabled outside development**, and `/api/support-agent`
+refuses a request with no token.
+
+A real run against the live deployment: 10 scenarios, graded on the workspace's own
+key, completed and published. The report renders publicly and contains no service-role
+key, no model key, no policy text and no auth header name — checked against the
+rendered HTML, not assumed — carries `noindex`, its limitations block, its SHA-256
+digest, and the honest note that some verdicts were uncorroborated. The support form
+drafted a grounded answer citing two real pages and left it waiting on a person.
+
+Functions are pinned to `fra1`. The database is in Frankfurt and the product tells
+customers its data is EU-resident; compute that reads that data belongs in the same
+place, and leaving it in `iad1` would have made a claim on the landing page quietly
+untrue.
+
+## 2026-09-20 — Planned: 16 → 24 → 30+ scenarios
+Agreed direction: more scenarios means finer-grained evidence and a more valuable
+report. Three constraints learned the hard way that should shape how the suite grows,
+rather than being discovered again at 30 cases:
+
+- **Every assertion must be checkable from what the grader is given.** `docs-support v1`
+  asked the judge to confirm a figure appeared in documentation the judge never
+  receives. An assertion the grader cannot evaluate produces an unreliable verdict, not
+  a strict one — and at 30 cases those compound into a score nobody can defend.
+- **A suite version is immutable, so growth means new versions, not edits.** Reports
+  already issued must stay readable. 16 → 24 is `eu-support v2`, not a rewrite of v1.
+- **Runtime grows with the square of ambition.** Each case costs two model calls
+  minimum, three on a disagreement. 30 cases is up to 90 calls against free-tier
+  ceilings; the run already executes in resumable slices, and the slice budget and
+  concurrency will need re-measuring rather than guessing. `npm run measure:stability`
+  and `npm run calibrate` are the instruments for that.

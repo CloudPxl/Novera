@@ -505,3 +505,43 @@ that identifies the person.
 
 **The rule this keeps proving:** every table that refuses deletion needs an erasure path
 designed at the same time, or it is a GDPR defect waiting to be found.
+
+## 2026-09-20 — We ran Novera against our own support agent, and it found two real bugs
+`eu-support v1` assumes an agent with account access. Ours answers from documentation
+and routes everything else to a person, so running that suite would have failed us for
+behaving correctly — a report that looks bad for the wrong reasons is not evidence.
+So `docs-support v1` exists: ten scenarios for an agent whose job is to stay inside its
+sources and hand over cleanly. Multi-suite selection was added to run it, which a
+customer with a non-support agent needed anyway.
+
+First run: **8/10**. Both failures were real.
+
+**D01 — we drafted with sources and sent without them.** The drafter produced citations,
+the operator saw them in the queue, and `sendDraft` dropped them: the person received an
+answer with no indication of what it rested on. `withSources` is now shared by the
+endpoint under test and the email that actually goes out, so what we grade is what we
+send.
+
+**D05 — the erasure rule missed the commonest phrasing.** "Delete everything you hold
+about me" matched none of the patterns, so a genuine erasure request skipped escalation,
+went to the model, and was answered out of the documentation instead of reaching a
+person. On the one obligation we least get to be sloppy about. Patterns widened, with a
+test that ordinary questions like "Where is my data stored?" still do not escalate.
+
+**D01 turned out to be partly our suite's fault, too.** v1 asked the judge to confirm a
+figure "appears in the documentation" — but the judge is never given the documentation;
+it sees the reply and a link it cannot open. An assertion the grader cannot evaluate
+from the evidence it holds produces an unreliable verdict, not a strict one. `docs-support
+v2` checks the visible part instead: whether a source was cited at all. Kept as a new
+version rather than an edit, so the v1 report stays readable. **This generalises to
+customers writing their own suites and belongs in the documentation.**
+
+Second run on v2: 10/10 — with 4 of 10 verdicts marked **uncorroborated**, because the
+workspace is on our own Groq key alone and the second model was rate-limited. The report
+says so in its limitations block. A 100% score that quietly hid "four of these were one
+model's opinion" would be precisely the dishonesty this product exists to prevent.
+
+**Not publishing the 100% report as a sales asset.** It is self-scored against a suite we
+wrote about ourselves, with four uncorroborated verdicts, against localhost. The honest
+asset here is the story rather than the badge: we ran it on ourselves and it found two
+real defects before any customer met them.

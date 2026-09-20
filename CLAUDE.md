@@ -109,7 +109,15 @@ forward-only by a trigger, and editing a draft writes a new one. Consequential
 questions (money, personal data, contracts, security) escalate before a model is
 called.
 
-Remaining: dogfood the suite against our own support agent, and decide a price.
+Dogfooded: `docs-support v1/v2` (10 scenarios for a documentation-grounded agent) run
+against `/api/support-agent`, which exposes the real support pipeline rather than a copy
+of it. The first run scored 8/10 and found two real defects — sent replies dropped their
+citations, and the erasure rule missed "delete everything you hold about me". Both fixed;
+v2 scores 10/10 with 4 verdicts marked uncorroborated because our own key has no
+fallback, and the report says so.
+
+Remaining: decide a price, and deploy (nothing is public yet — nover.space has no A
+record and no approval to deploy has been given).
 
 Free-tier ceiling worth remembering: Groq is 8,000 tokens/minute and consensus grading
 doubles the judge calls, so the router falls through to Google mid-run more often than

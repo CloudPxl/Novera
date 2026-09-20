@@ -35,5 +35,5 @@ export async function proxy(request: NextRequest) {
 export const config = {
   // Everything except static assets and the public report, which is deliberately
   // reachable without a session.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|report/|api/test-agent).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|report/|api/test-agent|api/support-agent).*)"],
 };

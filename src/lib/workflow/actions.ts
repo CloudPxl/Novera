@@ -170,12 +170,22 @@ export async function createRun(formData: FormData): Promise<void> {
     .order("version", { ascending: false }).limit(1).maybeSingle();
   if (!policy) throw new Error("Save a policy version before running the suite.");
 
-  const { data: suite } = await admin
-    .from("suites").select("id").is("workspace_id", null)
-    .eq("key", "eu-support").eq("version", 1).single();
+  // The suite comes from the form, but is re-checked here: a run must never name a
+  // suite the workspace is not entitled to read.
+  const requestedSuiteId = String(formData.get("suiteId") ?? "").trim();
+  const suiteQuery = admin.from("suites").select("id, workspace_id");
+  const { data: suite } = requestedSuiteId
+    ? await suiteQuery.eq("id", requestedSuiteId).maybeSingle()
+    : await suiteQuery.is("workspace_id", null).eq("key", "eu-support").eq("version", 1).maybeSingle();
+
+  if (!suite) throw new Error("That suite could not be found.");
+  if (suite.workspace_id !== null && suite.workspace_id !== workspace.id) {
+    throw new Error("That suite does not belong to this workspace.");
+  }
 
   const { data: previous } = await admin
     .from("runs").select("id").eq("agent_id", agentId).eq("status", "completed")
+    .eq("suite_id", suite.id)
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
 
   const { data: agent } = await admin
@@ -188,7 +198,7 @@ export async function createRun(formData: FormData): Promise<void> {
     .from("runs")
     .insert({
       workspace_id: workspace.id, agent_id: agentId, policy_id: policy.id,
-      suite_id: suite!.id, baseline_run_id: previous?.id ?? null, status: "queued",
+      suite_id: suite.id, baseline_run_id: previous?.id ?? null, status: "queued",
       judge_source: entitlement.judgeSource, attestation_text: agent?.attestation_text ?? null,
       created_by: user.id,
     })

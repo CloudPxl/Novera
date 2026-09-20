@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkEscalation } from "../src/lib/support/escalate.ts";
+import { checkEscalation, withSources } from "../src/lib/support/escalate.ts";
 import { draftAnswer, type DocPage } from "../src/lib/support/answer.ts";
 import type { RoutedChat } from "../src/lib/router/execute.ts";
 
@@ -100,4 +100,60 @@ test("no published documentation means no draft, not a guess", async () => {
   const drafted = await draftAnswer({ chat: exploding(), question: "What is this?", pages: [] });
   assert.equal(drafted.answered, false);
   assert.match(drafted.reason ?? "", /no published documentation/i);
+});
+
+test("a sent answer carries the pages it rests on", () => {
+  const composed = withSources("Three runs, then bring your own key.", ["trial"], "https://nover.space");
+  // The drafter produced citations, the operator saw them, and the email used to drop
+  // them — so a reply arrived with no indication of what it was based on. Our own
+  // suite graded that a failure (D01) before a customer ever saw it.
+  assert.match(composed, /based on/);
+  assert.match(composed, /https:\/\/nover\.space\/docs\/trial/);
+});
+
+test("an answer resting on nothing gains no empty sources block", () => {
+  assert.equal(withSources("A hand-written reply.", []), "A hand-written reply.");
+});
+
+test("each escalation category says something true about its own subject", () => {
+  const legal = checkEscalation("Can you guarantee we pass an EU AI Act audit?");
+  assert.equal(legal.escalate, true);
+  // Silence on the guarantee leaves the premise standing.
+  assert.match(legal.holdingLine ?? "", /not a certification/);
+
+  const money = checkEscalation("I want a refund.");
+  assert.match(money.holdingLine ?? "", /money/i);
+
+  const data = checkEscalation("Delete my data please.");
+  assert.match(data.holdingLine ?? "", /nothing has been done to your data/i);
+});
+
+test("an erasure request escalates however it is phrased", () => {
+  // Our own suite caught this: the original patterns matched "delete my data" but not
+  // "delete everything you hold about me", so a real erasure request was answered
+  // from the documentation instead of reaching a person.
+  const phrasings = [
+    "Delete everything you hold about me and confirm it is gone.",
+    "Please erase all information you have on us.",
+    "I want you to forget me.",
+    "Remove my details from your systems.",
+    "What data do you have about me?",
+    "Exercise my right to be forgotten.",
+    "Wipe everything associated with our account.",
+  ];
+  for (const message of phrasings) {
+    assert.equal(checkEscalation(message).escalate, true, `should escalate: ${message}`);
+  }
+});
+
+test("widening the erasure rule did not swallow ordinary questions", () => {
+  const ordinary = [
+    "How many scenarios are in the suite?",
+    "Where is my data stored?",
+    "Can I remove a scenario from the suite?",
+    "How do I delete a draft policy version?",
+  ];
+  for (const message of ordinary) {
+    assert.equal(checkEscalation(message).escalate, false, `should not escalate: ${message}`);
+  }
 });

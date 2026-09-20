@@ -26,13 +26,14 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
     .from("agents").select("id, name, kind, config, attestation_text, attested_at").eq("id", id).maybeSingle();
   if (!agent) notFound();
 
-  const [{ data: probes }, { data: policies }, { data: runs }] = await Promise.all([
+  const [{ data: probes }, { data: policies }, { data: runs }, { data: suites }] = await Promise.all([
     db.from("probes").select("id, status_code, response_body, latency_ms, error, created_at")
       .eq("agent_id", id).order("created_at", { ascending: false }).limit(3),
     db.from("policies").select("id, version, body, created_at")
       .eq("agent_id", id).order("version", { ascending: false }),
-    db.from("runs").select("id, status, created_at").eq("agent_id", id)
+    db.from("runs").select("id, status, created_at, suite_id").eq("agent_id", id)
       .order("created_at", { ascending: false }).limit(8),
+    db.from("suites").select("id, key, version, name").order("key"),
   ]);
 
   const latestProbe = probes?.[0];
@@ -108,8 +109,22 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold tracking-tight">Runs</h2>
             {latestPolicy && entitlement.canRun && (
-              <form action={createRun}>
+              <form action={createRun} className="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="agentId" value={agent.id} />
+                {(suites ?? []).length > 1 && (
+                  <select
+                    name="suiteId"
+                    aria-label="Suite to run"
+                    defaultValue={(suites ?? []).find((s) => s.key === "eu-support")?.id}
+                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
+                  >
+                    {(suites ?? []).map((s) => (
+                      <option key={s.id as string} value={s.id as string}>
+                        {s.name as string} v{s.version as number}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <SubmitButton pendingLabel="Starting…" size="sm">
                   Run the suite
                 </SubmitButton>
@@ -139,6 +154,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                       <div>
                         <p className="font-mono text-xs text-slate-500">{r.id.slice(0, 8)}</p>
                         <p className="mt-0.5 text-xs text-slate-500">
+                          {(suites ?? []).find((s) => s.id === r.suite_id)?.name ?? "Suite"} ·{" "}
                           {new Date(r.created_at).toISOString().slice(0, 16).replace("T", " ")}
                         </p>
                       </div>

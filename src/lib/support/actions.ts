@@ -8,7 +8,7 @@ import { requireStaff } from "@/lib/auth/staff.ts";
 import { createRoutedChat } from "@/lib/router/execute.ts";
 import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
 import { connectionsFromEnv } from "@/lib/providers/registry.ts";
-import { checkEscalation } from "./escalate.ts";
+import { checkEscalation, withSources } from "./escalate.ts";
 import { draftAnswer, type DocPage } from "./answer.ts";
 import { sendEmail } from "@/lib/mail/send.ts";
 
@@ -178,7 +178,7 @@ export async function sendDraft(_prev: InboundState, form: FormData): Promise<In
   const db = serviceClient();
 
   const { data: draft } = await db
-    .from("reply_drafts").select("id, request_id, body, status").eq("id", draftId).single();
+    .from("reply_drafts").select("id, request_id, body, citations, status").eq("id", draftId).single();
   if (!draft) return { error: "That draft could not be found." };
   if (draft.status === "sent") return { error: "This reply has already been sent." };
   if (draft.status !== "approved") return { error: "Approve it before sending it." };
@@ -190,7 +190,11 @@ export async function sendDraft(_prev: InboundState, form: FormData): Promise<In
   const result = await sendEmail({
     to: request.email as string,
     subject: "Re: your question about Novera",
-    text: `${draft.body}\n\n— Novera\n\n\nYou asked:\n${(request.message as string).slice(0, 600)}`,
+    text: `${withSources(
+      draft.body as string,
+      Array.isArray(draft.citations) ? (draft.citations as string[]) : [],
+      process.env.NEXT_PUBLIC_APP_URL,
+    )}\n\n— Novera\n\n\nYou asked:\n${(request.message as string).slice(0, 600)}`,
   });
 
   if (!result.ok) {

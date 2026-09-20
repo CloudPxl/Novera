@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
+import { isStaff } from "@/lib/auth/staff.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { signOut } from "../sign-in/actions.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
@@ -48,6 +49,11 @@ export default async function DashboardPage() {
           <Link href="/settings">
             <Button variant="secondary" size="sm">Settings</Button>
           </Link>
+          {isStaff(user.email) && (
+            <Link href="/inbox">
+              <Button variant="secondary" size="sm">Inbox</Button>
+            </Link>
+          )}
           <form action={signOut}>
             <Button type="submit" variant="secondary" size="sm">Sign out</Button>
           </form>

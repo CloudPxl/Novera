@@ -460,3 +460,48 @@ the test accounts" over two surviving accounts. Cleanup now goes through
 
 The pattern is worth naming: **every unchecked `error` in a cleanup path has eventually
 turned out to be hiding something.** Three for three.
+
+## 2026-09-20 — A6: support answers only from published docs, and only after approval
+`/support` and `/apply` are public; `/inbox` is staff-only, gated by a list of
+addresses in the server environment rather than a role column — there are two of us and
+a column would invite a UI nobody needs.
+
+**Escalation is decided before the model is called, not after.** Anything touching
+money, personal data, contracts or security never receives a drafted answer at all, so
+there is never a plausible-looking draft for someone to approve in a hurry. The test is
+deliberately broad: a false escalation costs a person two minutes, and a wrongly
+automated answer about a refund or someone's data costs considerably more. We do not
+get to be careless about the thing we sell care about.
+
+**Answers may only cite pages that exist.** The eight pages in `data/docs/` are both the
+public documentation and the entire corpus. A draft citing a slug that is not in the
+corpus is discarded rather than trimmed — a fabricated source is worse than no answer,
+because it looks checkable and is not. Same discipline as the policy-quote check in
+`diagnose`, for the same reason.
+
+**Draft, approved and sent are three rows-level states with a forward-only trigger.**
+Editing a draft writes a new one, exactly as a policy version does, so what a person
+approved is always what was drafted. Approving and sending are separate clicks:
+approving says the words are right, sending puts them in someone's inbox, and
+collapsing the two is how a draft goes out while you are still reading it.
+
+Verified live: a grounded question produced a correct draft citing
+`the-trial-and-your-own-key`; a refund question escalated with no draft and no model
+call; approve → send delivered through Resend with `approved_at` and `sent_at` distinct.
+
+## 2026-09-20 — The support queue was undeletable, and it holds non-customers' data
+Fourth instance of the same shape, and the worst placement yet. `reply_drafts` refuses
+DELETE so a sent reply cannot be quietly unsent, and `inbound_requests` cascades into
+it — so any request that had a draft became permanently undeletable. That row holds the
+email, organisation and message of someone who is **not a customer**, has no workspace,
+and is therefore out of reach of `erase_workspace` entirely.
+
+Found by trying it rather than by reading the schema: deleting a request with no drafts
+succeeded, which is what made it worth testing one that had them.
+
+Migration 0010 resolves it the same way 0005 did: no piecemeal deletion of a draft,
+complete erasure of a request through one authorised logged path. The log keeps nothing
+that identifies the person.
+
+**The rule this keeps proving:** every table that refuses deletion needs an erasure path
+designed at the same time, or it is a GDPR defect waiting to be found.

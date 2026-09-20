@@ -140,6 +140,59 @@ if (userErr || !created?.user) {
     report(!!diagDeleteErr, "diagnoses refuses DELETE outside an erasure",
       diagDeleteErr?.message.slice(0, 70) ?? "the delete SUCCEEDED, which is wrong");
 
+    // The support queue carries the same draft/approved/sent discipline, and holds
+    // the personal data of people who are not customers — so it gets both halves:
+    // the states cannot be skipped, and the whole thing can still be erased.
+    const { data: inbound } = await db
+      .from("inbound_requests")
+      .insert({ kind: "support", email: "verify@novera.invalid", message: "a verification message", status: "new" })
+      .select("id")
+      .single();
+    const { data: draft } = await db
+      .from("reply_drafts")
+      .insert({ request_id: inbound!.id, body: "a drafted reply", citations: ["limitations"] })
+      .select("id")
+      .single();
+
+    const { error: bodyErr } = await db
+      .from("reply_drafts").update({ body: "quietly reworded" }).eq("id", draft!.id);
+    report(!!bodyErr, "a draft's text cannot be edited after the fact",
+      bodyErr?.message.slice(0, 70) ?? "the update SUCCEEDED, which is wrong");
+
+    const { error: skipErr } = await db
+      .from("reply_drafts").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", draft!.id);
+    report(!!skipErr, "a draft cannot be sent without being approved",
+      skipErr?.message.slice(0, 70) ?? "the update SUCCEEDED, which is wrong");
+
+    const { error: unsignedApproval } = await db
+      .from("reply_drafts").update({ status: "approved" }).eq("id", draft!.id);
+    report(!!unsignedApproval, "an approval must record who made it",
+      unsignedApproval?.message.slice(0, 70) ?? "the update SUCCEEDED, which is wrong");
+
+    await db.from("reply_drafts")
+      .update({ status: "approved", approved_by: userId, approved_at: new Date().toISOString() })
+      .eq("id", draft!.id);
+    await db.from("reply_drafts")
+      .update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", draft!.id);
+
+    const { error: unsendErr } = await db
+      .from("reply_drafts").update({ status: "approved" }).eq("id", draft!.id);
+    report(!!unsendErr, "a sent reply cannot be unsent",
+      unsendErr?.message.slice(0, 70) ?? "the update SUCCEEDED, which is wrong");
+
+    const { error: draftDeleteErr } = await db.from("reply_drafts").delete().eq("id", draft!.id);
+    report(!!draftDeleteErr, "a single draft cannot be deleted on its own",
+      draftDeleteErr?.message.slice(0, 70) ?? "the delete SUCCEEDED, which is wrong");
+
+    // ...and yet the person who wrote in can still be erased entirely.
+    const { error: inboundEraseErr } = await db.rpc("erase_inbound_request", { target: inbound!.id });
+    report(!inboundEraseErr, "an inbound request can nevertheless be erased in full",
+      inboundEraseErr?.message.slice(0, 70) ?? "");
+
+    const { count: leftover } = await db
+      .from("reply_drafts").select("id", { count: "exact", head: true }).eq("request_id", inbound!.id);
+    report(leftover === 0, "no draft survives the erasure", `${leftover} row(s) left`);
+
     // Cleanup goes through the one authorised erasure path. A plain delete is refused
     // by the append-only triggers, and this script used to announce a cleanup it had
     // not performed because it never looked at the error.

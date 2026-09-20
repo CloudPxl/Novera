@@ -242,8 +242,19 @@ export default async function Home() {
       </main>
 
       <footer className="border-t border-slate-200">
-        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-3 px-6 py-8 text-sm text-slate-500 sm:px-8">
+        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-slate-500 sm:px-8">
           <p>Novera · Agent conformity evidence</p>
+          <nav className="flex flex-wrap items-center gap-4">
+            <Link href="/docs" className="underline-offset-2 hover:text-slate-900 hover:underline">
+              Documentation
+            </Link>
+            <Link href="/support" className="underline-offset-2 hover:text-slate-900 hover:underline">
+              Support
+            </Link>
+            <Link href="/apply" className="underline-offset-2 hover:text-slate-900 hover:underline">
+              Talk to us first
+            </Link>
+          </nav>
           <p>Data resident in the EU (Frankfurt)</p>
         </div>
       </footer>

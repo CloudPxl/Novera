@@ -102,7 +102,14 @@ configured, so the link never arrives. That is a dashboard step, not code — ve
 domain in Resend, create an SMTP credential, paste it into Supabase Auth. Until then
 accounts must be created with the admin API.
 
-Next: A6 sales and support surfaces.
+A6 is built: `/docs` (eight pages), `/support`, `/apply`, and a staff-only `/inbox`.
+Support answers are drafted only from the published pages, only with citations to
+slugs that exist, and only a person sends them — draft / approved / sent are enforced
+forward-only by a trigger, and editing a draft writes a new one. Consequential
+questions (money, personal data, contracts, security) escalate before a model is
+called.
+
+Remaining: dogfood the suite against our own support agent, and decide a price.
 
 Free-tier ceiling worth remembering: Groq is 8,000 tokens/minute and consensus grading
 doubles the judge calls, so the router falls through to Google mid-run more often than

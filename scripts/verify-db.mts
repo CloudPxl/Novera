@@ -140,6 +140,30 @@ if (userErr || !created?.user) {
     report(!!diagDeleteErr, "diagnoses refuses DELETE outside an erasure",
       diagDeleteErr?.message.slice(0, 70) ?? "the delete SUCCEEDED, which is wrong");
 
+    // A retest is evidence too: append-only, and reachable by an erasure. The second
+    // half matters as much as the first — every table that refuses deletion needs an
+    // erasure path designed alongside it, which this product has now learned four times.
+    const { data: retest, error: retestErr } = await db
+      .from("case_retests")
+      .insert({
+        workspace_id: ws.id, run_case_id: runCase!.id, policy_id: policy!.id,
+        status: "pass", rationale: "re-tested after a policy change",
+      })
+      .select("id")
+      .single();
+    report(!retestErr, "a retest can be recorded", retestErr?.message.slice(0, 70) ?? "");
+
+    if (retest) {
+      const { error: retestUpdate } = await db
+        .from("case_retests").update({ status: "fail" }).eq("id", retest.id);
+      report(!!retestUpdate, "case_retests refuses UPDATE",
+        retestUpdate?.message.slice(0, 70) ?? "the update SUCCEEDED, which is wrong");
+
+      const { error: retestDelete } = await db.from("case_retests").delete().eq("id", retest.id);
+      report(!!retestDelete, "case_retests refuses DELETE outside an erasure",
+        retestDelete?.message.slice(0, 70) ?? "the delete SUCCEEDED, which is wrong");
+    }
+
     // The support queue carries the same draft/approved/sent discipline, and holds
     // the personal data of people who are not customers — so it gets both halves:
     // the states cannot be skipped, and the whole thing can still be erased.
@@ -198,6 +222,10 @@ if (userErr || !created?.user) {
     // not performed because it never looked at the error.
     const { error: eraseErr } = await db.rpc("erase_workspace", { target: ws.id });
     report(!eraseErr, "the verification workspace was erased", eraseErr?.message.slice(0, 70) ?? "");
+
+    const { count: retestsLeft } = await db
+      .from("case_retests").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id);
+    report(retestsLeft === 0, "no retest survives the erasure", `${retestsLeft} row(s) left`);
   } catch (error) {
     report(false, "integrity checks could not run", error instanceof Error ? error.message : String(error));
   } finally {

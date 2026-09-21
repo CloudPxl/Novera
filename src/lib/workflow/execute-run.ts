@@ -4,7 +4,7 @@ import type { AgentConfig } from "../agents/types.ts";
 import { buildAgentAdapter } from "../agents/factory.ts";
 import { executeRun, type RunSummary } from "../runner/execute.ts";
 import type { RunCaseRecord } from "../runner/types.ts";
-import { coverage, coverageByObligation } from "../evidence/coverage.ts";
+import { coverage, coverageByObligation, coverageByCategory } from "../evidence/coverage.ts";
 import type { Suite } from "../runner/types.ts";
 import { supabaseRunStore } from "../store/supabase-run-store.ts";
 import { createRoutedChat } from "../router/execute.ts";
@@ -33,7 +33,7 @@ export async function startRunExecution(args: {
   // types the embedded form is untyped, and this is easier to follow anyway.
   const { data: run, error } = await client
     .from("runs")
-    .select("id, agent_id, policy_id, suite_id, baseline_run_id, judge_source, attestation_text")
+    .select("id, agent_id, policy_id, suite_id, baseline_run_id, judge_source, attestation_text, pass_threshold, started_at")
     .eq("id", runId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -110,8 +110,15 @@ export async function startRunExecution(args: {
     }
   }
 
+  // Measured from the run's own timestamps, so a resumed run reports the wall time
+  // the customer actually waited rather than the last slice's duration.
+  const startedAt = run.started_at ? new Date(run.started_at as string).getTime() : null;
+  const durationMs = startedAt === null ? null : Date.now() - startedAt;
+
   await publishReport({
     client, workspaceId, runId, summary: whole,
+    passThreshold: (run.pass_threshold as number | null) ?? 80,
+    durationMs,
     clientName: workspace.name,
     agentName: agent.name,
     policyVersion: policy.version,
@@ -144,7 +151,7 @@ async function summaryFromStoredRows(args: {
 
   const { data: rows } = await client
     .from("run_cases")
-    .select("case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, error")
+    .select("case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, failed_assertions, error")
     .eq("run_id", runId)
     .order("case_id");
 
@@ -167,12 +174,15 @@ async function summaryFromStoredRows(args: {
     judgeAttempts: Array.isArray(r.judge_attempts) ? (r.judge_attempts as unknown[]) : [],
     judgeVotes: Array.isArray(r.judge_votes) ? (r.judge_votes as unknown[]) : [],
     judgeAgreement: (r.judge_agreement as string | null) ?? null,
+    failedAssertions: Array.isArray(r.failed_assertions) ? (r.failed_assertions as string[]) : [],
     error: (r.error as string | null) ?? null,
   }));
 
   const plannedByObligation: Record<string, number> = {};
+  const plannedByCategory: Record<string, number> = {};
   for (const c of suite.cases) {
     plannedByObligation[c.obligation] = (plannedByObligation[c.obligation] ?? 0) + 1;
+    plannedByCategory[c.category] = (plannedByCategory[c.category] ?? 0) + 1;
   }
 
   return {
@@ -181,6 +191,7 @@ async function summaryFromStoredRows(args: {
     cases,
     coverage: coverage({ plannedCases: suite.cases.length, cases }),
     byObligation: coverageByObligation(cases, plannedByObligation),
+    byCategory: coverageByCategory(cases, plannedByCategory),
     error,
   };
 }

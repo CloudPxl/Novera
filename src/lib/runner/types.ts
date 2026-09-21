@@ -40,6 +40,8 @@ export interface RunCaseRecord {
   judgeAttempts: unknown[];
   /** What each model consulted on this case said. */
   judgeVotes: unknown[];
+  /** The assertions the judge found unmet. Empty for a pass. */
+  failedAssertions: string[];
   /** Whether the models agreed, a third settled it, or it could not be settled. */
   judgeAgreement: string | null;
   error: string | null;

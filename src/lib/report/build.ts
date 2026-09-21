@@ -1,7 +1,8 @@
 import { contentHash, type Json } from "./hash.ts";
 import { assertPublishable } from "./redact.ts";
 import { compareRuns, type Comparison } from "../evidence/compare.ts";
-import type { Coverage, ObligationCoverage } from "../evidence/coverage.ts";
+import type { Coverage, ObligationCoverage, CategoryCoverage } from "../evidence/coverage.ts";
+import { gradeRun, meetsThreshold } from "../evidence/grade.ts";
 import type { RunCaseRecord } from "../runner/types.ts";
 
 /**
@@ -25,6 +26,11 @@ export interface ReportInput {
   cases: RunCaseRecord[];
   coverage: Coverage;
   byObligation: ObligationCoverage[];
+  byCategory: CategoryCoverage[];
+  /** The pass mark this run was measured against, recorded on the run itself. */
+  passThreshold: number;
+  /** Wall time from first case to last, when both timestamps were recorded. */
+  durationMs: number | null;
   baseline?: { runId: string; policyVersion: number; cases: Array<{ caseId: string; status: RunCaseRecord["status"] }> };
   /** Verbatim strings that must not appear in the output (policy body, system prompt). */
   privateMaterial?: string[];
@@ -84,8 +90,13 @@ export function buildReport(input: ReportInput): BuiltReport {
     );
   }
 
+  // A letter is withheld entirely when the run did not fully execute — see grade.ts.
+  const grade = gradeRun({ coverage: input.coverage, threshold: input.passThreshold });
+
   const payload = {
-    novera: { format: 1 },
+    // 2 adds the grade, the pass mark, category coverage and duration. Reports sealed
+    // as format 1 are still rendered from their own payload and must keep verifying.
+    novera: { format: 2 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -102,8 +113,28 @@ export function buildReport(input: ReportInput): BuiltReport {
       graded_by: gradedBy,
       graded_uniformly: gradedBy.length <= 1,
       corroboration,
+      pass_threshold: input.passThreshold,
+      duration_ms: input.durationMs,
       grading_funded_by: input.judge.source === "trial_free" ? "Novera trial allowance" : "customer-supplied model key",
     },
+    grade: {
+      band: grade.band,
+      score: grade.score,
+      threshold: grade.threshold,
+      basis: grade.basis,
+      meets_threshold: meetsThreshold(grade),
+    },
+    categories: input.byCategory.map((c) => ({
+      category: c.category,
+      planned: c.planned,
+      graded: c.graded,
+      passed: c.passed,
+      failed: c.failed,
+      errored: c.errored,
+      not_run: c.notRun,
+      score: c.score,
+      critical_failure: c.criticalFailure,
+    })),
     coverage: {
       planned: input.coverage.planned,
       graded: input.coverage.graded,

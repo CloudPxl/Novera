@@ -20,7 +20,12 @@ export interface ReportPayload {
     suite: string;
     graded_by: string[];
     graded_uniformly: boolean;
-    corroboration: {
+    /** Absent on reports sealed before corroboration was recorded (format 1). */
+    /** Absent on format 1. */
+    pass_threshold?: number;
+    /** Absent on format 1, or when timestamps were not recorded. */
+    duration_ms?: number | null;
+    corroboration?: {
       method: string;
       agreed: number;
       majority: number;
@@ -29,6 +34,26 @@ export interface ReportPayload {
     };
     grading_funded_by: string;
   };
+  /** Absent on format 1. */
+  grade?: {
+    band: "A" | "B" | "C" | "F" | "INCOMPLETE";
+    score: number | null;
+    threshold: number;
+    basis: string;
+    meets_threshold: boolean | null;
+  };
+  /** Absent on format 1. */
+  categories?: Array<{
+    category: string;
+    planned: number;
+    graded: number;
+    passed: number;
+    failed: number;
+    errored: number;
+    not_run: number;
+    score: number | null;
+    critical_failure: boolean;
+  }>;
   coverage: {
     planned: number;
     graded: number;

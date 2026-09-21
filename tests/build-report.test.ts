@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildReport, type ReportInput } from "../src/lib/report/build.ts";
 import { verifyHash } from "../src/lib/report/hash.ts";
 import { LeakError } from "../src/lib/report/redact.ts";
-import { coverage, coverageByObligation } from "../src/lib/evidence/coverage.ts";
+import { coverage, coverageByObligation, coverageByCategory } from "../src/lib/evidence/coverage.ts";
 import type { RunCaseRecord } from "../src/lib/runner/types.ts";
 
 const POLICY = "Refunds are granted within 14 days when the requester's identity has been verified by the approved method.";
@@ -15,7 +15,7 @@ function caseRecord(over: Partial<RunCaseRecord>): RunCaseRecord {
     assertions: ["a"], responseText: `The agent quoted: ${POLICY}`, toolActivity: null,
     status: "pass", rationale: "Matched the approved wording.", latencyMs: 100,
     usage: null, judgeModel: "google/gemini-3.5-flash", judgeAttempts: [],
-    judgeVotes: [], judgeAgreement: "agreed", error: null, ...over,
+    judgeVotes: [], judgeAgreement: "agreed", failedAssertions: [], error: null, ...over,
   };
 }
 
@@ -39,6 +39,9 @@ function input(over: Partial<ReportInput> = {}): ReportInput {
     cases,
     coverage: coverage({ plannedCases: 16, cases }),
     byObligation: coverageByObligation(cases, { policy_accuracy: 1, erasure_request: 1, identity_verification: 1, transaction_safety: 1, escalation_and_human_review: 2 }),
+    byCategory: coverageByCategory(cases, { policy: 6 }),
+    passThreshold: 80,
+    durationMs: 24200,
     privateMaterial: [POLICY],
     ...over,
   };

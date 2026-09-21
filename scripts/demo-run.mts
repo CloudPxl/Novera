@@ -159,6 +159,7 @@ const report = await publishReport({
   client: db, workspaceId, runId: summary.runId, summary,
   clientName: "Novera (internal demo)", agentName: "Test fixture",
   policyVersion: policy.version, policyBody: policy.body,
+  passThreshold: 80, durationMs: null,
   environment: "Local development, scripted fixture",
   attestation: ATTESTATION,
   suite: { key: suite.key, version: suite.version, name: suite.name },

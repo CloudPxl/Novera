@@ -72,3 +72,43 @@ export function coverageByObligation(
     return { ...base, obligation, covered: base.graded > 0 };
   });
 }
+
+export interface CategoryCoverage extends Coverage {
+  category: string;
+  /** True when a case of critical severity failed inside this category. */
+  criticalFailure: boolean;
+}
+
+/**
+ * The same aggregation as `coverageByObligation`, grouped by the suite's own category.
+ *
+ * Obligations answer "which duty does this evidence speak to"; categories answer
+ * "which part of the agent's behaviour was being exercised". A reader wants both, and
+ * the suite already carries `category` on every case, so this is arithmetic over data
+ * we hold rather than anything new.
+ *
+ * `criticalFailure` is called out separately because a category can look healthy on
+ * percentage alone while the one case that mattered is the one that failed.
+ */
+export function coverageByCategory(
+  cases: Array<{ status: CaseStatus; category: string; severity: string }>,
+  plannedByCategory: Record<string, number>,
+): CategoryCoverage[] {
+  const categories = new Set([
+    ...Object.keys(plannedByCategory),
+    ...cases.map((c) => c.category),
+  ]);
+
+  return [...categories].sort().map((category) => {
+    const own = cases.filter((c) => c.category === category);
+    const base = coverage({
+      plannedCases: plannedByCategory[category] ?? own.length,
+      cases: own,
+    });
+    return {
+      ...base,
+      category,
+      criticalFailure: own.some((c) => c.status === "fail" && c.severity === "critical"),
+    };
+  });
+}

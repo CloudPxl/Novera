@@ -608,3 +608,50 @@ rather than being discovered again at 30 cases:
   ceilings; the run already executes in resumable slices, and the slice budget and
   concurrency will need re-measuring rather than guessing. `npm run measure:stability`
   and `npm run calibrate` are the instruments for that.
+
+## 2026-09-21 — Two sealed reports had been returning 500 in production
+Adding the corroboration block in 0008 changed the payload shape, and the report page
+read `run.corroboration.method` unconditionally. Reports sealed before that field
+existed have no such key, so **the first two reports this product ever issued were
+dead links** — a 500, not a graceful degradation. Found by checking, not by waiting for
+a customer to tell us.
+
+A sealed report is rendered from the payload it was sealed with; that payload is
+immutable and cannot be backfilled, which is the whole point of sealing it. So the
+renderer has to tolerate every shape it has ever produced. Optional fields are now read
+defensively and a report sealed before a field existed says so rather than inventing a
+value. `novera.format` is 2 from today, and format 1 keeps rendering.
+
+**The rule this establishes:** a report payload change is a breaking change to every
+document already in a client's hands. Adding a field means adding a branch for its
+absence, in the same commit.
+
+## 2026-09-21 — Per-assertion outcomes were the third discarded evidence field
+`judgeCase()` has always returned `failedAssertions`; nothing persisted it. A report
+could say a case failed but never which stated requirement went unmet — the single most
+useful thing a reader wants. Migration 0011 stores it.
+
+That is now three times the runner produced evidence the schema had no column for
+(judge model in 0006, corroboration in 0008, assertions here). The pattern is worth
+naming: **when a function returns richer evidence than the table accepts, the excess is
+silently lost at the storage boundary** — and nothing fails, which is why it survives.
+
+## 2026-09-21 — A grade is withheld rather than flattering
+Grade bands (A/B/C/F) arrive with migration 0012's pass threshold, under one rule: a run
+with any errored, unresolved or unexecuted case gets **no letter**, only `INCOMPLETE`.
+Nine of nine graded scenarios passing while a tenth produced no result would read as a
+perfect A over missing evidence, which is precisely what the coverage basis line was
+written to prevent. INCOMPLETE is styled slate, not red: a run that did not finish has
+not failed, and colouring it as failure is its own false verdict.
+
+The threshold moves the pass/fail *verdict on the run*, never the band and never an
+individual case. A customer-settable bar that changed case outcomes would make every
+score self-serving; it is stored on the run and stamped into the report so a reader can
+check what bar was used.
+
+## 2026-09-21 — A single-case retest is not a run (migration 0013)
+Writing a one-case retest into `runs`/`run_cases` would corrupt coverage (a "run" of one
+case) and baseline comparison (the newest completed run becomes a single-case run).
+`case_retests` is its own append-only table, reachable by `erase_workspace`, and its
+rows are never counted in a score or published. A report is always a whole suite against
+one policy version.

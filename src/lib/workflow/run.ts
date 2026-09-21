@@ -126,6 +126,10 @@ export async function publishReport(args: {
   attestation: string | null;
   suite: { key: string; version: number; name: string };
   judgeSource: "trial_free" | "workspace_key";
+  /** The pass mark this run was measured against, read from the run row. */
+  passThreshold: number;
+  /** Wall time the customer actually waited, across every execution slice. */
+  durationMs: number | null;
   baseline?: { runId: string; policyVersion: number; cases: Array<{ caseId: string; status: "pass" | "fail" | "error" }> };
   expiresInDays?: number;
 }): Promise<PublishedReport> {
@@ -138,6 +142,9 @@ export async function publishReport(args: {
     runId,
     runDate: new Date().toISOString().slice(0, 10),
     environment: args.environment,
+    passThreshold: args.passThreshold,
+    durationMs: args.durationMs,
+    byCategory: summary.byCategory,
     suite: args.suite,
     attestation: args.attestation,
     judge: { source: args.judgeSource },

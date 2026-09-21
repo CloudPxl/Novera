@@ -42,6 +42,7 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
         judge_attempts: record.judgeAttempts,
         judge_votes: record.judgeVotes,
         judge_agreement: record.judgeAgreement,
+        failed_assertions: record.failedAssertions,
         error: record.error,
       });
       if (error) throw new Error(`Could not save case ${record.caseId}: ${error.message}`);

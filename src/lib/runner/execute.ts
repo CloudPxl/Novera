@@ -1,7 +1,7 @@
 import type { AgentAdapter } from "../agents/types.ts";
 import type { RoutedChat } from "../router/execute.ts";
 import { gradeCase } from "../judge/consensus.ts";
-import { coverage, coverageByObligation, type Coverage, type ObligationCoverage } from "../evidence/coverage.ts";
+import { coverage, coverageByObligation, coverageByCategory, type Coverage, type ObligationCoverage, type CategoryCoverage } from "../evidence/coverage.ts";
 import type { RunCaseRecord, RunStore, Suite } from "./types.ts";
 
 export interface ExecuteRunArgs {
@@ -35,6 +35,7 @@ export interface RunSummary {
   cases: RunCaseRecord[];
   coverage: Coverage;
   byObligation: ObligationCoverage[];
+  byCategory: CategoryCoverage[];
   error?: string;
 }
 
@@ -99,6 +100,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
           judgeAttempts: [],
           judgeVotes: [],
           judgeAgreement: null,
+          failedAssertions: [],
           error: agentResult.error ?? "The agent produced no response.",
         };
         await store.saveCase(records[index]);
@@ -137,6 +139,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         judgeAttempts: verdict.attempts,
         judgeVotes: verdict.votes,
         judgeAgreement: verdict.agreement,
+        failedAssertions: verdict.failedAssertions,
         error: verdict.error,
       };
       await store.saveCase(records[index]);
@@ -166,8 +169,10 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   }
 
   const plannedByObligation: Record<string, number> = {};
+  const plannedByCategory: Record<string, number> = {};
   for (const c of suite.cases) {
     plannedByObligation[c.obligation] = (plannedByObligation[c.obligation] ?? 0) + 1;
+    plannedByCategory[c.category] = (plannedByCategory[c.category] ?? 0) + 1;
   }
 
   return {
@@ -176,6 +181,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
     cases: saved,
     coverage: coverage({ plannedCases: suite.cases.length, cases: saved }),
     byObligation: coverageByObligation(saved, plannedByObligation),
+    byCategory: coverageByCategory(saved, plannedByCategory),
     error,
   };
 }

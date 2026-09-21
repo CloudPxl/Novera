@@ -5,6 +5,20 @@ import { obligationLabel, type ReportPayload } from "@/lib/report/payload.ts";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * A grade is a claim, so its colour is not decoration.
+ *
+ * INCOMPLETE is deliberately slate rather than red: a run that did not fully execute
+ * has not failed, and colouring it as a failure would be its own kind of false verdict.
+ */
+const GRADE_STYLES: Record<string, string> = {
+  A: "border-emerald-500 bg-emerald-50 text-emerald-700",
+  B: "border-blue-500 bg-blue-50 text-blue-700",
+  C: "border-amber-500 bg-amber-50 text-amber-700",
+  F: "border-rose-500 bg-rose-50 text-rose-700",
+  INCOMPLETE: "border-slate-300 bg-slate-100 text-slate-600",
+};
+
 export const metadata: Metadata = {
   title: "Agent evaluation report",
   // A shared report must not be indexed: the link is the access control.
@@ -62,6 +76,30 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
       </header>
 
       <Section title="Coverage">
+        {payload.grade && (
+          <div className="mb-5 flex flex-wrap items-center gap-5 rounded-xl border border-slate-200 bg-slate-50/60 p-5">
+            <div
+              className={`flex size-24 shrink-0 flex-col items-center justify-center rounded-xl border-2 ${GRADE_STYLES[payload.grade.band]}`}
+            >
+              <span className="text-[38px] font-bold leading-none tracking-tight">
+                {payload.grade.band === "INCOMPLETE" ? "—" : payload.grade.band}
+              </span>
+              <span className="mt-1 text-xs font-semibold tabular-nums">
+                {payload.grade.score === null ? "incomplete" : `${payload.grade.score}%`}
+              </span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm leading-relaxed text-slate-700">{payload.grade.basis}</p>
+              {payload.grade.meets_threshold !== null && (
+                <p className="mt-2 text-sm font-medium text-slate-900">
+                  {payload.grade.meets_threshold
+                    ? `Meets the ${payload.grade.threshold}% pass mark set for this evaluation.`
+                    : `Below the ${payload.grade.threshold}% pass mark set for this evaluation.`}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Stat label="Passed" value={coverage.passed} tone="pass" />
           <Stat label="Failed" value={coverage.failed} tone="fail" />
@@ -174,24 +212,41 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         </p>
         <dl className="mt-4 space-y-2 text-sm text-slate-600">
           <Line label="Authorisation" value={subject.authorisation} />
-          <Line label="Graded by" value={run.graded_by.join(", ") || "not recorded"} />
-          <Line label="How verdicts were reached" value={run.corroboration.method} />
-          <Line
-            label="Corroboration"
-            value={[
-              `${run.corroboration.agreed} agreed on first reading`,
-              ...(run.corroboration.majority > 0
-                ? [`${run.corroboration.majority} settled by a third model`]
-                : []),
-              ...(run.corroboration.uncorroborated > 0
-                ? [`${run.corroboration.uncorroborated} graded by one model only`]
-                : []),
-              ...(run.corroboration.unresolved > 0
-                ? [`${run.corroboration.unresolved} left unresolved and excluded from the score`]
-                : []),
-            ].join("; ")}
-          />
-          {!run.graded_uniformly && (
+          <Line label="Graded by" value={run.graded_by?.join(", ") || "not recorded"} />
+          {/*
+            A sealed report is rendered from the payload it was sealed with, and older
+            payloads predate fields that were added later. Reading them unconditionally
+            is how a link already in a client's hands starts returning 500 — which is
+            exactly what happened to the first two reports this product ever issued.
+            Every optional field is therefore read defensively, and a report that was
+            sealed before a field existed says so rather than inventing a value.
+          */}
+          {run.corroboration ? (
+            <>
+              <Line label="How verdicts were reached" value={run.corroboration.method} />
+              <Line
+                label="Corroboration"
+                value={[
+                  `${run.corroboration.agreed} agreed on first reading`,
+                  ...(run.corroboration.majority > 0
+                    ? [`${run.corroboration.majority} settled by a third model`]
+                    : []),
+                  ...(run.corroboration.uncorroborated > 0
+                    ? [`${run.corroboration.uncorroborated} graded by one model only`]
+                    : []),
+                  ...(run.corroboration.unresolved > 0
+                    ? [`${run.corroboration.unresolved} left unresolved and excluded from the score`]
+                    : []),
+                ].join("; ")}
+              />
+            </>
+          ) : (
+            <Line
+              label="How verdicts were reached"
+              value="This report was sealed before Novera recorded corroboration, so each verdict came from a single model. Later reports state how many models agreed."
+            />
+          )}
+          {run.graded_uniformly === false && (
             <Line
               label="Grading"
               value="More than one model graded this run. See the note above."

@@ -130,6 +130,23 @@ The deadline is checked before a case starts, never during one; stored cases are
 skipped on resume; an incomplete run is never finished, so no report is published over
 partial evidence.
 
+**Next phase is planned, not started.** The plan lives OUTSIDE this repo at
+`~/.claude/plans/this-is-project-novera-shiny-yeti.md` — read it before picking up UI
+work. It covers the Agent Report Card Viewer interface (four-tier dashboard, filterable
+case matrix, split-panel diagnosis with a diff viewer, client-report mode, exports), a
+responsive pass that has never been done, and post-launch goals.
+
+Part 1 of that plan is **done**: migrations 0011–0013 (per-assertion outcomes, pass
+threshold, `case_retests`), `coverageByCategory()`, `gradeRun()`, and report payload
+format 2. Parts 2–3 (the UI itself) are untouched.
+
+Two rules learned the hard way and worth keeping in front of you:
+- **A report payload change breaks every document already in a client's hands.** Adding
+  a field means adding a branch for its absence in the same commit. Two reports were
+  returning 500 in production before this was caught.
+- **A grade is withheld, never flattering.** Any errored, unresolved or unexecuted case
+  means `INCOMPLETE` and no letter.
+
 Remaining: decide a price. Planned: grow the suite 16 → 24 → 30+ as new versions
 (see DECISIONS for the three constraints that should shape it).
 

@@ -18,6 +18,12 @@ const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 const { data: report, error } = await db
   .from("reports")
   .select("token, expires_at, revoked_at, run_id")
+  // Must be a LIVE report. This script drives the live -> revoked -> expired ->
+  // restored cycle, so it needs one that starts live; picking the newest regardless
+  // of state made it fail whenever the newest report had been legitimately revoked,
+  // reporting a product defect where there was only a stale assumption.
+  .is("revoked_at", null)
+  .gt("expires_at", new Date().toISOString())
   .order("created_at", { ascending: false })
   .limit(1)
   .maybeSingle();

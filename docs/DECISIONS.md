@@ -655,3 +655,12 @@ case) and baseline comparison (the newest completed run becomes a single-case ru
 `case_retests` is its own append-only table, reachable by `erase_workspace`, and its
 rows are never counted in a score or published. A report is always a whole suite against
 one policy version.
+
+## 2026-09-21 — verify:access assumed the newest report was live
+It selected the most recent report regardless of state, asserted it renders, then drove
+the revoke → expire → restore cycle. Revoking the newest report — a legitimate product
+action, taken deliberately — made it "restore" that report to revoked and then fail its
+own assertion, reporting two product defects where there was only a stale assumption.
+
+It now requires a report that is genuinely live. A verification script that breaks when
+the product is used correctly is worse than no script: it trains you to ignore red.

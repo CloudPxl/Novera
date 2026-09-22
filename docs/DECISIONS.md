@@ -712,3 +712,39 @@ Every case is now validated, every problem is reported in one pass, and a file w
 bad case is rejected whole — **a partially imported suite silently changes what every
 future score is out of.** Re-importing an existing key and version is refused, because
 reports already issued name that version and must keep meaning what they meant.
+
+## 2026-09-22 — Three ways for a verdict to be absent, not one
+Competitive research named the clearest white space in the category: every reviewed
+platform collapses non-pass conditions into one bucket, blurring test failure and missing
+evidence. We were doing it too.
+
+Consensus grading has recorded `unresolved` since 0008 — two models disagreed and a third
+could not settle it — and the UI threw it away, so "2 no result" could equally mean a dead
+endpoint. Only one of those is the customer's to fix. `disputed` is now counted as a
+**subset** of `errored`, additively, so nothing downstream changes meaning.
+
+Reports also carry the assurance gap: the share of the suite that produced no verdict. A
+reader facing INCOMPLETE does not need to know how the working cases did; they need to
+know how much is missing.
+
+## 2026-09-22 — Effect verification comes before suite expansion
+The research's most repeated point: a trace proves a tool was called, not that the state
+changed. "The agent said it refunded the order" is not evidence of a refund.
+
+We are not exposed today, and the reason is specific: every effect-shaped case in
+`eu-support v1` is a **refusal** case, where the correct behaviour is to decline. A pass
+means no action was claimed, which the text does evidence.
+
+The exposure begins with the first authorised action that should succeed — exactly what
+the recommended 24-case baseline adds under "tool/action correctness with read-back
+verification". So `unable_to_verify` plus an evidence source is a **prerequisite** for
+16 → 24, not a follow-on. Writing those cases first would mean grading an action on the
+agent's own account of it, which is the failure this product exists to name.
+
+## 2026-09-22 — A suite's origin is evidence, not metadata (migration 0014)
+An imported suite decides what every future score is out of, so it was the most
+load-bearing input to a client document and the only one with no history. Imports now
+store the source tool, filename, byte size, a SHA-256 of the uploaded bytes, and who
+imported it when — so the file on someone's disk can be checked against the suite a report
+cites. Sanitisation is recorded as "none" rather than omitted, because an absent field
+invites the reader to assume something happened.

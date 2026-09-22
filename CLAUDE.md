@@ -44,6 +44,7 @@ or params code. Do not rely on recalled Next conventions.
 ```
 docs/THREE-PS.md      pain / person / promise; hypotheses marked UNVERIFIED
 docs/DECISIONS.md     append-only decision log
+docs/COMPETITION.md   who else is here, what we took from them, what we declined
 .env.example          empty template; real values only in .env.local + Vercel
 src/app/              routes
 src/lib/              runner, judge, report, supabase clients
@@ -166,8 +167,21 @@ Three rules learned the hard way and worth keeping in front of you:
   with the numbering the prompt added; storing that verbatim made every failed case
   render as fully passing. Match model output to the original before storing it.
 
-Remaining: decide a price. Planned: grow the suite 16 → 24 → 30+ as new versions
-(see DECISIONS for the three constraints that should shape it).
+**A verdict has three ways to be absent, not one.** Pass / fail / error was hiding a
+distinction the database already stored: a case where two models deadlocked and a third
+could not settle it is `disputed`, and it says something different about the agent from a
+timed-out endpoint. Reports also carry the **assurance gap** — the share of the suite that
+produced no verdict — because that is the number a reader needs beside INCOMPLETE.
+
+**Effect verification is the next real capability, and it gates suite expansion.** A
+trace proves a tool was called, not that the customer's state changed. We are not exposed
+today only because every effect-shaped case in `eu-support v1` is a refusal case, where a
+pass means no action was claimed. The moment the suite contains an authorised action that
+should succeed, a pass would rest on the agent's own word. So `unable_to_verify` and an
+evidence source come **before** 16 → 24, not after. See `docs/COMPETITION.md`.
+
+Remaining: decide a price — `docs/COMPETITION.md` has the competitor anchors and the
+argument for pricing a verified run rather than model calls.
 
 Free-tier ceiling worth remembering: Groq is 8,000 tokens/minute and consensus grading
 doubles the judge calls, so the router falls through to Google mid-run more often than

@@ -1,7 +1,7 @@
 import type { ChatResponse } from "../providers/types.ts";
 import type { RoutedChat, RoutedAttempt } from "../router/execute.ts";
 import type { Candidate, Task } from "../router/routes.ts";
-import { parseVerdict, type JudgeVerdict } from "./parse.ts";
+import { parseVerdict, resolveAssertions, type JudgeVerdict } from "./parse.ts";
 
 export interface JudgeCase {
   caseId: string;
@@ -116,7 +116,8 @@ export async function judgeCase(args: {
   return {
     status: verdict.verdict,
     rationale: verdict.rationale,
-    failedAssertions: verdict.failedAssertions,
+    // Stored as the suite words them, never as the judge echoed them back.
+    failedAssertions: resolveAssertions(testCase.assertions, verdict.failedAssertions),
     usage: response.usage,
     servedBy: response.servedBy,
     attempts: response.attempts,

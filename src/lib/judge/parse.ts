@@ -58,3 +58,58 @@ export function parseVerdict(text: string): JudgeVerdict | null {
 
   return { verdict: raw, rationale, failedAssertions: failed };
 }
+
+/**
+ * Matching the judge's reported failures back to the suite's own assertions.
+ *
+ * The prompt numbers the assertions, so models echo them back as `1. <text>` — and
+ * the suite stores the bare text. Comparing the two directly never matches, which
+ * made every failed case render with a full set of green ticks: the worst possible
+ * misreading, since it contradicts the verdict printed beside it.
+ *
+ * The same rule as the diagnosis path applies here. The judge may not introduce an
+ * assertion the suite does not contain, so anything that cannot be resolved to a real
+ * assertion is dropped rather than stored. What is stored is always the suite's own
+ * wording, so a reader comparing a report to a suite sees identical strings.
+ */
+function normalise(text: string): string {
+  return text
+    .replace(/^\s*[-*•]?\s*\d+\s*[.):]\s*/, "") // "1. ", "2) ", "- 3: "
+    .replace(/^\s*[-*•]\s*/, "")
+    .replace(/\s+/g, " ")
+    .replace(/[.\s]+$/, "")
+    .trim()
+    .toLowerCase();
+}
+
+export function resolveAssertions(assertions: string[], reported: string[]): string[] {
+  const canonical = assertions.map((a) => ({ text: a, key: normalise(a) }));
+  const hits = new Set<string>();
+
+  for (const raw of reported) {
+    // Tried before normalising: "2." normalises to an empty string, because the
+    // numbering stripper cannot tell a label from the whole content.
+    const index = /^\s*(\d+)\s*[.):]?\s*$/.exec(raw.trim());
+    if (index) {
+      const byIndex = canonical[Number(index[1]) - 1];
+      if (byIndex) hits.add(byIndex.text);
+      continue;
+    }
+
+    const key = normalise(raw);
+    if (!key) continue;
+
+    let match = canonical.find((c) => c.key === key);
+
+    // A judge that paraphrased around the assertion, or quoted part of it. Requires a
+    // substantial overlap so a shared stray word cannot pick the wrong assertion.
+    if (!match && key.length >= 12) {
+      match = canonical.find((c) => c.key.includes(key) || key.includes(c.key));
+    }
+
+    if (match) hits.add(match.text);
+  }
+
+  // Suite order, not the order the judge happened to list them in.
+  return assertions.filter((a) => hits.has(a));
+}

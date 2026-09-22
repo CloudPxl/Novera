@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
@@ -609,6 +610,22 @@ export async function importSuite(_prev: FormState, form: FormData): Promise<For
   const suite = result.suite;
   const admin = await assertMembership(user.id, workspace.id);
 
+  // A suite decides what every future score is out of, so where it came from is part of
+  // the evidence rather than metadata. The hash is of the bytes as uploaded, so the file
+  // on someone's disk can be checked against the suite a report cites.
+  const provenance = {
+    source_tool: isCsv ? "csv-import" : "json-import",
+    source_filename: file.name,
+    source_bytes: file.size,
+    source_sha256: createHash("sha256").update(text).digest("hex"),
+    imported_at: new Date().toISOString(),
+    imported_by: user.id,
+    case_count: suite.cases.length,
+    // Stated rather than assumed: nothing here strips personal data out of a scenario,
+    // and a reader should not infer that it did.
+    sanitisation: "none — scenarios are stored exactly as supplied",
+  };
+
   const { data: clash } = await admin
     .from("suites").select("id")
     .eq("workspace_id", workspace.id)
@@ -628,6 +645,7 @@ export async function importSuite(_prev: FormState, form: FormData): Promise<For
     version: suite.version,
     name: suite.name,
     cases: suite.cases,
+    provenance,
   });
   if (error) return { error: `The suite could not be saved: ${error.message}` };
 

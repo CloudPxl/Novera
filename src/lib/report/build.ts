@@ -96,7 +96,7 @@ export function buildReport(input: ReportInput): BuiltReport {
   const payload = {
     // 2 adds the grade, the pass mark, category coverage and duration. Reports sealed
     // as format 1 are still rendered from their own payload and must keep verifying.
-    novera: { format: 2 },
+    novera: { format: 3 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -141,6 +141,12 @@ export function buildReport(input: ReportInput): BuiltReport {
       passed: input.coverage.passed,
       failed: input.coverage.failed,
       errored: input.coverage.errored,
+      // Format 3. A deadlocked verdict and a dead endpoint both produce no result, but
+      // they say different things about the agent, and a client can act on only one of
+      // them. The assurance gap is how much of the evaluation is missing, which is the
+      // number a reader needs beside an INCOMPLETE grade.
+      disputed: input.coverage.disputed,
+      assurance_gap: input.coverage.assuranceGap,
       not_run: input.coverage.notRun,
       score: input.coverage.score,
       basis: input.coverage.basis,

@@ -197,7 +197,13 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
     runId,
     status,
     cases: saved,
-    coverage: coverage({ plannedCases: suite.cases.length, cases: saved }),
+    coverage: coverage({
+      plannedCases: suite.cases.length,
+      // Mapped, not spread: the record calls it `judgeAgreement` and coverage calls
+      // it `agreement`, and a silent name mismatch here would zero the disputed
+      // count without failing anything.
+      cases: saved.map((c) => ({ status: c.status, agreement: c.judgeAgreement })),
+    }),
     byObligation: coverageByObligation(saved, plannedByObligation),
     byCategory: coverageByCategory(saved, plannedByCategory),
     error,

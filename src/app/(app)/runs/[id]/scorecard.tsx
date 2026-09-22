@@ -114,13 +114,31 @@ export function Scorecard({
               basis is the thing this product exists to argue against. */}
           <p className="mt-3 rounded-control bg-sunken px-3 py-2 text-sm leading-relaxed text-ink-soft">
             {grade.basis}
+            {coverage.assuranceGap > 0 && (
+              <>
+                {" "}
+                <strong className="font-semibold text-ink">
+                  {coverage.assuranceGap}% of this evaluation produced no verdict.
+                </strong>
+              </>
+            )}
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Badge tone="neutral">{coverage.planned} planned</Badge>
             <Badge tone={coverage.passed > 0 ? "pass" : "neutral"}>{coverage.passed} passed</Badge>
             <Badge tone={coverage.failed > 0 ? "fail" : "neutral"}>{coverage.failed} failed</Badge>
-            {coverage.errored > 0 && <Badge tone="error">{coverage.errored} no result</Badge>}
+            {coverage.errored - coverage.disputed > 0 && (
+              <Badge tone="error">{coverage.errored - coverage.disputed} no result</Badge>
+            )}
+            {/* Separated on purpose. "The endpoint timed out" and "our two judges
+                deadlocked on what this reply means" are different facts about the
+                agent, and only one of them is something the customer can fix. */}
+            {coverage.disputed > 0 && (
+              <Tooltip text="Two models disagreed on this scenario and a third could not settle it. Novera records that as no verdict rather than picking a side.">
+                <Badge tone="error">{coverage.disputed} disputed</Badge>
+              </Tooltip>
+            )}
             {coverage.notRun > 0 && <Badge tone="error">{coverage.notRun} not run</Badge>}
           </div>
 

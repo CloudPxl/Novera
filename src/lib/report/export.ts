@@ -56,6 +56,10 @@ export function reportToCsv(payload: ReportPayload, contentHash: string): string
     coverage.score ?? "no score",
   ]);
   rows.push(["Basis", coverage.basis]);
+  if (coverage.disputed !== undefined) rows.push(["Disputed (of which)", coverage.disputed]);
+  if (coverage.assurance_gap !== undefined) {
+    rows.push(["Assurance gap (% with no verdict)", coverage.assurance_gap]);
+  }
   rows.push([]);
 
   if (payload.categories?.length) {
@@ -129,6 +133,17 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
   );
   out.push("");
   out.push(coverage.basis);
+  if (coverage.assurance_gap !== undefined && coverage.assurance_gap > 0) {
+    out.push("");
+    out.push(`**${coverage.assurance_gap}% of this evaluation produced no verdict.**`);
+  }
+  if (coverage.disputed !== undefined && coverage.disputed > 0) {
+    out.push("");
+    out.push(
+      `${coverage.disputed} scenario(s) produced no verdict because two models disagreed ` +
+      "and a third could not settle it. Novera records that rather than picking a side.",
+    );
+  }
   out.push("");
 
   if (payload.categories?.length) {

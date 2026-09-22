@@ -189,7 +189,13 @@ async function summaryFromStoredRows(args: {
     runId,
     status,
     cases,
-    coverage: coverage({ plannedCases: suite.cases.length, cases }),
+    coverage: coverage({
+      plannedCases: suite.cases.length,
+      // Mapped, not spread: the record calls it `judgeAgreement` and coverage calls it
+      // `agreement`, and a silent name mismatch here would zero the disputed count
+      // without failing anything.
+      cases: cases.map((c) => ({ status: c.status, agreement: c.judgeAgreement })),
+    }),
     byObligation: coverageByObligation(cases, plannedByObligation),
     byCategory: coverageByCategory(cases, plannedByCategory),
     error,

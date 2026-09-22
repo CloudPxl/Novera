@@ -90,6 +90,26 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           />
         </div>
         <p className="mt-4 text-sm leading-relaxed text-slate-600">{coverage.basis}</p>
+
+        {/* Format 3 onwards. Absent on earlier payloads, so the whole block is, rather
+            than printing a misleading zero for something that was never measured. */}
+        {coverage.assurance_gap !== undefined && coverage.assurance_gap > 0 && (
+          <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-700">
+            <span className="font-medium">
+              {coverage.assurance_gap}% of this evaluation produced no verdict.
+            </span>{" "}
+            That share is neither a pass nor a failure: it is the part of the suite this
+            report cannot speak to.
+            {coverage.disputed !== undefined && coverage.disputed > 0 && (
+              <>
+                {" "}
+                {coverage.disputed} of those scenarios produced no verdict because two
+                models disagreed and a third could not settle it. Novera records that
+                rather than picking a side.
+              </>
+            )}
+          </p>
+        )}
         {coverage.errored > 0 && (
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
             Errored scenarios produced no gradable result and are excluded from the score. They are

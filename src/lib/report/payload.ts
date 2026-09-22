@@ -60,6 +60,10 @@ export interface ReportPayload {
     passed: number;
     failed: number;
     errored: number;
+    /** Absent before format 3. The subset of `errored` the models could not settle. */
+    disputed?: number;
+    /** Absent before format 3. Share of the suite that produced no verdict, as a %. */
+    assurance_gap?: number;
     not_run: number;
     score: number | null;
     basis: string;

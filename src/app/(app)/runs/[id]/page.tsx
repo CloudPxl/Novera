@@ -187,6 +187,8 @@ export default async function RunPage({
     status: c.status as "pass" | "fail" | "error",
     category: c.category as string,
     severity: c.severity as string,
+    // Carried so coverage can separate a deadlocked verdict from a dead endpoint.
+    agreement: (c.judge_agreement as string | null) ?? null,
   }));
 
   const runCoverage = coverage({ plannedCases, cases: statuses });

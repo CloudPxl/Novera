@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { serviceClient } from "@/lib/supabase/service.ts";
 import { obligationLabel, type ReportPayload } from "@/lib/report/payload.ts";
+import { categoryMeta } from "@/lib/evidence/categories.ts";
+import { loadReportByToken } from "@/lib/report/access.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -25,32 +26,9 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-type Stored = {
-  payload: ReportPayload;
-  content_hash: string;
-  expires_at: string;
-  revoked_at: string | null;
-  created_at: string;
-};
-
-async function loadReport(token: string): Promise<Stored | "expired" | "revoked" | null> {
-  // Tokens are looked up server-side with the service role; the token itself is the
-  // capability, which is why it is long, random and never indexed.
-  const { data, error } = await serviceClient()
-    .from("reports")
-    .select("payload, content_hash, expires_at, revoked_at, created_at")
-    .eq("token", token)
-    .maybeSingle();
-
-  if (error || !data) return null;
-  if (data.revoked_at) return "revoked";
-  if (new Date(data.expires_at) < new Date()) return "expired";
-  return data as Stored;
-}
-
 export default async function ReportPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const result = await loadReport(token);
+  const result = await loadReportByToken(token);
 
   if (result === null) notFound();
   if (result === "expired" || result === "revoked") return <Unavailable reason={result} />;
@@ -119,6 +97,55 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           </p>
         )}
       </Section>
+
+      {/* Format 2 seals a per-category breakdown. Reports sealed before it have
+          none, so the whole section is absent rather than empty — the same rule
+          that the corroboration block already follows. */}
+      {payload.categories && payload.categories.length > 0 && (
+        <Section title="What was tested">
+          <p className="mb-4 text-sm leading-relaxed text-slate-600">
+            Each scenario exercises one area of the agent&rsquo;s behaviour. A category
+            can read healthily on percentage alone while the one scenario that mattered
+            is the one that failed, so a failed critical scenario is called out.
+          </p>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                <th className="py-2 font-medium">Area</th>
+                <th className="py-2 text-right font-medium">Passed</th>
+                <th className="py-2 text-right font-medium">Graded</th>
+                <th className="py-2 pl-3 font-medium">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payload.categories.map((c) => {
+                const meta = categoryMeta(c.category);
+                return (
+                  <tr key={c.category} className="border-b border-slate-100 align-top">
+                    <td className="py-2 pr-3">
+                      <span className="font-medium text-slate-900">{meta.label}</span>
+                      <span className="block text-xs leading-relaxed text-slate-500">{meta.description}</span>
+                    </td>
+                    <td className="py-2 text-right tabular-nums">{c.passed}</td>
+                    <td className="py-2 text-right tabular-nums">{c.graded}</td>
+                    <td className="py-2 pl-3">
+                      {c.critical_failure ? (
+                        <span className="font-medium text-rose-700">Critical scenario failed</span>
+                      ) : c.graded === 0 ? (
+                        <span className="text-slate-500">Not covered</span>
+                      ) : c.passed === c.graded ? (
+                        <span className="text-emerald-700">All passed</span>
+                      ) : (
+                        <span className="text-amber-700">Issues found</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Section>
+      )}
 
       <Section title="Obligation coverage">
         <p className="mb-4 text-sm leading-relaxed text-slate-600">

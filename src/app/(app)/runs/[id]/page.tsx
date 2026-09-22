@@ -12,6 +12,7 @@ import { obligationLabel } from "@/lib/report/payload.ts";
 import { resolveAssertions } from "@/lib/judge/parse.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
+import { Menu, menuItemClass } from "@/components/ui/menu.tsx";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { LiveRun } from "./live.tsx";
 import { Scorecard, type Corroboration } from "./scorecard.tsx";
@@ -275,6 +276,28 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
               >
                 Open the client report
               </Link>
+            )}
+            {report?.token && (
+              <Menu
+                label="Export"
+                triggerClassName="border border-line-strong bg-surface px-3 py-2 text-ink hover:bg-sunken"
+                panelClassName="w-72"
+              >
+                {/* Every format goes through the same token gate as the page, so an
+                    export stops working the moment the link is revoked. */}
+                <a href={`/api/reports/${report.token}/export?format=md`} className={menuItemClass} download>
+                  <span className="block font-medium">Markdown</span>
+                  <span className="block text-xs text-ink-faint">The whole report as text, with its hash.</span>
+                </a>
+                <a href={`/api/reports/${report.token}/export?format=csv`} className={menuItemClass} download>
+                  <span className="block font-medium">CSV</span>
+                  <span className="block text-xs text-ink-faint">Coverage, obligations and findings as a table.</span>
+                </a>
+                <a href={`/report/${report.token}?print=1`} target="_blank" rel="noreferrer" className={menuItemClass}>
+                  <span className="block font-medium">PDF</span>
+                  <span className="block text-xs text-ink-faint">Opens the report; print it to PDF from the browser.</span>
+                </a>
+              </Menu>
             )}
             <form action={rerunFrom}>
               <input type="hidden" name="runId" value={run.id} />

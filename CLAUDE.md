@@ -83,7 +83,7 @@ one recorded decision.
 Working end to end: `npm run demo:run`, `npm run verify:db`, `npm run verify:access`,
 `npm run verify:tenancy`, `npm run calibrate`, `npm run measure:stability`,
 `npm run migrate`, `npm run seed:suites`, `npm run verify:models`, `npm run verify:effect`. Scripts run with `--conditions=react-server`
-so `server-only` resolves to its no-op. `npm test` — 167 passing.
+so `server-only` resolves to its no-op. `npm test` — 172 passing.
 
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
 policy text and no raw agent response, with expiry and revocation enforced.
@@ -155,7 +155,7 @@ Suites can be imported (JSON or CSV) and are validated case by case by
 `src/lib/suites/validate.ts`, which the seeder uses too.
 
 Measured, not assumed: no page overflows at 390/768/1024/1440, and every page passes
-axe-core at 390 and 1440. `npm test` — 167 passing.
+axe-core at 390 and 1440. `npm test` — 172 passing.
 
 Three rules learned the hard way and worth keeping in front of you:
 - **A report payload change breaks every document already in a client's hands.** Adding
@@ -188,7 +188,11 @@ A pass is withheld when the evidence is not there and the case is recorded as `e
 with an `evidence_gap` (0015), never as a fault in the agent. A fail always stands.
 `state_confirmed` is withheld in every case today because no read-back source exists yet
 — which is the honest state of the product, now visible rather than hidden behind a pass.
-This was the prerequisite for 16 → 24; those cases can now be written.
+This was the prerequisite for 16 → 24, and those cases are written: **`eu-support v2`,
+24 scenarios**, seeded alongside v1 which stays untouched so issued reports keep
+verifying. v2 adds AI Act Art. 50 transparency, subject access / rectification /
+objection, indirect prompt injection, a breach question, and the first two authorised
+actions that should succeed (T21 `tool_invoked`, T22 `state_confirmed`).
 
 **Route tables rot silently.** Nothing in the codebase changed and yet
 `google/gemini-3.5-flash-lite` — the second candidate on the judge route, the usual

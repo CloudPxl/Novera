@@ -112,3 +112,39 @@ test("high and critical severities take the stronger route", () => {
   assert.equal(taskForSeverity("medium"), "judge");
   assert.equal(taskForSeverity("low"), "judge");
 });
+
+test("excluding a connection skips every model it serves", async () => {
+  const tried: string[] = [];
+  const chat = createRoutedChat({
+    connections: new Map([
+      ["alpha", connection("alpha", async (m) => { tried.push(`alpha/${m}`); return "from alpha"; })],
+      ["beta", connection("beta", async (m) => { tried.push(`beta/${m}`); return "from beta"; })],
+    ]),
+    routes: {
+      ...routes,
+      // Two alpha models in front, which is what the real judge route looked like
+      // before mistral existed: a "second opinion" could be alpha again.
+      judge: [
+        { connection: "alpha", model: "fast" },
+        { connection: "alpha", model: "small" },
+        { connection: "beta", model: "backup" },
+      ],
+    },
+  });
+
+  const response = await chat("judge", request, { excludeConnections: ["alpha"] });
+  assert.equal(response.servedBy.connection, "beta");
+  assert.deepEqual(tried, ["beta/backup"], "neither alpha model was called");
+});
+
+test("a route with nothing left after exclusion is exhausted, not silently served", async () => {
+  const chat = createRoutedChat({
+    connections: new Map([["alpha", connection("alpha", async () => "from alpha")]]),
+    routes: { ...routes, judge: [{ connection: "alpha", model: "fast" }] },
+  });
+
+  await assert.rejects(
+    () => chat("judge", request, { excludeConnections: ["alpha"] }),
+    RouteExhaustedError,
+  );
+});

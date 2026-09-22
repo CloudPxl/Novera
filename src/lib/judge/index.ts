@@ -64,8 +64,10 @@ export async function judgeCase(args: {
   toolActivity?: unknown;
   /** Models already consulted on this case, so a second opinion is a different one. */
   exclude?: Candidate[];
+  /** Vendors already consulted, so a second opinion is an independent one. */
+  excludeConnections?: string[];
 }): Promise<JudgeOutcome> {
-  const { chat, task, testCase, agentResponse, toolActivity, exclude } = args;
+  const { chat, task, testCase, agentResponse, toolActivity, exclude, excludeConnections } = args;
 
   const empty = {
     rationale: null,
@@ -86,7 +88,10 @@ export async function judgeCase(args: {
       // runs over an identical agent response could disagree, which makes a baseline
       // comparison report fixes and regressions that never happened.
       temperature: 0,
-    }, exclude ? { exclude } : undefined);
+      // A verdict is a JSON object, not an essay. Hidden reasoning is charged to the
+      // same budget and we never read it.
+      reasoning: "off",
+    }, exclude || excludeConnections ? { exclude, excludeConnections } : undefined);
   } catch (error) {
     // Every candidate failing is not the agent failing. Record it as an error so it
     // stays out of the score instead of silently becoming a verdict.

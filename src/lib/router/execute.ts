@@ -46,6 +46,14 @@ export interface RouteRequestOptions {
    * opinion: asking the same model twice is not corroboration.
    */
   exclude?: Candidate[];
+  /**
+   * Whole connections to skip. A different model from the same vendor is a weaker
+   * second opinion than it looks: `groq/openai/gpt-oss-120b` and
+   * `groq/openai/gpt-oss-20b` share a training lineage, a serving stack and a rate
+   * limit, so they can agree for reasons that have nothing to do with the evidence.
+   * Consensus asks across vendors first and only falls back to within one.
+   */
+  excludeConnections?: string[];
 }
 
 export type RoutedChat = (
@@ -65,6 +73,7 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
         (e) => e.connection === candidate.connection && e.model === candidate.model,
       );
       if (excluded) continue;
+      if (options?.excludeConnections?.includes(candidate.connection)) continue;
 
       const connection = connections.get(candidate.connection);
 

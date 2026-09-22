@@ -31,6 +31,15 @@ export interface ReportPayload {
       majority: number;
       uncorroborated: number;
       unresolved: number;
+      /**
+       * Absent before format 4. Verdicts corroborated by a second model from a
+       * *different vendor* — the only kind that is independent in any meaningful
+       * sense. Two models from one vendor share a lineage and a serving stack, so
+       * they can agree for reasons that have nothing to do with the evidence.
+       */
+      independent?: number;
+      /** Absent before format 4. Corroborated, but within a single vendor. */
+      single_vendor?: number;
     };
     grading_funded_by: string;
   };

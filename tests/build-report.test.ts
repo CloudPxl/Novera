@@ -138,3 +138,55 @@ test("a mid-run fallback is disclosed: the report says grading was not uniform",
   assert.deepEqual(run.graded_by, ["google/gemini-3.5-flash", "groq/openai-gpt-oss-120b"]);
   assert.match(String((payload as Record<string, string>).limitations), /More than one grading model/);
 });
+
+/* ------------------------------------------------------------- independence (f4)
+   The report used to state that each verdict went to "two independent models". The
+   system did not guarantee that: both votes could come from one vendor's own model
+   family. Format 4 counts it instead of claiming it. */
+
+const VOTE = (model: string, status: "pass" | "fail" | "error" = "pass") => ({ model, status, rationale: null });
+
+test("a report counts verdicts corroborated across vendors", () => {
+  const graded = [
+    caseRecord({ caseId: "T01", judgeVotes: [VOTE("groq/openai/gpt-oss-120b"), VOTE("mistral/ministral-3b-latest")] }),
+    caseRecord({ caseId: "T02", judgeVotes: [VOTE("groq/openai/gpt-oss-120b"), VOTE("groq/openai/gpt-oss-20b")] }),
+  ];
+  const { payload } = buildReport(input({ cases: graded, coverage: coverage({ plannedCases: 2, cases: graded }) }));
+  const run = (payload as { run: { corroboration: { independent: number; single_vendor: number; method: string } } }).run;
+
+  assert.equal(run.corroboration.independent, 1);
+  assert.equal(run.corroboration.single_vendor, 1);
+  assert.match(run.corroboration.method, /same vendor was used instead/,
+    "the sentence has to admit the weaker case when it happened");
+});
+
+test("when every verdict crossed vendors the report says so plainly", () => {
+  const graded = [
+    caseRecord({ caseId: "T01", judgeVotes: [VOTE("groq/a"), VOTE("mistral/b")] }),
+    caseRecord({ caseId: "T02", judgeAgreement: "majority", judgeVotes: [VOTE("groq/a"), VOTE("mistral/b", "fail"), VOTE("openrouter/c")] }),
+  ];
+  const { payload } = buildReport(input({ cases: graded, coverage: coverage({ plannedCases: 2, cases: graded }) }));
+  const run = (payload as { run: { corroboration: { independent: number; single_vendor: number; method: string } } }).run;
+
+  assert.equal(run.corroboration.independent, 2);
+  assert.equal(run.corroboration.single_vendor, 0);
+  assert.match(run.corroboration.method, /different vendors/);
+  assert.doesNotMatch(run.corroboration.method, /same vendor/);
+});
+
+test("an uncorroborated verdict counts as neither independent nor single-vendor", () => {
+  const graded = [
+    caseRecord({ caseId: "T01", judgeAgreement: "unconfirmed", judgeVotes: [VOTE("groq/a"), VOTE("mistral/b", "error")] }),
+  ];
+  const { payload } = buildReport(input({ cases: graded, coverage: coverage({ plannedCases: 1, cases: graded }) }));
+  const run = (payload as { run: { corroboration: { independent: number; single_vendor: number; uncorroborated: number } } }).run;
+
+  assert.equal(run.corroboration.uncorroborated, 1);
+  assert.equal(run.corroboration.independent, 0);
+  assert.equal(run.corroboration.single_vendor, 0);
+});
+
+test("the payload is format 4", () => {
+  const { payload } = buildReport(input());
+  assert.equal((payload as { novera: { format: number } }).novera.format, 4);
+});

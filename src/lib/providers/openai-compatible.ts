@@ -14,7 +14,15 @@ import { ProviderError, type ChatRequest, type ChatResponse, type Provider } fro
  * failure into "Provider returned error".
  */
 function describeError(payload: Record<string, unknown> | null, fallback: string): string {
-  const error = payload?.error as
+  // Mistral does not nest: it answers `{"object":"error","message":"Rate limit
+  // exceeded",...}`. Read as an OpenAI body that shape has no `error` key at all, so
+  // every Mistral failure arrived as the bare HTTP status text — "Too Many Requests"
+  // with no indication of which limit, on a provider whose free tier hits one often.
+  const flat =
+    payload?.object === "error" && typeof payload?.message === "string"
+      ? { message: payload.message as string }
+      : undefined;
+  const error = (payload?.error ?? flat) as
     | { message?: string; code?: string | number; metadata?: { raw?: unknown; provider_name?: string } }
     | undefined;
   if (!error) return fallback;
@@ -69,16 +77,31 @@ export function openAiCompatibleProvider(baseUrl: string): {
       }
 
       // OpenRouter reports upstream failures as HTTP 200 with an error body, so a
-      // 2xx alone does not mean the request worked.
-      if (payload?.error) {
+      // 2xx alone does not mean the request worked. `object === "error"` covers the
+      // Mistral shape of the same trick.
+      if (payload?.error || payload?.object === "error") {
         throw new ProviderError("openai-compatible", describeError(payload, "upstream error"), response.status);
       }
 
-      const choices = (payload?.choices ?? []) as Array<{ message?: { content?: string } }>;
+      const choices = (payload?.choices ?? []) as Array<
+        { message?: { content?: string }; finish_reason?: string }
+      >;
       const usage = (payload?.usage ?? {}) as Record<string, number>;
+      const text = (choices[0]?.message?.content ?? "").trim();
+
+      // An empty completion is the provider failing, not the judge being unreadable.
+      // Returning "" let it travel one more layer and surface as an errored case in a
+      // customer's report; thrown here, the router simply asks the next model.
+      if (!text) {
+        throw new ProviderError(
+          "openai-compatible",
+          `empty completion (finish_reason: ${choices[0]?.finish_reason ?? "none"})`,
+          response.status,
+        );
+      }
 
       return {
-        text: (choices[0]?.message?.content ?? "").trim(),
+        text,
         model: (payload?.model as string) ?? request.model,
         usage: { inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens },
         raw: payload,

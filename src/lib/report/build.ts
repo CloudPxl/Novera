@@ -3,6 +3,7 @@ import { assertPublishable } from "./redact.ts";
 import { compareRuns, type Comparison } from "../evidence/compare.ts";
 import type { Coverage, ObligationCoverage, CategoryCoverage } from "../evidence/coverage.ts";
 import { gradeRun, meetsThreshold } from "../evidence/grade.ts";
+import { independenceOf } from "../judge/independence.ts";
 import type { RunCaseRecord } from "../runner/types.ts";
 
 /**
@@ -74,12 +75,37 @@ export function buildReport(input: ReportInput): BuiltReport {
   // models and a reader is told which ones actually agreed.
   const agreementCount = (kind: string) =>
     input.cases.filter((c) => c.judgeAgreement === kind).length;
+
+  // Independence, derived from votes already stored on every case since migration
+  // 0008 — no new column and no new evidence, just a fact we were not reading.
+  //
+  // It is read because the sentence this block used to carry — "two independent
+  // models" — was not something the system guaranteed. Until 2026-09-22 the route
+  // could serve both votes from one vendor's own model family, and the report said
+  // "independent" anyway. A client-facing claim has to be one the run can support.
+  const votesOf = (c: (typeof input.cases)[number]) =>
+    (c.judgeVotes as Array<{ model?: unknown; status?: unknown }> | undefined)
+      ?.filter((v): v is { model: string; status: "pass" | "fail" | "error" } =>
+        typeof v?.model === "string" && typeof v?.status === "string") ?? [];
+  const corroborated = input.cases.filter(
+    (c) => c.judgeAgreement === "agreed" || c.judgeAgreement === "majority",
+  );
+  const independent = corroborated.filter((c) => independenceOf(votesOf(c)) === "independent").length;
+  const singleVendor = corroborated.length - independent;
+
   const corroboration = {
-    method: "Each verdict was put to two independent models; a third settled any disagreement.",
+    method:
+      singleVendor === 0
+        ? "Each verdict was put to two models from different vendors; a third settled any disagreement."
+        : "Each verdict was put to two models, a different vendor's wherever one could be reached; "
+          + "a third settled any disagreement. Where no second vendor was available, a second model "
+          + "from the same vendor was used instead, and those verdicts are counted separately below.",
     agreed: agreementCount("agreed"),
     majority: agreementCount("majority"),
     uncorroborated: agreementCount("unconfirmed"),
     unresolved: agreementCount("unresolved"),
+    independent,
+    single_vendor: singleVendor,
   };
 
   let comparison: Comparison | null = null;
@@ -94,9 +120,12 @@ export function buildReport(input: ReportInput): BuiltReport {
   const grade = gradeRun({ coverage: input.coverage, threshold: input.passThreshold });
 
   const payload = {
-    // 2 adds the grade, the pass mark, category coverage and duration. Reports sealed
-    // as format 1 are still rendered from their own payload and must keep verifying.
-    novera: { format: 3 },
+    // 2 adds the grade, the pass mark, category coverage and duration; 3 splits a
+    // disputed verdict from a dead endpoint and adds the assurance gap; 4 says how
+    // many verdicts were corroborated across vendors rather than within one. Reports
+    // sealed as any earlier format are still rendered from their own payload and must
+    // keep verifying — every reader of this payload branches on absence.
+    novera: { format: 4 },
     subject: {
       client: input.client,
       agent: input.agentName,

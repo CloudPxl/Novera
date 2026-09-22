@@ -24,6 +24,12 @@ export const googleProvider: Provider = {
       generationConfig: {
         maxOutputTokens: request.maxTokens ?? 4000,
         ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+        // Verified 2026-09-22: with thinking left on, a judge-sized prompt at 1000
+        // output tokens comes back with finishReason STOP and no text at all — the
+        // whole budget went on thoughts. `thinkingLevel` is the Gemini 3.x control;
+        // the 2.x `thinkingBudget: 0` is rejected outright by gemini-3.5-flash-lite
+        // (HTTP 400), so using it would have turned a slow route into a broken one.
+        ...(request.reasoning === "off" ? { thinkingConfig: { thinkingLevel: "low" } } : {}),
       },
     };
     if (request.system) {
@@ -59,6 +65,19 @@ export const googleProvider: Provider = {
       .trim();
 
     const usage = (payload?.usageMetadata ?? {}) as Record<string, number>;
+
+    // No text is the provider failing, not the judge being unreadable — most often
+    // the whole output budget went on hidden reasoning. Thrown here, the router asks
+    // the next model; returned as "", it travelled two more layers and landed in a
+    // customer's report as an errored case.
+    if (!text) {
+      throw new ProviderError(
+        "google",
+        `empty completion (finishReason: ${candidates[0]?.finishReason ?? "none"}, `
+          + `thoughtTokens: ${usage.thoughtsTokenCount ?? 0})`,
+        response.status,
+      );
+    }
 
     return {
       text,

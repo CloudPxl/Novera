@@ -1,6 +1,7 @@
 import type { RoutedChat } from "../router/execute.ts";
 import type { Candidate } from "../router/routes.ts";
 import { judgeCase, type JudgeCase, type JudgeOutcome } from "./index.ts";
+import type { Task } from "../router/routes.ts";
 
 /**
  * Grading a case with corroboration.
@@ -14,6 +15,13 @@ import { judgeCase, type JudgeCase, type JudgeOutcome } from "./index.ts";
  * disagree a third breaks the tie; when the tie cannot be broken the case is an
  * `error`, which is excluded from the score and reported as uncorroborated. That is
  * the honest outcome — better an admitted gap than a coin toss printed as evidence.
+ *
+ * Two models is the floor, not the goal. Each later opinion is asked of a *different
+ * vendor* first, because two models from one vendor share a lineage, a serving stack
+ * and a rate limit — they can agree for reasons that have nothing to do with the
+ * evidence. A same-vendor second opinion is accepted only when no other vendor can be
+ * reached, and the vote list records which of the two happened
+ * (`src/lib/judge/independence.ts`).
  */
 export interface JudgeVote {
   /** "connection/model", as it appears everywhere else provenance is shown. */
@@ -47,6 +55,28 @@ function vote(outcome: JudgeOutcome): JudgeVote {
   };
 }
 
+/**
+ * One more opinion, from a vendor that has not spoken yet if one can be reached.
+ *
+ * The fallback matters: if this only ever asked across vendors, a workspace holding a
+ * single provider key would lose consensus grading altogether and every case would
+ * come back uncorroborated. Degraded corroboration, labelled as degraded, beats none.
+ */
+async function nextOpinion(
+  base: Omit<Parameters<typeof judgeCase>[0], "task" | "exclude" | "excludeConnections">,
+  task: Task,
+  consulted: Candidate[],
+): Promise<JudgeOutcome> {
+  const vendors = [...new Set(consulted.map((c) => c.connection))];
+  const independent = await judgeCase({ ...base, task, exclude: consulted, excludeConnections: vendors });
+  if (independent.status !== "error") return independent;
+
+  const sameVendor = await judgeCase({ ...base, task, exclude: consulted });
+  // Keep the failed cross-vendor attempts: a route that can no longer corroborate
+  // independently is a capacity problem the operator should be able to see.
+  return { ...sameVendor, attempts: [...independent.attempts, ...sameVendor.attempts] };
+}
+
 export async function gradeCase(args: {
   chat: RoutedChat;
   testCase: JudgeCase;
@@ -66,7 +96,7 @@ export async function gradeCase(args: {
   }
 
   const consulted: Candidate[] = first.servedBy ? [first.servedBy] : [];
-  const second = await judgeCase({ ...base, task, exclude: consulted });
+  const second = await nextOpinion(base, task, consulted);
 
   if (second.status === "error") {
     // One reachable model is still a verdict, but it is not a corroborated one and
@@ -84,7 +114,7 @@ export async function gradeCase(args: {
     return { ...first, votes: [vote(first), vote(second)], agreement: "agreed" };
   }
 
-  const third = await judgeCase({ ...base, task, exclude: consulted });
+  const third = await nextOpinion(base, task, consulted);
   const votes = [vote(first), vote(second), vote(third)];
 
   if (third.status === "error") {

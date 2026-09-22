@@ -171,6 +171,16 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
       `${c.agreed} agreed, ${c.majority} settled by a third model, ` +
       `${c.uncorroborated} could not be corroborated, ${c.unresolved} could not be resolved.`,
     );
+    // Absent before format 4; an older report says nothing here rather than gaining
+    // a claim about evidence nobody examined at the time it was sealed.
+    if (c.independent !== undefined) {
+      out.push("");
+      out.push(
+        c.single_vendor
+          ? `${c.independent} verdict(s) were corroborated across vendors and ${c.single_vendor} within one vendor.`
+          : `All ${c.independent} corroborated verdict(s) were confirmed across vendors.`,
+      );
+    }
   } else {
     out.push(
       "This report was sealed before Novera recorded corroboration, so each verdict came " +

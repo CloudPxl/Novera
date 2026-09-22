@@ -105,3 +105,29 @@ test("an incomplete grade exports without a percentage", () => {
 test("csv starts with a BOM so a spreadsheet reads it as UTF-8", () => {
   assert.ok(reportToCsv(FORMAT_2, "h").startsWith("﻿"));
 });
+
+test("a pre-format-4 report exports without gaining an independence claim", () => {
+  // FORMAT_2's corroboration block has no `independent` count, because nothing
+  // examined vendor independence when it was sealed. The export must say nothing
+  // rather than infer something about evidence it cannot see.
+  const md = reportToMarkdown(FORMAT_2, "abc123", "https://x/y");
+  assert.ok(md.includes("14 agreed"));
+  assert.doesNotMatch(md, /across vendors/);
+});
+
+test("a format-4 report states how many verdicts crossed vendors", () => {
+  const payload: ReportPayload = {
+    ...FORMAT_2,
+    novera: { format: 4 },
+    run: {
+      ...FORMAT_2.run,
+      corroboration: {
+        method: "Each verdict was put to two models from different vendors.",
+        agreed: 14, majority: 1, uncorroborated: 1, unresolved: 0,
+        independent: 13, single_vendor: 2,
+      },
+    },
+  };
+  const md = reportToMarkdown(payload, "abc123", "https://x/y");
+  assert.ok(md.includes("13 verdict(s) were corroborated across vendors and 2 within one vendor."));
+});

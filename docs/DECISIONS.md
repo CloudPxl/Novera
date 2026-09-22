@@ -748,3 +748,45 @@ store the source tool, filename, byte size, a SHA-256 of the uploaded bytes, and
 imported it when — so the file on someone's disk can be checked against the suite a report
 cites. Sanitisation is recorded as "none" rather than omitted, because an absent field
 invites the reader to assume something happened.
+
+## 2026-09-22 — Corroboration is worth what the voters' independence is worth
+Five keys arrived. Three are usable, and testing them turned up something worse than a
+bad key.
+
+**Measured, not assumed** (`npm run verify:models`, then `npm run calibrate`):
+`mistral` and `openrouter` and `groq` all answer; `openai` authenticates and has no
+credits, so it can produce nothing and is in no route — an unfunded connection burns a
+failed attempt on every call. `BaazarLink` and `OrcaRouter` name no provider that
+exists, and there is no endpoint to test a key against; guessing a hostname and posting
+a credential to it is how a secret leaks, so both were deleted rather than probed.
+
+**What the re-measurement found.** Nothing in the codebase had changed, and yet
+`google/gemini-3.5-flash-lite` — the *second* candidate on the judge route, i.e. the
+usual corroborating vote — now misses a planted failure (T11), reproducibly, across two
+runs. `gemini-3.5-flash` returned no readable verdict at all: with thinking left on, a
+judge-sized prompt spends its whole output budget on thoughts and comes back empty. The
+models moved under a fixed name. Google is out of both grading routes and stays only on
+`diagnose` and `draft`, where a human approves the output before it counts as anything.
+
+**The real finding.** A verdict has gone to two models since 0008, but nothing ever
+required them to be two *different vendors*. On a busy day both votes came from
+`groq/openai/gpt-oss-120b` and `groq/openai/gpt-oss-20b`: one vendor, one model family,
+one serving stack, one rate limit. That is close to one vote counted twice — and every
+report sealed since then has said "two independent models" anyway. A client-facing claim
+has to be one the run can support.
+
+So each later opinion is now asked of a vendor that has not spoken yet, and a same-vendor
+second opinion is accepted only when no other vendor can be reached. Degraded
+corroboration, labelled as degraded, beats none: a workspace holding a single provider
+key would otherwise lose consensus grading entirely.
+
+**No migration.** `judge_votes` has stored `connection/model` per vote since 0008, so
+independence is *derived* from rows that already exist. Report payload format 4 adds the
+counts, with the absence branch for formats 1–3 written in the same commit — all nine
+sealed reports verified rendering and exporting first.
+
+**Also fixed at the boundary, the recurring fault in a new place.** Mistral reports
+errors as `{"object":"error","message":...}` with no `error` key, so every Mistral
+failure arrived as bare HTTP status text. And an empty completion was returned as `""`,
+travelled two layers, and landed in a customer's report as an errored case the agent
+never failed — it is now a provider error, so the router simply asks the next model.

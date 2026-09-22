@@ -10,11 +10,16 @@ const PANEL: Candidate[] = [
   { connection: "openrouter", model: "c" },
 ];
 
-/** A router whose models return scripted verdicts, respecting `exclude`. */
-function panel(script: Record<string, "pass" | "fail" | "garbage" | "down">): RoutedChat {
+/** A router whose models return scripted verdicts, respecting both exclusions. */
+function panel(
+  script: Record<string, "pass" | "fail" | "garbage" | "down">,
+  roster: Candidate[] = PANEL,
+): RoutedChat {
   return async (_task, _request, options) => {
-    const next = PANEL.find(
-      (c) => !options?.exclude?.some((e) => e.connection === c.connection && e.model === c.model),
+    const next = roster.find(
+      (c) =>
+        !options?.exclude?.some((e) => e.connection === c.connection && e.model === c.model) &&
+        !options?.excludeConnections?.includes(c.connection),
     );
     if (!next) {
       const error = new Error("every candidate failed") as Error & { attempts: unknown[] };
@@ -95,4 +100,55 @@ test("a second opinion is never asked of the model that gave the first", async (
   };
   await gradeCase({ chat, ...CASE });
   assert.deepEqual(consulted, ["a", "b"]);
+});
+
+/* ------------------------------------------------------------------ independence
+   Corroboration is only worth as much as the independence of the models doing it.
+   Before 2026-09-22 both votes could come from the same vendor's own model family. */
+
+const ONE_VENDOR: Candidate[] = [
+  { connection: "groq", model: "big" },
+  { connection: "groq", model: "small" },
+  { connection: "mistral", model: "other" },
+];
+
+test("the second opinion is asked of a different vendor, not the next model", async () => {
+  const outcome = await gradeCase({
+    chat: panel({ big: "fail", small: "fail", other: "fail" }, ONE_VENDOR),
+    ...CASE,
+  });
+  assert.equal(outcome.agreement, "agreed");
+  assert.deepEqual(
+    outcome.votes.map((v) => v.model),
+    ["groq/big", "mistral/other"],
+    "groq/small is closer in the route, but it shares a vendor with the first vote",
+  );
+});
+
+test("a same-vendor second opinion is accepted only when no other vendor answers", async () => {
+  const outcome = await gradeCase({
+    chat: panel({ big: "fail", small: "fail", other: "down" }, ONE_VENDOR),
+    ...CASE,
+  });
+  // Degraded, but still two models — and the vote list says which two, so the report
+  // can describe it as corroboration within one vendor rather than across two.
+  assert.equal(outcome.status, "fail");
+  assert.equal(outcome.agreement, "agreed");
+  assert.deepEqual(outcome.votes.map((v) => v.model), ["groq/big", "groq/small"]);
+});
+
+test("a tie-breaker is also asked across vendors before within one", async () => {
+  const roster: Candidate[] = [
+    { connection: "groq", model: "big" },
+    { connection: "mistral", model: "other" },
+    { connection: "groq", model: "small" },
+    { connection: "openrouter", model: "third" },
+  ];
+  const outcome = await gradeCase({
+    chat: panel({ big: "pass", other: "fail", small: "pass", third: "fail" }, roster),
+    ...CASE,
+  });
+  assert.equal(outcome.agreement, "majority");
+  assert.deepEqual(outcome.votes.map((v) => v.model), ["groq/big", "mistral/other", "openrouter/third"]);
+  assert.equal(outcome.status, "fail", "the tie-breaker joined the fail side");
 });

@@ -16,6 +16,16 @@ export interface ChatRequest {
    * provider's own default applied — 1.0 on the OpenAI-compatible hosts.
    */
   temperature?: number;
+  /**
+   * "off" asks the provider not to spend the output budget on hidden reasoning.
+   *
+   * Grading wants one small JSON object, and hidden reasoning is charged against the
+   * same `maxTokens` as the answer. `gemini-3.5-flash` spent the whole judge budget
+   * thinking and returned empty text on 11 of 11 calibration cases — measured as "no
+   * readable verdict", indistinguishable from a broken model. Only providers that
+   * expose the control act on it; the rest ignore it.
+   */
+  reasoning?: "off";
 }
 
 export interface ChatResponse {

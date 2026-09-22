@@ -16,9 +16,22 @@ export interface Connection {
   apiKey: string;
 }
 
+/**
+ * Every OpenAI-compatible host we hold a key for, keyed by connection name. The key
+ * is read from `<NAME>_API_KEY`, so adding a host is one line here plus one line in
+ * `.env.local` — no code change.
+ *
+ * `mistral` and `openai` were added on 2026-09-22. They matter for a reason beyond
+ * capacity: corroboration is only worth as much as the independence of the models
+ * doing it. Before this, both votes on a case could come from `groq/openai/gpt-oss-*`
+ * — one vendor, one family, one shared blind spot, and one rate limit away from
+ * losing both. See `src/lib/judge/independence.ts`.
+ */
 const OPENAI_COMPATIBLE_HOSTS: Record<string, string> = {
   groq: "https://api.groq.com/openai/v1",
   openrouter: "https://openrouter.ai/api/v1",
+  mistral: "https://api.mistral.ai/v1",
+  openai: "https://api.openai.com/v1",
 };
 
 /**

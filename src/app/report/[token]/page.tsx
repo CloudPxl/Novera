@@ -286,6 +286,20 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
                     : []),
                 ].join("; ")}
               />
+              {/* Absent on reports sealed before format 4, which did not record it.
+                  Those reports keep their own wording rather than gaining a claim
+                  their evidence was never checked for. */}
+              {run.corroboration.independent !== undefined && (
+                <Line
+                  label="Independence"
+                  value={
+                    run.corroboration.single_vendor
+                      ? `${run.corroboration.independent} verdict(s) corroborated by a second model from a different vendor; `
+                        + `${run.corroboration.single_vendor} by a second model from the same vendor, because no other vendor was reachable.`
+                      : `All ${run.corroboration.independent} corroborated verdict(s) were confirmed by a model from a different vendor.`
+                  }
+                />
+              )}
             </>
           ) : (
             <Line

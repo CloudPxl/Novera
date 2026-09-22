@@ -82,7 +82,7 @@ one recorded decision.
 Working end to end: `npm run demo:run`, `npm run verify:db`, `npm run verify:access`,
 `npm run verify:tenancy`, `npm run calibrate`, `npm run measure:stability`,
 `npm run migrate`, `npm run seed:suites`. Scripts run with `--conditions=react-server`
-so `server-only` resolves to its no-op. `npm test` — 73 passing.
+so `server-only` resolves to its no-op. `npm test` — 119 passing.
 
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
 policy text and no raw agent response, with expiry and revocation enforced.
@@ -130,22 +130,41 @@ The deadline is checked before a case starts, never during one; stored cases are
 skipped on resume; an incomplete run is never finished, so no report is published over
 partial evidence.
 
-**Next phase is planned, not started.** The plan lives OUTSIDE this repo at
-`~/.claude/plans/this-is-project-novera-shiny-yeti.md` — read it before picking up UI
-work. It covers the Agent Report Card Viewer interface (four-tier dashboard, filterable
-case matrix, split-panel diagnosis with a diff viewer, client-report mode, exports), a
-responsive pass that has never been done, and post-launch goals.
+**The operator interface is the Agent Report Card Viewer.** Parts 1 and 2 of the
+plan at `~/.claude/plans/this-is-project-novera-shiny-yeti.md` are done; Part 3 (the
+post-launch roadmap) is not started.
 
-Part 1 of that plan is **done**: migrations 0011–0013 (per-assertion outcomes, pass
-threshold, `case_retests`), `coverageByCategory()`, `gradeRun()`, and report payload
-format 2. Parts 2–3 (the UI itself) are untouched.
+Design tokens live in `src/app/globals.css` — palette, shadows, radii, type scale.
+Use them; do not reach for a raw Tailwind palette step. The operator routes sit in a
+`(app)` route group behind one shared top bar; the landing page, docs, support and
+`/report/[token]` stay outside it, because a client opening a report link is not an
+operator.
 
-Two rules learned the hard way and worth keeping in front of you:
+The run page is four tiers: grade scorecard, category grid, a filterable matrix of
+every scenario with its assertion checklist and judge provenance, and a comparison
+ribbon with a run-vs-run picker. A failing scenario can be diagnosed, the proposal is
+shown as a diff, and one scenario can be retested on its own — `case_retests`, never
+counted in a score and never published, because a report is always a whole suite.
+
+Reports export as Markdown and CSV through the same token gate as the page, so an
+export stops working the moment a link is revoked. PDF is browser print; the page
+already prints correctly.
+
+Suites can be imported (JSON or CSV) and are validated case by case by
+`src/lib/suites/validate.ts`, which the seeder uses too.
+
+Measured, not assumed: no page overflows at 390/768/1024/1440, and every page passes
+axe-core at 390 and 1440. `npm test` — 119 passing.
+
+Three rules learned the hard way and worth keeping in front of you:
 - **A report payload change breaks every document already in a client's hands.** Adding
   a field means adding a branch for its absence in the same commit. Two reports were
   returning 500 in production before this was caught.
 - **A grade is withheld, never flattering.** Any errored, unresolved or unexecuted case
   means `INCOMPLETE` and no letter.
+- **A model's rendering of our data is not our data.** The judge echoed assertions back
+  with the numbering the prompt added; storing that verbatim made every failed case
+  render as fully passing. Match model output to the original before storing it.
 
 Remaining: decide a price. Planned: grow the suite 16 → 24 → 30+ as new versions
 (see DECISIONS for the three constraints that should shape it).

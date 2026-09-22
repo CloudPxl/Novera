@@ -664,3 +664,51 @@ own assertion, reporting two product defects where there was only a stale assump
 
 It now requires a report that is genuinely live. A verification script that breaks when
 the product is used correctly is worse than no script: it trains you to ignore red.
+
+## 2026-09-22 — The judge's failed assertions were never the suite's assertions
+The judge prompt numbers the assertions, so models echo them back as `1. <text>` while
+the suite stores the bare text. Comparing the two matched nothing, so every failed case
+rendered a full set of green ticks directly above a verdict saying it failed.
+
+Fixed at the boundary, not in the renderer: `judgeCase` resolves what the judge reports
+back to the suite's own wording and drops anything that resolves to no real assertion —
+the same rule the diagnosis path already enforces on quoted policy text. A model may not
+introduce a requirement nobody wrote down.
+
+Evidence is append-only, so rows already stored keep the judge's numbered echo forever;
+the page resolves them on read instead. **A model's rendering of our data is not our
+data.** Anything a model echoes back has to be matched to the original before it is
+stored, or the store slowly fills with paraphrase.
+
+## 2026-09-22 — Tokens exist so that a colour is a decision made once
+Every colour was an inline Tailwind class, so "the fail colour" was re-decided at each
+call site. The palette, shadows, radii and type scale now live in `globals.css` as
+tokens.
+
+That this was overdue is provable: `--color-ink-faint` was #94a3b8 — 2.6:1 on white —
+and axe flagged it 25 times on a single page. One token was wrong, so the same defect
+appeared everywhere at once. That is also the argument for tokens: one edit fixed all 25.
+
+Light only, deliberately. The client report is printed and filed, so it is light-on-white
+by definition, and a half-finished dark operator shell flashes white panels mid-flow.
+
+## 2026-09-22 — A retest and a run must be graded by the same function
+`executeCase` was extracted from `executeRun` so the single-case retest and the suite run
+share one code path. Two copies would eventually disagree, and the way they would
+disagree is a retest telling an operator their fix worked while the run that produces the
+client's report says otherwise — and the retest exists precisely to predict that run.
+
+The same reasoning produced `loadReportByToken`: the export routes and the public report
+page share one access gate, so an export cannot keep serving a report after its link is
+revoked.
+
+## 2026-09-22 — A suite is validated case by case, or not at all
+The seeder's old check read four top-level keys and never opened the cases. Survivable
+while every suite was written in this repo; not survivable for an imported one, because a
+case with no assertions gives the judge nothing to check and still yields a confident
+verdict and a number in a client's report.
+
+Every case is now validated, every problem is reported in one pass, and a file with one
+bad case is rejected whole — **a partially imported suite silently changes what every
+future score is out of.** Re-importing an existing key and version is refused, because
+reports already issued name that version and must keep meaning what they meant.

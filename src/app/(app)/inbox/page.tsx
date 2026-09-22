@@ -85,7 +85,7 @@ export default async function InboxPage() {
                     {r.organisation && (
                       <span className="text-sm text-slate-500">· {r.organisation as string}</span>
                     )}
-                    <span className="ml-auto text-xs text-slate-400">
+                    <span className="ml-auto text-xs text-ink-faint">
                       {new Date(r.created_at as string).toISOString().slice(0, 16).replace("T", " ")}
                     </span>
                   </div>
@@ -107,11 +107,11 @@ export default async function InboxPage() {
                           {current.status as string}
                         </Badge>
                         {current.model ? (
-                          <span className="font-mono text-[11px] text-slate-400">
+                          <span className="font-mono text-[11px] text-ink-faint">
                             drafted by {current.model as string}
                           </span>
                         ) : (
-                          <span className="text-[11px] text-slate-400">written by hand</span>
+                          <span className="text-[11px] text-ink-faint">written by hand</span>
                         )}
                       </div>
 

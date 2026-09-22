@@ -64,7 +64,10 @@ export async function TopBar() {
       <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center gap-2 px-4 sm:px-6">
         <Link href="/dashboard" className="flex shrink-0 items-center gap-2 rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ink">
           <span aria-hidden className="grid size-7 place-items-center rounded-control bg-ink text-xs font-bold text-white">N</span>
-          <span className="hidden text-sm font-semibold tracking-tight sm:inline">Novera</span>
+          {/* The wordmark is hidden below sm, which left the link with no accessible
+              name at phone width — the mark beside it is decorative. */}
+          <span className="sr-only">Novera home</span>
+          <span aria-hidden className="hidden text-sm font-semibold tracking-tight sm:inline">Novera</span>
         </Link>
 
         <span aria-hidden className="hidden h-5 w-px bg-line md:block" />

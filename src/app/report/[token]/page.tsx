@@ -387,7 +387,7 @@ function Stat({
   return (
     <div className={`rounded-lg border p-3 ${TONES[tone]}`}>
       <div className="text-2xl font-semibold tabular-nums">{value}</div>
-      <div className="mt-0.5 text-xs uppercase tracking-wider opacity-70">{label}</div>
+      <div className="mt-0.5 text-xs font-medium uppercase tracking-wider">{label}</div>
     </div>
   );
 }
@@ -415,7 +415,7 @@ function SeverityChip({ severity }: { severity: string }) {
 function Compare({ label, ids, tone }: { label: string; ids: string[]; tone: "pass" | "fail" }) {
   return (
     <div className={`rounded-lg border p-3 ${ids.length ? TONES[tone] : TONES.muted}`}>
-      <dt className="text-xs uppercase tracking-wider opacity-70">{label}</dt>
+      <dt className="text-xs font-medium uppercase tracking-wider">{label}</dt>
       <dd className="mt-1 font-mono text-sm">{ids.length ? ids.join(", ") : "none"}</dd>
     </div>
   );

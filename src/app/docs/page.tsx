@@ -24,10 +24,13 @@ export default async function DocsIndex() {
         improvise.
       </p>
 
+      {/* Each <li> is a direct child of the <ul> and Reveal wraps its contents. The
+          other way round put a <div> between them, which stops assistive technology
+          reading this as a list at all. */}
       <ul className="mt-8 space-y-2">
         {(pages ?? []).map((page, i) => (
-          <Reveal key={page.slug as string} delay={Math.min(i, 8) * 40}>
-            <li>
+          <li key={page.slug as string}>
+            <Reveal delay={Math.min(i, 8) * 40}>
               <Link href={`/docs/${page.slug}`} className="block">
                 <Card interactive className="p-4">
                   <p className="font-medium">{page.title as string}</p>
@@ -36,8 +39,8 @@ export default async function DocsIndex() {
                   </p>
                 </Card>
               </Link>
-            </li>
-          </Reveal>
+            </Reveal>
+          </li>
         ))}
       </ul>
 

@@ -225,7 +225,7 @@ export function LiveRun({
                     <p className="mt-2 text-sm leading-relaxed text-slate-700">{c.rationale ?? c.error}</p>
                   )}
                   {c.judge_model && (
-                    <p className="mt-1.5 font-mono text-[11px] text-slate-400">
+                    <p className="mt-1.5 font-mono text-[11px] text-ink-faint">
                       {gradingNote(c.judge_model, c.judge_agreement)}
                     </p>
                   )}

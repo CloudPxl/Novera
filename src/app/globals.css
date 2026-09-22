@@ -20,9 +20,14 @@
   --color-line-strong: #cbd5e1;
 
   /* --- ink -------------------------------------------------------------- */
-  --color-ink: #0f172a;
-  --color-ink-soft: #475569;
-  --color-ink-faint: #94a3b8;
+  --color-ink: #0f172a;        /* 16.8:1 on surface */
+  --color-ink-soft: #475569;   /*  7.5:1 */
+  /* 4.76:1 — the lightest this may be and still carry text. It was #94a3b8 (2.6:1),
+     which axe flagged 25 times on one page: labels, case ids and hints were all
+     below the contrast floor. A token used for text has to pass as text. */
+  --color-ink-faint: #64748b;
+  /* For rules, dots and icons only. Never put words in this. */
+  --color-ink-ghost: #94a3b8;
 
   /* --- semantic triads --------------------------------------------------
      text / surface / border for each verdict and severity. Named for what

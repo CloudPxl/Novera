@@ -30,7 +30,7 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
         ← Documentation
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">{page.title as string}</h1>
-      <p className="mt-1 font-mono text-xs text-slate-400">{slug}</p>
+      <p className="mt-1 font-mono text-xs text-ink-faint">{slug}</p>
 
       <div className="mt-6 space-y-4">
         {(page.body as string).split(/\n\n+/).map((paragraph, i) => (

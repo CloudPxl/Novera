@@ -47,7 +47,7 @@ export function SampleReport() {
             What a client receives — illustrative figures, not a real agent
           </span>
         </div>
-        <span className="font-mono text-[11px] text-slate-400">eu-support v1</span>
+        <span className="font-mono text-[11px] text-ink-faint">eu-support v1</span>
       </div>
 
       <div className="flex gap-1 border-b border-slate-200 px-3 pt-3">
@@ -148,7 +148,7 @@ export function SampleReport() {
       </div>
 
       <div className="border-t border-slate-200 bg-slate-50/80 px-5 py-3">
-        <p className="break-all font-mono text-[11px] text-slate-400">
+        <p className="break-all font-mono text-[11px] text-ink-faint">
           sha256:9f2c…illustrative — a real report carries the digest of its own evidence
         </p>
       </div>

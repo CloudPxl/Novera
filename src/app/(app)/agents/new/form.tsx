@@ -27,9 +27,9 @@ export function ConnectAgentForm() {
         htmlFor="bodyTemplate"
         hint={
           <>
-            A JSON object. Put <code className="rounded bg-slate-100 px-1 py-0.5 font-mono">{"{{input}}"}</code>{" "}
+            A JSON object. Put <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{input}}"}</code>{" "}
             where the scenario text goes, and{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono">{"{{policy}}"}</code> where your
+            <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{policy}}"}</code> where your
             policy should go, if your endpoint takes one.
           </>
         }

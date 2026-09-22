@@ -118,7 +118,7 @@ export function CaseTable({
                 verdict === v.key ? "bg-ink text-white" : "text-ink-soft hover:bg-sunken"
               }`}
             >
-              {v.label} <span className="tnum opacity-70">{counts[v.key]}</span>
+              {v.label} <span className="tnum font-normal">{counts[v.key]}</span>
             </button>
           ))}
         </div>

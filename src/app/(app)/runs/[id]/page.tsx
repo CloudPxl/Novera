@@ -16,7 +16,7 @@ import { SubmitButton } from "@/components/ui/button.tsx";
 import { LiveRun } from "./live.tsx";
 import { Scorecard, type Corroboration } from "./scorecard.tsx";
 import { CaseTable, CategoryCard, type CaseRow } from "./case-table.tsx";
-import { DiagnoseButton, ProposalCard, type Proposal } from "./diagnose.tsx";
+import { DiagnoseButton, ProposalCard, RetestButton, RetestHistory, type Proposal, type Retest } from "./diagnose.tsx";
 
 export const metadata: Metadata = { title: "Run · Novera" };
 export const dynamic = "force-dynamic";
@@ -80,11 +80,25 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         .order("created_at")
     : { data: null };
 
+  // Retests are their own evidence: stored, shown inline, never counted in a score
+  // and never published. They are read here so a scenario can show whether a later
+  // policy version fixed it without anyone re-running the suite to find out.
+  const { data: retestRows } = settled && rows.length
+    ? await db
+        .from("case_retests")
+        .select("id, run_case_id, policy_id, status, rationale, error, created_at")
+        .in("run_case_id", rows.map((c) => c.id))
+        .order("created_at", { ascending: false })
+    : { data: null };
+
   // Map the policy a proposal produced to its version number, so an approved change
   // can say what it became rather than showing an opaque id.
-  const producedIds = (proposals ?? []).map((p) => p.resulting_policy_id).filter(Boolean) as string[];
+  const producedIds = [
+    ...(proposals ?? []).map((p) => p.resulting_policy_id),
+    ...(retestRows ?? []).map((r) => r.policy_id),
+  ].filter(Boolean) as string[];
   const { data: producedPolicies } = producedIds.length
-    ? await db.from("policies").select("id, version").in("id", producedIds)
+    ? await db.from("policies").select("id, version").in("id", [...new Set(producedIds)])
     : { data: null };
   const versionOf = new Map((producedPolicies ?? []).map((p) => [p.id as string, p.version as number]));
 
@@ -104,6 +118,20 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         : null,
     });
     proposalsByCase.set(p.run_case_id as string, list);
+  }
+
+  const retestsByCase = new Map<string, Retest[]>();
+  for (const r of retestRows ?? []) {
+    const list = retestsByCase.get(r.run_case_id as string) ?? [];
+    list.push({
+      id: r.id as string,
+      status: r.status as Retest["status"],
+      policyVersion: versionOf.get(r.policy_id as string) ?? null,
+      rationale: (r.rationale as string | null) ?? null,
+      error: (r.error as string | null) ?? null,
+      createdAt: r.created_at as string,
+    });
+    retestsByCase.set(r.run_case_id as string, list);
   }
 
   // Comparison against the run this one was measured from.
@@ -193,6 +221,8 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         {forCase.map((p) => (
           <ProposalCard key={p.id} proposal={p} />
         ))}
+        <RetestButton runCaseId={c.id as string} />
+        <RetestHistory retests={retestsByCase.get(c.id as string) ?? []} />
       </>
     );
   }

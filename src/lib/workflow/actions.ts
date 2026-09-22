@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { storeSecret } from "@/lib/store/secrets.ts";
 import { probeAgent } from "@/lib/workflow/run.ts";
+import { retestCase } from "@/lib/workflow/retest.ts";
 import { diagnoseFailure } from "@/lib/diagnose/index.ts";
 import { applyPolicyChange } from "@/lib/diagnose/parse.ts";
 import { createRoutedChat } from "@/lib/router/execute.ts";
@@ -502,4 +503,42 @@ export async function removeJudgeKey(_prev: FormState, form: FormData): Promise<
   revalidatePath("/settings");
   revalidatePath("/dashboard");
   return { notice: "Removed. Runs go back to the trial allowance, which is capped." };
+}
+
+/**
+ * Re-runs one scenario against the policy as it stands now.
+ *
+ * Gated on the same entitlement as a run, because it spends the same inference, but
+ * it does not consume one of the trial's runs: a retest is not a run, produces no
+ * report, and must not be priced as though it were.
+ */
+export async function retestOneCase(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const runCaseId = String(form.get("runCaseId") ?? "").trim();
+  if (!runCaseId) return { error: "No scenario was named." };
+
+  const admin = await assertMembership(user.id, workspace.id);
+
+  const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
+  if (!entitlement.canRun) {
+    return { error: entitlement.blockedReason ?? "This workspace cannot run scenarios." };
+  }
+
+  const { data: runCase } = await admin
+    .from("run_cases").select("run_id").eq("id", runCaseId).maybeSingle();
+
+  try {
+    const result = await retestCase({
+      client: admin, workspaceId: workspace.id, runCaseId, userId: user.id,
+    });
+    if (runCase) revalidatePath(`/runs/${runCase.run_id}`);
+    return {
+      notice:
+        result.status === "error"
+          ? `The retest against policy v${result.policyVersion} produced no verdict.`
+          : `Against policy v${result.policyVersion}, this scenario now ${result.status === "pass" ? "passes" : "still fails"}.`,
+    };
+  } catch (thrown) {
+    return { error: thrown instanceof Error ? thrown.message : "The retest could not be run." };
+  }
 }

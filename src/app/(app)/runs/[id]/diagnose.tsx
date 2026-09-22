@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { requestDiagnosis, decideDiagnosis, type FormState } from "@/lib/workflow/actions.ts";
+import { requestDiagnosis, decideDiagnosis, retestOneCase, type FormState } from "@/lib/workflow/actions.ts";
 import { SubmitButton, Spinner } from "@/components/ui/button.tsx";
 import { Card, Badge } from "@/components/ui/primitives.tsx";
 
@@ -66,28 +66,7 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
 
       <p className="mt-3 text-sm leading-relaxed text-slate-700">{proposal.analysis}</p>
 
-      <div className="mt-4 space-y-2">
-        {proposal.quotedOld !== null ? (
-          <div className="rounded-lg border border-rose-200 bg-rose-50/60 px-3 py-2">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-rose-700">Replaces</p>
-            <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-rose-900 line-through decoration-rose-400">
-              {proposal.quotedOld}
-            </p>
-          </div>
-        ) : (
-          <p className="text-xs text-slate-500">
-            This change adds a new instruction rather than replacing existing text.
-          </p>
-        )}
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-700">
-            {proposal.quotedOld !== null ? "With" : "Adds"}
-          </p>
-          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-emerald-900">
-            {proposal.proposedNew}
-          </p>
-        </div>
-      </div>
+      <DiffView quotedOld={proposal.quotedOld} proposedNew={proposal.proposedNew} />
 
       {proposal.risks.length > 0 && (
         <div className="mt-4">
@@ -151,5 +130,110 @@ function DecisionButtons() {
         Reject
       </button>
     </>
+  );
+}
+
+
+/**
+ * The change, as a diff.
+ *
+ * A proposal already *is* a diff — `quotedOld` is the exact text being replaced and
+ * `proposedNew` is what replaces it — so it is drawn as one rather than as two
+ * paragraphs a reader has to compare by eye. Someone approving this is agreeing to a
+ * specific edit and needs to see precisely which words leave and which arrive.
+ *
+ * A null `quotedOld` is an addition, not a replacement, and is labelled as one: an
+ * empty red block would imply something was removed.
+ */
+function DiffView({ quotedOld, proposedNew }: { quotedOld: string | null; proposedNew: string }) {
+  const removed = quotedOld === null ? [] : quotedOld.split("\n");
+  const added = proposedNew.split("\n");
+
+  return (
+    <figure className="mt-4">
+      <figcaption className="type-pill text-ink-faint">
+        {quotedOld === null ? "Adds a new instruction" : "Replaces existing policy text"}
+      </figcaption>
+      <div className="mt-1.5 overflow-hidden rounded-control border border-line type-mono">
+        {removed.map((line, i) => (
+          <span key={`r${i}`} className="diff-line diff-line-removed">
+            <span aria-hidden className="mr-2 select-none opacity-60">-</span>
+            {line || "\u00a0"}
+          </span>
+        ))}
+        {added.map((line, i) => (
+          <span key={`a${i}`} className="diff-line diff-line-added">
+            <span aria-hidden className="mr-2 select-none opacity-60">+</span>
+            {line || "\u00a0"}
+          </span>
+        ))}
+      </div>
+    </figure>
+  );
+}
+
+/**
+ * Re-runs this one scenario against the policy as it stands now.
+ *
+ * Labelled as what it is. It is not a run: it produces no score, moves no coverage
+ * figure and never appears in a client report — only a whole suite against one policy
+ * version does that. Saying so on the button is cheaper than explaining later why a
+ * green retest did not change the report the client is holding.
+ */
+export function RetestButton({ runCaseId }: { runCaseId: string }) {
+  const [state, submit] = useActionState<FormState, FormData>(retestOneCase, {});
+
+  return (
+    <form action={submit} className="mt-3">
+      <input type="hidden" name="runCaseId" value={runCaseId} />
+      <div className="flex flex-wrap items-center gap-3">
+        <SubmitButton variant="secondary" size="sm" pendingLabel="Re-running this scenario…">
+          Retest this scenario only
+        </SubmitButton>
+        <span className="text-xs text-ink-faint">
+          Against the newest policy version. Not counted in any score or report.
+        </span>
+      </div>
+      {state.notice && <p className="mt-2 text-xs font-medium text-pass-text">{state.notice}</p>}
+      {state.error && (
+        <p role="alert" className="mt-2 text-xs font-medium text-fail-text">{state.error}</p>
+      )}
+    </form>
+  );
+}
+
+/** Previous retests of this scenario, newest first. Evidence, not a score. */
+export interface Retest {
+  id: string;
+  status: "pass" | "fail" | "error";
+  policyVersion: number | null;
+  rationale: string | null;
+  error: string | null;
+  createdAt: string;
+}
+
+export function RetestHistory({ retests }: { retests: Retest[] }) {
+  if (retests.length === 0) return null;
+
+  return (
+    <div className="mt-3">
+      <p className="type-pill text-ink-faint">Retests of this scenario</p>
+      <ul className="mt-1.5 space-y-1.5">
+        {retests.map((r) => (
+          <li key={r.id} className="flex flex-wrap items-center gap-2 text-xs text-ink-soft">
+            <Badge tone={r.status === "pass" ? "pass" : r.status === "fail" ? "fail" : "error"}>
+              {r.status === "error" ? "no result" : r.status}
+            </Badge>
+            <span>against policy v{r.policyVersion ?? "?"}</span>
+            <time dateTime={r.createdAt} className="tnum text-ink-faint">
+              {new Date(r.createdAt).toISOString().slice(0, 16).replace("T", " ")}
+            </time>
+            {(r.rationale || r.error) && (
+              <span className="basis-full text-ink-soft">{r.rationale ?? r.error}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

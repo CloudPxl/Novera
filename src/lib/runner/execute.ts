@@ -2,7 +2,7 @@ import type { AgentAdapter } from "../agents/types.ts";
 import type { RoutedChat } from "../router/execute.ts";
 import { gradeCase } from "../judge/consensus.ts";
 import { coverage, coverageByObligation, coverageByCategory, type Coverage, type ObligationCoverage, type CategoryCoverage } from "../evidence/coverage.ts";
-import type { RunCaseRecord, RunStore, Suite } from "./types.ts";
+import type { CaseOutcome, RunCaseRecord, RunStore, Suite, SuiteCase } from "./types.ts";
 
 export interface ExecuteRunArgs {
   runId: string;
@@ -40,6 +40,82 @@ export interface RunSummary {
 }
 
 /**
+ * One scenario, sent to the agent and graded.
+ *
+ * The single place that decides what a case produced. A suite run calls it for each
+ * case; a single-case retest calls it once. They must never diverge — a retest that
+ * graded differently from the run would be worse than no retest at all, because the
+ * operator would trust it.
+ *
+ * The rule it enforces: if the agent produced no response, the judge is not called.
+ * There is nothing to grade, and asking a judge to grade an absence is how a broken
+ * integration turns into a plausible-looking verdict.
+ */
+export async function executeCase(args: {
+  testCase: SuiteCase;
+  agent: AgentAdapter;
+  policy: string;
+  judge: RoutedChat;
+}): Promise<CaseOutcome> {
+  const { testCase, agent, policy, judge } = args;
+
+  const agentResult = await agent.send({ input: testCase.input, policy });
+
+  if (!agentResult.ok || agentResult.responseText === null) {
+    return {
+      responseText: null,
+      toolActivity: agentResult.toolActivity ?? null,
+      status: "error",
+      rationale: null,
+      latencyMs: agentResult.latencyMs,
+      usage: null,
+      // The judge was never called: there was nothing to grade.
+      judgeModel: null,
+      judgeAttempts: [],
+      judgeVotes: [],
+      judgeAgreement: null,
+      failedAssertions: [],
+      error: agentResult.error ?? "The agent produced no response.",
+    };
+  }
+
+  // Two models must agree. A single judge was measured at 25% verdict drift on
+  // identical responses (npm run measure:stability), which would have shown up in a
+  // customer's rerun as fixes and regressions that never happened.
+  const verdict = await gradeCase({
+    chat: judge,
+    severity: testCase.severity,
+    testCase: {
+      caseId: testCase.id,
+      input: testCase.input,
+      expectedBehavior: testCase.expected_behavior,
+      assertions: testCase.assertions,
+      forbidden: testCase.forbidden,
+    },
+    agentResponse: agentResult.responseText,
+    toolActivity: agentResult.toolActivity,
+  });
+
+  return {
+    responseText: agentResult.responseText,
+    toolActivity: agentResult.toolActivity ?? null,
+    status: verdict.status,
+    rationale: verdict.rationale,
+    latencyMs: agentResult.latencyMs,
+    usage: {
+      agent: agentResult.usage ?? null,
+      judge: verdict.usage,
+    },
+    judgeModel: verdict.servedBy ? `${verdict.servedBy.connection}/${verdict.servedBy.model}` : null,
+    judgeAttempts: verdict.attempts,
+    judgeVotes: verdict.votes,
+    judgeAgreement: verdict.agreement,
+    failedAssertions: verdict.failedAssertions,
+    error: verdict.error,
+  };
+}
+
+/**
  * Runs every case in the suite against the live agent and grades each response.
  *
  * Two rules drive the shape of this function:
@@ -73,7 +149,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         return;
       }
 
-      const base = {
+      records[index] = {
         runId,
         caseId: testCase.id,
         category: testCase.category,
@@ -82,65 +158,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         input: testCase.input,
         expected: testCase.expected_behavior,
         assertions: testCase.assertions,
-      };
-
-      const agentResult = await agent.send({ input: testCase.input, policy });
-
-      if (!agentResult.ok || agentResult.responseText === null) {
-        records[index] = {
-          ...base,
-          responseText: null,
-          toolActivity: agentResult.toolActivity ?? null,
-          status: "error",
-          rationale: null,
-          latencyMs: agentResult.latencyMs,
-          usage: null,
-          // The judge was never called: there was nothing to grade.
-          judgeModel: null,
-          judgeAttempts: [],
-          judgeVotes: [],
-          judgeAgreement: null,
-          failedAssertions: [],
-          error: agentResult.error ?? "The agent produced no response.",
-        };
-        await store.saveCase(records[index]);
-        continue;
-      }
-
-      // Two models must agree. A single judge was measured at 25% verdict drift on
-      // identical responses (npm run measure:stability), which would have shown up
-      // in a customer's rerun as fixes and regressions that never happened.
-      const verdict = await gradeCase({
-        chat: judge,
-        severity: testCase.severity,
-        testCase: {
-          caseId: testCase.id,
-          input: testCase.input,
-          expectedBehavior: testCase.expected_behavior,
-          assertions: testCase.assertions,
-          forbidden: testCase.forbidden,
-        },
-        agentResponse: agentResult.responseText,
-        toolActivity: agentResult.toolActivity,
-      });
-
-      records[index] = {
-        ...base,
-        responseText: agentResult.responseText,
-        toolActivity: agentResult.toolActivity ?? null,
-        status: verdict.status,
-        rationale: verdict.rationale,
-        latencyMs: agentResult.latencyMs,
-        usage: {
-          agent: agentResult.usage ?? null,
-          judge: verdict.usage,
-        },
-        judgeModel: verdict.servedBy ? `${verdict.servedBy.connection}/${verdict.servedBy.model}` : null,
-        judgeAttempts: verdict.attempts,
-        judgeVotes: verdict.votes,
-        judgeAgreement: verdict.agreement,
-        failedAssertions: verdict.failedAssertions,
-        error: verdict.error,
+        ...(await executeCase({ testCase, agent, policy, judge })),
       };
       await store.saveCase(records[index]);
     }

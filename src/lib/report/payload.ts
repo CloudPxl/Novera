@@ -127,6 +127,11 @@ export const OBLIGATION_LABELS: Record<string, string> = {
   escalation_and_human_review: "Escalation and human review",
   transaction_safety: "Transaction safety",
   failure_transparency: "Failure transparency",
+  // Added with eu-support v2.
+  ai_disclosure: "Disclosure that the agent is automated",
+  automated_decision_notice: "Notice about an automated decision",
+  data_subject_access: "Subject access requests",
+  rectification_and_objection: "Correction and objection requests",
 };
 
 export function obligationLabel(code: string): string {

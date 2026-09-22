@@ -51,6 +51,17 @@ const UNCORROBORATED_NOTE =
 const MIXED_GRADING_NOTE =
   "More than one grading model was used in this run, because a provider was unavailable partway through. The verdicts are therefore not uniformly graded. Rerun the suite if you need a single-model result.";
 
+/**
+ * More than one model named as grader is now the *normal* outcome, not a fault.
+ *
+ * Where two models disagree, the model that settles it is recorded as that case's
+ * grader — so a healthy consensus run legitimately names two or three. Until this was
+ * separated, such a run carried a note telling the client a provider had gone down
+ * mid-run, which was simply untrue.
+ */
+const CONSENSUS_GRADING_NOTE =
+  "More than one model is named as grader because some verdicts were settled by a third model after the first two disagreed. That is how corroborated grading works here; it does not mean the run was graded inconsistently.";
+
 export function buildReport(input: ReportInput): BuiltReport {
   const findings = input.cases
     .filter((c) => c.status !== "pass")
@@ -92,6 +103,18 @@ export function buildReport(input: ReportInput): BuiltReport {
   );
   const independent = corroborated.filter((c) => independenceOf(votesOf(c)) === "independent").length;
   const singleVendor = corroborated.length - independent;
+
+  // A case decided by a model other than the run's usual grader is expected when a
+  // third model broke a tie. Anything else means the route fell through — a provider
+  // was unavailable — and only that deserves the outage note.
+  const primaryGrader = (() => {
+    const tally = new Map<string, number>();
+    for (const c of input.cases) if (c.judgeModel) tally.set(c.judgeModel, (tally.get(c.judgeModel) ?? 0) + 1);
+    return [...tally].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  })();
+  const mixedGradingIsAFault = input.cases.some(
+    (c) => c.judgeModel && c.judgeModel !== primaryGrader && c.judgeAgreement !== "majority",
+  );
 
   const corroboration = {
     method:
@@ -208,7 +231,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       : null,
     limitations: [
       LIMITATIONS,
-      ...(gradedBy.length > 1 ? [MIXED_GRADING_NOTE] : []),
+      ...(gradedBy.length > 1 ? [mixedGradingIsAFault ? MIXED_GRADING_NOTE : CONSENSUS_GRADING_NOTE] : []),
       ...(corroboration.uncorroborated > 0 ? [UNCORROBORATED_NOTE] : []),
     ].join(" "),
   } satisfies Json;

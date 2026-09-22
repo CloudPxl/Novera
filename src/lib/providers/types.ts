@@ -44,6 +44,27 @@ export interface Provider {
 
 export type ProviderId = "anthropic" | "google" | "openai-compatible";
 
+/**
+ * Removes credential material from a provider's own words before we keep them.
+ *
+ * Every provider failure is stored — `judge_attempts` on the case row — and shown to
+ * the operator, which makes an upstream error message a place a key could end up
+ * durably. Some hosts echo the request back in `error.metadata.raw`, and the product
+ * rule is that a customer's key never appears in a log, a report or a screenshot. So
+ * the boundary enforces it rather than trusting the provider not to say it.
+ *
+ * The exact key is redacted first, then anything key-shaped, so a *second* key the
+ * caller did not pass — one belonging to another workspace, echoed by a shared proxy —
+ * is caught too.
+ */
+const KEY_SHAPED = /\b(?:sk-[A-Za-z0-9_-]{8,}|gsk_[A-Za-z0-9]{8,}|AIza[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._-]{12,})/g;
+
+export function redactCredentials(text: string, apiKey?: string): string {
+  let out = text;
+  if (apiKey && apiKey.length >= 8) out = out.split(apiKey).join("[redacted]");
+  return out.replace(KEY_SHAPED, "[redacted]");
+}
+
 export class ProviderError extends Error {
   provider: string;
   status?: number;

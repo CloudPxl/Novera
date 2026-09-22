@@ -190,3 +190,28 @@ test("the payload is format 4", () => {
   const { payload } = buildReport(input());
   assert.equal((payload as { novera: { format: number } }).novera.format, 4);
 });
+
+test("a tie settled by a third model is not reported as a provider outage", () => {
+  const graded = [
+    caseRecord({ caseId: "T01", judgeModel: "groq/a", judgeVotes: [VOTE("groq/a"), VOTE("mistral/b")] }),
+    caseRecord({ caseId: "T02", judgeModel: "groq/a", judgeVotes: [VOTE("groq/a"), VOTE("mistral/b")] }),
+    caseRecord({ caseId: "T03", judgeModel: "openrouter/c", judgeAgreement: "majority",
+      judgeVotes: [VOTE("groq/a"), VOTE("mistral/b", "fail"), VOTE("openrouter/c")] }),
+  ];
+  const { payload } = buildReport(input({ cases: graded, coverage: coverage({ plannedCases: 3, cases: graded }) }));
+  const limitations = (payload as { limitations: string }).limitations;
+
+  assert.doesNotMatch(limitations, /a provider was unavailable partway through/);
+  assert.match(limitations, /settled by a third model after the first two disagreed/);
+});
+
+test("a genuine mid-run fallback still warns that grading was not uniform", () => {
+  const graded = [
+    caseRecord({ caseId: "T01", judgeModel: "groq/a" }),
+    caseRecord({ caseId: "T02", judgeModel: "groq/a" }),
+    // Different grader, and no disagreement to explain it: the route fell through.
+    caseRecord({ caseId: "T03", judgeModel: "mistral/b", judgeAgreement: "agreed" }),
+  ];
+  const { payload } = buildReport(input({ cases: graded, coverage: coverage({ plannedCases: 3, cases: graded }) }));
+  assert.match((payload as { limitations: string }).limitations, /a provider was unavailable partway through/);
+});

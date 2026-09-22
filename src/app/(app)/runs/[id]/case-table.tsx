@@ -22,6 +22,7 @@ export interface CaseRow {
   error: string | null;
   judgeModel: string | null;
   judgeAgreement: string | null;
+  judgeVotes: Array<{ model?: unknown; status?: unknown }>;
   latencyMs: number | null;
 }
 
@@ -328,7 +329,7 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
 
           {row.judgeModel && (
             <p className="mt-2 type-mono text-xs text-ink-faint">
-              {gradingNote(row.judgeModel, row.judgeAgreement)}
+              {gradingNote(row.judgeModel, row.judgeAgreement, row.judgeVotes)}
             </p>
           )}
         </section>

@@ -1,4 +1,4 @@
-import { ProviderError, type ChatRequest, type ChatResponse, type Provider } from "./types.ts";
+import { ProviderError, redactCredentials, type ChatRequest, type ChatResponse, type Provider } from "./types.ts";
 
 /**
  * Any /v1/chat/completions endpoint. One adapter covers OpenAI itself and the
@@ -73,14 +73,22 @@ export function openAiCompatibleProvider(baseUrl: string): {
       const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
 
       if (!response.ok) {
-        throw new ProviderError("openai-compatible", describeError(payload, response.statusText), response.status);
+        throw new ProviderError(
+          "openai-compatible",
+          redactCredentials(describeError(payload, response.statusText), apiKey),
+          response.status,
+        );
       }
 
       // OpenRouter reports upstream failures as HTTP 200 with an error body, so a
       // 2xx alone does not mean the request worked. `object === "error"` covers the
       // Mistral shape of the same trick.
       if (payload?.error || payload?.object === "error") {
-        throw new ProviderError("openai-compatible", describeError(payload, "upstream error"), response.status);
+        throw new ProviderError(
+          "openai-compatible",
+          redactCredentials(describeError(payload, "upstream error"), apiKey),
+          response.status,
+        );
       }
 
       const choices = (payload?.choices ?? []) as Array<

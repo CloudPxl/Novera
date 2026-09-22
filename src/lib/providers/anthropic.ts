@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { ProviderError, type ChatRequest, type ChatResponse, type Provider } from "./types.ts";
+import { ProviderError, redactCredentials, type ChatRequest, type ChatResponse, type Provider } from "./types.ts";
 
 /** Default when a workspace supplies an Anthropic key without naming a model. */
 export const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5";
@@ -43,9 +43,12 @@ export const anthropicProvider: Provider = {
     } catch (error) {
       if (error instanceof ProviderError) throw error;
       if (error instanceof Anthropic.APIError) {
-        throw new ProviderError("anthropic", error.message, error.status);
+        throw new ProviderError("anthropic", redactCredentials(error.message, apiKey), error.status);
       }
-      throw new ProviderError("anthropic", error instanceof Error ? error.message : String(error));
+      throw new ProviderError(
+        "anthropic",
+        redactCredentials(error instanceof Error ? error.message : String(error), apiKey),
+      );
     }
   },
 };

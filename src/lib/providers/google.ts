@@ -1,4 +1,4 @@
-import { ProviderError, type ChatRequest, type ChatResponse, type Provider } from "./types.ts";
+import { ProviderError, redactCredentials, type ChatRequest, type ChatResponse, type Provider } from "./types.ts";
 
 /**
  * Google Generative Language REST API.
@@ -52,7 +52,7 @@ export const googleProvider: Provider = {
     if (!response.ok) {
       const detail =
         (payload?.error as { message?: string } | undefined)?.message ?? response.statusText;
-      throw new ProviderError("google", detail, response.status);
+      throw new ProviderError("google", redactCredentials(detail, apiKey), response.status);
     }
 
     const candidates = (payload?.candidates ?? []) as Array<{

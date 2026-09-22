@@ -69,3 +69,28 @@ test("nothing is asked of a provider that was not told to skip reasoning", async
   await googleProvider.chat({ ...chat, model: "gemini-3.5-flash" }, "k");
   assert.equal((sent.generationConfig as Record<string, unknown>).thinkingConfig, undefined);
 });
+
+test("a provider that echoes the key back does not get to store it", async (t) => {
+  // Some hosts return the offending request under error.metadata.raw. Every provider
+  // failure is stored on the case row and shown to the operator, so an upstream
+  // message is somewhere a key could end up durably.
+  respond(t, {
+    error: {
+      message: "Invalid authentication",
+      metadata: { raw: "authorization: Bearer sk-live-SECRETVALUE0987654321" },
+    },
+  }, 401);
+  await assert.rejects(() => mistral.chat(chat, "sk-live-SECRETVALUE0987654321"), (e: ProviderError) => {
+    assert.doesNotMatch(e.message, /SECRETVALUE/);
+    assert.match(e.message, /Invalid authentication/, "the diagnosable part survives");
+    return true;
+  });
+});
+
+test("a key belonging to someone else is redacted too", async (t) => {
+  respond(t, { error: { message: "quota exhausted for gsk_ABCDEFGH12345678 on this org" } }, 429);
+  await assert.rejects(() => mistral.chat(chat, "unrelated-key-value"), (e: ProviderError) => {
+    assert.doesNotMatch(e.message, /gsk_ABCDEFGH/);
+    return true;
+  });
+});

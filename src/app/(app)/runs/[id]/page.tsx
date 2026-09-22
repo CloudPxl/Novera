@@ -74,7 +74,7 @@ export default async function RunPage({
         await db
           .from("run_cases")
           .select(
-            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement",
+            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes",
           )
           .eq("run_id", id)
           .order("case_id")
@@ -237,6 +237,9 @@ export default async function RunPage({
     error: (c.error as string | null) ?? null,
     judgeModel: (c.judge_model as string | null) ?? null,
     judgeAgreement: (c.judge_agreement as string | null) ?? null,
+    // Which vendors actually voted. Stored since 0008 and never read: two votes from
+    // one vendor's own model family were being shown as "confirmed by a second model".
+    judgeVotes: Array.isArray(c.judge_votes) ? (c.judge_votes as CaseRow["judgeVotes"]) : [],
     latencyMs: (c.latency_ms as number | null) ?? null,
   }));
 

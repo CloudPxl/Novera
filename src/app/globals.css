@@ -1,28 +1,128 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ================================================================= tokens
+   Every colour in this app used to be an inline Tailwind class, which meant
+   "the fail colour" was a decision re-made at each call site and drifted.
+   These are the single source. Components reference them; nothing hardcodes
+   a palette step any more.
+
+   Light only, on purpose. The client report is printed and filed, so it is
+   light-on-white by definition; a dark operator shell would have to re-theme
+   every surface to avoid flashing white panels mid-flow. Tokens make that a
+   later, mechanical change instead of a rewrite. */
+
+@theme {
+  /* --- ground: the three depths a panel can sit at --------------------- */
+  --color-ground: #f8fafc;
+  --color-surface: #ffffff;
+  --color-sunken: #f1f5f9;
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+
+  /* --- ink -------------------------------------------------------------- */
+  --color-ink: #0f172a;
+  --color-ink-soft: #475569;
+  --color-ink-faint: #94a3b8;
+
+  /* --- semantic triads --------------------------------------------------
+     text / surface / border for each verdict and severity. Named for what
+     they mean, never for the hue, so a palette change is one edit here. */
+  --color-pass-text: #047857;
+  --color-pass-surface: #ecfdf5;
+  --color-pass-border: #a7f3d0;
+
+  --color-fail-text: #be123c;
+  --color-fail-surface: #fff1f2;
+  --color-fail-border: #fecdd3;
+
+  --color-warning-text: #b45309;
+  --color-warning-surface: #fffbeb;
+  --color-warning-border: #fde68a;
+
+  --color-high-text: #c2410c;
+  --color-high-surface: #fff7ed;
+  --color-high-border: #fed7aa;
+
+  --color-neutral-text: #475569;
+  --color-neutral-surface: #f1f5f9;
+  --color-neutral-border: #cbd5e1;
+
+  --color-info-text: #0369a1;
+  --color-info-surface: #f0f9ff;
+  --color-info-border: #bae6fd;
+
+  /* --- elevation -------------------------------------------------------- */
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+  --shadow-card-hover: 0 8px 24px -12px rgb(15 23 42 / 0.18);
+  --shadow-modal: 0 24px 64px -20px rgb(15 23 42 / 0.35);
+  --shadow-inset-terminal: inset 0 1px 3px 0 rgb(15 23 42 / 0.28);
+
+  /* --- radii ------------------------------------------------------------ */
+  --radius-control: 0.5rem;
+  --radius-panel: 0.75rem;
+  --radius-shell: 1rem;
+
+  /* --- type ------------------------------------------------------------- */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", SFMono-Regular,
+    Menlo, Consolas, "Liberation Mono", monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* The type scale, as composable utilities rather than four classes repeated
+   by hand. Size, weight and tracking travel together — a heading that picked
+   up the size but not the tracking was the most common drift in the old UI. */
+
+@utility type-hero {
+  font-size: 3rem;
+  line-height: 1.04;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+@utility type-h1 {
+  font-size: 1.875rem;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+@utility type-h2 {
+  font-size: 1.25rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+@utility type-h3 {
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+@utility type-body {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+@utility type-pill {
+  font-size: 0.75rem;
+  line-height: 1;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+@utility type-mono {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Numbers that change in place — scores, counts, durations — must not reflow
+   as they tick. Anywhere a value updates live, this goes on it. */
+@utility tnum {
+  font-variant-numeric: tabular-nums;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
 }
 
 /* ---------------------------------------------------------------- motion
@@ -46,6 +146,11 @@ body {
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 
+@keyframes novera-slide-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
 /* Applied by the Reveal component once an element scrolls into view. */
 .novera-reveal {
   opacity: 0;
@@ -58,16 +163,16 @@ body {
 .novera-shimmer {
   background: linear-gradient(
     90deg,
-    var(--color-slate-100) 25%,
-    var(--color-slate-200) 37%,
-    var(--color-slate-100) 63%
+    var(--color-sunken) 25%,
+    var(--color-line) 37%,
+    var(--color-sunken) 63%
   );
   background-size: 200% 100%;
   animation: novera-sheen 1.4s ease-in-out infinite;
 }
 
 /* An in-flight progress fill. Needs its own dark gradient: reusing the skeleton
-   shimmer made the fill invisible against the slate-100 track, so a run in progress
+   shimmer made the fill invisible against the sunken track, so a run in progress
    looked like a run that had not started. */
 .novera-progress {
   background: linear-gradient(
@@ -89,6 +194,31 @@ body {
   transition: width 700ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.novera-panel-in {
+  animation: novera-slide-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---------------------------------------------------------------- diff
+   A proposal is already a diff — `quotedOld` and `proposedNew` are exactly the
+   two sides — so it is rendered as one rather than as two paragraphs. */
+
+.diff-line {
+  display: block;
+  padding: 0.125rem 0.625rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.diff-line-removed {
+  background: var(--color-fail-surface);
+  color: var(--color-fail-text);
+  box-shadow: inset 2px 0 0 0 var(--color-fail-text);
+}
+.diff-line-added {
+  background: var(--color-pass-surface);
+  color: var(--color-pass-text);
+  box-shadow: inset 2px 0 0 0 var(--color-pass-text);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .novera-reveal,
   .novera-reveal[data-shown="true"] {
@@ -97,7 +227,8 @@ body {
   }
   .novera-shimmer,
   .novera-progress,
-  .novera-live {
+  .novera-live,
+  .novera-panel-in {
     animation: none;
   }
   .novera-progress {
@@ -105,5 +236,11 @@ body {
   }
   .novera-bar {
     transition: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

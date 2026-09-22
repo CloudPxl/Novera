@@ -2,9 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
-import { isStaff } from "@/lib/auth/staff.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
-import { signOut } from "../sign-in/actions.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -30,34 +28,19 @@ export default async function DashboardPage() {
   const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
 
   return (
-    <main className="mx-auto w-full max-w-4xl bg-white px-6 py-10 text-slate-900 sm:px-8">
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-6">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Novera</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">{workspace.name}</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            {user.email} ·{" "}
-            {entitlement.ownKey
-              ? `Graded on your own ${entitlement.provider} key`
-              : `Trial · ${Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed)} of ${TRIAL_RUN_LIMIT} runs left`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/agents/new">
-            <Button size="sm">Connect an agent</Button>
-          </Link>
-          <Link href="/settings">
-            <Button variant="secondary" size="sm">Settings</Button>
-          </Link>
-          {isStaff(user.email) && (
-            <Link href="/inbox">
-              <Button variant="secondary" size="sm">Inbox</Button>
-            </Link>
-          )}
-          <form action={signOut}>
-            <Button type="submit" variant="secondary" size="sm">Sign out</Button>
-          </form>
-        </div>
+    <main className="w-full max-w-4xl py-8 text-ink">
+      {/* The identity block only. Connect / Settings / Inbox / Sign out moved to the
+          top bar in the shell — four buttons repeated on every page was four chances
+          to render them differently. */}
+      <header className="border-b border-line pb-6">
+        <p className="type-pill text-ink-faint">Workspace</p>
+        <h1 className="mt-2 type-h1">{workspace.name}</h1>
+        <p className="mt-1 type-body text-ink-soft">
+          {user.email} ·{" "}
+          {entitlement.ownKey
+            ? `Graded on your own ${entitlement.provider} key`
+            : `Trial · ${Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed)} of ${TRIAL_RUN_LIMIT} runs left`}
+        </p>
       </header>
 
       {!entitlement.canRun && (

@@ -41,7 +41,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
   const config = agent.config as { url?: string };
 
   return (
-    <main className="mx-auto w-full max-w-3xl bg-white px-6 py-10 text-slate-900 sm:px-8">
+    <main className="w-full max-w-3xl py-8 text-ink">
       <Link href="/dashboard" className="text-sm text-slate-500 underline-offset-2 hover:underline">
         ← Dashboard
       </Link>

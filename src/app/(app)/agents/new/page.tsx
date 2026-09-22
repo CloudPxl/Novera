@@ -10,7 +10,7 @@ export default async function NewAgentPage() {
   await requireWorkspace();
 
   return (
-    <main className="mx-auto w-full max-w-2xl bg-white px-6 py-10 text-slate-900 sm:px-8">
+    <main className="w-full max-w-2xl py-8 text-ink">
       <Link href="/dashboard" className="text-sm text-slate-500 underline-offset-2 hover:underline">
         ← Dashboard
       </Link>

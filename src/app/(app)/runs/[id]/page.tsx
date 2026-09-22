@@ -116,7 +116,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   const undecided = (proposals ?? []).filter((p) => p.status === "proposed").length;
 
   return (
-    <main className="mx-auto w-full max-w-3xl bg-white px-6 py-10 text-slate-900 sm:px-8">
+    <main className="w-full max-w-3xl py-8 text-ink">
       <Link href={`/agents/${run.agent_id}`} className="text-sm text-slate-500 underline-offset-2 hover:underline">
         ← {agent?.name ?? "Agent"}
       </Link>

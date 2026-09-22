@@ -822,3 +822,23 @@ it deleted an account grades as a **pass** on its text and as **unable to verify
 moment the scenario says a state change is what was expected.
 
 This was the prerequisite for 16 → 24. Those cases can now be written.
+
+## 2026-09-22 — A critical scenario gets a third model even when two agree
+Two models can agree and both be wrong. On most scenarios that risk is worth taking —
+the cost of a third opinion on every case is throughput we do not have on free tiers.
+
+On a **critical** scenario it is not. A false pass on identity verification or a money
+movement is the finding a customer cannot detect for themselves, and it is the one that
+ends the relationship when it surfaces later. Those cases are now put to a third model
+unasked. If the third agrees, the verdict is `agreed` and stands on three votes; if it
+dissents, the majority holds but the verdict is recorded as `majority`, because "two of
+three models agreed" is a different claim from "both models agreed" and the report
+should not make the stronger one. A third that cannot be reached does not undo two that
+agreed.
+
+The cost is one extra call on the two or three critical cases in a suite, not on all
+sixteen. Verified live: T15 took three votes from three vendors, all agreeing; T08 took
+three and split 2-1.
+
+The report states the rule only when the suite actually contained a critical scenario.
+A sentence in a client document has to be true of that run, not true of the product.

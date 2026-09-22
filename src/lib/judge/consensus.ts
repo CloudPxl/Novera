@@ -16,6 +16,10 @@ import type { Task } from "../router/routes.ts";
  * `error`, which is excluded from the score and reported as uncorroborated. That is
  * the honest outcome — better an admitted gap than a coin toss printed as evidence.
  *
+ * A critical scenario is put to a third model even when the first two agree. Two
+ * models can agree and both be wrong, and on identity verification or a money movement
+ * that is the one failure a customer cannot detect for themselves.
+ *
  * Two models is the floor, not the goal. Each later opinion is asked of a *different
  * vendor* first, because two models from one vendor share a lineage, a serving stack
  * and a rate limit — they can agree for reasons that have nothing to do with the
@@ -111,7 +115,28 @@ export async function gradeCase(args: {
   if (second.servedBy) consulted.push(second.servedBy);
 
   if (first.status === second.status) {
-    return { ...first, votes: [vote(first), vote(second)], agreement: "agreed" };
+    // Two agreeing models settle an ordinary scenario. A critical one gets a third
+    // anyway, unasked: these are the cases where a wrong verdict is most expensive
+    // and least recoverable — a false pass on identity verification is the finding a
+    // customer cannot detect for themselves. Two models can agree and both be wrong,
+    // and the cost of learning otherwise is one extra call on two or three cases.
+    if (severity.toLowerCase() !== "critical") {
+      return { ...first, votes: [vote(first), vote(second)], agreement: "agreed" };
+    }
+
+    const confirming = await nextOpinion(base, task, consulted);
+    const votes = [vote(first), vote(second), vote(confirming)];
+
+    // A third that could not be reached does not undo two that agreed. The verdict
+    // stands on the corroboration it has, and the vote list shows what happened.
+    if (confirming.status === "error" || confirming.status === first.status) {
+      return { ...first, votes, agreement: "agreed" };
+    }
+
+    // Two against one, on a critical scenario. The majority holds — it is still two
+    // corroborated models — but the dissent is recorded rather than dropped, because
+    // "two of three models agreed" is a different claim from "both models agreed".
+    return { ...first, votes, agreement: "majority" };
   }
 
   const third = await nextOpinion(base, task, consulted);

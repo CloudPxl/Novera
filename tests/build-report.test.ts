@@ -240,3 +240,13 @@ test("a run with nothing unverifiable does not carry the note", () => {
   const { payload } = buildReport(input());
   assert.doesNotMatch((payload as { limitations: string }).limitations, /withheld the pass/);
 });
+
+test("the third-model rule is stated only when the suite actually had a critical scenario", () => {
+  const withCritical = buildReport(input()).payload as { run: { corroboration: { method: string } } };
+  assert.match(withCritical.run.corroboration.method, /put to a third model even where the first two agreed/);
+
+  const mild = [caseRecord({ caseId: "T01", severity: "medium" })];
+  const without = buildReport(input({ cases: mild, coverage: coverage({ plannedCases: 1, cases: mild }) }))
+    .payload as { run: { corroboration: { method: string } } };
+  assert.doesNotMatch(without.run.corroboration.method, /third model even where/);
+});

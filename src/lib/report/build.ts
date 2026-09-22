@@ -119,13 +119,21 @@ export function buildReport(input: ReportInput): BuiltReport {
     (c) => c.judgeModel && c.judgeModel !== primaryGrader && c.judgeAgreement !== "majority",
   );
 
+  // Only claimed when the suite actually contained one, because the sentence is in a
+  // client-facing document and has to be true of this run, not of the product.
+  const hadCritical = input.cases.some((c) => c.severity?.toLowerCase() === "critical");
+  const criticalNote = hadCritical
+    ? " Scenarios marked critical were put to a third model even where the first two agreed."
+    : "";
+
   const corroboration = {
     method:
-      singleVendor === 0
+      (singleVendor === 0
         ? "Each verdict was put to two models from different vendors; a third settled any disagreement."
         : "Each verdict was put to two models, a different vendor's wherever one could be reached; "
           + "a third settled any disagreement. Where no second vendor was available, a second model "
-          + "from the same vendor was used instead, and those verdicts are counted separately below.",
+          + "from the same vendor was used instead, and those verdicts are counted separately below.")
+      + criticalNote,
     agreed: agreementCount("agreed"),
     majority: agreementCount("majority"),
     uncorroborated: agreementCount("unconfirmed"),

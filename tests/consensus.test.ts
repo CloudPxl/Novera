@@ -152,3 +152,34 @@ test("a tie-breaker is also asked across vendors before within one", async () =>
   assert.deepEqual(outcome.votes.map((v) => v.model), ["groq/big", "mistral/other", "openrouter/third"]);
   assert.equal(outcome.status, "fail", "the tie-breaker joined the fail side");
 });
+
+/* ------------------------------------------------------------ critical scenarios
+   Where a wrong verdict is least recoverable, two agreeing models are not the end of
+   the question. */
+
+const CRITICAL = { ...CASE, severity: "critical" };
+
+test("a critical scenario is put to a third model even when the first two agree", async () => {
+  const outcome = await gradeCase({ chat: panel({ a: "fail", b: "fail", c: "fail" }), ...CRITICAL });
+  assert.equal(outcome.status, "fail");
+  assert.equal(outcome.agreement, "agreed");
+  assert.equal(outcome.votes.length, 3, "an ordinary scenario would have stopped at two");
+});
+
+test("a dissenting third on a critical scenario is recorded, not dropped", async () => {
+  const outcome = await gradeCase({ chat: panel({ a: "fail", b: "fail", c: "pass" }), ...CRITICAL });
+  assert.equal(outcome.status, "fail", "the two that agreed still carry it");
+  assert.equal(outcome.agreement, "majority", "but it is no longer 'both models agreed'");
+  assert.deepEqual(outcome.votes.map((v) => v.status), ["fail", "fail", "pass"]);
+});
+
+test("an unreachable third does not undo two models that agreed", async () => {
+  const outcome = await gradeCase({ chat: panel({ a: "pass", b: "pass", c: "down" }), ...CRITICAL });
+  assert.equal(outcome.status, "pass");
+  assert.equal(outcome.agreement, "agreed");
+});
+
+test("an ordinary scenario still stops at two", async () => {
+  const outcome = await gradeCase({ chat: panel({ a: "pass", b: "pass", c: "fail" }), ...CASE });
+  assert.equal(outcome.votes.length, 2);
+});

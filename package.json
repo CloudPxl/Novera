@@ -17,6 +17,7 @@
     "verify:access": "node --conditions=react-server --env-file=.env.local scripts/verify-access.mts",
     "verify:tenancy": "node --conditions=react-server --env-file=.env.local scripts/verify-tenancy.mts",
     "measure:stability": "node --conditions=react-server --env-file=.env.local scripts/measure-judge-stability.mts",
+    "verify:effect": "node --conditions=react-server --env-file=.env.local scripts/verify-effect.mts",
     "verify:models": "node --conditions=react-server --env-file=.env.local scripts/verify-models.mts",
     "verify:byok": "node --conditions=react-server --env-file=.env.local scripts/verify-byok.mts",
     "seed:docs": "node --conditions=react-server --env-file=.env.local scripts/seed-docs.mts"

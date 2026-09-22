@@ -57,9 +57,10 @@ export async function retestCase(args: {
     .from("agents").select("config").eq("id", run.agent_id).maybeSingle();
   if (!agentRow) throw new Error("The agent this scenario was run against no longer exists.");
 
-  // `forbidden` lives only in the suite — run_cases never stored it — and the judge
-  // needs it to grade the same way it did the first time. Without it the retest would
-  // be a slightly easier test than the run, which is the one thing it must not be.
+  // `forbidden` and `effect` live only in the suite — run_cases never stored either —
+  // and the judge needs them to grade the same way it did the first time. Without
+  // them the retest would be a slightly easier test than the run, which is the one
+  // thing it must not be: a retest exists to predict the run.
   const { data: suiteRow } = await client
     .from("suites").select("cases").eq("id", run.suite_id).maybeSingle();
   const suiteCases = Array.isArray(suiteRow?.cases) ? (suiteRow.cases as Suite["cases"]) : [];
@@ -74,6 +75,7 @@ export async function retestCase(args: {
     expected_behavior: runCase.expected as string,
     assertions: Array.isArray(runCase.assertions) ? (runCase.assertions as string[]) : [],
     forbidden: fromSuite?.forbidden,
+    effect: fromSuite?.effect,
   };
 
   const adapter = await buildAgentAdapter({
@@ -94,6 +96,7 @@ export async function retestCase(args: {
       status: outcome.status,
       rationale: outcome.rationale,
       failed_assertions: outcome.failedAssertions,
+      evidence_gap: outcome.evidenceGap,
       judge_model: outcome.judgeModel,
       judge_votes: outcome.judgeVotes,
       judge_agreement: outcome.judgeAgreement,

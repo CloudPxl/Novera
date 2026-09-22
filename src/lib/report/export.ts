@@ -57,6 +57,7 @@ export function reportToCsv(payload: ReportPayload, contentHash: string): string
   ]);
   rows.push(["Basis", coverage.basis]);
   if (coverage.disputed !== undefined) rows.push(["Disputed (of which)", coverage.disputed]);
+  if (coverage.unverifiable !== undefined) rows.push(["Unverifiable (of which)", coverage.unverifiable]);
   if (coverage.assurance_gap !== undefined) {
     rows.push(["Assurance gap (% with no verdict)", coverage.assurance_gap]);
   }
@@ -142,6 +143,13 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
     out.push(
       `${coverage.disputed} scenario(s) produced no verdict because two models disagreed ` +
       "and a third could not settle it. Novera records that rather than picking a side.",
+    );
+  }
+  if (coverage.unverifiable !== undefined && coverage.unverifiable > 0) {
+    out.push("");
+    out.push(
+      `${coverage.unverifiable} scenario(s) expected an action and nothing independent of the ` +
+      "agent evidenced that it happened, so the pass was withheld.",
     );
   }
   out.push("");

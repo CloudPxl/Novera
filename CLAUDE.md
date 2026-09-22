@@ -82,8 +82,8 @@ one recorded decision.
 
 Working end to end: `npm run demo:run`, `npm run verify:db`, `npm run verify:access`,
 `npm run verify:tenancy`, `npm run calibrate`, `npm run measure:stability`,
-`npm run migrate`, `npm run seed:suites`. Scripts run with `--conditions=react-server`
-so `server-only` resolves to its no-op. `npm test` — 119 passing.
+`npm run migrate`, `npm run seed:suites`, `npm run verify:models`, `npm run verify:effect`. Scripts run with `--conditions=react-server`
+so `server-only` resolves to its no-op. `npm test` — 167 passing.
 
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
 policy text and no raw agent response, with expiry and revocation enforced.
@@ -155,7 +155,7 @@ Suites can be imported (JSON or CSV) and are validated case by case by
 `src/lib/suites/validate.ts`, which the seeder uses too.
 
 Measured, not assumed: no page overflows at 390/768/1024/1440, and every page passes
-axe-core at 390 and 1440. `npm test` — 119 passing.
+axe-core at 390 and 1440. `npm test` — 167 passing.
 
 Three rules learned the hard way and worth keeping in front of you:
 - **A report payload change breaks every document already in a client's hands.** Adding
@@ -173,17 +173,38 @@ could not settle it is `disputed`, and it says something different about the age
 timed-out endpoint. Reports also carry the **assurance gap** — the share of the suite that
 produced no verdict — because that is the number a reader needs beside INCOMPLETE.
 
-**Effect verification is the next real capability, and it gates suite expansion.** A
-trace proves a tool was called, not that the customer's state changed. We are not exposed
-today only because every effect-shaped case in `eu-support v1` is a refusal case, where a
-pass means no action was claimed. The moment the suite contains an authorised action that
-should succeed, a pass would rest on the agent's own word. So `unable_to_verify` and an
-evidence source come **before** 16 → 24, not after. See `docs/COMPETITION.md`.
+**A verdict is only as independent as the models behind it.** Grading has gone to two
+models since 0008, but nothing required them to be two *different vendors* — both votes
+could come from one vendor's own model family, sharing a lineage, a serving stack and a
+rate limit, while the report said "two independent models". Each later opinion is now
+asked of a vendor that has not spoken yet; a same-vendor second opinion is accepted only
+when no other vendor can be reached, and the report says which happened. Derived from
+`judge_votes`, so every historical run can be described honestly without a migration.
+Verified live: 16 of 16 verdicts corroborated across groq, mistral and openrouter.
+
+**A claimed action is not a verified one.** A scenario may declare an `effect` — what is
+supposed to change, and what would count as proof (`tool_invoked` or `state_confirmed`).
+A pass is withheld when the evidence is not there and the case is recorded as `error`
+with an `evidence_gap` (0015), never as a fault in the agent. A fail always stands.
+`state_confirmed` is withheld in every case today because no read-back source exists yet
+— which is the honest state of the product, now visible rather than hidden behind a pass.
+This was the prerequisite for 16 → 24; those cases can now be written.
+
+**Route tables rot silently.** Nothing in the codebase changed and yet
+`google/gemini-3.5-flash-lite` — the second candidate on the judge route, the usual
+corroborating vote — started missing a planted failure, reproducibly, and
+`gemini-3.5-flash` stopped returning a readable verdict at all (its thinking spends the
+whole output budget). Models move under a fixed name. Google is out of both grading
+routes and stays only on `diagnose` and `draft`, where a human approves the output.
+`npm run verify:models` checks every route candidate cheaply; `npm run calibrate`
+re-measures grading quality and costs real quota.
 
 Remaining: decide a price — `docs/COMPETITION.md` has the competitor anchors and the
-argument for pricing a verified run rather than model calls.
+argument for pricing a verified run rather than model calls. Two operational notes: the
+OpenAI key authenticates but has no credits, so it is in no route; and `MISTRAL_API_KEY`
+must be set in Vercel for production to grade across three vendors rather than two.
 
-Free-tier ceiling worth remembering: Groq is 8,000 tokens/minute and consensus grading
-doubles the judge calls, so the router falls through to Google mid-run more often than
-before. Runs still complete with zero errors, but throughput is the thing to measure
-before promising concurrent customer runs.
+Free-tier ceilings worth remembering: Groq is 8,000 tokens/minute, Mistral's free tier is
+about one request per second, and Google's free tier can be exhausted for the day by a
+couple of calibration runs. Consensus doubles the judge calls, so throughput is the thing
+to measure before promising concurrent customer runs.

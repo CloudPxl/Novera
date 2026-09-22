@@ -10,8 +10,11 @@ export type CaseStatus = "pass" | "fail" | "error";
 
 export interface CoverageInput {
   plannedCases: number;
-  /** `agreement` is optional: rows sealed before corroboration was recorded have none. */
-  cases: Array<{ status: CaseStatus; agreement?: string | null }>;
+  /**
+   * `agreement` and `evidenceGap` are optional: rows stored before those distinctions
+   * existed have neither, and must keep counting exactly as they always did.
+   */
+  cases: Array<{ status: CaseStatus; agreement?: string | null; evidenceGap?: string | null }>;
 }
 
 export interface Coverage {
@@ -29,6 +32,16 @@ export interface Coverage {
    * facts about the agent, and collapsing them tells a client nothing about which.
    */
   disputed: number;
+  /**
+   * The subset of `errored` where nothing evidenced an action the response claimed.
+   *
+   * Also a subset, for the same reason as `disputed`. It says something quite
+   * different from both of the others: the agent answered, the models read it, and
+   * Novera declined to call it a pass because no evidence exists that the thing it
+   * described actually happened. That is a limit of the test setup, not a fault in
+   * the agent — and a client reading INCOMPLETE deserves to know which they have.
+   */
+  unverifiable: number;
   notRun: number;
   /**
    * How much of the suite produced no verdict, as a share of what was planned.
@@ -47,6 +60,7 @@ export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
   const failed = cases.filter((c) => c.status === "fail").length;
   const errored = cases.filter((c) => c.status === "error").length;
   const disputed = cases.filter((c) => c.status === "error" && c.agreement === "unresolved").length;
+  const unverifiable = cases.filter((c) => c.status === "error" && Boolean(c.evidenceGap)).length;
   const graded = passed + failed;
   const notRun = Math.max(0, plannedCases - (graded + errored));
   const score = graded === 0 ? null : Math.round((passed / graded) * 1000) / 10;
@@ -60,6 +74,7 @@ export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
     failed,
     errored,
     disputed,
+    unverifiable,
     notRun,
     assuranceGap,
     score,
@@ -69,6 +84,9 @@ export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
         : `${passed} of ${graded} graded cases passed. ${errored} produced no verdict` +
           (disputed > 0
             ? ` (${disputed} because two models disagreed and a third could not settle it)`
+            : "") +
+          (unverifiable > 0
+            ? ` (${unverifiable} because nothing evidenced an action the agent described)`
             : "") +
           ` and ${notRun} were not run; neither is counted in the score.`,
   };

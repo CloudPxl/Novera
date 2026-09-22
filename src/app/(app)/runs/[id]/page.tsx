@@ -74,7 +74,7 @@ export default async function RunPage({
         await db
           .from("run_cases")
           .select(
-            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes",
+            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap",
           )
           .eq("run_id", id)
           .order("case_id")
@@ -189,6 +189,8 @@ export default async function RunPage({
     severity: c.severity as string,
     // Carried so coverage can separate a deadlocked verdict from a dead endpoint.
     agreement: (c.judge_agreement as string | null) ?? null,
+    // ...and an unverifiable action from both of them.
+    evidenceGap: (c.evidence_gap as string | null) ?? null,
   }));
 
   const runCoverage = coverage({ plannedCases, cases: statuses });
@@ -240,6 +242,7 @@ export default async function RunPage({
     // Which vendors actually voted. Stored since 0008 and never read: two votes from
     // one vendor's own model family were being shown as "confirmed by a second model".
     judgeVotes: Array.isArray(c.judge_votes) ? (c.judge_votes as CaseRow["judgeVotes"]) : [],
+    evidenceGap: (c.evidence_gap as string | null) ?? null,
     latencyMs: (c.latency_ms as number | null) ?? null,
   }));
 

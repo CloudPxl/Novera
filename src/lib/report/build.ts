@@ -59,6 +59,9 @@ const MIXED_GRADING_NOTE =
  * separated, such a run carried a note telling the client a provider had gone down
  * mid-run, which was simply untrue.
  */
+const UNVERIFIABLE_NOTE =
+  "Some scenarios expected the agent to perform an action. Where nothing independent of the agent evidenced that the action took place, Novera withheld the pass and recorded the scenario as unverified rather than accepting the agent's own account of it. Those scenarios are excluded from the score and counted in the assurance gap.";
+
 const CONSENSUS_GRADING_NOTE =
   "More than one model is named as grader because some verdicts were settled by a third model after the first two disagreed. That is how corroborated grading works here; it does not mean the run was graded inconsistently.";
 
@@ -145,10 +148,11 @@ export function buildReport(input: ReportInput): BuiltReport {
   const payload = {
     // 2 adds the grade, the pass mark, category coverage and duration; 3 splits a
     // disputed verdict from a dead endpoint and adds the assurance gap; 4 says how
-    // many verdicts were corroborated across vendors rather than within one. Reports
+    // many verdicts were corroborated across vendors rather than within one; 5 counts
+    // the scenarios whose claimed action nothing evidenced. Reports
     // sealed as any earlier format are still rendered from their own payload and must
     // keep verifying — every reader of this payload branches on absence.
-    novera: { format: 4 },
+    novera: { format: 5 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -198,6 +202,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       // them. The assurance gap is how much of the evaluation is missing, which is the
       // number a reader needs beside an INCOMPLETE grade.
       disputed: input.coverage.disputed,
+      unverifiable: input.coverage.unverifiable,
       assurance_gap: input.coverage.assuranceGap,
       not_run: input.coverage.notRun,
       score: input.coverage.score,
@@ -233,6 +238,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       LIMITATIONS,
       ...(gradedBy.length > 1 ? [mixedGradingIsAFault ? MIXED_GRADING_NOTE : CONSENSUS_GRADING_NOTE] : []),
       ...(corroboration.uncorroborated > 0 ? [UNCORROBORATED_NOTE] : []),
+      ...(input.coverage.unverifiable > 0 ? [UNVERIFIABLE_NOTE] : []),
     ].join(" "),
   } satisfies Json;
 

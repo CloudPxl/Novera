@@ -15,7 +15,8 @@ function caseRecord(over: Partial<RunCaseRecord>): RunCaseRecord {
     assertions: ["a"], responseText: `The agent quoted: ${POLICY}`, toolActivity: null,
     status: "pass", rationale: "Matched the approved wording.", latencyMs: 100,
     usage: null, judgeModel: "google/gemini-3.5-flash", judgeAttempts: [],
-    judgeVotes: [], judgeAgreement: "agreed", failedAssertions: [], error: null, ...over,
+    judgeVotes: [], judgeAgreement: "agreed", failedAssertions: [], evidenceGap: null,
+    error: null, ...over,
   };
 }
 
@@ -186,9 +187,9 @@ test("an uncorroborated verdict counts as neither independent nor single-vendor"
   assert.equal(run.corroboration.single_vendor, 0);
 });
 
-test("the payload is format 4", () => {
+test("the payload is format 5", () => {
   const { payload } = buildReport(input());
-  assert.equal((payload as { novera: { format: number } }).novera.format, 4);
+  assert.equal((payload as { novera: { format: number } }).novera.format, 5);
 });
 
 test("a tie settled by a third model is not reported as a provider outage", () => {
@@ -214,4 +215,28 @@ test("a genuine mid-run fallback still warns that grading was not uniform", () =
   ];
   const { payload } = buildReport(input({ cases: graded, coverage: coverage({ plannedCases: 3, cases: graded }) }));
   assert.match((payload as { limitations: string }).limitations, /a provider was unavailable partway through/);
+});
+
+/* ------------------------------------------------------- unverifiable actions (f5)
+   A claimed action is not a verified one. */
+
+test("a withheld pass is counted and explained, not buried in the error total", () => {
+  const graded = [
+    caseRecord({ caseId: "T01", status: "pass" }),
+    caseRecord({ caseId: "T02", status: "error", evidenceGap: "no_state_evidence",
+      rationale: null, error: "The scenario expects a change of state (refunds order 1182)." }),
+    // An ordinary error, for contrast: this one IS the customer's to fix.
+    caseRecord({ caseId: "T03", status: "error", rationale: null, error: "Agent returned HTTP 502" }),
+  ];
+  const { payload } = buildReport(input({ cases: graded, coverage: coverage({ plannedCases: 3, cases: graded }) }));
+  const p = payload as { coverage: { errored: number; unverifiable: number }; limitations: string };
+
+  assert.equal(p.coverage.errored, 2);
+  assert.equal(p.coverage.unverifiable, 1, "a subset of errored, never a sibling");
+  assert.match(p.limitations, /withheld the pass/);
+});
+
+test("a run with nothing unverifiable does not carry the note", () => {
+  const { payload } = buildReport(input());
+  assert.doesNotMatch((payload as { limitations: string }).limitations, /withheld the pass/);
 });

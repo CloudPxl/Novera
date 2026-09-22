@@ -23,6 +23,8 @@ export interface CaseRow {
   judgeModel: string | null;
   judgeAgreement: string | null;
   judgeVotes: Array<{ model?: unknown; status?: unknown }>;
+  /** Set when a pass was withheld for want of evidence, rather than the agent failing. */
+  evidenceGap: string | null;
   latencyMs: number | null;
 }
 
@@ -297,6 +299,18 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
                 );
               })}
             </ul>
+          )}
+
+          {/* An evidence gap is not a fault in the agent, and the row has to say so:
+              an operator seeing "no result" would otherwise go looking at their
+              endpoint for a problem that is in the test setup. */}
+          {row.evidenceGap && (
+            <p className="mt-2 rounded-control border border-warning-border bg-warning-surface px-3 py-2 text-xs leading-relaxed text-warning-text">
+              <span className="font-semibold">Unable to verify.</span>{" "}
+              {row.evidenceGap === "no_tool_evidence"
+                ? "The response reads as though the action was carried out, but no tool activity was recorded for it. Novera does not pass an action on the agent's own account of it."
+                : "Confirming this needs a source Novera can read independently of the agent, and none is configured. The outcome is unverified rather than failed."}
+            </p>
           )}
 
           {unrecorded && (

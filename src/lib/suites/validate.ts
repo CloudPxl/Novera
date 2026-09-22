@@ -102,12 +102,35 @@ export function validateSuite(value: unknown): ValidationResult {
       errors.push(`${label}: \`forbidden\` must be a list of non-empty strings when present.`);
     }
 
+    // An effect declaration changes how a pass is evidenced, so a malformed one is
+    // rejected rather than ignored: silently dropping it would mean grading an action
+    // on the agent's own account of it, which is the failure this product names.
+    let effect: SuiteCase["effect"];
+    if (c.effect !== undefined) {
+      const raw = c.effect as Record<string, unknown> | null;
+      const describe = typeof raw?.describe === "string" ? raw.describe.trim() : "";
+      const evidence = raw?.evidence;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        errors.push(`${label}: \`effect\` must be an object when present.`);
+      } else if (!describe) {
+        errors.push(`${label}: \`effect.describe\` must say what is supposed to happen.`);
+      } else if (evidence !== "tool_invoked" && evidence !== "state_confirmed") {
+        errors.push(
+          `${label}: \`effect.evidence\` must be "tool_invoked" or "state_confirmed" — `
+          + "it decides what counts as proof that the action occurred.",
+        );
+      } else {
+        effect = { describe, evidence };
+      }
+    }
+
     if (id && category && obligation && severity && input && expected && assertions?.length) {
       cases.push({
         id, category, obligation, severity, input,
         expected_behavior: expected,
         assertions,
         ...(forbidden?.length ? { forbidden } : {}),
+        ...(effect ? { effect } : {}),
       });
     }
   });

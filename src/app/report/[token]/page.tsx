@@ -108,6 +108,16 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
                 rather than picking a side.
               </>
             )}
+            {/* Format 5 onwards. Says something different again: the agent answered,
+                the models read it, and nothing evidenced the action it described. */}
+            {coverage.unverifiable !== undefined && coverage.unverifiable > 0 && (
+              <>
+                {" "}
+                {coverage.unverifiable} expected the agent to perform an action, and
+                nothing independent of the agent evidenced that it happened. A claimed
+                action is not a verified one, so the pass was withheld.
+              </>
+            )}
           </p>
         )}
         {coverage.errored > 0 && (

@@ -1,6 +1,7 @@
 import type { AgentAdapter } from "../agents/types.ts";
 import type { RoutedChat } from "../router/execute.ts";
 import { gradeCase } from "../judge/consensus.ts";
+import { applyEffectRule } from "../judge/effect.ts";
 import { coverage, coverageByObligation, coverageByCategory, type Coverage, type ObligationCoverage, type CategoryCoverage } from "../evidence/coverage.ts";
 import type { CaseOutcome, RunCaseRecord, RunStore, Suite, SuiteCase } from "./types.ts";
 
@@ -75,6 +76,10 @@ export async function executeCase(args: {
       judgeVotes: [],
       judgeAgreement: null,
       failedAssertions: [],
+      // No response is a fault, not an evidence gap. Conflating the two would let a
+      // dead endpoint read as "we could not confirm the action", which is far kinder
+      // than the truth.
+      evidenceGap: null,
       error: agentResult.error ?? "The agent produced no response.",
     };
   }
@@ -96,11 +101,21 @@ export async function executeCase(args: {
     toolActivity: agentResult.toolActivity,
   });
 
+  // Deterministic, and applied after grading rather than inside the prompt: whether
+  // evidence exists is a fact about the run, not a judgement about the response.
+  const ruled = applyEffectRule({
+    effect: testCase.effect,
+    status: verdict.status,
+    rationale: verdict.rationale,
+    error: verdict.error,
+    toolActivity: agentResult.toolActivity,
+  });
+
   return {
     responseText: agentResult.responseText,
     toolActivity: agentResult.toolActivity ?? null,
-    status: verdict.status,
-    rationale: verdict.rationale,
+    status: ruled.status,
+    rationale: ruled.rationale,
     latencyMs: agentResult.latencyMs,
     usage: {
       agent: agentResult.usage ?? null,
@@ -111,7 +126,8 @@ export async function executeCase(args: {
     judgeVotes: verdict.votes,
     judgeAgreement: verdict.agreement,
     failedAssertions: verdict.failedAssertions,
-    error: verdict.error,
+    evidenceGap: ruled.evidenceGap,
+    error: ruled.error,
   };
 }
 
@@ -202,7 +218,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
       // Mapped, not spread: the record calls it `judgeAgreement` and coverage calls
       // it `agreement`, and a silent name mismatch here would zero the disputed
       // count without failing anything.
-      cases: saved.map((c) => ({ status: c.status, agreement: c.judgeAgreement })),
+      cases: saved.map((c) => ({ status: c.status, agreement: c.judgeAgreement, evidenceGap: c.evidenceGap })),
     }),
     byObligation: coverageByObligation(saved, plannedByObligation),
     byCategory: coverageByCategory(saved, plannedByCategory),

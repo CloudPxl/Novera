@@ -128,8 +128,10 @@ export function Scorecard({
             <Badge tone="neutral">{coverage.planned} planned</Badge>
             <Badge tone={coverage.passed > 0 ? "pass" : "neutral"}>{coverage.passed} passed</Badge>
             <Badge tone={coverage.failed > 0 ? "fail" : "neutral"}>{coverage.failed} failed</Badge>
-            {coverage.errored - coverage.disputed > 0 && (
-              <Badge tone="error">{coverage.errored - coverage.disputed} no result</Badge>
+            {coverage.errored - coverage.disputed - coverage.unverifiable > 0 && (
+              <Badge tone="error">
+                {coverage.errored - coverage.disputed - coverage.unverifiable} no result
+              </Badge>
             )}
             {/* Separated on purpose. "The endpoint timed out" and "our two judges
                 deadlocked on what this reply means" are different facts about the
@@ -139,11 +141,19 @@ export function Scorecard({
                 <Badge tone="error">{coverage.disputed} disputed</Badge>
               </Tooltip>
             )}
+            {/* A third distinct thing, and the one least likely to be the agent's
+                fault: the reply arrived, the models read it, and nothing evidenced the
+                action it described. */}
+            {coverage.unverifiable > 0 && (
+              <Tooltip text="These scenarios expected the agent to do something. Nothing independent of the agent evidenced that it happened, so the pass was withheld rather than granted on the agent's own account.">
+                <Badge tone="high">{coverage.unverifiable} unable to verify</Badge>
+              </Tooltip>
+            )}
             {coverage.notRun > 0 && <Badge tone="error">{coverage.notRun} not run</Badge>}
           </div>
 
           <p className="mt-3 flex flex-wrap items-center gap-1.5 text-xs leading-relaxed text-ink-faint">
-            <Tooltip text="Every verdict goes to two independent models. A third settles a disagreement. A tie that cannot be broken is recorded as no result, never guessed.">
+            <Tooltip text="Every verdict goes to two models from different vendors wherever a second vendor can be reached. A third settles a disagreement. A tie that cannot be broken is recorded as no result, never guessed.">
               <span className="underline decoration-dotted underline-offset-2">How verdicts were reached</span>
             </Tooltip>
             <span>— {engineLine(corroboration, judgeModel)}</span>

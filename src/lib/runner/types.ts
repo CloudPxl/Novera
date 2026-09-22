@@ -1,4 +1,5 @@
 import type { CaseStatus } from "../evidence/coverage.ts";
+import type { CaseEffect, EvidenceGap } from "../judge/effect.ts";
 
 export interface SuiteCase {
   id: string;
@@ -9,6 +10,11 @@ export interface SuiteCase {
   expected_behavior: string;
   assertions: string[];
   forbidden?: string[];
+  /**
+   * Present when the expectation is an action, not just words. A pass then has to be
+   * evidenced by something other than the agent saying it happened.
+   */
+  effect?: CaseEffect;
 }
 
 export interface Suite {
@@ -43,6 +49,12 @@ export interface CaseOutcome {
   failedAssertions: string[];
   /** Whether the models agreed, a third settled it, or it could not be settled. */
   judgeAgreement: string | null;
+  /**
+   * Set when a pass was withheld because nothing evidenced the action it claimed.
+   * Null on every case that produced a verdict, and on every row stored before the
+   * distinction existed.
+   */
+  evidenceGap: EvidenceGap | null;
   error: string | null;
 }
 

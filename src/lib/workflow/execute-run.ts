@@ -151,7 +151,7 @@ async function summaryFromStoredRows(args: {
 
   const { data: rows } = await client
     .from("run_cases")
-    .select("case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, failed_assertions, error")
+    .select("case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, failed_assertions, evidence_gap, error")
     .eq("run_id", runId)
     .order("case_id");
 
@@ -175,6 +175,7 @@ async function summaryFromStoredRows(args: {
     judgeVotes: Array.isArray(r.judge_votes) ? (r.judge_votes as unknown[]) : [],
     judgeAgreement: (r.judge_agreement as string | null) ?? null,
     failedAssertions: Array.isArray(r.failed_assertions) ? (r.failed_assertions as string[]) : [],
+    evidenceGap: (r.evidence_gap as RunCaseRecord["evidenceGap"]) ?? null,
     error: (r.error as string | null) ?? null,
   }));
 
@@ -194,7 +195,7 @@ async function summaryFromStoredRows(args: {
       // Mapped, not spread: the record calls it `judgeAgreement` and coverage calls it
       // `agreement`, and a silent name mismatch here would zero the disputed count
       // without failing anything.
-      cases: cases.map((c) => ({ status: c.status, agreement: c.judgeAgreement })),
+      cases: cases.map((c) => ({ status: c.status, agreement: c.judgeAgreement, evidenceGap: c.evidenceGap })),
     }),
     byObligation: coverageByObligation(cases, plannedByObligation),
     byCategory: coverageByCategory(cases, plannedByCategory),

@@ -790,3 +790,35 @@ errors as `{"object":"error","message":...}` with no `error` key, so every Mistr
 failure arrived as bare HTTP status text. And an empty completion was returned as `""`,
 travelled two layers, and landed in a customer's report as an errored case the agent
 never failed — it is now a provider error, so the router simply asks the next model.
+
+## 2026-09-22 — "Unable to verify" is a first-class outcome (migration 0015)
+A trace proves a tool was called; prose proves nothing at all. "I've issued the refund"
+is a sentence. Until now a model grading that sentence could return a pass, and the
+report would carry it as evidence that a refund happened.
+
+A scenario may now declare an **effect**: what is supposed to change, and what would
+count as proof — `tool_invoked` (the agent's recorded tool activity shows the attempt)
+or `state_confirmed` (a source Novera can read independently of the agent). The rule is
+deterministic and applied after grading, never inside the prompt: whether evidence
+exists is a fact about the run, not a judgement about the response.
+
+Only a **pass** is ever withheld. A fail needs no effect evidence — the agent missed an
+assertion or did something forbidden, and the text carries that. Withholding a fail
+would let an unverifiable action launder itself into "no result".
+
+`state_confirmed` is always withheld today, because no read-back source exists yet. That
+is the honest state of the product and it is now visible in the report instead of hidden
+behind a pass. When a read-back source lands, only that one branch changes.
+
+No new status. `error` already means "produced no verdict, excluded from the score", and
+that is exactly right. `evidence_gap` (0015, nullable) records *why*, so the report can
+separate three things a single "no result" was hiding: a dead endpoint, a deadlocked
+pair of models, and an action nobody could confirm. Only the first is the customer's to
+fix. Report payload format 5 counts them, with the absence branch for formats 1–4 in the
+same commit; all nine sealed reports verified rendering and exporting.
+
+Proved against the live path by `npm run verify:effect`: the flawed fixture's claim that
+it deleted an account grades as a **pass** on its text and as **unable to verify** the
+moment the scenario says a state change is what was expected.
+
+This was the prerequisite for 16 → 24. Those cases can now be written.

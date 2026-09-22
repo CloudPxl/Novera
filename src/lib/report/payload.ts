@@ -71,6 +71,12 @@ export interface ReportPayload {
     errored: number;
     /** Absent before format 3. The subset of `errored` the models could not settle. */
     disputed?: number;
+    /**
+     * Absent before format 5. The subset of `errored` where the agent described an
+     * action and nothing evidenced that it happened, so a pass was withheld. A limit
+     * of the test setup, not a fault in the agent.
+     */
+    unverifiable?: number;
     /** Absent before format 3. Share of the suite that produced no verdict, as a %. */
     assurance_gap?: number;
     not_run: number;

@@ -12,6 +12,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import { validateSuite } from "../src/lib/suites/validate.ts";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -28,25 +29,19 @@ const dir = path.join(process.cwd(), "data", "suites");
  * calibration ground truth. Identify a suite by its shape rather than its extension,
  * and say why anything else was skipped instead of failing on it.
  */
-function isSuite(value: unknown): value is { key: string; version: number; name: string; cases: unknown[] } {
-  const v = value as Record<string, unknown> | null;
-  return (
-    !!v &&
-    typeof v.key === "string" &&
-    typeof v.version === "number" &&
-    typeof v.name === "string" &&
-    Array.isArray(v.cases)
-  );
-}
 
 for (const file of (await readdir(dir)).filter((f) => f.endsWith(".json"))) {
   const parsed = JSON.parse(await readFile(path.join(dir, file), "utf8"));
 
-  if (!isSuite(parsed)) {
-    console.log(`  skipped    ${file} (not a suite: needs key, version, name and cases)`);
+  // The same validator the import action uses, so a suite that seeds here cannot be
+  // one a customer would be told is invalid — and vice versa.
+  const result = validateSuite(parsed);
+  if (!result.ok) {
+    console.log(`  skipped    ${file}`);
+    for (const problem of result.errors) console.log(`             ${problem}`);
     continue;
   }
-  const suite = parsed;
+  const suite = result.suite;
 
   const { data: existing } = await db
     .from("suites")

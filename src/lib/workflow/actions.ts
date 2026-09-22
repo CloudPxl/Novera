@@ -6,6 +6,7 @@ import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { storeSecret } from "@/lib/store/secrets.ts";
 import { probeAgent } from "@/lib/workflow/run.ts";
 import { retestCase } from "@/lib/workflow/retest.ts";
+import { validateSuite, suiteFromCsv } from "@/lib/suites/validate.ts";
 import { diagnoseFailure } from "@/lib/diagnose/index.ts";
 import { applyPolicyChange } from "@/lib/diagnose/parse.ts";
 import { createRoutedChat } from "@/lib/router/execute.ts";
@@ -541,4 +542,95 @@ export async function retestOneCase(_prev: FormState, form: FormData): Promise<F
   } catch (thrown) {
     return { error: thrown instanceof Error ? thrown.message : "The retest could not be run." };
   }
+}
+
+const MAX_SUITE_BYTES = 1_000_000;
+
+/**
+ * Imports a scenario suite the workspace owns.
+ *
+ * Two rules, both inherited from what a suite is for:
+ *
+ *  - **A version is immutable.** Importing over an existing key and version is
+ *    refused rather than merged, because reports already issued name that version
+ *    and must keep meaning what they meant. Changing a suite means a new version.
+ *  - **It is validated whole.** A file with one bad case is rejected entirely. A
+ *    partially imported suite silently changes what every future score is out of.
+ *
+ * The suite is stored against the workspace, never as a shared one, so an import can
+ * never alter what another customer is graded on.
+ */
+export async function importSuite(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a .json or .csv file." };
+  if (file.size > MAX_SUITE_BYTES) {
+    return { error: `That file is ${Math.round(file.size / 1024)} KB; the limit is ${MAX_SUITE_BYTES / 1000} KB.` };
+  }
+
+  const text = await file.text();
+  const isCsv = file.name.toLowerCase().endsWith(".csv");
+
+  const formKey = String(form.get("key") ?? "").trim().toLowerCase();
+  const formName = String(form.get("name") ?? "").trim();
+  const formVersion = Number(String(form.get("version") ?? "").trim());
+
+  let result;
+  if (isCsv) {
+    if (!formKey || !formName || !Number.isInteger(formVersion) || formVersion < 1) {
+      return { error: "A CSV carries no name of its own, so a key, a name and a version are required." };
+    }
+    result = suiteFromCsv(text, { key: formKey, name: formName, version: formVersion });
+  } else {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { error: "That file is not valid JSON." };
+    }
+    const withOverrides =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? {
+            ...(parsed as Record<string, unknown>),
+            ...(formKey ? { key: formKey } : {}),
+            ...(formName ? { name: formName } : {}),
+            ...(Number.isInteger(formVersion) && formVersion >= 1 ? { version: formVersion } : {}),
+          }
+        : parsed;
+    result = validateSuite(withOverrides);
+  }
+
+  if (!result.ok) {
+    const shown = result.errors.slice(0, 6);
+    const more = result.errors.length - shown.length;
+    return { error: shown.join(" ") + (more > 0 ? ` (and ${more} more)` : "") };
+  }
+
+  const suite = result.suite;
+  const admin = await assertMembership(user.id, workspace.id);
+
+  const { data: clash } = await admin
+    .from("suites").select("id")
+    .eq("workspace_id", workspace.id)
+    .eq("key", suite.key).eq("version", suite.version)
+    .maybeSingle();
+  if (clash) {
+    return {
+      error:
+        `This workspace already has ${suite.key} v${suite.version}. A version is immutable because ` +
+        "reports already name it — import this as a new version instead.",
+    };
+  }
+
+  const { error } = await admin.from("suites").insert({
+    workspace_id: workspace.id,
+    key: suite.key,
+    version: suite.version,
+    name: suite.name,
+    cases: suite.cases,
+  });
+  if (error) return { error: `The suite could not be saved: ${error.message}` };
+
+  revalidatePath("/dashboard");
+  return { notice: `Imported ${suite.name} v${suite.version} — ${suite.cases.length} scenarios.` };
 }

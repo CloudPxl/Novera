@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/primitives.tsx";
 import { Menu, menuItemClass } from "@/components/ui/menu.tsx";
 import { NavLinks, type NavItem } from "./nav-links.tsx";
 import { RunLauncher, type LaunchAgent, type LaunchSuite } from "./run-launcher.tsx";
+import { ImportSuite } from "./import-suite.tsx";
 
 const NAV: NavItem[] = [{ href: "/dashboard", label: "Overview" }];
 
@@ -107,6 +108,8 @@ export async function TopBar() {
               {entitlement.ownKey ? `Own key · ${entitlement.provider}` : `Trial · ${runsLeft} of ${TRIAL_RUN_LIMIT} runs left`}
             </Badge>
           </span>
+
+          <span className="hidden sm:inline"><ImportSuite /></span>
 
           <RunLauncher agents={agents} suites={suites} action={createRun} />
 

@@ -17,6 +17,7 @@ import { SubmitButton } from "@/components/ui/button.tsx";
 import { LiveRun } from "./live.tsx";
 import { Scorecard, type Corroboration } from "./scorecard.tsx";
 import { CaseTable, CategoryCard, type CaseRow } from "./case-table.tsx";
+import { BaselinePicker } from "./baseline-picker.tsx";
 import { DiagnoseButton, ProposalCard, RetestButton, RetestHistory, type Proposal, type Retest } from "./diagnose.tsx";
 
 export const metadata: Metadata = { title: "Run · Novera" };
@@ -33,8 +34,15 @@ function asStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
-export default async function RunPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function RunPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ compare?: string }>;
+}) {
   const { id } = await params;
+  const { compare } = await searchParams;
   await requireWorkspace();
   const db = await sessionClient();
 
@@ -135,19 +143,39 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
     retestsByCase.set(r.run_case_id as string, list);
   }
 
-  // Comparison against the run this one was measured from.
+  // Which runs this one can honestly be compared with: the same agent and the same
+  // suite. Comparing across suites would produce a fixed/broken list out of scenarios
+  // that were never the same scenarios — a difference that says nothing about the
+  // agent. The selector therefore cannot offer one.
+  const { data: comparableRuns } = settled
+    ? await db
+        .from("runs")
+        .select("id, created_at, policy_id")
+        .eq("agent_id", run.agent_id)
+        .eq("suite_id", run.suite_id)
+        .eq("status", "completed")
+        .neq("id", id)
+        .order("created_at", { ascending: false })
+        .limit(20)
+    : { data: null };
+
+  // The baseline the run was measured from, unless the operator picked another — and
+  // only if that one is genuinely comparable.
+  const requested = compare && (comparableRuns ?? []).some((r) => r.id === compare) ? compare : null;
+  const baselineRunId = requested ?? (run.baseline_run_id as string | null);
+
   let comparison: ReturnType<typeof compareRuns> | null = null;
   let baselinePolicyVersion: number | null = null;
-  if (settled && run.baseline_run_id && rows.length) {
+  if (settled && baselineRunId && rows.length) {
     const { data: before } = await db
-      .from("run_cases").select("case_id, status").eq("run_id", run.baseline_run_id);
+      .from("run_cases").select("case_id, status").eq("run_id", baselineRunId);
     if (before?.length) {
       comparison = compareRuns(
         before.map((c) => ({ caseId: c.case_id as string, status: c.status as "pass" | "fail" | "error" })),
         rows.map((c) => ({ caseId: c.case_id as string, status: c.status as "pass" | "fail" | "error" })),
       );
       const { data: beforeRun } = await db
-        .from("runs").select("policy_id").eq("id", run.baseline_run_id).maybeSingle();
+        .from("runs").select("policy_id").eq("id", baselineRunId).maybeSingle();
       const { data: beforePolicy } = beforeRun
         ? await db.from("policies").select("version").eq("id", beforeRun.policy_id).maybeSingle()
         : { data: null };
@@ -356,31 +384,59 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
           </section>
 
           {/* ----------------------------------------------- tier 4: comparison */}
-          {comparison && (
+          {/* Shown whenever there is anything to compare against, not only when this
+              run recorded a baseline. Gating the whole section on an existing
+              comparison meant a run started on its own could never begin one, even
+              with comparable runs sitting right there. */}
+          {(comparison || (comparableRuns ?? []).length > 0) && (
             <Reveal className="mt-10">
               <section>
-                <h2 className="type-h2">Compared with the previous run</h2>
-                <p className="mt-1 type-body text-ink-soft">
-                  Policy v{baselinePolicyVersion ?? "?"} → v{policy?.version}.{" "}
-                  {comparison.comparable
-                    ? "Both runs covered the same scenarios."
-                    : "The two runs did not cover exactly the same scenarios, so this comparison is partial."}
-                </p>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <ChangeGroup title="Fixed" tone={CHANGE_TONES.fixed} ids={comparison.fixed}
-                    empty="Nothing that was failing is now passing." />
-                  <ChangeGroup title="Newly broken" tone={CHANGE_TONES.newFailures} ids={comparison.newFailures}
-                    empty="The change broke nothing that was passing." />
-                  <ChangeGroup title="Still failing" tone={CHANGE_TONES.persistentFailures} ids={comparison.persistentFailures}
-                    empty="No scenario failed in both runs." />
-                  <ChangeGroup title="No result this time" tone={CHANGE_TONES.nowErrored} ids={comparison.nowErrored}
-                    empty="Every scenario produced a verdict." />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="type-h2">Compared with another run</h2>
+                  {(comparableRuns ?? []).length > 0 && (
+                    <BaselinePicker
+                      runId={id}
+                      current={baselineRunId}
+                      placeholder={baselineRunId === null}
+                      options={(comparableRuns ?? []).map((r) => ({
+                        id: r.id as string,
+                        label: new Date(r.created_at as string).toISOString().slice(0, 16).replace("T", " "),
+                      }))}
+                    />
+                  )}
                 </div>
+                {comparison ? (
+                  <>
+                    <p className="mt-1 type-body text-ink-soft">
+                      Policy v{baselinePolicyVersion ?? "?"} → v{policy?.version}.{" "}
+                      {comparison.comparable
+                        ? "Both runs covered the same scenarios."
+                        : "The two runs did not cover exactly the same scenarios, so this comparison is partial."}
+                    </p>
 
-                {comparison.missingFromCurrent.length > 0 && (
-                  <p className="mt-3 text-sm text-warning-text">
-                    Coverage lost since the baseline: {comparison.missingFromCurrent.join(", ")}.
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <ChangeGroup title="Fixed" tone={CHANGE_TONES.fixed} ids={comparison.fixed}
+                        empty="Nothing that was failing is now passing." />
+                      <ChangeGroup title="Newly broken" tone={CHANGE_TONES.newFailures} ids={comparison.newFailures}
+                        empty="The change broke nothing that was passing." />
+                      <ChangeGroup title="Still failing" tone={CHANGE_TONES.persistentFailures} ids={comparison.persistentFailures}
+                        empty="No scenario failed in both runs." />
+                      <ChangeGroup title="No result this time" tone={CHANGE_TONES.nowErrored} ids={comparison.nowErrored}
+                        empty="Every scenario produced a verdict." />
+                    </div>
+
+                    {comparison.missingFromCurrent.length > 0 && (
+                      <p className="mt-3 text-sm text-warning-text">
+                        Coverage lost since the baseline: {comparison.missingFromCurrent.join(", ")}.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="mt-1 type-body text-ink-soft">
+                    This run was not measured against a baseline. Pick one above to see
+                    what changed — only runs of this suite against this agent are offered,
+                    because anything else would report scenarios as fixed or broken that
+                    were never the same scenarios.
                   </p>
                 )}
               </section>

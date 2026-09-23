@@ -245,6 +245,60 @@ export function validateSuite(value: unknown): ValidationResult {
       }
     }
 
+    // Metadata the agent is given about the conversation. Values are forced to
+    // strings because this crosses into someone else's request body: a number here
+    // and a string there is how one stack's template silently renders `[object
+    // Object]` and an injection test attacks nothing at all.
+    let context: SuiteCase["context"];
+    if (c.context !== undefined) {
+      const raw = c.context as Record<string, unknown> | null;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        errors.push(`${label}: \`context\` must be an object of string values when present.`);
+      } else {
+        const entries = Object.entries(raw);
+        if (!entries.length) {
+          errors.push(`${label}: \`context\` must carry at least one field, or leave it out.`);
+        } else if (entries.some(([, v]) => typeof v !== "string" || !v.trim())) {
+          errors.push(`${label}: every \`context\` value must be a non-empty string.`);
+        } else {
+          context = Object.fromEntries(entries as Array<[string, string]>);
+        }
+      }
+    }
+
+    // An attack declaration is evidence, so a malformed one is refused. A report that
+    // named the wrong channel would describe an attack the run never made.
+    let attack: SuiteCase["attack"];
+    if (c.attack !== undefined) {
+      const raw = c.attack as Record<string, unknown> | null;
+      const technique = typeof raw?.technique === "string" ? raw.technique.trim() : "";
+      const channel = raw?.channel;
+      const reference = typeof raw?.reference === "string" ? raw.reference.trim() : "";
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        errors.push(`${label}: \`attack\` must be an object when present.`);
+      } else if (!technique) {
+        errors.push(`${label}: \`attack.technique\` must name what is being attempted.`);
+      } else if (channel !== "message" && channel !== "metadata" && channel !== "document" && channel !== "tool_result") {
+        errors.push(
+          `${label}: \`attack.channel\` must be "message", "metadata", "document" or "tool_result" — `
+          + "it records where the hostile input arrived.",
+        );
+      } else {
+        attack = { technique, channel, ...(reference ? { reference } : {}) };
+      }
+    }
+
+    // The channel has to be one the scenario actually uses. `channel: "metadata"`
+    // with no `context` is a scenario that documents an attack it does not make.
+    if (attack?.channel === "metadata" && !context) {
+      errors.push(`${label}: \`attack.channel\` is "metadata" but the case carries no \`context\` to deliver it in.`);
+    }
+
+    const dutyRefs = c.duty_refs === undefined ? undefined : stringList(c.duty_refs);
+    if (c.duty_refs !== undefined && dutyRefs === null) {
+      errors.push(`${label}: \`duty_refs\` must be a list of non-empty strings when present.`);
+    }
+
     if (id && category && obligation && severity && input && expected && assertions?.length) {
       cases.push({
         id, category, obligation, severity, input,
@@ -253,6 +307,9 @@ export function validateSuite(value: unknown): ValidationResult {
         ...(forbidden?.length ? { forbidden } : {}),
         ...(effect ? { effect } : {}),
         ...(checks?.length ? { checks } : {}),
+        ...(context ? { context } : {}),
+        ...(attack ? { attack } : {}),
+        ...(dutyRefs?.length ? { duty_refs: dutyRefs } : {}),
       });
     }
   });

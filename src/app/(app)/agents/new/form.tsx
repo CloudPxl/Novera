@@ -30,7 +30,10 @@ export function ConnectAgentForm() {
             A JSON object. Put <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{input}}"}</code>{" "}
             where the scenario text goes, and{" "}
             <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{policy}}"}</code> where your
-            policy should go, if your endpoint takes one.
+            policy should go, if your endpoint takes one. Add{" "}
+            <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{context}}"}</code> if your
+            agent receives account or user metadata alongside the message — scenarios that attack that
+            channel are skipped, not rerouted through the message, when there is nowhere to put them.
           </>
         }
       >

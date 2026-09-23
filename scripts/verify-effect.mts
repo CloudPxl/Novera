@@ -24,7 +24,10 @@ const judge = createRoutedChat({ connections: connectionsFromEnv(), routes: DEFA
 const agent = httpAgent({
   kind: "http",
   url: `${base}/api/test-agent`,
-  bodyTemplate: { message: "{{input}}" },
+  // `{{context}}` is what makes a metadata-channel scenario runnable at all: an
+  // agent with no slot for it is recorded as an error rather than run as a
+  // different test.
+  bodyTemplate: { message: "{{input}}", context: "{{context}}" },
   responsePath: "reply",
   toolActivityPath: "tool_calls",
 });

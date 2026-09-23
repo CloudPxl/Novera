@@ -33,7 +33,11 @@ function agentReturning(byInput: Record<string, Partial<AgentResult>>): AgentAda
     ok: true, responseText: `reply to ${input}`, toolActivity: null, latencyMs: 12,
     ...byInput[input],
   });
-  return { probe: async () => make("probe"), send: async ({ input }) => make(input) };
+  return {
+    probe: async () => make("probe"),
+    send: async ({ input }) => make(input),
+    acceptsContext: () => true,
+  };
 }
 
 function judgeReturning(
@@ -132,6 +136,7 @@ test("the approved policy reaches the agent on every case", async () => {
   const { store } = memoryStore();
   const agent: AgentAdapter = {
     probe: async () => ({ ok: true, responseText: "x", toolActivity: null, latencyMs: 1 }),
+    acceptsContext: () => true,
     send: async ({ input, policy }) => {
       seen.push(policy);
       return { ok: true, responseText: `reply to ${input}`, toolActivity: null, latencyMs: 1 };
@@ -190,6 +195,7 @@ test("resuming never re-sends a case the agent already answered", async () => {
   const sent: string[] = [];
   const agent: AgentAdapter = {
     probe: async () => ({ ok: true, responseText: "ok", toolActivity: null, latencyMs: 1 }),
+    acceptsContext: () => true,
     send: async ({ input }) => {
       sent.push(input);
       return { ok: true, responseText: `reply to ${input}`, toolActivity: null, latencyMs: 1 };
@@ -217,6 +223,7 @@ test("a case already under way is finished rather than abandoned at the deadline
   // deadline can land where this test needs it to.
   const slowAgent: AgentAdapter = {
     probe: async () => ({ ok: true, responseText: "ok", toolActivity: null, latencyMs: 1 }),
+    acceptsContext: () => true,
     send: async ({ input }) => {
       await new Promise((r) => setTimeout(r, 40));
       return { ok: true, responseText: `reply to ${input}`, toolActivity: null, latencyMs: 40 };
@@ -278,6 +285,7 @@ test("an ordinary error does not stop the run, however many there are", async ()
   const { store, saved } = memoryStore();
   const dead: AgentAdapter = {
     probe: async () => ({ ok: false, responseText: null, toolActivity: null, latencyMs: 1, error: "HTTP 502" }),
+    acceptsContext: () => true,
     send: async () => ({ ok: false, responseText: null, toolActivity: null, latencyMs: 1, error: "HTTP 502" }),
   };
   const summary = await executeRun({
@@ -360,6 +368,7 @@ test("a case the agent never answered is not put through the rules", async () =>
   const { store, saved } = memoryStore();
   const dead: AgentAdapter = {
     probe: async () => ({ ok: false, responseText: null, toolActivity: null, latencyMs: 1, error: "HTTP 502" }),
+    acceptsContext: () => true,
     send: async () => ({ ok: false, responseText: null, toolActivity: null, latencyMs: 1, error: "HTTP 502" }),
   };
   const checked: Suite = {

@@ -2,6 +2,13 @@ export interface AgentInvocation {
   input: string;
   /** The approved policy for this run, injected wherever the agent config asks for it. */
   policy: string;
+  /**
+   * What the agent is told *about* the conversation rather than by the customer:
+   * CRM fields, a profile, a note carried alongside the ticket. A scenario uses this
+   * to attack the channel an indirect injection really arrives on — text the customer
+   * never typed and the agent never treats as a message.
+   */
+  context?: Record<string, string>;
 }
 
 export interface AgentResult {
@@ -21,6 +28,16 @@ export interface AgentAdapter {
   /** One harmless request, to prove the connection before a suite is trusted. */
   probe(): Promise<AgentResult>;
   send(invocation: AgentInvocation): Promise<AgentResult>;
+  /**
+   * Whether this agent has anywhere to put a scenario's `context`.
+   *
+   * A scenario that declares one and is run against an agent with no place for it is
+   * recorded as an error, never folded into the message. An injection pasted into the
+   * customer's own message is a different test with a different expected behaviour;
+   * running it under the metadata scenario's name would report a verdict about the
+   * wrong attack, which is worse than reporting nothing.
+   */
+  acceptsContext(): boolean;
 }
 
 export interface HttpAgentConfig {

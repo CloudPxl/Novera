@@ -37,6 +37,13 @@ for (const file of (await readdir(dir)).filter((f) => f.endsWith(".json"))) {
   // one a customer would be told is invalid — and vice versa.
   const result = validateSuite(parsed);
   if (!result.ok) {
+    // A labels file says what it is. Printing three validator errors against it read
+    // as a broken suite every time the seeder ran, and a real broken suite would have
+    // been lost in that noise.
+    if (parsed?.labels && parsed?.suite) {
+      console.log(`  not a suite ${file} — calibration ground truth for ${parsed.suite} v${parsed.version}`);
+      continue;
+    }
     console.log(`  skipped    ${file}`);
     for (const problem of result.errors) console.log(`             ${problem}`);
     continue;

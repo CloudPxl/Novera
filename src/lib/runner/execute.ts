@@ -66,7 +66,38 @@ export async function executeCase(args: {
 }): Promise<CaseOutcome> {
   const { testCase, agent, policy, judge, verifier } = args;
 
-  const agentResult = await agent.send({ input: testCase.input, policy });
+  // A scenario whose attack arrives on the metadata channel cannot be run against an
+  // agent that has no metadata channel. Delivering it in the message instead would
+  // quietly convert it into a direct-injection test and report the verdict under this
+  // scenario's name, which is the kind of substitution this product exists to refuse.
+  if (testCase.context && !agent.acceptsContext()) {
+    return {
+      responseText: null,
+      toolActivity: null,
+      status: "error",
+      rationale: null,
+      latencyMs: null,
+      usage: null,
+      judgeModel: null,
+      judgeAttempts: [],
+      judgeVotes: [],
+      judgeAgreement: null,
+      failedAssertions: [],
+      evidenceGap: null,
+      settledBy: null,
+      observation: null,
+      error:
+        "This scenario delivers its input as conversation metadata, and this agent has "
+        + "no {{context}} slot in its request template. It was not run, rather than run "
+        + "as a different test.",
+    };
+  }
+
+  const agentResult = await agent.send({
+    input: testCase.input,
+    policy,
+    ...(testCase.context ? { context: testCase.context } : {}),
+  });
 
   if (!agentResult.ok || agentResult.responseText === null) {
     return {

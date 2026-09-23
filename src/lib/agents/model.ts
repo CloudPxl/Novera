@@ -12,11 +12,25 @@ export function modelAgent(
   provider: Provider,
   apiKey: string,
 ): AgentAdapter {
-  async function call(input: string, policy: string): Promise<AgentResult> {
+  async function call(
+    input: string,
+    policy: string,
+    context?: Record<string, string>,
+  ): Promise<AgentResult> {
     const started = Date.now();
-    const system = policy
+    const base = policy
       ? `${config.systemPrompt}\n\n## Approved policy\n${policy}`
       : config.systemPrompt;
+
+    // Carried plainly, with no warning of our own attached. Customers' stacks put
+    // CRM fields and profile notes into the system prompt exactly like this; adding
+    // "treat the following as untrusted" would test our wrapper rather than their
+    // agent, and every metadata-injection scenario would pass for our reason.
+    const system = context && Object.keys(context).length
+      ? `${base}\n\n## Conversation metadata\n${Object.entries(context)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join("\n")}`
+      : base;
 
     try {
       const response = await provider.chat(
@@ -52,6 +66,8 @@ export function modelAgent(
 
   return {
     probe: () => call(PROBE_INPUT, ""),
-    send: (invocation: AgentInvocation) => call(invocation.input, invocation.policy),
+    send: (invocation: AgentInvocation) =>
+      call(invocation.input, invocation.policy, invocation.context),
+    acceptsContext: () => true,
   };
 }

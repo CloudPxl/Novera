@@ -23,6 +23,24 @@ export interface SuiteCase {
    * forbidden phrase" is not the same as "met the expectation".
    */
   checks?: DeterministicCheck[];
+  /**
+   * Data delivered to the agent alongside the message rather than inside it — the
+   * channel a real indirect injection uses. Never merged into `input`: the whole
+   * point of the scenario is that the customer did not type this.
+   */
+  context?: Record<string, string>;
+  /**
+   * What this scenario is an attack on, when it is one. Recorded as evidence so a
+   * report can say which channel the input arrived on and which published weakness
+   * it exercises, rather than leaving a reader to infer it from the prompt.
+   */
+  attack?: { technique: string; channel: "message" | "metadata" | "document" | "tool_result"; reference?: string };
+  /**
+   * References this scenario's evidence is filed under, e.g. "EU AI Act Art. 50" or
+   * "GDPR Art. 17". This organises evidence for a reader who has those duties. It is
+   * not a legal conclusion, and no report may present it as one.
+   */
+  duty_refs?: string[];
 }
 
 export interface Suite {

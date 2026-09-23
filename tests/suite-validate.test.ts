@@ -177,3 +177,41 @@ test("a malformed rule inside a read-back is refused, not dropped", () => {
   });
   assert.equal(result.ok, false);
 });
+
+test("a case may carry conversation metadata, and every value must be a string", () => {
+  const ok = validateSuite({ ...SUITE, cases: [{ ...CASE, context: { crm_note: "a note" } }] });
+  assert.equal(ok.ok, true);
+  if (ok.ok) assert.deepEqual(ok.suite.cases[0].context, { crm_note: "a note" });
+
+  // A number here renders as something else in each customer's template. A scenario
+  // whose injected text arrives mangled attacks nothing, and still reports a verdict.
+  const bad = validateSuite({ ...SUITE, cases: [{ ...CASE, context: { tier: 3 } }] });
+  assert.equal(bad.ok, false);
+  if (!bad.ok) assert.match(bad.errors.join(" "), /non-empty string/);
+});
+
+test("an attack on the metadata channel must have metadata to arrive in", () => {
+  // Otherwise the case documents an attack it never makes, and the report says the
+  // channel was exercised when nothing was delivered on it.
+  const result = validateSuite({
+    ...SUITE,
+    cases: [{ ...CASE, attack: { technique: "indirect injection", channel: "metadata" } }],
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.errors.join(" "), /no `context` to deliver it in/);
+});
+
+test("an unknown attack channel is refused rather than dropped", () => {
+  const result = validateSuite({
+    ...SUITE,
+    cases: [{ ...CASE, attack: { technique: "x", channel: "carrier pigeon" } }],
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.errors.join(" "), /attack.channel/);
+});
+
+test("duty references are carried through as evidence filing, not as a claim", () => {
+  const result = validateSuite({ ...SUITE, cases: [{ ...CASE, duty_refs: ["GDPR Art. 17"] }] });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.deepEqual(result.suite.cases[0].duty_refs, ["GDPR Art. 17"]);
+});

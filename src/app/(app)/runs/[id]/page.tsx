@@ -428,7 +428,21 @@ export default async function RunPage({
               </div>
             ) : (
               <div className="mt-3 rounded-panel border border-line bg-surface p-3 shadow-card sm:p-4">
-                <CaseTable cases={caseRows} diagnosis={diagnosis} />
+                <CaseTable
+                  cases={
+                    // The regression lens needs the comparison the ribbon below already
+                    // computed. Derived here rather than in the matrix so both read the
+                    // same list — two independent notions of "newly broken" on one page
+                    // is how a reviewer ends up trusting the wrong one.
+                    comparison
+                      ? caseRows.map((c) => ({
+                          ...c,
+                          regression: comparison!.newFailures.includes(c.caseId),
+                        }))
+                      : caseRows
+                  }
+                  diagnosis={diagnosis}
+                />
               </div>
             )}
           </section>

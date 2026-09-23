@@ -28,6 +28,8 @@ export interface CaseRow {
   evidenceGap: string | null;
   /** The agent's recorded steps, normalised. Operator-only: arguments are raw. */
   trajectory: AgentEvent[];
+  /** True when this scenario passed in the baseline run and did not pass in this one. */
+  regression?: boolean;
   /** What an independent read of the customer's own system showed, if one happened. */
   observation: {
     status: "confirmed" | "contradicted" | "unavailable";
@@ -48,6 +50,9 @@ const VERDICTS = [
 ] as const;
 
 const SEVERITIES = ["critical", "high", "medium", "low"] as const;
+
+export type { Lens } from "./lenses.ts";
+import { LENSES, type Lens } from "./lenses.ts";
 
 type Verdict = (typeof VERDICTS)[number]["key"];
 
@@ -77,6 +82,7 @@ export function CaseTable({
   const [verdict, setVerdict] = useState<Verdict>("all");
   const [category, setCategory] = useState("all");
   const [severities, setSeverities] = useState<string[]>([]);
+  const [lens, setLens] = useState<Lens | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const categories = useMemo(() => {
@@ -95,9 +101,19 @@ export function CaseTable({
     [cases],
   );
 
+  // Counted over every case, not over what is currently showing: a lens offering
+  // "3" that becomes "0" when another filter is on would be describing the filter
+  // rather than the run.
+  const lensCounts = useMemo(
+    () => Object.fromEntries(LENSES.map((l) => [l.key, cases.filter(l.match).length])) as Record<Lens, number>,
+    [cases],
+  );
+
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const active = LENSES.find((l) => l.key === lens);
     return cases.filter((c) => {
+      if (active && !active.match(c)) return false;
       if (verdict !== "all" && c.status !== verdict) return false;
       if (category !== "all" && c.category !== category) return false;
       if (severities.length && !severities.includes(c.severity)) return false;
@@ -109,7 +125,7 @@ export function CaseTable({
         c.assertions.some((a) => a.toLowerCase().includes(q))
       );
     });
-  }, [cases, query, verdict, category, severities]);
+  }, [cases, query, verdict, category, severities, lens]);
 
   function toggleSeverity(s: string) {
     setSeverities((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
@@ -161,6 +177,41 @@ export function CaseTable({
             ))}
           </select>
         </div>
+      </div>
+
+      {/* The lenses sit above severity because they are the first cut, and below the
+          verdict tabs because they refine them rather than replace them. A lens with
+          nothing behind it is shown disabled rather than hidden: "no scenario here
+          could not be evidenced" is information, and a control that appears and
+          disappears between runs is a control nobody learns. */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-line py-3">
+        <span className="type-pill mr-1 text-ink-faint">Evidence</span>
+        {LENSES.map((l) => {
+          const count = lensCounts[l.key];
+          const on = lens === l.key;
+          return (
+            <button
+              key={l.key}
+              type="button"
+              aria-pressed={on}
+              disabled={count === 0}
+              title={l.hint}
+              onClick={() => setLens(on ? null : l.key)}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink disabled:cursor-not-allowed disabled:opacity-45 ${
+                on
+                  ? "bg-ink text-white ring-ink"
+                  : "bg-surface text-ink-soft ring-line-strong hover:bg-sunken"
+              }`}
+            >
+              {l.label} <span className="tnum font-normal">{count}</span>
+            </button>
+          );
+        })}
+        {lens && (
+          <p className="w-full pt-1 text-xs leading-relaxed text-ink-soft">
+            {LENSES.find((l) => l.key === lens)?.hint}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 py-3">

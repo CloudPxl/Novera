@@ -249,3 +249,52 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------------------------------------------------------------- print
+   The client report is a document that gets printed, attached to an email and
+   filed. That is the whole reason there is no server-side PDF dependency in this
+   stack — but "prints acceptably" is not the same as "was designed to be printed",
+   and the difference shows up as a finding split across a page break, which reads
+   as two half-findings.
+
+   Scoped to print only, so nothing here can affect the screen. */
+
+@media print {
+  @page {
+    margin: 18mm 16mm;
+  }
+
+  /* Controls are not part of the document. A "Print" button on a printout is worse
+     than noise: it is a thing the reader cannot press. */
+  .print-hide {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  /* A finding, a table row or a stat block broken across pages reads as two
+     incomplete ones. Sections are allowed to break — some are longer than a page —
+     but never immediately after their heading. */
+  section > h2,
+  h1,
+  h2,
+  h3 {
+    break-after: avoid-page;
+  }
+
+  li,
+  tr,
+  figure,
+  blockquote,
+  dl > div {
+    break-inside: avoid-page;
+  }
+
+  /* The digest is the point of the document. It must never be the orphan that
+     wraps onto a page of its own. */
+  footer {
+    break-inside: avoid-page;
+  }
+}

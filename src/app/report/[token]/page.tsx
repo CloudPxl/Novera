@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { obligationLabel, type ReportPayload } from "@/lib/report/payload.ts";
 import { categoryMeta } from "@/lib/evidence/categories.ts";
 import { loadReportByToken } from "@/lib/report/access.ts";
+import { ReportToolbar } from "./toolbar.tsx";
 
 export const dynamic = "force-dynamic";
 
@@ -13,14 +14,14 @@ export const dynamic = "force-dynamic";
  * has not failed, and colouring it as a failure would be its own kind of false verdict.
  */
 const GRADE_STYLES: Record<string, string> = {
-  A: "border-emerald-500 bg-emerald-50 text-emerald-700",
-  B: "border-blue-500 bg-blue-50 text-blue-700",
-  C: "border-amber-500 bg-amber-50 text-amber-700",
-  F: "border-rose-500 bg-rose-50 text-rose-700",
-  INCOMPLETE: "border-slate-300 bg-slate-100 text-slate-600",
+  A: "border-pass-border bg-pass-surface text-pass-text",
+  B: "border-info-border bg-info-surface text-info-text",
+  C: "border-warning-border bg-warning-surface text-warning-text",
+  F: "border-fail-border bg-fail-surface text-fail-text",
+  INCOMPLETE: "border-line-strong bg-sunken text-ink-soft",
   // A grade withheld over unusable evidence is not a failing grade, so it is not red
   // either. The basis line beside it says which of the two happened and why.
-  WITHHELD: "border-slate-300 bg-slate-100 text-slate-600",
+  WITHHELD: "border-line-strong bg-sunken text-ink-soft",
 };
 
 export const metadata: Metadata = {
@@ -40,11 +41,14 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
   const { subject, run, coverage, obligations, findings, comparison } = payload;
 
   return (
-    <main className="mx-auto w-full max-w-4xl bg-white px-6 py-12 text-slate-900 print:px-0 print:py-0 sm:px-8">
-      <header className="border-b border-slate-200 pb-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-          Novera · Agent evaluation report
-        </p>
+    <main className="mx-auto w-full max-w-4xl bg-surface px-6 py-12 text-ink print:px-0 print:py-0 sm:px-8">
+      <header className="border-b border-line pb-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint">
+            Novera · Agent evaluation report
+          </p>
+          <ReportToolbar token={token} />
+        </div>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{subject.client}</h1>
         <dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 text-sm sm:grid-cols-3">
           <Field label="Agent" value={subject.agent} />
@@ -58,7 +62,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
 
       <Section title="Coverage">
         {payload.grade && (
-          <div className="mb-5 flex flex-wrap items-center gap-5 rounded-xl border border-slate-200 bg-slate-50/60 p-5">
+          <div className="mb-5 flex flex-wrap items-center gap-5 rounded-xl border border-line bg-ground/60 p-5">
             <div
               className={`flex size-24 shrink-0 flex-col items-center justify-center rounded-xl border-2 ${GRADE_STYLES[payload.grade.band]}`}
             >
@@ -72,9 +76,9 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
               </span>
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm leading-relaxed text-slate-700">{payload.grade.basis}</p>
+              <p className="text-sm leading-relaxed text-ink-soft">{payload.grade.basis}</p>
               {payload.grade.meets_threshold !== null && (
-                <p className="mt-2 text-sm font-medium text-slate-900">
+                <p className="mt-2 text-sm font-medium text-ink">
                   {payload.grade.meets_threshold
                     ? `Meets the ${payload.grade.threshold}% pass mark set for this evaluation.`
                     : `Below the ${payload.grade.threshold}% pass mark set for this evaluation.`}
@@ -94,7 +98,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             tone="score"
           />
         </div>
-        <p className="mt-4 text-sm leading-relaxed text-slate-600">{coverage.basis}</p>
+        <p className="mt-4 text-sm leading-relaxed text-ink-soft">{coverage.basis}</p>
 
         {/* Format 6 onwards. The score says how the graded scenarios did; these say how
             much of the evaluation actually happened, which is a different question and
@@ -106,7 +110,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             where nothing could look. */}
         {coverage.effect_confirmed !== undefined &&
           (coverage.effect_confirmed > 0 || (coverage.effect_contradicted ?? 0) > 0) && (
-          <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-700">
+          <p className="mt-3 rounded-lg border border-line bg-ground px-3 py-2 text-sm leading-relaxed text-ink-soft">
             {coverage.effect_confirmed > 0 && (
               <>
                 <span className="font-medium">
@@ -125,7 +129,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         )}
 
         {coverage.execution_coverage !== undefined && (
-          <dl className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-3">
+          <dl className="mt-4 grid gap-3 rounded-lg border border-line bg-ground p-4 text-sm sm:grid-cols-3">
             <Coverage
               term="Executed"
               value={`${coverage.execution_coverage}%`}
@@ -151,7 +155,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         {/* Format 3 onwards. Absent on earlier payloads, so the whole block is, rather
             than printing a misleading zero for something that was never measured. */}
         {coverage.assurance_gap !== undefined && coverage.assurance_gap > 0 && (
-          <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-700">
+          <p className="mt-3 rounded-lg border border-line bg-ground px-3 py-2 text-sm leading-relaxed text-ink-soft">
             <span className="font-medium">
               {coverage.assurance_gap}% of this evaluation produced no verdict.
             </span>{" "}
@@ -178,7 +182,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           </p>
         )}
         {coverage.errored > 0 && (
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          <p className="mt-2 text-sm leading-relaxed text-ink-soft">
             Errored scenarios produced no gradable result and are excluded from the score. They are
             listed among the findings below.
           </p>
@@ -190,14 +194,14 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           that the corroboration block already follows. */}
       {payload.categories && payload.categories.length > 0 && (
         <Section title="What was tested">
-          <p className="mb-4 text-sm leading-relaxed text-slate-600">
+          <p className="mb-4 text-sm leading-relaxed text-ink-soft">
             Each scenario exercises one area of the agent&rsquo;s behaviour. A category
             can read healthily on percentage alone while the one scenario that mattered
             is the one that failed, so a failed critical scenario is called out.
           </p>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-faint">
                 <th className="py-2 font-medium">Area</th>
                 <th className="py-2 text-right font-medium">Passed</th>
                 <th className="py-2 text-right font-medium">Graded</th>
@@ -208,22 +212,22 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
               {payload.categories.map((c) => {
                 const meta = categoryMeta(c.category);
                 return (
-                  <tr key={c.category} className="border-b border-slate-100 align-top">
+                  <tr key={c.category} className="border-b border-line align-top">
                     <td className="py-2 pr-3">
-                      <span className="font-medium text-slate-900">{meta.label}</span>
-                      <span className="block text-xs leading-relaxed text-slate-500">{meta.description}</span>
+                      <span className="font-medium text-ink">{meta.label}</span>
+                      <span className="block text-xs leading-relaxed text-ink-faint">{meta.description}</span>
                     </td>
                     <td className="py-2 text-right tabular-nums">{c.passed}</td>
                     <td className="py-2 text-right tabular-nums">{c.graded}</td>
                     <td className="py-2 pl-3">
                       {c.critical_failure ? (
-                        <span className="font-medium text-rose-700">Critical scenario failed</span>
+                        <span className="font-medium text-fail-text">Critical scenario failed</span>
                       ) : c.graded === 0 ? (
-                        <span className="text-slate-500">Not covered</span>
+                        <span className="text-ink-faint">Not covered</span>
                       ) : c.passed === c.graded ? (
-                        <span className="text-emerald-700">All passed</span>
+                        <span className="text-pass-text">All passed</span>
                       ) : (
-                        <span className="text-amber-700">Issues found</span>
+                        <span className="text-warning-text">Issues found</span>
                       )}
                     </td>
                   </tr>
@@ -235,16 +239,16 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
       )}
 
       <Section title="Obligation coverage">
-        <p className="mb-4 text-sm leading-relaxed text-slate-600">
+        <p className="mb-4 text-sm leading-relaxed text-ink-soft">
           Each scenario evidences one obligation. <span className="font-medium">Met</span> means
           every scenario for that obligation passed;{" "}
           <span className="font-medium">issues found</span> means at least one failed or produced
           no result; <span className="font-medium">not covered</span> means nothing gradable ran —
           which is never the same as satisfied.
         </p>
-        <div className="overflow-hidden rounded-lg border border-slate-200">
+        <div className="overflow-hidden rounded-lg border border-line">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
+            <thead className="bg-ground text-left text-xs uppercase tracking-wider text-ink-faint">
               <tr>
                 <th className="px-4 py-2.5 font-medium">Obligation</th>
                 <th className="px-3 py-2.5 text-right font-medium">Passed</th>
@@ -253,7 +257,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
                 <th className="px-4 py-2.5 text-right font-medium">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-line">
               {obligations.map((o) => (
                 <tr key={o.code}>
                   <td className="px-4 py-2.5 font-medium">{obligationLabel(o.code)}</td>
@@ -272,7 +276,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
 
       <Section title={`Findings (${findings.length})`}>
         {findings.length === 0 ? (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-ink-soft">
             No scenario failed or errored in this run. That covers the listed scenarios only.
           </p>
         ) : (
@@ -280,24 +284,24 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             {findings.map((f) => (
               <li
                 key={f.case}
-                className="break-inside-avoid rounded-lg border border-slate-200 p-4"
+                className="break-inside-avoid rounded-lg border border-line p-4"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <SeverityChip severity={f.severity} />
-                  <span className="font-mono text-xs text-slate-500">{f.case}</span>
+                  <span className="font-mono text-xs text-ink-faint">{f.case}</span>
                   <span className="text-sm font-medium">{obligationLabel(f.obligation)}</span>
                   {f.outcome === "error" && (
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+                    <span className="rounded bg-sunken px-1.5 py-0.5 text-xs font-medium text-ink-soft">
                       no result
                     </span>
                   )}
                 </div>
                 <p className="mt-3 text-sm leading-relaxed">
-                  <span className="font-medium text-slate-500">Expected: </span>
+                  <span className="font-medium text-ink-faint">Expected: </span>
                   {f.expected}
                 </p>
                 <p className="mt-1.5 text-sm leading-relaxed">
-                  <span className="font-medium text-slate-500">Observed: </span>
+                  <span className="font-medium text-ink-faint">Observed: </span>
                   {f.observed}
                 </p>
               </li>
@@ -313,7 +317,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             <Compare label="Still failing" ids={comparison.persistent_failures} tone="fail" />
             <Compare label="Newly failing" ids={comparison.new_failures} tone="fail" />
           </dl>
-          <p className="mt-4 text-sm leading-relaxed text-slate-600">
+          <p className="mt-4 text-sm leading-relaxed text-ink-soft">
             Baseline: run {comparison.baseline_run} on policy v{comparison.baseline_policy_version}.{" "}
             {comparison.note}
           </p>
@@ -321,10 +325,10 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
       )}
 
       <Section title="Scope and limitations">
-        <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
+        <p className="rounded-lg border border-line bg-ground p-4 text-sm leading-relaxed text-ink-soft">
           {payload.limitations}
         </p>
-        <dl className="mt-4 space-y-2 text-sm text-slate-600">
+        <dl className="mt-4 space-y-2 text-sm text-ink-soft">
           <Line label="Authorisation" value={subject.authorisation} />
           <Line label="Graded by" value={run.graded_by?.join(", ") || "not recorded"} />
           {/*
@@ -392,12 +396,12 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         </dl>
       </Section>
 
-      <footer className="mt-12 border-t border-slate-200 pt-6 text-sm text-slate-500">
+      <footer className="mt-12 border-t border-line pt-6 text-sm text-ink-faint">
         <p className="leading-relaxed">
           This document is sealed with a SHA-256 digest of its evidence. If any figure or finding
           were altered, the digest below would no longer match the stored run.
         </p>
-        <p className="mt-3 break-all font-mono text-xs text-slate-700">{content_hash}</p>
+        <p className="mt-3 break-all font-mono text-xs text-ink-soft">{content_hash}</p>
 
         {/* Format 7 onwards, and null for runs started before the manifest existed.
             Two different claims: the digest above says the document was not edited,
@@ -410,13 +414,13 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
               before this run executed, and sealed under the digest below. It is what
               rules out the inputs having been chosen once the answers were known.
             </p>
-            <p className="mt-3 break-all font-mono text-xs text-slate-700">{run.manifest_hash}</p>
+            <p className="mt-3 break-all font-mono text-xs text-ink-soft">{run.manifest_hash}</p>
           </>
         )}
         {run.previous_report_hash && (
           <p className="mt-4 leading-relaxed">
             This report follows an earlier one for the same agent, whose digest was{" "}
-            <span className="break-all font-mono text-xs text-slate-700">{run.previous_report_hash}</span>.
+            <span className="break-all font-mono text-xs text-ink-soft">{run.previous_report_hash}</span>.
           </p>
         )}
 
@@ -442,11 +446,11 @@ function Unavailable({ reason }: { reason: "expired" | "revoked" }) {
       : "The organisation that issued this report has withdrawn the link.";
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center bg-white px-6 text-slate-900">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Novera</p>
+    <main className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center bg-surface px-6 text-ink">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint">Novera</p>
       <h1 className="mt-3 text-2xl font-semibold">{heading}</h1>
-      <p className="mt-3 text-sm leading-relaxed text-slate-600">{explanation}</p>
-      <p className="mt-3 text-sm leading-relaxed text-slate-600">
+      <p className="mt-3 text-sm leading-relaxed text-ink-soft">{explanation}</p>
+      <p className="mt-3 text-sm leading-relaxed text-ink-soft">
         Ask whoever sent it to you for a current report.
       </p>
     </main>
@@ -464,12 +468,12 @@ function ObligationStatus({
   obligation: ReportPayload["obligations"][number];
 }) {
   if (!obligation.covered) {
-    return <span className="font-medium text-amber-700">Not covered</span>;
+    return <span className="font-medium text-warning-text">Not covered</span>;
   }
   if (obligation.failed > 0 || obligation.errored > 0) {
-    return <span className="font-medium text-rose-700">Issues found</span>;
+    return <span className="font-medium text-fail-text">Issues found</span>;
   }
-  return <span className="font-medium text-emerald-700">Met</span>;
+  return <span className="font-medium text-pass-text">Met</span>;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -484,7 +488,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wider text-slate-500">{label}</dt>
+      <dt className="text-xs uppercase tracking-wider text-ink-faint">{label}</dt>
       <dd className={`mt-1 ${mono ? "break-all font-mono text-xs" : ""}`}>{value}</dd>
     </div>
   );
@@ -493,27 +497,27 @@ function Field({ label, value, mono }: { label: string; value: string; mono?: bo
 function Line({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-wrap gap-x-2">
-      <dt className="font-medium text-slate-500">{label}:</dt>
+      <dt className="font-medium text-ink-faint">{label}:</dt>
       <dd className="flex-1">{value}</dd>
     </div>
   );
 }
 
 const TONES = {
-  pass: "border-emerald-200 bg-emerald-50 text-emerald-900",
-  fail: "border-rose-200 bg-rose-50 text-rose-900",
-  error: "border-amber-200 bg-amber-50 text-amber-900",
-  muted: "border-slate-200 bg-slate-50 text-slate-700",
-  score: "border-slate-300 bg-white text-slate-900",
+  pass: "border-pass-border bg-pass-surface text-pass-text",
+  fail: "border-fail-border bg-fail-surface text-fail-text",
+  error: "border-warning-border bg-warning-surface text-warning-text",
+  muted: "border-line bg-ground text-ink-soft",
+  score: "border-line-strong bg-surface text-ink",
 } as const;
 
 /** One of the three coverage numbers: what it is, and what it is a share of. */
 function Coverage({ term, value, hint }: { term: string; value: string; hint: string }) {
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{term}</dt>
-      <dd className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900">{value}</dd>
-      <dd className="mt-0.5 text-xs leading-snug text-slate-600">{hint}</dd>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{term}</dt>
+      <dd className="mt-0.5 text-lg font-semibold tabular-nums text-ink">{value}</dd>
+      <dd className="mt-0.5 text-xs leading-snug text-ink-soft">{hint}</dd>
     </div>
   );
 }

@@ -143,9 +143,17 @@ export function Tooltip({ text, children }: { text: string; children: ReactNode 
       <span tabIndex={0} className="inline-flex items-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ink">
         {children}
       </span>
+      {/*
+        `hidden` until shown, not merely transparent.
+        A transparent tooltip still takes part in layout, and a 224px box centred on a
+        trigger near the right edge pushed the page 28px wider than the viewport at
+        390 — an invisible element causing a real horizontal scrollbar on every page
+        that uses one. The width is also capped against the viewport so that showing
+        it cannot reintroduce the same overflow on a narrow screen.
+      */}
       <span
         role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-56 -translate-x-1/2 rounded-control bg-ink px-2.5 py-1.5 text-xs leading-relaxed text-white opacity-0 shadow-modal transition-opacity duration-150 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100"
+        className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden w-56 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-control bg-ink px-2.5 py-1.5 text-xs leading-relaxed text-white shadow-modal group-hover/tip:block group-focus-within/tip:block"
       >
         {text}
       </span>

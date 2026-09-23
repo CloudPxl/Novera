@@ -1144,3 +1144,35 @@ the ribbon renders rather than deciding for itself what "newly broken" means.
 Measured: 14 sealed reports render and export across payload formats 1, 2, 4, 5, 7 and
 9 after the token migration; run page and dashboard axe-clean at 390 with no overflow;
 print rules verified under print emulation rather than by reading the CSS.
+
+## 2026-09-23 — Phase 6 continued: where integrations die, and the first screen
+
+**The probe knows where the reply is, so it says so.** Asking an operator for a dot
+path into a response they have never seen, then answering their guess with "No text
+found at response path", is the most common way an integration dies — and it dies
+before anyone has watched Novera do anything. `src/lib/agents/discover.ts` ranks the
+conventional shapes, rules out identifiers and model names however long they are, and
+finds tool-call arrays by the shape of their entries. The adapter's error names the
+likely path; the agent page lists the candidates beside the text that came back and
+applies one in a click, then re-probes.
+
+Two decisions inside that. Migration 0023 stores the *shape*, not the body: paths,
+truncated previews, hard caps. The response belongs to the customer, this is all that
+is needed to say "your reply is at `data.output`", and a column that could hold a whole
+transcript eventually holds one. And discovery happens once, at connection time, with
+the chosen path stored — a run that resolved paths per response could grade two
+scenarios off two different fields and report the difference as a regression.
+
+**A dashboard is not an inventory.** Counting agents and runs answers "what exists
+here", which is what you read when you already know what you came for. The first screen
+after signing in now answers *is anything broken, and is anything waiting for me*:
+an unfinished run, a failed connection check, a missing authorisation, drafts awaiting
+a decision, and what the last completed run found. Nothing renders when there is
+nothing — a permanent "all clear" stops being read within a week, and then the week it
+matters it is not read either. A run still in flight is never described by its counts.
+
+Both rule sets were extracted into their own modules with their own tests. Inside a
+server component nothing could reach them, and these are the parts worth defending.
+
+One accessibility defect fixed while here: the policy textarea had no label, so a
+screen reader announced "edit text, blank" for the box a whole policy is typed into.

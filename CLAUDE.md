@@ -84,7 +84,7 @@ Working end to end: `npm run demo:run`, `npm run verify:db`, `npm run verify:acc
 `npm run verify:tenancy`, `npm run calibrate`, `npm run measure:stability`,
 `npm run migrate`, `npm run seed:suites`, `npm run verify:models`, `npm run verify:effect`, `npm run verify:channel`,
 `npm run verify:compiler`, `npm run seed:docs`. Scripts run with `--conditions=react-server`
-so `server-only` resolves to its no-op. `npm test` — 294 passing.
+so `server-only` resolves to its no-op. `npm test` — 311 passing.
 
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
 policy text and no raw agent response, with expiry and revocation enforced.
@@ -121,6 +121,19 @@ of it. The first run scored 8/10 and found two real defects — sent replies dro
 citations, and the erasure rule missed "delete everything you hold about me". Both fixed;
 v2 scores 10/10 with 4 verdicts marked uncorroborated because our own key has no
 fallback, and the report says so.
+
+**The probe says where the reply is.** `src/lib/agents/discover.ts` reads the response
+that came back and ranks where the reply and the tool activity sit; the adapter's error
+names it, and `/agents/[id]` applies a candidate in one click and re-probes. Migration
+0023 stores the shape — paths and truncated previews, capped — never the raw body.
+Discovery is connection-time only and the path is stored: a run that re-guessed per
+response could grade two scenarios off two fields and call it a regression.
+
+**The dashboard answers "what needs me", not "what exists".** An unfinished run, a
+failed connection check, a missing authorisation, drafts awaiting a decision, what the
+last completed run found — each a stored fact with a link, nothing rendered when there
+is nothing, and a run in flight never described by its counts. The rules live in
+`dashboard/attention.ts` with tests, like the matrix lenses.
 
 **The words are a rule (Phase 6).** `src/lib/report/language.ts` refuses affirmative
 claims of certification, compliance, zero risk, safety or guarantees on any surface a
@@ -199,7 +212,7 @@ Suites can be imported (JSON or CSV) and are validated case by case by
 `src/lib/suites/validate.ts`, which the seeder uses too.
 
 Measured, not assumed: no page overflows at 390/768/1024/1440, and every page passes
-axe-core at 390 and 1440. `npm test` — 294 passing.
+axe-core at 390 and 1440. `npm test` — 311 passing.
 
 Three rules learned the hard way and worth keeping in front of you:
 - **A report payload change breaks every document already in a client's hands.** Adding

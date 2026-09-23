@@ -79,15 +79,27 @@ const agentConfig: AgentConfig = {
   toolActivityPath: "tool_calls",
 };
 
+// The stand-in system of record. Without one, every scenario expecting a change of
+// state reports as unverified — honest, but it means the demo never walks the branch
+// where the customer's own system agrees, or contradicts.
+const verification = { kind: "http_read" as const, url: `${appUrl}/api/test-verification/` };
+
 async function ensureAgent(workspaceId: string, userId: string): Promise<string> {
   const { data: existing } = await db
-    .from("agents").select("id").eq("workspace_id", workspaceId).eq("name", "Test fixture").maybeSingle();
-  if (existing) return existing.id as string;
+    .from("agents").select("id, verification").eq("workspace_id", workspaceId).eq("name", "Test fixture").maybeSingle();
+  if (existing) {
+    // An agent registered before the read-back existed keeps working, and gains one.
+    if (!existing.verification) {
+      await db.from("agents").update({ verification }).eq("id", existing.id);
+    }
+    return existing.id as string;
+  }
 
   const { data, error } = await db
     .from("agents")
     .insert({
       workspace_id: workspaceId, name: "Test fixture", kind: "http", config: agentConfig,
+      verification,
       attested_by: userId, attested_at: new Date().toISOString(), attestation_text: ATTESTATION,
     })
     .select("id").single();
@@ -131,9 +143,13 @@ console.log(`ok, receipt ${probe.probeId}`);
 const policy = await nextPolicyVersion(workspaceId, agentId, userId);
 console.log(`  policy     v${policy.version}`);
 
+// v1 by default, so the demo keeps producing the report it always produced. A newer
+// version is opt-in per invocation: DEMO_SUITE_VERSION=3 npm run demo:run.
+const suiteVersion = Number(process.env.DEMO_SUITE_VERSION ?? 1);
+
 const { data: suiteRow, error: suiteErr } = await db
   .from("suites").select("id, key, version, name, cases")
-  .is("workspace_id", null).eq("key", "eu-support").eq("version", 1).single();
+  .is("workspace_id", null).eq("key", "eu-support").eq("version", suiteVersion).single();
 if (suiteErr || !suiteRow) throw new Error(`Suite not found — run npm run seed:suites (${suiteErr?.message})`);
 
 const suite: Suite = {

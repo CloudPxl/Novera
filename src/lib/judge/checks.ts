@@ -18,7 +18,7 @@
  * avoid making with models.
  */
 
-import { normaliseTrajectory, toolSequence, argumentText, type AgentEvent } from "../agents/trajectory.ts";
+import { normaliseTrajectory, toolSequence, argumentText } from "../agents/trajectory.ts";
 
 export type DeterministicCheck =
   /** The response must contain this text. */

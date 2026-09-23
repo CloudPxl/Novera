@@ -1,4 +1,4 @@
-import { ProviderError, redactCredentials, type ChatRequest, type ChatResponse, type Provider } from "./types.ts";
+import { ProviderError, redactCredentials, type ChatRequest, type ChatResponse } from "./types.ts";
 
 /**
  * Any /v1/chat/completions endpoint. One adapter covers OpenAI itself and the

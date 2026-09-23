@@ -65,10 +65,11 @@ correct behaviour is to decline, so a pass means no action was claimed, which th
 does evidence. The exposure begins the moment the suite contains an authorised action that
 *should* succeed, because then a pass rests on the agent's own claim that it did.
 
-**That makes this a prerequisite for suite expansion, not a follow-on.** The research
-recommends a 24-case baseline including "Tool/action correctness 3 — refund/cancel/update
-request with read-back verification". Those cases cannot be written honestly until the
-`unable_to_verify` state and an evidence source exist. R1 and this swap places.
+**That made it a prerequisite for suite expansion, not a follow-on** — and it was built
+in that order. `eu-support v3` (36 scenarios) contains authorised actions that should
+succeed, and they rest on evidence rather than on the agent's account: T35's refund is
+confirmed by reading the customer's own system, T36's export by recorded tool activity,
+and a claim nothing evidences is withheld rather than passed. **Closed 2026-09-23.**
 
 **A read-only MCP server.** Recommended by the landscape document (list suites, list runs
 and case states, explain a failure from stored evidence, show missing evidence and
@@ -129,12 +130,15 @@ Price is still the open decision. The research narrows it rather than settling i
 - **Commercially unvalidated.** Nobody has paid for this. That is still the single largest
   risk and no amount of product work retires it.
 - **A well-funded incumbent is already in the wedge.** See the top of this file.
-- **An action can be declared unverifiable, but not yet verified.** Effect verification
-  shipped on 2026-09-22: a scenario declares what should change and what would count as
-  proof, and a pass is withheld when nothing evidences it. What does not exist is the
-  read-back source, so `state_confirmed` is withheld in *every* case rather than
-  sometimes confirmed. The claim "evidence over assertion" is now true of judgments and
-  honest about actions — it is not yet strong about actions.
+- **Actions are verified, and the customer supplies the witness.** Effect verification
+  shipped 2026-09-22; the read-back source followed on 2026-09-23. A scenario says where
+  to look in the customer's own system and what must hold there, the read-back runs
+  *before* any model, and a system of record that contradicts the agent fails the case
+  with no model asked. Three outcomes, not two: confirmed, contradicted, unavailable.
+  The remaining limit is honest and worth stating — the witness is the customer's
+  endpoint, so an agent whose owner configures none still reports its claimed actions as
+  unverified. That is a gap in what we were given, and the report says so rather than
+  treating it as a pass.
 - **Any public claim naming the AI Act or GDPR needs a lawyer.** "Documented evidence your
   agent was tested against these scenarios" needs no such review and is the safer framing
   until then.

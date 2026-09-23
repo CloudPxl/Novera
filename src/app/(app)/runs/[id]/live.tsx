@@ -101,6 +101,13 @@ export function LiveRun({
     }
 
     async function drive() {
+      // Already settled: read the final rows once and stop. Nothing to drive, and no
+      // refresh — the server already rendered this run in its finished form.
+      if (status === "completed" || status === "aborted") {
+        await poll();
+        return;
+      }
+
       if (status === "queued" && !started.current) kick();
 
       while (!cancelled) {
@@ -119,8 +126,7 @@ export function LiveRun({
       }
     }
 
-    if (status !== "completed" && status !== "aborted") drive();
-    else poll();
+    drive();
 
     return () => { cancelled = true; };
     // Intentionally runs once: `drive` owns its own loop and exits on completion.

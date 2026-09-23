@@ -535,11 +535,20 @@ function Stat({
   );
 }
 
+/**
+ * The semantic triads, not raw palette steps.
+ *
+ * `high` was `bg-orange-500 text-white`, which axe measures at 2.82:1 against a 4.5:1
+ * floor — twelve times on this one page, and this is the page a stranger reads. The
+ * other three passed, so the honest fix was not to patch one chip but to stop picking
+ * colours at the call site: every token here is a text/surface/border set that was
+ * chosen to carry words.
+ */
 const SEVERITY: Record<string, string> = {
-  critical: "bg-rose-600 text-white",
-  high: "bg-orange-500 text-white",
-  medium: "bg-amber-400 text-amber-950",
-  low: "bg-slate-200 text-slate-700",
+  critical: "bg-fail-surface text-fail-text ring-1 ring-fail-border",
+  high: "bg-high-surface text-high-text ring-1 ring-high-border",
+  medium: "bg-warning-surface text-warning-text ring-1 ring-warning-border",
+  low: "bg-neutral-surface text-neutral-text ring-1 ring-neutral-border",
 };
 
 function SeverityChip({ severity }: { severity: string }) {

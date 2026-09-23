@@ -6,6 +6,14 @@ A run names three things at the moment it starts: the agent, the policy version,
 
 Each scenario is sent to your agent. If your agent returns nothing, that case is recorded as an error and the judge is never called — there is nothing to grade, and grading an absence is how a broken integration turns into a plausible verdict.
 
-If your agent does reply, the reply is graded against the scenario's expectations and your policy text. Every verdict is put to two independent models. If they agree, that is the verdict. If they disagree, a third settles it. If the disagreement cannot be settled, the case is recorded as unresolved and excluded from the score.
+If your agent does reply, the cheapest sufficient check runs first.
 
-Runs continue through failure. One dead endpoint on scenario three still leaves thirteen scenarios of evidence.
+Some scenarios carry rules — a forbidden tool, a required approval, text that must or must not appear. A rule can fail a scenario and can never pass one, because "did not say the forbidden thing" is not the same as "did what was expected". When a rule settles a case, no model is asked and the report names the rule rather than quoting a model's prose.
+
+Where a scenario expects something to change in your own systems and you have given Novera a read-only endpoint to check, that read-back runs next — before any model. If your system of record contradicts what your agent said, the case fails on that basis.
+
+Anything still open goes to the models. Every verdict is put to two models from different vendors. If they agree, that is the verdict. If they disagree, a third settles it. If the disagreement cannot be settled, the case is recorded as unresolved and excluded from the score.
+
+Runs continue through failure. One dead endpoint on scenario three still leaves the rest of the suite as evidence.
+
+Three things are counted separately and never as passes: a scenario that errored, a scenario that never ran, and a scenario whose expected action nothing could evidence. If scenarios never ran, the grade is `INCOMPLETE` and the remedy is to run the suite again. If everything ran and the evidence still does not support a letter, the grade is `WITHHELD`, and the remedy is different.

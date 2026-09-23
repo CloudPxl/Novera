@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash, randomUUID } from "node:crypto";
 import { contentHash, type Json } from "./hash.ts";
 import { JUDGE_SYSTEM } from "../judge/index.ts";
@@ -116,7 +117,14 @@ export function buildRunManifest(args: {
  * has no manifest instead of implying it has a verified one.
  */
 export async function manifestForNewRun(args: {
-  client: { from: (table: string) => any };
+  /**
+   * The real client's type, rather than a hand-written structural stand-in. A
+   * structural one type-checked but made the three call sites instantiate a type deep
+   * enough for the compiler to give up on (TS2589) — and the `any` it replaced was
+   * worse still, because a renamed column would have produced a manifest with a
+   * missing field and no complaint from anyone.
+   */
+  client: SupabaseClient;
   agentId: string;
   policyId: string;
   suiteId: string;

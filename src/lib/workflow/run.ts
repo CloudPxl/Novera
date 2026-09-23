@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { manifestForNewRun } from "../report/manifest.ts";
 import type { AgentConfig } from "../agents/types.ts";
 import { buildAgentAdapter } from "../agents/factory.ts";
+import { buildVerifier } from "../evidence/connectors/index.ts";
 import { executeRun, type RunSummary } from "../runner/execute.ts";
 import type { Suite } from "../runner/types.ts";
 import { supabaseRunStore } from "../store/supabase-run-store.ts";
@@ -98,6 +99,13 @@ export async function startRun(args: {
       console.warn(`  judge fallback: ${attempt.connection}/${attempt.model} — ${attempt.error}`),
   });
 
+  // The read-back, on this path too. `startRunExecution` has built one since Phase 3;
+  // this path did not, which meant a run started here reported every claimed action as
+  // unverified even for an agent whose read-back endpoint was configured and working.
+  // Two entry points to one product cannot disagree about what counts as evidence.
+  const { data: agentRow } = await client
+    .from("agents").select("verification").eq("id", agentId).maybeSingle();
+
   return executeRun({
     runId: run.id as string,
     suite,
@@ -105,6 +113,9 @@ export async function startRun(args: {
     policy: policyBody,
     judge,
     store: supabaseRunStore(client, workspaceId),
+    verifier: await buildVerifier({
+      client, workspaceId, agentId, verification: agentRow?.verification ?? null,
+    }),
   });
 }
 

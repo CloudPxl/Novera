@@ -28,11 +28,20 @@ import type { SuiteCase } from "../src/lib/runner/types.ts";
 const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 const suiteDir = path.join(process.cwd(), "data", "suites");
 
-const suite = JSON.parse(await readFile(path.join(suiteDir, "eu-support-v1.json"), "utf8")) as {
+/**
+ * Which suite version to measure over. v2 by default: it is a superset of v1, and the
+ * fixture's replies to T01-T16 were verified byte-identical when the fixture gained
+ * the v2 behaviours, so a v2 number is comparable with the v1 numbers in
+ * `src/lib/router/routes.ts`. Override to re-measure an older version:
+ *   CALIBRATE_SUITE=eu-support-v1 npm run calibrate
+ */
+const suiteName = process.env.CALIBRATE_SUITE?.trim() || "eu-support-v2";
+
+const suite = JSON.parse(await readFile(path.join(suiteDir, `${suiteName}.json`), "utf8")) as {
   cases: SuiteCase[];
 };
 const { labels } = JSON.parse(
-  await readFile(path.join(suiteDir, "eu-support-v1.labels.json"), "utf8"),
+  await readFile(path.join(suiteDir, `${suiteName}.labels.json`), "utf8"),
 ) as { labels: Record<string, { expected: "pass" | "fail" | null; why: string }> };
 
 const connections = connectionsFromEnv();
@@ -68,13 +77,20 @@ if (OVERRIDE) {
 }
 
 /**
- * Seconds a connection needs between calls. Mistral's free tier is one request per
- * second and answers a burst with 429s, which a single-candidate route records as
- * "no readable verdict" — the model would be scored for our pacing rather than for
- * its grading. Pacing the measurement is not pacing production, where the router
- * falls through to another vendor instead of waiting.
+ * Milliseconds a connection needs between calls, so a free-tier ceiling is not
+ * measured as a bad model. A single-candidate route has nowhere to fall through to,
+ * so every 429 lands as "no readable verdict" — and an unpaced 24-case sweep scored
+ * the best judge we have at 6/19 with twelve rate limits.
+ *
+ * Mistral's limit is per request (~1/s). **Groq's is per token** — about 8,000 a
+ * minute, and a judge prompt is roughly 1,500 of them, so the honest pace is one case
+ * every ten seconds or so, not one a second. Pacing by request count made it worse,
+ * which is how the token limit was found.
+ *
+ * This paces the measurement, not production: a real run spreads its calls across
+ * three vendors and falls through on a 429 instead of waiting.
  */
-const PACE_MS: Record<string, number> = { mistral: 1500 };
+const PACE_MS: Record<string, number> = { mistral: 1500, groq: 10000 };
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const agent = httpAgent({
@@ -101,6 +117,7 @@ for (const testCase of suite.cases) {
 console.log(`  ${responses.size} responses collected\n`);
 
 const labelled = suite.cases.filter((c) => labels[c.id]?.expected !== null && labels[c.id]);
+console.log(`Suite ${suiteName}: ${suite.cases.length} cases\n`);
 console.log(`Measuring ${CANDIDATES.length} candidate(s) over ${labelled.length} labelled case(s) `
   + `(${suite.cases.length - labelled.length} excluded as arguable)\n`);
 
@@ -110,6 +127,7 @@ interface Score {
   falsePasses: string[];
   falseFails: string[];
   errors: string[];
+  errorReasons: string[];
   ms: number;
 }
 
@@ -127,7 +145,7 @@ for (const candidate of CANDIDATES) {
   } satisfies RouteTable;
   const chat = createRoutedChat({ connections, routes });
 
-  const score: Score = { candidate: `${candidate.connection}/${candidate.model}`, agreed: 0, falsePasses: [], falseFails: [], errors: [], ms: 0 };
+  const score: Score = { candidate: `${candidate.connection}/${candidate.model}`, agreed: 0, falsePasses: [], falseFails: [], errors: [], errorReasons: [], ms: 0 };
   const started = Date.now();
 
   for (const testCase of labelled) {
@@ -151,7 +169,14 @@ for (const candidate of CANDIDATES) {
     const pace = PACE_MS[candidate.connection];
     if (pace) await pause(pace);
 
-    if (outcome.status === "error") score.errors.push(testCase.id);
+    if (outcome.status === "error") {
+      // The reason matters: "the model returned prose instead of JSON" and "the free
+      // tier rate-limited us" look identical in a count, and only one of them is a
+      // fact about the model. Measuring the second as the first is how a good judge
+      // gets demoted for our pacing.
+      score.errors.push(testCase.id);
+      score.errorReasons.push(`${testCase.id}: ${(outcome.error ?? "unknown").slice(0, 200)}`);
+    }
     else if (outcome.status === expected) score.agreed++;
     else if (expected === "fail") score.falsePasses.push(testCase.id);
     else score.falseFails.push(testCase.id);
@@ -175,6 +200,9 @@ for (const [i, s] of ranked.entries()) {
   console.log(`     agreement ${s.agreed}/${labelled.length}, ${(s.ms / labelled.length / 1000).toFixed(1)}s per case`);
   if (s.falsePasses.length) console.log(`     MISSED REAL FAILURES: ${s.falsePasses.join(", ")}`);
   if (s.falseFails.length) console.log(`     flagged good behaviour: ${s.falseFails.join(", ")}`);
-  if (s.errors.length) console.log(`     no readable verdict: ${s.errors.join(", ")}`);
+  if (s.errors.length) {
+    console.log(`     no readable verdict: ${s.errors.join(", ")}`);
+    for (const reason of s.errorReasons) console.log(`       ${reason}`);
+  }
 }
 console.log("\nThis measures agreement with our labels, not absolute correctness.\n");

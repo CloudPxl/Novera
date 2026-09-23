@@ -1,6 +1,93 @@
 import type { Suite, SuiteCase } from "../runner/types.ts";
 
 /**
+ * Parses a list of deterministic checks, reporting every problem rather than the
+ * first.
+ *
+ * Shared by a scenario's own `checks` and by `effect.verify.expect`, which are the
+ * same vocabulary applied to two different texts — the agent's reply, and the
+ * read-back from the customer's system. Two copies of this parser would drift, and
+ * the drift would show up as a rule that silently does nothing.
+ */
+function validateChecks(
+  list: unknown[],
+  label: string,
+  errors: string[],
+): NonNullable<SuiteCase["checks"]> | null {
+  const before = errors.length;
+        const parsed: NonNullable<SuiteCase["checks"]> = [];
+        list.forEach((raw: unknown, i: number) => {
+          const k = raw as Record<string, unknown>;
+          const at = `${label}: check ${i + 1}`;
+          const text = (key: string) => (typeof k?.[key] === "string" && (k[key] as string).trim() ? (k[key] as string) : null);
+          switch (k?.type) {
+            case "must_contain":
+            case "must_not_contain": {
+              const value = text("value");
+              if (!value) errors.push(`${at}: \`value\` must be a non-empty string.`);
+              else parsed.push({ type: k.type as "must_contain", value });
+              break;
+            }
+            case "must_match":
+            case "must_not_match": {
+              const pattern = text("pattern");
+              if (!pattern) { errors.push(`${at}: \`pattern\` must be a non-empty string.`); break; }
+              try { new RegExp(pattern, "i"); } catch {
+                errors.push(`${at}: /${pattern}/ is not a valid regular expression.`); break;
+              }
+              parsed.push({ type: k.type as "must_match", pattern });
+              break;
+            }
+            case "tools_allowed": {
+              const tools = stringList(k.tools);
+              if (!tools) errors.push(`${at}: \`tools\` must be a list of non-empty strings.`);
+              else parsed.push({ type: "tools_allowed", tools });
+              break;
+            }
+            case "tool_forbidden":
+            case "tool_required": {
+              const tool = text("tool");
+              if (!tool) errors.push(`${at}: \`tool\` must be a non-empty string.`);
+              else parsed.push({ type: k.type as "tool_required", tool });
+              break;
+            }
+            case "tool_order": {
+              const tools = stringList(k.tools);
+              if (!tools || tools.length < 2) {
+                errors.push(`${at}: \`tools\` must list at least two tool names to order.`);
+              } else parsed.push({ type: "tool_order", tools });
+              break;
+            }
+            case "tool_arguments_exclude": {
+              const value = text("value");
+              if (!value) errors.push(`${at}: \`value\` must be a non-empty string.`);
+              else parsed.push({ type: "tool_arguments_exclude", value });
+              break;
+            }
+            case "no_retry_after_failure":
+              parsed.push({ type: "no_retry_after_failure" });
+              break;
+            case "approval_before": {
+              const tool = text("tool");
+              if (!tool) errors.push(`${at}: \`tool\` must be a non-empty string.`);
+              else parsed.push({ type: "approval_before", tool });
+              break;
+            }
+            case "max_latency_ms": {
+              const value = k.value;
+              if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+                errors.push(`${at}: \`value\` must be a positive number of milliseconds.`);
+              } else parsed.push({ type: "max_latency_ms", value });
+              break;
+            }
+            default:
+              errors.push(`${at}: unknown check type ${JSON.stringify(k?.type ?? null)}.`);
+          }
+        });
+  return errors.length === before ? parsed : null;
+}
+
+/**
  * Deciding whether a file is a suite we are willing to run.
  *
  * The seeder's old check looked at four top-level keys and never opened the cases,
@@ -120,7 +207,29 @@ export function validateSuite(value: unknown): ValidationResult {
           + "it decides what counts as proof that the action occurred.",
         );
       } else {
-        effect = { describe, evidence };
+        // A scenario saying a state change is expected, with no way for anyone to
+        // know, is not wrong — it is the honest default, and it reports as
+        // unverified. But a malformed `verify` must be refused rather than dropped:
+        // silently ignoring it would report "unverified" while the author believed
+        // the read-back was running.
+        let verify: NonNullable<SuiteCase["effect"]>["verify"];
+        const rawVerify = (raw as Record<string, unknown>).verify;
+        if (rawVerify !== undefined) {
+          const v = rawVerify as Record<string, unknown>;
+          if (!v || typeof v !== "object" || Array.isArray(v)) {
+            errors.push(`${label}: \`effect.verify\` must be an object when present.`);
+          } else if (evidence !== "state_confirmed") {
+            errors.push(`${label}: \`effect.verify\` only applies with evidence "state_confirmed".`);
+          } else if (!Array.isArray(v.expect) || v.expect.length === 0) {
+            errors.push(`${label}: \`effect.verify.expect\` must list what must hold in the read-back.`);
+          } else if (v.path !== undefined && (typeof v.path !== "string" || !v.path.trim())) {
+            errors.push(`${label}: \`effect.verify.path\` must be a non-empty string when present.`);
+          } else {
+            const nested = validateChecks(v.expect, `${label}: effect.verify.expect`, errors);
+            if (nested) verify = { ...(typeof v.path === "string" ? { path: v.path } : {}), expect: nested };
+          }
+        }
+        effect = { describe, evidence, ...(verify ? { verify } : {}) };
       }
     }
 
@@ -132,76 +241,7 @@ export function validateSuite(value: unknown): ValidationResult {
       if (!Array.isArray(c.checks)) {
         errors.push(`${label}: \`checks\` must be a list when present.`);
       } else {
-        const parsed: NonNullable<SuiteCase["checks"]> = [];
-        c.checks.forEach((raw: unknown, i: number) => {
-          const k = raw as Record<string, unknown>;
-          const at = `${label}: check ${i + 1}`;
-          const text = (key: string) => (typeof k?.[key] === "string" && (k[key] as string).trim() ? (k[key] as string) : null);
-          switch (k?.type) {
-            case "must_contain":
-            case "must_not_contain": {
-              const value = text("value");
-              if (!value) errors.push(`${at}: \`value\` must be a non-empty string.`);
-              else parsed.push({ type: k.type as "must_contain", value });
-              break;
-            }
-            case "must_match":
-            case "must_not_match": {
-              const pattern = text("pattern");
-              if (!pattern) { errors.push(`${at}: \`pattern\` must be a non-empty string.`); break; }
-              try { new RegExp(pattern, "i"); } catch {
-                errors.push(`${at}: /${pattern}/ is not a valid regular expression.`); break;
-              }
-              parsed.push({ type: k.type as "must_match", pattern });
-              break;
-            }
-            case "tools_allowed": {
-              const tools = stringList(k.tools);
-              if (!tools) errors.push(`${at}: \`tools\` must be a list of non-empty strings.`);
-              else parsed.push({ type: "tools_allowed", tools });
-              break;
-            }
-            case "tool_forbidden":
-            case "tool_required": {
-              const tool = text("tool");
-              if (!tool) errors.push(`${at}: \`tool\` must be a non-empty string.`);
-              else parsed.push({ type: k.type as "tool_required", tool });
-              break;
-            }
-            case "tool_order": {
-              const tools = stringList(k.tools);
-              if (!tools || tools.length < 2) {
-                errors.push(`${at}: \`tools\` must list at least two tool names to order.`);
-              } else parsed.push({ type: "tool_order", tools });
-              break;
-            }
-            case "tool_arguments_exclude": {
-              const value = text("value");
-              if (!value) errors.push(`${at}: \`value\` must be a non-empty string.`);
-              else parsed.push({ type: "tool_arguments_exclude", value });
-              break;
-            }
-            case "no_retry_after_failure":
-              parsed.push({ type: "no_retry_after_failure" });
-              break;
-            case "approval_before": {
-              const tool = text("tool");
-              if (!tool) errors.push(`${at}: \`tool\` must be a non-empty string.`);
-              else parsed.push({ type: "approval_before", tool });
-              break;
-            }
-            case "max_latency_ms": {
-              const value = k.value;
-              if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-                errors.push(`${at}: \`value\` must be a positive number of milliseconds.`);
-              } else parsed.push({ type: "max_latency_ms", value });
-              break;
-            }
-            default:
-              errors.push(`${at}: unknown check type ${JSON.stringify(k?.type ?? null)}.`);
-          }
-        });
-        checks = parsed;
+        checks = validateChecks(c.checks, label, errors) ?? undefined;
       }
     }
 

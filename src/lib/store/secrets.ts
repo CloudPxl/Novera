@@ -9,7 +9,7 @@ import { seal, open, secretAad, type Sealed } from "../crypto.ts";
  * one request. Nothing here logs, returns or serialises a decrypted value, and the
  * `secrets` table has no RLS policy at all, so no client token can reach it.
  */
-export type SecretScope = "agent_auth" | "judge_key";
+export type SecretScope = "agent_auth" | "judge_key" | "verification_auth";
 
 export async function storeSecret(args: {
   client: SupabaseClient;

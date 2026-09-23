@@ -101,6 +101,29 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             the one a reviewer asks first. Absent on earlier payloads, where nothing
             measured them. A null here means the run carried nothing to compute it
             from — printed as "not recorded", never as 0% and never as 100%. */}
+        {/* Format 9 onwards. The only line in the document that says an action
+            happened, rather than that the agent said so. Absent on earlier payloads,
+            where nothing could look. */}
+        {coverage.effect_confirmed !== undefined &&
+          (coverage.effect_confirmed > 0 || (coverage.effect_contradicted ?? 0) > 0) && (
+          <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-700">
+            {coverage.effect_confirmed > 0 && (
+              <>
+                <span className="font-medium">
+                  {coverage.effect_confirmed} scenario(s) had the action they describe confirmed
+                  by reading your own system, not by the agent&rsquo;s account of it.
+                </span>{" "}
+              </>
+            )}
+            {(coverage.effect_contradicted ?? 0) > 0 && (
+              <>
+                {coverage.effect_contradicted} described an action your system does not
+                show, and failed on that basis rather than on the wording of the reply.
+              </>
+            )}
+          </p>
+        )}
+
         {coverage.execution_coverage !== undefined && (
           <dl className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-3">
             <Coverage

@@ -206,6 +206,34 @@ if (userErr || !created?.user) {
         retestDelete?.message.slice(0, 70) ?? "the delete SUCCEEDED, which is wrong");
     }
 
+    // ------------------------------------------ evidence observations (0020)
+    // What an independent read of the customer's system showed is evidence too, and
+    // the strongest kind: it is the only thing that can say an action really
+    // happened. It gets the same append-only discipline and the same erasure path.
+    const { data: observed, error: observeErr } = await db
+      .from("evidence_observations")
+      .insert({
+        workspace_id: ws.id, run_case_id: runCase!.id,
+        connector: "http_read", connector_version: "1.0.0", mode: "read_only",
+        status: "contradicted", detail: "the system of record does not show the action",
+        checked: [{ type: "must_contain", value: "refunded" }], latency_ms: 12,
+      })
+      .select("id")
+      .single();
+    report(!observeErr, "an observation can be recorded", observeErr?.message.slice(0, 70) ?? "");
+
+    if (observed) {
+      const { error: observeUpdate } = await db
+        .from("evidence_observations").update({ status: "confirmed" }).eq("id", observed.id);
+      report(!!observeUpdate, "evidence_observations refuses UPDATE",
+        observeUpdate?.message.slice(0, 70) ?? "the update SUCCEEDED, which is wrong");
+
+      const { error: observeDelete } = await db
+        .from("evidence_observations").delete().eq("id", observed.id);
+      report(!!observeDelete, "evidence_observations refuses DELETE outside an erasure",
+        observeDelete?.message.slice(0, 70) ?? "the delete SUCCEEDED, which is wrong");
+    }
+
     // The support queue carries the same draft/approved/sent discipline, and holds
     // the personal data of people who are not customers — so it gets both halves:
     // the states cannot be skipped, and the whole thing can still be erased.
@@ -268,6 +296,10 @@ if (userErr || !created?.user) {
     const { count: retestsLeft } = await db
       .from("case_retests").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id);
     report(retestsLeft === 0, "no retest survives the erasure", `${retestsLeft} row(s) left`);
+
+    const { count: observationsLeft } = await db
+      .from("evidence_observations").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id);
+    report(observationsLeft === 0, "no observation survives the erasure", `${observationsLeft} row(s) left`);
   } catch (error) {
     report(false, "integrity checks could not run", error instanceof Error ? error.message : String(error));
   } finally {

@@ -1,5 +1,7 @@
 import type { CaseStatus } from "../evidence/coverage.ts";
 import { normaliseTrajectory } from "../agents/trajectory.ts";
+import type { DeterministicCheck } from "./checks.ts";
+import type { VerificationObservation } from "../evidence/connectors/types.ts";
 
 /**
  * Whether a scenario's expectation involves a *change of state*, and what would count
@@ -26,6 +28,12 @@ export interface CaseEffect {
   /** What is supposed to happen, in the suite author's words. Carried into the report. */
   describe: string;
   evidence: EffectEvidence;
+  /**
+   * Where to look in the customer's own system, and what must hold there. Only
+   * meaningful with `evidence: "state_confirmed"`; without it, the scenario says a
+   * state change is expected but not how anyone would know.
+   */
+  verify?: { path?: string; expect: DeterministicCheck[] };
 }
 
 /** Why a case produced no verdict, when the reason is missing evidence rather than a fault. */
@@ -33,11 +41,14 @@ export type EvidenceGap =
   /** The agent claimed an action and no tool activity was recorded to support it. */
   | "no_tool_evidence"
   /** Confirming the state change needs a source Novera cannot yet read. */
-  | "no_state_evidence";
+  | "no_state_evidence"
+  /** There is a read-back source and it could not be reached this time. */
+  | "read_back_unavailable";
 
 export const EVIDENCE_GAP_LABEL: Record<EvidenceGap, string> = {
   no_tool_evidence: "unable to verify — no tool activity was recorded for a claimed action",
   no_state_evidence: "unable to verify — confirming this needs a read-back source that is not configured",
+  read_back_unavailable: "unable to verify — the read-back source could not be reached",
 };
 
 export interface EffectRuling {
@@ -70,8 +81,10 @@ export function applyEffectRule(args: {
   rationale: string | null;
   error: string | null;
   toolActivity: unknown;
+  /** What an independent read of the customer's system showed, if one was possible. */
+  observation?: VerificationObservation | null;
 }): EffectRuling {
-  const { effect, status, rationale, error, toolActivity } = args;
+  const { effect, status, rationale, error, toolActivity, observation } = args;
   const unchanged = { status, rationale, error, evidenceGap: null };
 
   if (!effect || status !== "pass") return unchanged;
@@ -88,8 +101,31 @@ export function applyEffectRule(args: {
     };
   }
 
-  // state_confirmed: there is no read-back source yet, so this is always withheld.
-  // When one exists, only this branch changes.
+  // state_confirmed. Something outside the agent has to have looked.
+  if (observation?.status === "confirmed") {
+    // The only path on which a claimed action becomes a verified one.
+    return {
+      status: "pass",
+      rationale: rationale
+        ? `${rationale} ${observation.detail}`
+        : observation.detail,
+      error: null,
+      evidenceGap: null,
+    };
+  }
+
+  if (observation?.status === "unavailable") {
+    return {
+      status: "error",
+      rationale: null,
+      error:
+        `The scenario expects a change of state (${effect.describe}) and the read-back could not be completed. `
+        + `${observation.detail} The outcome is unverified rather than passed.`,
+      evidenceGap: "read_back_unavailable",
+    };
+  }
+
+  // No observation at all: nothing is configured to look, so nothing can confirm it.
   return {
     status: "error",
     rationale: null,

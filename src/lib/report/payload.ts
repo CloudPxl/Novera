@@ -112,6 +112,14 @@ export interface ReportPayload {
      * of the test setup, not a fault in the agent.
      */
     unverifiable?: number;
+    /**
+     * Absent before format 9. The only numbers here that say an action actually
+     * happened rather than was described: `effect_confirmed` is a claimed action an
+     * independent read of the customer's own system showed to be real, and
+     * `effect_contradicted` is one it showed to be false.
+     */
+    effect_confirmed?: number;
+    effect_contradicted?: number;
     /** Absent before format 3. Share of the suite that produced no verdict, as a %. */
     assurance_gap?: number;
     not_run: number;

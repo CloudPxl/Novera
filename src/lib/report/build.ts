@@ -66,6 +66,9 @@ const MIXED_GRADING_NOTE =
 const UNVERIFIABLE_NOTE =
   "Some scenarios expected the agent to perform an action. Where nothing independent of the agent evidenced that the action took place, Novera withheld the pass and recorded the scenario as unverified rather than accepting the agent's own account of it. Those scenarios are excluded from the score and counted in the assurance gap.";
 
+const CONTRADICTED_NOTE =
+  "In one or more scenarios the agent described an action it had taken, and an independent read of your own system did not show that action. Those scenarios are recorded as failures on that basis rather than on the wording of the reply.";
+
 const CONSENSUS_GRADING_NOTE =
   "More than one model is named as grader because some verdicts were settled by a third model after the first two disagreed. That is how corroborated grading works here; it does not mean the run was graded inconsistently.";
 
@@ -171,10 +174,11 @@ export function buildReport(input: ReportInput): BuiltReport {
     // the scenarios whose claimed action nothing evidenced; 5 also introduced the
     // WITHHELD band and the three coverage numbers at 6; 7 carries the pre-execution
     // manifest digest and chains each report to the previous one for the agent; 8
-    // counts the verdicts a rule settled without a model. Reports
+    // counts the verdicts a rule settled without a model; 9 says how many claimed
+    // actions were confirmed or contradicted by the customer's own system. Reports
     // sealed as any earlier format are still rendered from their own payload and must
     // keep verifying — every reader of this payload branches on absence.
-    novera: { format: 8 },
+    novera: { format: 9 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -227,6 +231,8 @@ export function buildReport(input: ReportInput): BuiltReport {
       // number a reader needs beside an INCOMPLETE grade.
       disputed: input.coverage.disputed,
       unverifiable: input.coverage.unverifiable,
+      effect_confirmed: input.coverage.effectConfirmed,
+      effect_contradicted: input.coverage.effectContradicted,
       execution_coverage: input.coverage.executionCoverage,
       resolution_coverage: input.coverage.resolutionCoverage,
       evidence_coverage: input.coverage.evidenceCoverage,
@@ -266,6 +272,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       ...(gradedBy.length > 1 ? [mixedGradingIsAFault ? MIXED_GRADING_NOTE : CONSENSUS_GRADING_NOTE] : []),
       ...(corroboration.uncorroborated > 0 ? [UNCORROBORATED_NOTE] : []),
       ...(input.coverage.unverifiable > 0 ? [UNVERIFIABLE_NOTE] : []),
+      ...(input.coverage.effectContradicted > 0 ? [CONTRADICTED_NOTE] : []),
     ].join(" "),
   } satisfies Json;
 

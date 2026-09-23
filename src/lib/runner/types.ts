@@ -1,6 +1,7 @@
 import type { CaseStatus } from "../evidence/coverage.ts";
 import type { CaseEffect, EvidenceGap } from "../judge/effect.ts";
 import type { DeterministicCheck } from "../judge/checks.ts";
+import type { VerificationObservation } from "../evidence/connectors/types.ts";
 
 export interface SuiteCase {
   id: string;
@@ -67,7 +68,12 @@ export interface CaseOutcome {
    * `models` when consensus graded it. Null on rows stored before checks existed,
    * which means the models, because that is all there was.
    */
-  settledBy: "deterministic" | "models" | null;
+  settledBy: "deterministic" | "models" | "read_back" | null;
+  /**
+   * What an independent read of the customer's own system showed about a claimed
+   * action. Null when the scenario asked for none, or no read-back is configured.
+   */
+  observation: VerificationObservation | null;
   error: string | null;
 }
 

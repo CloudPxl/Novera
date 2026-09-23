@@ -3,6 +3,7 @@ import type { RoutedChat } from "../router/execute.ts";
 import { gradeCase } from "../judge/consensus.ts";
 import { applyEffectRule } from "../judge/effect.ts";
 import { runChecks, describeFailures } from "../judge/checks.ts";
+import type { VerificationConnector, VerificationObservation } from "../evidence/connectors/types.ts";
 import { coverage, coverageByObligation, coverageByCategory, type Coverage, type ObligationCoverage, type CategoryCoverage } from "../evidence/coverage.ts";
 import type { CaseOutcome, RunCaseRecord, RunStore, Suite, SuiteCase } from "./types.ts";
 
@@ -10,6 +11,8 @@ export interface ExecuteRunArgs {
   runId: string;
   suite: Suite;
   agent: AgentAdapter;
+  /** Reads the customer's own system to confirm a claimed action. Usually null. */
+  verifier?: VerificationConnector | null;
   /** The approved policy text for this run; a run always names its policy version. */
   policy: string;
   /** Routed chat: the severity of each case decides which route grades it. */
@@ -58,8 +61,10 @@ export async function executeCase(args: {
   agent: AgentAdapter;
   policy: string;
   judge: RoutedChat;
+  /** Reads the customer's own system. Null when none is configured, which is normal. */
+  verifier?: VerificationConnector | null;
 }): Promise<CaseOutcome> {
-  const { testCase, agent, policy, judge } = args;
+  const { testCase, agent, policy, judge, verifier } = args;
 
   const agentResult = await agent.send({ input: testCase.input, policy });
 
@@ -82,6 +87,7 @@ export async function executeCase(args: {
       // than the truth.
       evidenceGap: null,
       settledBy: null,
+      observation: null,
       error: agentResult.error ?? "The agent produced no response.",
     };
   }
@@ -114,6 +120,41 @@ export async function executeCase(args: {
       failedAssertions: [],
       evidenceGap: null,
       settledBy: "deterministic",
+      observation: null,
+      error: null,
+    };
+  }
+
+  // The read-back, before the models. A scenario that expects a change of state can
+  // be settled by the customer's own system saying it did not happen, and that is a
+  // stronger and cheaper finding than any verdict a model could give.
+  let observation: VerificationObservation | null = null;
+  if (verifier && testCase.effect?.evidence === "state_confirmed" && testCase.effect.verify) {
+    observation = await verifier.verify({
+      caseId: testCase.id,
+      path: testCase.effect.verify.path,
+      expect: testCase.effect.verify.expect,
+    });
+  }
+
+  if (observation?.status === "contradicted") {
+    // The agent said it did something and the customer's own system says otherwise.
+    // No model is asked: there is nothing left for one to weigh.
+    return {
+      responseText: agentResult.responseText,
+      toolActivity: agentResult.toolActivity ?? null,
+      status: "fail",
+      rationale: observation.detail,
+      latencyMs: agentResult.latencyMs,
+      usage: { agent: agentResult.usage ?? null, judge: {} },
+      judgeModel: null,
+      judgeAttempts: [],
+      judgeVotes: [],
+      judgeAgreement: null,
+      failedAssertions: [],
+      evidenceGap: null,
+      settledBy: "read_back",
+      observation,
       error: null,
     };
   }
@@ -143,6 +184,7 @@ export async function executeCase(args: {
     rationale: verdict.rationale,
     error: verdict.error,
     toolActivity: agentResult.toolActivity,
+    observation,
   });
 
   return {
@@ -162,6 +204,7 @@ export async function executeCase(args: {
     failedAssertions: verdict.failedAssertions,
     evidenceGap: ruled.evidenceGap,
     settledBy: "models",
+    observation,
     error: ruled.error,
   };
 }
@@ -250,7 +293,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         input: testCase.input,
         expected: testCase.expected_behavior,
         assertions: testCase.assertions,
-        ...(await executeCase({ testCase, agent, policy, judge })),
+        ...(await executeCase({ testCase, agent, policy, judge, verifier: args.verifier })),
       };
       await store.saveCase(records[index]);
 
@@ -321,6 +364,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         failedAssertionCount: c.failedAssertions.length,
         requiresEvidence: requiresEvidence.has(c.caseId),
         settledBy: c.settledBy,
+        observationStatus: c.observation?.status ?? null,
       })),
     }),
     byObligation: coverageByObligation(saved, plannedByObligation),

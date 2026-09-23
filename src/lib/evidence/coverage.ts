@@ -33,6 +33,15 @@ export interface CoverageInput {
     requiresEvidence?: boolean;
     /** "deterministic" when a rule settled it and no model was asked. */
     settledBy?: string | null;
+    /**
+     * What an independent read of the customer's own system showed, if one happened.
+     *
+     * `observationStatus`, not `observation`: a `RunCaseRecord` uses that name for
+     * the whole observation object and is passed straight into this function. Sixth
+     * time one name has meant two things at a boundary here, and the sixth time the
+     * compiler has caught it only because the types happened to differ.
+     */
+    observationStatus?: string | null;
   }>;
 }
 
@@ -70,6 +79,16 @@ export interface Coverage {
    * needed corroborating.
    */
   settledByCheck: number;
+  /**
+   * Scenarios whose claimed action was checked against the customer's own system.
+   *
+   * `effectConfirmed` is the only number in this object that says an action actually
+   * happened — everything else describes what was said about one. `effectContradicted`
+   * is the strongest finding the product can produce: the agent reported doing
+   * something and the customer's own system says otherwise.
+   */
+  effectConfirmed: number;
+  effectContradicted: number;
   notRun: number;
   /**
    * How much of the suite produced no verdict, as a share of what was planned.
@@ -128,6 +147,8 @@ export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
   }, 0);
 
   const settledByCheck = cases.filter((c) => c.settledBy === "deterministic").length;
+  const effectConfirmed = cases.filter((c) => c.observationStatus === "confirmed").length;
+  const effectContradicted = cases.filter((c) => c.observationStatus === "contradicted").length;
   const evidenceRequired = cases.filter((c) => c.requiresEvidence).length;
   const evidenceObserved = cases.filter((c) => c.requiresEvidence && !c.evidenceGap).length;
 
@@ -142,6 +163,8 @@ export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
     disputed,
     unverifiable,
     settledByCheck,
+    effectConfirmed,
+    effectContradicted,
     notRun,
     assuranceGap,
     executionCoverage: plannedCases === 0 ? 0 : percent(graded + errored, plannedCases),

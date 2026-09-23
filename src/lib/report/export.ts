@@ -59,6 +59,10 @@ export function reportToCsv(payload: ReportPayload, contentHash: string): string
   if (coverage.disputed !== undefined) rows.push(["Disputed (of which)", coverage.disputed]);
   // Absent before format 6; a null means it could not be computed, which is written
   // out rather than rendered as a number that was never measured.
+  if (coverage.effect_confirmed !== undefined) {
+    rows.push(["Actions confirmed by read-back", coverage.effect_confirmed]);
+    rows.push(["Actions contradicted by read-back", coverage.effect_contradicted ?? 0]);
+  }
   if (coverage.execution_coverage !== undefined) {
     rows.push(["Execution coverage (%)", coverage.execution_coverage]);
     rows.push(["Resolution coverage (%)", coverage.resolution_coverage ?? "not recorded"]);
@@ -150,6 +154,13 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
     out.push(
       `${coverage.disputed} scenario(s) produced no verdict because two models disagreed ` +
       "and a third could not settle it. Novera records that rather than picking a side.",
+    );
+  }
+  if (coverage.effect_confirmed !== undefined && (coverage.effect_confirmed > 0 || (coverage.effect_contradicted ?? 0) > 0)) {
+    out.push("");
+    out.push(
+      `${coverage.effect_confirmed} scenario(s) had the action they describe confirmed by reading your own system. ` +
+      `${coverage.effect_contradicted ?? 0} described an action your system does not show.`,
     );
   }
   if (coverage.execution_coverage !== undefined) {

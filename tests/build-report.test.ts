@@ -15,7 +15,7 @@ function caseRecord(over: Partial<RunCaseRecord>): RunCaseRecord {
     assertions: ["a"], responseText: `The agent quoted: ${POLICY}`, toolActivity: null,
     status: "pass", rationale: "Matched the approved wording.", latencyMs: 100,
     usage: null, judgeModel: "google/gemini-3.5-flash", judgeAttempts: [],
-    judgeVotes: [], judgeAgreement: "agreed", failedAssertions: [], evidenceGap: null, settledBy: "models",
+    judgeVotes: [], judgeAgreement: "agreed", failedAssertions: [], evidenceGap: null, settledBy: "models", observation: null,
     error: null, ...over,
   };
 }
@@ -187,9 +187,9 @@ test("an uncorroborated verdict counts as neither independent nor single-vendor"
   assert.equal(run.corroboration.single_vendor, 0);
 });
 
-test("the payload is format 8", () => {
+test("the payload is format 9", () => {
   const { payload } = buildReport(input());
-  assert.equal((payload as { novera: { format: number } }).novera.format, 8);
+  assert.equal((payload as { novera: { format: number } }).novera.format, 9);
 });
 
 test("a tie settled by a third model is not reported as a provider outage", () => {
@@ -276,4 +276,31 @@ test("the manifest digest is part of what the report hash covers", () => {
   const a = buildReport(input({ manifestHash: "one" }));
   const b = buildReport(input({ manifestHash: "two" }));
   assert.notEqual(a.contentHash, b.contentHash);
+});
+
+/* ----------------------------------------------------- confirmed actions (f9) */
+
+test("a report says how many actions were confirmed by reading the customer's system", () => {
+  const graded = [
+    caseRecord({ caseId: "T22", status: "pass", observation: { status: "confirmed", detail: "d", connector: "http_read", connectorVersion: "1.0.0", mode: "read_only", latencyMs: 5, checked: [] } }),
+    caseRecord({ caseId: "T23", status: "fail", settledBy: "read_back", judgeModel: null, judgeAgreement: null, observation: { status: "contradicted", detail: "d", connector: "http_read", connectorVersion: "1.0.0", mode: "read_only", latencyMs: 5, checked: [] } }),
+  ];
+  const cov = coverage({
+    plannedCases: 2,
+    cases: graded.map((c) => ({ status: c.status, observationStatus: c.observation?.status ?? null })),
+  });
+  const { payload } = buildReport(input({ cases: graded, coverage: cov }));
+  const p = payload as { coverage: { effect_confirmed: number; effect_contradicted: number }; limitations: string };
+
+  assert.equal(p.coverage.effect_confirmed, 1);
+  assert.equal(p.coverage.effect_contradicted, 1);
+  // The note only appears when it happened, because it describes this run.
+  assert.match(p.limitations, /did not show that action/);
+});
+
+test("a run where nothing was read back carries no such claim", () => {
+  const { payload } = buildReport(input());
+  const p = payload as { coverage: { effect_confirmed: number }; limitations: string };
+  assert.equal(p.coverage.effect_confirmed, 0);
+  assert.doesNotMatch(p.limitations, /did not show that action/);
 });

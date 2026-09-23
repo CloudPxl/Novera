@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentConfig } from "../agents/types.ts";
 import { buildAgentAdapter } from "../agents/factory.ts";
+import { buildVerifier } from "../evidence/connectors/index.ts";
 import { executeRun, type RunSummary } from "../runner/execute.ts";
 import type { RunCaseRecord } from "../runner/types.ts";
 import { coverage, coverageByObligation, coverageByCategory } from "../evidence/coverage.ts";
@@ -41,7 +42,7 @@ export async function startRunExecution(args: {
   if (error || !run) throw new Error(`Run not found: ${error?.message ?? "no such run"}`);
 
   const [agentRow, policyRow, suiteRow, workspaceRow] = await Promise.all([
-    client.from("agents").select("name, config").eq("id", run.agent_id).single(),
+    client.from("agents").select("name, config, verification").eq("id", run.agent_id).single(),
     client.from("policies").select("version, body").eq("id", run.policy_id).single(),
     client.from("suites").select("key, version, name, cases").eq("id", run.suite_id).single(),
     client.from("workspaces").select("name").eq("id", workspaceId).single(),
@@ -51,7 +52,7 @@ export async function startRunExecution(args: {
     throw new Error("The run refers to something that no longer exists.");
   }
 
-  const agent = agentRow.data as { name: string; config: AgentConfig };
+  const agent = agentRow.data as { name: string; config: AgentConfig; verification: unknown };
   const policy = policyRow.data as { version: number; body: string };
   const suite = suiteRow.data as Suite;
   const workspace = workspaceRow.data as { name: string };
@@ -78,6 +79,12 @@ export async function startRunExecution(args: {
     judge,
     store: supabaseRunStore(client, workspaceId),
     skipCaseIds: (existing ?? []).map((c) => c.case_id as string),
+    // Null for every agent without a read-back endpoint, which is the normal case:
+    // a scenario expecting a change of state then reports it as unverified rather
+    // than passed, which is the honest outcome and always has been.
+    verifier: await buildVerifier({
+      client, workspaceId, agentId: run.agent_id as string, verification: agent.verification,
+    }),
     deadline,
   });
 
@@ -151,9 +158,32 @@ async function summaryFromStoredRows(args: {
 
   const { data: rows } = await client
     .from("run_cases")
-    .select("case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, failed_assertions, evidence_gap, settled_by, error")
+    .select("id, case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, failed_assertions, evidence_gap, settled_by, error")
     .eq("run_id", runId)
     .order("case_id");
+
+  // Observations live in their own table, so a summary rebuilt from stored evidence
+  // has to go and get them. Without this a report regenerated later would forget that
+  // an effect had been independently confirmed — the one fact this is all for.
+  const { data: observations } = await client
+    .from("evidence_observations")
+    .select("run_case_id, status, detail, connector, connector_version, mode, latency_ms, checked, run_cases!inner(case_id)")
+    .in("run_case_id", (rows ?? []).map((r) => r.id as string));
+
+  const observationByCase = new Map<string, RunCaseRecord["observation"]>();
+  for (const o of observations ?? []) {
+    const caseId = (o.run_cases as { case_id?: string } | null)?.case_id;
+    if (!caseId) continue;
+    observationByCase.set(caseId, {
+      status: o.status as "confirmed" | "contradicted" | "unavailable",
+      detail: o.detail as string,
+      connector: o.connector as string,
+      connectorVersion: o.connector_version as string,
+      mode: o.mode as "read_only" | "test_write",
+      latencyMs: (o.latency_ms as number | null) ?? 0,
+      checked: Array.isArray(o.checked) ? (o.checked as never[]) : [],
+    });
+  }
 
   const cases: RunCaseRecord[] = (rows ?? []).map((r) => ({
     runId,
@@ -177,6 +207,7 @@ async function summaryFromStoredRows(args: {
     failedAssertions: Array.isArray(r.failed_assertions) ? (r.failed_assertions as string[]) : [],
     evidenceGap: (r.evidence_gap as RunCaseRecord["evidenceGap"]) ?? null,
     settledBy: (r.settled_by as RunCaseRecord["settledBy"]) ?? null,
+    observation: observationByCase.get(r.case_id as string) ?? null,
     error: (r.error as string | null) ?? null,
   }));
 
@@ -210,6 +241,7 @@ async function summaryFromStoredRows(args: {
         failedAssertionCount: c.failedAssertions.length,
         requiresEvidence: requiresEvidence.has(c.caseId),
         settledBy: c.settledBy,
+        observationStatus: c.observation?.status ?? null,
       })),
     }),
     byObligation: coverageByObligation(cases, plannedByObligation),

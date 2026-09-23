@@ -98,6 +98,26 @@ if (userErr || !created?.user) {
       .insert({ workspace_id: ws.id, agent_id: agent.id, policy_id: policy!.id, suite_id: suiteId, status: "completed" })
       .select("id")
       .single();
+    // ---------------------------------------------------- the run manifest (0016)
+    // A run row is updated several times as it progresses, so the manifest cannot
+    // rely on the append-only trigger the evidence tables use. It gets its own, and
+    // the claim "these inputs were declared before the run" rests entirely on it.
+    await db.from("runs").update({ manifest: { novera_manifest: 1, declared: "first" }, manifest_hash: "hash-one" }).eq("id", run!.id);
+    const { data: declared } = await db.from("runs").select("manifest_hash").eq("id", run!.id).single();
+    report(declared?.manifest_hash === "hash-one", "a run manifest can be declared once", String(declared?.manifest_hash));
+
+    const { error: rewrite } = await db
+      .from("runs").update({ manifest: { novera_manifest: 1, declared: "second" } }).eq("id", run!.id);
+    report(Boolean(rewrite), "a declared manifest cannot be rewritten", rewrite?.message ?? "the update was accepted");
+
+    const { error: rehash } = await db
+      .from("runs").update({ manifest_hash: "hash-two" }).eq("id", run!.id);
+    report(Boolean(rehash), "a declared manifest hash cannot be rewritten", rehash?.message ?? "the update was accepted");
+
+    const { error: progress } = await db
+      .from("runs").update({ status: "aborted" }).eq("id", run!.id);
+    report(!progress, "a run can still change status with a manifest set", progress?.message ?? "");
+
     const { data: runCase } = await db
       .from("run_cases")
       .insert({

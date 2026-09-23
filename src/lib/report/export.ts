@@ -215,6 +215,19 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
   }
   out.push("");
   out.push(`Graded by: ${run.graded_by.join(", ")}. Grading funded by ${run.grading_funded_by}.`);
+  // Absent before format 7 and on runs that predate the manifest; nothing is printed
+  // rather than a line implying the inputs were sealed when they were not.
+  if (run.manifest_hash) {
+    out.push("");
+    out.push(
+      "The scenarios, policy version, grading models and pass mark were recorded before " +
+      `this run executed, sealed as \`${run.manifest_hash}\`.`,
+    );
+  }
+  if (run.previous_report_hash) {
+    out.push("");
+    out.push(`Follows an earlier report for the same agent, digest \`${run.previous_report_hash}\`.`);
+  }
   out.push("");
 
   out.push("## Obligations");

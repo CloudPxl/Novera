@@ -187,9 +187,9 @@ test("an uncorroborated verdict counts as neither independent nor single-vendor"
   assert.equal(run.corroboration.single_vendor, 0);
 });
 
-test("the payload is format 6", () => {
+test("the payload is format 7", () => {
   const { payload } = buildReport(input());
-  assert.equal((payload as { novera: { format: number } }).novera.format, 6);
+  assert.equal((payload as { novera: { format: number } }).novera.format, 7);
 });
 
 test("a tie settled by a third model is not reported as a provider outage", () => {
@@ -249,4 +249,31 @@ test("the third-model rule is stated only when the suite actually had a critical
   const without = buildReport(input({ cases: mild, coverage: coverage({ plannedCases: 1, cases: mild }) }))
     .payload as { run: { corroboration: { method: string } } };
   assert.doesNotMatch(without.run.corroboration.method, /third model even where/);
+});
+
+/* ------------------------------------------------------------ the manifest (f7)
+   The content hash proves the document was not edited. It says nothing about whether
+   the inputs were fixed before the run, which is the harder question. */
+
+test("a report carries the digest the run declared before it ran", () => {
+  const { payload } = buildReport(input({ manifestHash: "abc123", previousReportHash: "prev999" }));
+  const run = (payload as { run: { manifest_hash: string; previous_report_hash: string } }).run;
+  assert.equal(run.manifest_hash, "abc123");
+  assert.equal(run.previous_report_hash, "prev999");
+});
+
+test("a run with no manifest says so rather than omitting the field", () => {
+  // Runs started before the manifest existed have none. Null is a statement; a
+  // missing key invites the reader to assume it was simply not shown.
+  const { payload } = buildReport(input());
+  const run = (payload as { run: { manifest_hash: string | null; previous_report_hash: string | null } }).run;
+  assert.equal(run.manifest_hash, null);
+  assert.equal(run.previous_report_hash, null);
+});
+
+test("the manifest digest is part of what the report hash covers", () => {
+  // Otherwise the chain could be rewritten without breaking the seal.
+  const a = buildReport(input({ manifestHash: "one" }));
+  const b = buildReport(input({ manifestHash: "two" }));
+  assert.notEqual(a.contentHash, b.contentHash);
 });

@@ -35,6 +35,10 @@ export interface ReportInput {
   baseline?: { runId: string; policyVersion: number; cases: Array<{ caseId: string; status: RunCaseRecord["status"] }> };
   /** Verbatim strings that must not appear in the output (policy body, system prompt). */
   privateMaterial?: string[];
+  /** Declared before the run and frozen on the row; null for runs that predate it. */
+  manifestHash?: string | null;
+  /** The previous report for this agent, so a series chains; null for the first. */
+  previousReportHash?: string | null;
 }
 
 export interface BuiltReport {
@@ -158,10 +162,11 @@ export function buildReport(input: ReportInput): BuiltReport {
     // disputed verdict from a dead endpoint and adds the assurance gap; 4 says how
     // many verdicts were corroborated across vendors rather than within one; 5 counts
     // the scenarios whose claimed action nothing evidenced; 5 also introduced the
-    // WITHHELD band and the three coverage numbers at 6. Reports
+    // WITHHELD band and the three coverage numbers at 6; 7 carries the pre-execution
+    // manifest digest and chains each report to the previous one for the agent. Reports
     // sealed as any earlier format are still rendered from their own payload and must
     // keep verifying — every reader of this payload branches on absence.
-    novera: { format: 6 },
+    novera: { format: 7 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -181,6 +186,8 @@ export function buildReport(input: ReportInput): BuiltReport {
       pass_threshold: input.passThreshold,
       duration_ms: input.durationMs,
       grading_funded_by: input.judge.source === "trial_free" ? "Novera trial allowance" : "customer-supplied model key",
+      manifest_hash: input.manifestHash ?? null,
+      previous_report_hash: input.previousReportHash ?? null,
     },
     grade: {
       band: grade.band,

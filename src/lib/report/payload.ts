@@ -42,6 +42,20 @@ export interface ReportPayload {
       single_vendor?: number;
     };
     grading_funded_by: string;
+    /**
+     * Absent before format 7, and absent on any run started before the manifest
+     * existed. The digest of what this run declared about itself *before* it ran —
+     * suite version and case ids, policy version, agent, judge plan, rubric digest,
+     * runner version, pass mark. The content hash proves the document was not edited;
+     * this proves the inputs were not chosen after the answers were known.
+     */
+    manifest_hash?: string | null;
+    /**
+     * Absent before format 7. The content hash of the previous report published for
+     * the same agent, so a series of reports forms a chain rather than a set of
+     * unrelated documents. Null for the first one.
+     */
+    previous_report_hash?: string | null;
   };
   /** Absent on format 1. */
   grade?: {

@@ -1,6 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { manifestForNewRun } from "../report/manifest.ts";
 import type { AgentConfig } from "../agents/types.ts";
 import { buildAgentAdapter } from "../agents/factory.ts";
 import { executeRun, type RunSummary } from "../runner/execute.ts";
@@ -64,9 +65,16 @@ export async function startRun(args: {
 }): Promise<RunSummary> {
   const { client, workspaceId, agentId, agentConfig, policyId, policyBody, suiteId, suite } = args;
 
+  const declared = await manifestForNewRun({
+    client, agentId, policyId, suiteId, judgeSource: args.judgeSource,
+  });
+
   const { data: run, error } = await client
     .from("runs")
     .insert({
+      id: declared.id,
+      manifest: declared.manifest,
+      manifest_hash: declared.manifest_hash,
       workspace_id: workspaceId,
       agent_id: agentId,
       policy_id: policyId,
@@ -135,7 +143,27 @@ export async function publishReport(args: {
 }): Promise<PublishedReport> {
   const { client, workspaceId, runId, summary } = args;
 
+  // Both read here rather than passed in: every caller of this function would
+  // otherwise have to remember, and a forgotten argument would silently publish a
+  // report with no manifest rather than failing.
+  const { data: runRow } = await client
+    .from("runs").select("manifest_hash, agent_id").eq("id", runId).maybeSingle();
+
+  let previousReportHash: string | null = null;
+  if (runRow?.agent_id) {
+    const { data: earlier } = await client
+      .from("reports")
+      .select("content_hash, runs!inner(agent_id)")
+      .eq("runs.agent_id", runRow.agent_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    previousReportHash = (earlier?.content_hash as string | undefined) ?? null;
+  }
+
   const { payload, contentHash } = buildReport({
+    manifestHash: (runRow?.manifest_hash as string | null) ?? null,
+    previousReportHash,
     client: args.clientName,
     agentName: args.agentName,
     policyVersion: args.policyVersion,

@@ -366,6 +366,28 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           were altered, the digest below would no longer match the stored run.
         </p>
         <p className="mt-3 break-all font-mono text-xs text-slate-700">{content_hash}</p>
+
+        {/* Format 7 onwards, and null for runs started before the manifest existed.
+            Two different claims: the digest above says the document was not edited,
+            this one says the inputs were declared before the run produced any of
+            them. Absent on earlier payloads rather than shown as missing. */}
+        {run.manifest_hash && (
+          <>
+            <p className="mt-4 leading-relaxed">
+              The scenarios, policy version, grading models and pass mark were recorded
+              before this run executed, and sealed under the digest below. It is what
+              rules out the inputs having been chosen once the answers were known.
+            </p>
+            <p className="mt-3 break-all font-mono text-xs text-slate-700">{run.manifest_hash}</p>
+          </>
+        )}
+        {run.previous_report_hash && (
+          <p className="mt-4 leading-relaxed">
+            This report follows an earlier one for the same agent, whose digest was{" "}
+            <span className="break-all font-mono text-xs text-slate-700">{run.previous_report_hash}</span>.
+          </p>
+        )}
+
         <p className="mt-3">
           Access to this link expires on {new Date(expires_at).toISOString().slice(0, 10)}.
         </p>

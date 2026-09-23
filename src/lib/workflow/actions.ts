@@ -14,6 +14,7 @@ import { createRoutedChat } from "@/lib/router/execute.ts";
 import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
 import { connectionsFromEnv } from "@/lib/providers/registry.ts";
 import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
+import { manifestForNewRun } from "../report/manifest.ts";
 import { connectionFor } from "@/lib/providers/workspace-connections.ts";
 import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
 
@@ -197,13 +198,21 @@ export async function createRun(formData: FormData): Promise<void> {
   const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
   if (!entitlement.canRun) throw new Error(entitlement.blockedReason ?? "This workspace cannot start a run.");
 
+  // Declared before anything runs, and frozen by the row (migration 0016).
+  const declared = await manifestForNewRun({
+    client: admin, agentId, policyId: policy.id, suiteId: suite.id,
+    judgeSource: entitlement.judgeSource,
+  });
+
   const { data: run, error } = await admin
     .from("runs")
     .insert({
+      id: declared.id,
       workspace_id: workspace.id, agent_id: agentId, policy_id: policy.id,
       suite_id: suite.id, baseline_run_id: previous?.id ?? null, status: "queued",
       judge_source: entitlement.judgeSource, attestation_text: agent?.attestation_text ?? null,
       created_by: user.id,
+      manifest: declared.manifest, manifest_hash: declared.manifest_hash,
     })
     .select("id").single();
 
@@ -414,9 +423,15 @@ export async function rerunFrom(formData: FormData): Promise<void> {
   const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
   if (!entitlement.canRun) throw new Error(entitlement.blockedReason ?? "This workspace cannot start a run.");
 
+  const declared = await manifestForNewRun({
+    client: admin, agentId: baseline.agent_id as string, policyId: policy.id,
+    suiteId: baseline.suite_id as string, judgeSource: entitlement.judgeSource,
+  });
+
   const { data: run, error } = await admin
     .from("runs")
     .insert({
+      id: declared.id,
       workspace_id: workspace.id,
       agent_id: baseline.agent_id,
       policy_id: policy.id,
@@ -426,6 +441,7 @@ export async function rerunFrom(formData: FormData): Promise<void> {
       judge_source: entitlement.judgeSource,
       attestation_text: baseline.attestation_text,
       created_by: user.id,
+      manifest: declared.manifest, manifest_hash: declared.manifest_hash,
     })
     .select("id").single();
 

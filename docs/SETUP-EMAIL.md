@@ -122,3 +122,44 @@ address that owns the Resend account** (davidrosu72@gmail.com). That is enough t
 and test the whole flow and nothing else — no other person can sign up. Tell me and I
 will set it up that way; steps 1–3 are then skipped and step 5's sender becomes
 `onboarding@resend.dev`.
+
+---
+
+# Status as of 2026-09-23 — done, with one DNS record left
+
+**Signup is verified end to end in production.** A real `auth.signUp` returned no error
+and set `confirmation_sent_at`, so Supabase's SMTP accepted the message. The confirmation
+link redirected to `/dashboard`, set a session cookie and set `email_confirmed_at`. An
+invalid token and a token with no type each redirect to `/sign-in` with the right
+message. The test account was deleted afterwards.
+
+The checklist above is therefore complete. What I could **not** check from here: the
+Resend key in `.env.local` is send-only, so delivery logs are unreadable and inbox
+*placement* is unproven. That is what the record below is for.
+
+## The one thing still missing: a DMARC record
+
+DNS as it stands (checked 2026-09-23):
+
+| Record | State |
+|---|---|
+| `resend._domainkey.nover.space` | present — DKIM signs as `d=nover.space`, aligned with `From: no-reply@nover.space` |
+| `send.nover.space` SPF | present — Resend's bounce domain, which is how Resend aligns SPF |
+| `nover.space` SPF | `include:spf.efwd.registrar-servers.com ~all` — the registrar's forwarder, which is correct and unrelated |
+| `_dmarc.nover.space` | **missing** |
+
+DKIM alignment alone would satisfy DMARC, but with no policy published some receivers
+apply their own default and others weight the absence against you. Add one TXT record:
+
+```
+Host:  _dmarc
+Type:  TXT
+Value: v=DMARC1; p=none; rua=mailto:dmarc@nover.space; fo=1
+```
+
+`p=none` on purpose: it publishes a policy and starts the reports without risking
+legitimate mail — including anything sent through the registrar's forwarding path —
+being quarantined before we have seen a single report. Once the reports show only
+Resend signing for the domain, move to `p=quarantine`, then `p=reject`.
+
+Verify with `dig +short TXT _dmarc.nover.space`.

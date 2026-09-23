@@ -238,3 +238,72 @@ test("a case already under way is finished rather than abandoned at the deadline
   }
   assert.equal(summary.status, "incomplete");
 });
+
+/* ------------------------------------------------------- vendor quota exhaustion
+   A rate limit says nothing about the agent, so it must not be reported as though it
+   did. "Errored" reads as WITHHELD — go and fix something. "Not run" reads as
+   INCOMPLETE — run it again — which is the true advice when a free tier is spent. */
+
+/** A router where every candidate refuses on quota, the way an exhausted tier does. */
+const allRateLimited: RoutedChat = async () => {
+  const error = new Error("every candidate failed") as Error & { attempts: unknown[] };
+  error.attempts = [
+    { connection: "groq", model: "a", ok: false, error: "Rate limit reached for model `a`", ms: 3 },
+    { connection: "mistral", model: "b", ok: false, error: "openai-compatible: Rate limit exceeded", ms: 2 },
+  ];
+  throw error;
+};
+
+test("a run stops starting cases once every vendor is rate-limited", async () => {
+  const { store, saved, events } = memoryStore();
+  const summary = await executeRun({
+    runId: "r1", suite, agent: agentReturning({}), policy: "p",
+    judge: judgeArgs(allRateLimited), store, concurrency: 1,
+  });
+
+  // Two cases prove the pattern; the third is never sent to the agent at all.
+  assert.equal(saved.length, 2, "stopped after two consecutive quota failures");
+  assert.equal(summary.coverage.notRun, 1);
+  assert.equal(summary.status, "incomplete");
+  assert.match(summary.error ?? "", /rate-limited/);
+  assert.match(summary.error ?? "", /not run rather than as failures/);
+  // Deliberately NOT finished: an incomplete run stays running, so nothing can
+  // publish a report over the part of the suite that did execute.
+  assert.ok(!events.some((e) => e.startsWith("finished:")), events.join(","));
+});
+
+test("an ordinary error does not stop the run, however many there are", async () => {
+  // Only a rate limit on *every* attempt counts. A dead agent is a finding about the
+  // agent, and the run must keep going and report it.
+  const { store, saved } = memoryStore();
+  const dead: AgentAdapter = {
+    probe: async () => ({ ok: false, responseText: null, toolActivity: null, latencyMs: 1, error: "HTTP 502" }),
+    send: async () => ({ ok: false, responseText: null, toolActivity: null, latencyMs: 1, error: "HTTP 502" }),
+  };
+  const summary = await executeRun({
+    runId: "r2", suite, agent: dead, policy: "p",
+    judge: judgeArgs(judgeReturning({})), store, concurrency: 1,
+  });
+  assert.equal(saved.length, 3, "every case still ran");
+  assert.equal(summary.coverage.notRun, 0);
+  assert.equal(summary.coverage.errored, 3);
+});
+
+test("one vendor rate-limited while another answers is not quota exhaustion", async () => {
+  const mixed: RoutedChat = async () => ({
+    text: JSON.stringify({ verdict: "pass", rationale: "because." }),
+    model: "stub", usage: {}, raw: {},
+    servedBy: { connection: "mistral", model: "b" },
+    attempts: [
+      { connection: "groq", model: "a", ok: false, error: "Rate limit reached", ms: 2 },
+      { connection: "mistral", model: "b", ok: true, ms: 5 },
+    ],
+  });
+  const { store, saved } = memoryStore();
+  const summary = await executeRun({
+    runId: "r3", suite, agent: agentReturning({}), policy: "p",
+    judge: judgeArgs(mixed), store, concurrency: 1,
+  });
+  assert.equal(saved.length, 3, "the fallback worked, so nothing was exhausted");
+  assert.equal(summary.coverage.notRun, 0);
+});

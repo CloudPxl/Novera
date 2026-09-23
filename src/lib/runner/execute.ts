@@ -132,6 +132,24 @@ export async function executeCase(args: {
 }
 
 /**
+ * Whether this case produced no verdict *only* because every grading vendor refused
+ * on quota.
+ *
+ * Deliberately strict: every recorded attempt must be a rate limit, and there must
+ * have been at least one. A case where the agent itself died, or where one vendor was
+ * rate-limited and another returned something unreadable, is an ordinary error and
+ * must keep being reported as one.
+ */
+function everyJudgeRateLimited(record: RunCaseRecord): boolean {
+  if (record.status !== "error") return false;
+  const attempts = record.judgeAttempts as Array<{ ok?: boolean; error?: string }>;
+  if (!Array.isArray(attempts) || attempts.length === 0) return false;
+  return attempts.every(
+    (a) => a.ok === false && /rate.?limit|429|quota|too many requests/i.test(a.error ?? ""),
+  );
+}
+
+/**
  * Runs every case in the suite against the live agent and grades each response.
  *
  * Two rules drive the shape of this function:
@@ -151,6 +169,23 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   let cursor = 0;
   let ranOutOfTime = false;
 
+  /**
+   * How many cases in a row produced no verdict because every grading vendor was
+   * rate-limited.
+   *
+   * This exists because of what the two outcomes mean to a customer. A case that
+   * errored is `WITHHELD` — "the run finished and the evidence does not support a
+   * grade", which tells them to go and fix something. A case that never ran is
+   * `INCOMPLETE` — "run it again". When every vendor's free tier is exhausted, the
+   * second is the true statement and the first is a small lie that sends someone
+   * hunting for a fault in their own agent.
+   *
+   * Two in a row, not one: a single unlucky case can hit a limit that the next case
+   * clears.
+   */
+  let consecutiveQuotaFailures = 0;
+  let quotaExhausted = false;
+
   async function worker(): Promise<void> {
     while (true) {
       const index = cursor++;
@@ -161,6 +196,12 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
       // Checked before starting a case, never in the middle of one: a case that has
       // been sent to the agent is always graded and saved.
       if (deadline !== undefined && Date.now() >= deadline) {
+        ranOutOfTime = true;
+        return;
+      }
+
+      // Same rule as the deadline: checked before a case starts, never during one.
+      if (quotaExhausted) {
         ranOutOfTime = true;
         return;
       }
@@ -177,6 +218,13 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         ...(await executeCase({ testCase, agent, policy, judge })),
       };
       await store.saveCase(records[index]);
+
+      if (everyJudgeRateLimited(records[index])) {
+        consecutiveQuotaFailures++;
+        if (consecutiveQuotaFailures >= 2) quotaExhausted = true;
+      } else {
+        consecutiveQuotaFailures = 0;
+      }
     }
   }
 
@@ -197,6 +245,12 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   // Left running on purpose when time ran out: the run is not finished, and marking
   // it finished would publish a report over partial evidence.
   if (status === "completed" && ranOutOfTime) {
+    if (quotaExhausted) {
+      error =
+        "Every grading vendor was rate-limited, so the remaining scenarios were not started. "
+        + "They are recorded as not run rather than as failures, because nothing about the agent was learned. "
+        + "Run the suite again when the quota has recovered.";
+    }
     status = "incomplete";
   } else {
     await store.finishRun(runId, { status, error });

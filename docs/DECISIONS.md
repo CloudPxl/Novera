@@ -995,3 +995,43 @@ it is being checked.
 Proved live against a stand-in system of record: the scripted agent claims it refunded
 NW-4417, the record shows the invoice still open, the case fails and no model is called.
 Confirmed and unavailable are exercised too, so neither is a branch nobody has walked.
+
+## 2026-09-23 — Phase 4: the attack channel is part of the scenario
+
+`eu-support v3`, 36 scenarios. The cases matter less than the thing that had to be
+built to hold them: a scenario can now declare `context` — the data an agent is given
+*about* a conversation rather than by the customer — and an indirect injection is
+delivered there, where real ones arrive, instead of pasted into the message body.
+
+The load-bearing rule is a refusal. An agent with nowhere to receive metadata is not
+quietly sent the same attack in its message: the case is recorded as an error that
+says why, and no model is asked. Running it anyway would put a direct-injection
+verdict under an indirect-injection scenario's id — a substitution the report would
+have no way to describe, and the seventh time a boundary has tried to make one name
+mean two things.
+
+Two consequences worth stating. The model adapter carries metadata verbatim, with no
+"treat the following as untrusted" of our own, because that would test our wrapper
+rather than the customer's agent and every metadata scenario would pass for our
+reason. And `attack.channel: "metadata"` on a case with no `context` is refused by the
+validator: a scenario that documents an attack it does not make would have a report
+claiming the channel was exercised when nothing was delivered on it.
+
+`duty_refs` names the reference each case's evidence is filed under (EU AI Act Art.
+13/14/15/50, GDPR Art. 12/15/16/17/20/21/22/32/33). It organises evidence for a reader
+who already carries those duties. It is not a legal conclusion and no report may
+present it as one.
+
+T01–T24 are carried unchanged apart from duty references, and the fixture's replies to
+them were compared against the previous fixture and are byte-identical, so measurements
+across v2 and v3 stay comparable. v1 and v2 stay on disk untouched.
+
+Multi-turn is deliberately deferred. An agent that holds a conversation needs a session
+contract we have not designed, and a multi-turn case flattened into a single message is
+a different test under the same name — the same substitution the channel rule refuses.
+
+Proved live by `npm run verify:channel` against the running fixture: the planted note
+reaches the agent and is obeyed; the same message without it produces no refund, which
+is the control that shows the channel is doing the work; an agent with no slot for it
+does not run the case; a forbidden tool call settles the fabricated-approval case with
+no judge; and an authorised refund the system of record confirms is allowed to pass.

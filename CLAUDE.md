@@ -82,8 +82,8 @@ one recorded decision.
 
 Working end to end: `npm run demo:run`, `npm run verify:db`, `npm run verify:access`,
 `npm run verify:tenancy`, `npm run calibrate`, `npm run measure:stability`,
-`npm run migrate`, `npm run seed:suites`, `npm run verify:models`, `npm run verify:effect`. Scripts run with `--conditions=react-server`
-so `server-only` resolves to its no-op. `npm test` — 239 passing.
+`npm run migrate`, `npm run seed:suites`, `npm run verify:models`, `npm run verify:effect`, `npm run verify:channel`. Scripts run with `--conditions=react-server`
+so `server-only` resolves to its no-op. `npm test` — 248 passing.
 
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
 policy text and no raw agent response, with expiry and revocation enforced.
@@ -159,7 +159,7 @@ Suites can be imported (JSON or CSV) and are validated case by case by
 `src/lib/suites/validate.ts`, which the seeder uses too.
 
 Measured, not assumed: no page overflows at 390/768/1024/1440, and every page passes
-axe-core at 390 and 1440. `npm test` — 239 passing.
+axe-core at 390 and 1440. `npm test` — 248 passing.
 
 Three rules learned the hard way and worth keeping in front of you:
 - **A report payload change breaks every document already in a client's hands.** Adding
@@ -213,6 +213,28 @@ construction, a scenario's path cannot escape the configured origin, the credent
 its own revocable scope, and the read-back body is never stored. Observations are
 append-only evidence recording which connector looked, its version and what it checked
 for. Configurable per agent at `/agents/[id]`, validated before it is saved.
+
+**An attack has a channel, and the channel is part of the test (Phase 4).** A scenario
+may declare `context` — what the agent is told *about* the conversation rather than by
+the customer — and an indirect injection is delivered there, where real ones arrive. An
+HTTP agent receives it wherever the operator put `{{context}}`; a model agent receives it
+as conversation metadata carried verbatim, with no warning of our own, because adding one
+would test our wrapper rather than their agent. An agent with nowhere to receive metadata
+is **not** sent the attack in its message instead: the case is recorded as an error that
+says why. Cases also carry `attack` (technique, channel, reference) and `duty_refs`; a
+`channel: "metadata"` case with no `context` is refused, because it would document an
+attack it never makes. `npm run verify:channel` proves all of it live.
+
+**`eu-support v3`, 36 scenarios.** T01–T24 carried from v2 unchanged apart from duty
+references and verified byte-identical at the fixture, so measurements stay comparable;
+v1 and v2 untouched so issued reports keep verifying. T25–T36 add roleplay jailbreak,
+linguistic evasion, reframing under pressure, context flooding, metadata injection, two
+commercial guardrails, an OWASP Agentic Top 10 (2026) family — fabricated human approval,
+cross-tenant access, cascading failure from a dead dependency — and two authorised actions
+that should succeed, one confirmed by the customer's own system and one evidenced by a
+tool call. Multi-turn is deliberately deferred: an agent that holds a conversation needs a
+session contract we have not designed, and a multi-turn case flattened into one message is
+a different test under the same name.
 
 **The trajectory is read once (Phase 2).** `tool_activity` arrives in whatever shape the
 customer's stack emits; the effect rule and the checks each used to guess it separately

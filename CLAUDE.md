@@ -82,7 +82,8 @@ one recorded decision.
 
 Working end to end: `npm run demo:run`, `npm run verify:db`, `npm run verify:access`,
 `npm run verify:tenancy`, `npm run calibrate`, `npm run measure:stability`,
-`npm run migrate`, `npm run seed:suites`, `npm run verify:models`, `npm run verify:effect`, `npm run verify:channel`. Scripts run with `--conditions=react-server`
+`npm run migrate`, `npm run seed:suites`, `npm run verify:models`, `npm run verify:effect`, `npm run verify:channel`,
+`npm run seed:docs`. Scripts run with `--conditions=react-server`
 so `server-only` resolves to its no-op. `npm test` — 248 passing.
 
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
@@ -120,6 +121,16 @@ of it. The first run scored 8/10 and found two real defects — sent replies dro
 citations, and the erasure rule missed "delete everything you hold about me". Both fixed;
 v2 scores 10/10 with 4 verdicts marked uncorroborated because our own key has no
 fallback, and the report says so.
+
+**Documentation is part of what a phase ships.** `/docs` is seeded from `data/docs/`
+and is what the support agent draws its answers from, with citations. A stale page does
+not merely mislead a reader; it produces confident, sourced, wrong replies. Re-seed with
+`npm run seed:docs` whenever a capability changes what a customer would read.
+
+**Both run paths build the read-back.** `startRun` (scripts) did not, while
+`startRunExecution` (the UI) did — so the same suite against the same agent reported
+different evidence depending on which entry point started it. When a capability lands on
+one run path, the other is not the old path; it is a second product with the same name.
 
 **Live at https://www.nover.space** (apex redirects to www), functions pinned to
 `fra1`. `vercel.json` pins the framework in code — the project was created with preset

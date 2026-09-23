@@ -1035,3 +1035,39 @@ reaches the agent and is obeyed; the same message without it produces no refund,
 is the control that shows the channel is doing the work; an agent with no slot for it
 does not run the case; a forbidden tool call settles the fabricated-approval case with
 no judge; and an authorised refund the system of record confirms is allowed to pass.
+
+## 2026-09-23 — A full-system sweep, and what it found
+
+Build, lint, types, tests, every verification script, the live database, the operator
+interface in a browser, and production. Two findings were worth the pass.
+
+**A second entry point had a different idea of what counts as evidence.**
+`startRunExecution` has built a read-back verifier since Phase 3; `startRun` never did.
+A run started on that path reported every claimed action as unverified even for an
+agent whose read-back endpoint was configured and reachable — the report would have
+said "nothing evidenced this" while the customer's own system sat there with the
+answer. Both paths build it now. The general rule: when a capability is added to one
+run path, the other is not "the old path", it is a second product with the same name.
+
+**The published documentation described a product from two phases ago.** `/docs` told
+customers the suite was `eu-support v1`, sixteen scenarios, when it is v3 with
+thirty-six. This is worse than an ordinary stale page: the support agent drafts
+answers only from these pages, with citations to them, so a stale page produces
+confident, sourced, wrong replies to real people. Documentation is now part of what a
+phase ships, not something that follows it.
+
+Also fixed: the severity chip on the client-facing report failed contrast at 2.82:1
+against a 4.5:1 floor, twelve times on one page — a raw palette step used at the call
+site, now the semantic triads that exist so the decision is made once; two lint errors
+(an `any` at the manifest boundary, a setState the effect could reach) and two dead
+imports; `demo:run` can target a suite version and configures a read-back so the demo
+walks the confirmed branch; and the seeder names a labels file instead of printing
+validator errors against it.
+
+Measured, not asserted: a full live `eu-support v3` run — 36 cases in 27 seconds, 6
+passed, 29 failed, 1 errored, 0 not run, hash verifying against the stored payload,
+with four Groq rate limits absorbed by fallback and no case lost to one. That answers
+the throughput question Phase 0 left open. 14 stored reports render and export, and
+the revoked one refuses both. Production: every public page and docs slug 200s, gated
+routes redirect, a bad token 404s, both dev fixtures 403, and the report page is
+axe-clean at 390 and 1440 leaking no key and no policy text.

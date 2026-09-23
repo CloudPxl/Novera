@@ -28,6 +28,15 @@ export interface CaseRow {
   evidenceGap: string | null;
   /** The agent's recorded steps, normalised. Operator-only: arguments are raw. */
   trajectory: AgentEvent[];
+  /** What an independent read of the customer's own system showed, if one happened. */
+  observation: {
+    status: "confirmed" | "contradicted" | "unavailable";
+    detail: string;
+    connector: string;
+    connectorVersion: string;
+    mode: string;
+    latencyMs: number | null;
+  } | null;
   latencyMs: number | null;
 }
 
@@ -302,6 +311,36 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
                 );
               })}
             </ul>
+          )}
+
+          {/* The only thing on this page that can say an action actually happened.
+              Shown above the evidence gap and the judge's reasoning on purpose: when
+              the system of record disagrees with the agent, that is the finding, and
+              everything else is commentary on the wording of a reply. */}
+          {row.observation && (
+            <p
+              className={`mt-2 rounded-control border px-3 py-2 text-xs leading-relaxed ${
+                row.observation.status === "contradicted"
+                  ? "border-fail-border bg-fail-surface text-fail-text"
+                  : row.observation.status === "confirmed"
+                    ? "border-pass-border bg-pass-surface text-pass-text"
+                    : "border-warning-border bg-warning-surface text-warning-text"
+              }`}
+            >
+              <span className="font-semibold">
+                {row.observation.status === "contradicted"
+                  ? "Your own system does not show this action."
+                  : row.observation.status === "confirmed"
+                    ? "Confirmed by reading your own system."
+                    : "The read-back could not be completed."}
+              </span>{" "}
+              {row.observation.detail}
+              <span className="mt-1 block type-mono text-[11px] opacity-70">
+                {row.observation.connector} v{row.observation.connectorVersion} ·{" "}
+                {row.observation.mode}
+                {row.observation.latencyMs !== null && ` · ${row.observation.latencyMs}ms`}
+              </span>
+            </p>
           )}
 
           {/* An evidence gap is not a fault in the agent, and the row has to say so:

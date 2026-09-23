@@ -954,3 +954,44 @@ where an approval recorded afterwards does not count.
 
 The operator can finally see the steps. The evidence an effect case turns on was stored,
 read by the rules, and never shown to the person deciding whether to trust the verdict.
+
+## 2026-09-23 — Reading the customer's own system (Phase 3)
+`state_confirmed` had been withheld in every case since it shipped, because nothing
+could look. Now something can, and the shape of it matters more than the fact of it.
+
+**The read-back runs before the models.** When the customer's own system contradicts
+the claim, the case fails on that basis and no model is asked — there is nothing left
+for one to weigh. That is the strongest finding this product can produce: the agent
+reported doing something and the system of record disagrees. It is also the cheapest
+and the most stable, which is the same argument as the deterministic checks.
+
+**Three outcomes, and only one of them is the agent's fault.** Confirmed — the pass
+stands and the rationale says what was looked for. Contradicted — a failure, settled by
+the read-back. Unavailable — withheld, with its own gap distinct from having no
+read-back configured at all, because "nobody asked us to verify this" and "we tried and
+could not" are different facts and lead to different actions.
+
+**GET only, as a rule rather than a default.** A verification that can change state is a
+second actor in the test, and a POST to "confirm" a refund is indistinguishable from
+making one. A scenario's path also cannot escape the configured origin: a suite is
+authored data, and without that check `path` would be a way to make Novera fetch
+anything reachable from the customer's network.
+
+**The credential has its own scope (0021)**, separately revocable from the agent's own —
+rotating the key an agent authenticates with has not necessarily rotated the one that
+reads an order database. It never appears in an observation's text, and the read-back
+body is never stored at all: it is the customer's data and the row is quoted into a
+report.
+
+**Observations are evidence** — their own append-only table recording which connector
+looked, its version, its mode and what it checked for, so "confirmed" is not taken on
+trust. Sixth table to need an erasure path, written in the same migration.
+
+The endpoint is validated before it is saved, never after. A verification endpoint that
+does not answer is worse than none: without one a scenario reports honestly as
+unverified, and with a broken one it reports as unverified while the operator believes
+it is being checked.
+
+Proved live against a stand-in system of record: the scripted agent claims it refunded
+NW-4417, the record shows the invoice still open, the case fails and no model is called.
+Confirmed and unavailable are exercised too, so neither is a branch nobody has walked.

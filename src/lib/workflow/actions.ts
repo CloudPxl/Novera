@@ -15,6 +15,7 @@ import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
 import { connectionsFromEnv } from "@/lib/providers/registry.ts";
 import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
 import { manifestForNewRun } from "../report/manifest.ts";
+import { httpVerificationConnector } from "../evidence/connectors/http.ts";
 import { connectionFor } from "@/lib/providers/workspace-connections.ts";
 import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
 
@@ -667,4 +668,76 @@ export async function importSuite(_prev: FormState, form: FormData): Promise<For
 
   revalidatePath("/dashboard");
   return { notice: `Imported ${suite.name} v${suite.version} — ${suite.cases.length} scenarios.` };
+}
+
+/**
+ * Points an agent at a read-only endpoint in the customer's own system, so a claimed
+ * action can be checked against it.
+ *
+ * Validated before it is saved, never after. A verification endpoint that does not
+ * answer is worse than none: without one, a scenario expecting a change of state
+ * reports honestly as unverified; with a broken one it reports as unverified too, but
+ * the operator believes it is being checked.
+ */
+export async function saveVerificationEndpoint(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const agentId = String(form.get("agentId") ?? "");
+  const url = String(form.get("url") ?? "").trim();
+  const authHeaderName = String(form.get("authHeaderName") ?? "").trim();
+  const credential = String(form.get("credential") ?? "").trim();
+
+  const admin = await assertMembership(user.id, workspace.id);
+
+  if (!url) {
+    // Removing it is a real choice, and it has to be as easy as adding it.
+    const { error } = await admin
+      .from("agents").update({ verification: null }).eq("id", agentId).eq("workspace_id", workspace.id);
+    if (error) return { error: `Could not remove it: ${error.message}` };
+    revalidatePath(`/agents/${agentId}`);
+    return { notice: "Removed. Scenarios expecting a change of state will report as unverified." };
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { error: "That is not a valid URL." };
+  }
+  if (parsed.protocol !== "https:" && parsed.hostname !== "localhost") {
+    return { error: "Use https. A read-back travels over the public internet and may carry a credential." };
+  }
+  if (credential && !authHeaderName) {
+    return { error: "Name the header the credential goes in." };
+  }
+
+  const config = {
+    kind: "http_read" as const,
+    url: parsed.toString(),
+    ...(authHeaderName ? { authHeaderName } : {}),
+  };
+
+  // Prove it answers before storing it, exactly as a model key is proved.
+  const check = await httpVerificationConnector(config, credential || undefined).validate();
+  if (!check.ok) return { error: `That endpoint did not answer: ${check.detail}` };
+
+  if (credential) {
+    await storeSecret({
+      client: admin,
+      workspaceId: workspace.id,
+      scope: "verification_auth",
+      plaintext: credential,
+      agentId,
+    });
+  }
+
+  const { error } = await admin
+    .from("agents").update({ verification: config }).eq("id", agentId).eq("workspace_id", workspace.id);
+  if (error) return { error: `Could not save it: ${error.message}` };
+
+  revalidatePath(`/agents/${agentId}`);
+  return {
+    notice:
+      `Saved and checked — it answered. ${check.detail} Scenarios that expect a change of state `
+      + "will now be confirmed against this endpoint rather than reported as unverified.",
+  };
 }

@@ -184,6 +184,31 @@ export default async function RunPage({
     }
   }
 
+  // What an independent read of the customer's system showed, per case. Its own
+  // table, so its own query — and the operator needs it most: a case that failed
+  // because the system of record disagreed reads like an ordinary failure until you
+  // can see what was looked at.
+  const { data: observationRows } = rows.length
+    ? await db
+        .from("evidence_observations")
+        .select("run_case_id, status, detail, connector, connector_version, mode, latency_ms")
+        .in("run_case_id", rows.map((c) => c.id as string))
+    : { data: [] };
+
+  const observationByCase = new Map(
+    (observationRows ?? []).map((o) => [
+      o.run_case_id as string,
+      {
+        status: o.status as "confirmed" | "contradicted" | "unavailable",
+        detail: o.detail as string,
+        connector: o.connector as string,
+        connectorVersion: o.connector_version as string,
+        mode: o.mode as string,
+        latencyMs: (o.latency_ms as number | null) ?? null,
+      },
+    ]),
+  );
+
   // From the suite, so a scenario that never ran still counts as having asked for proof.
   const requiresEvidence = new Set(
     suiteCases.filter((c) => c.effect).map((c) => c.id as string),
@@ -258,6 +283,7 @@ export default async function RunPage({
     // not see the agent's steps at all before this — which meant the evidence that
     // decides an effect case was invisible to the person inspecting it.
     trajectory: normaliseTrajectory(c.tool_activity),
+    observation: observationByCase.get(c.id as string) ?? null,
     evidenceGap: (c.evidence_gap as string | null) ?? null,
     latencyMs: (c.latency_ms as number | null) ?? null,
   }));

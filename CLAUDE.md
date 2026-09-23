@@ -83,7 +83,7 @@ one recorded decision.
 Working end to end: `npm run demo:run`, `npm run verify:db`, `npm run verify:access`,
 `npm run verify:tenancy`, `npm run calibrate`, `npm run measure:stability`,
 `npm run migrate`, `npm run seed:suites`, `npm run verify:models`, `npm run verify:effect`. Scripts run with `--conditions=react-server`
-so `server-only` resolves to its no-op. `npm test` — 224 passing.
+so `server-only` resolves to its no-op. `npm test` — 239 passing.
 
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
 policy text and no raw agent response, with expiry and revocation enforced.
@@ -159,7 +159,7 @@ Suites can be imported (JSON or CSV) and are validated case by case by
 `src/lib/suites/validate.ts`, which the seeder uses too.
 
 Measured, not assumed: no page overflows at 390/768/1024/1440, and every page passes
-axe-core at 390 and 1440. `npm test` — 224 passing.
+axe-core at 390 and 1440. `npm test` — 239 passing.
 
 Three rules learned the hard way and worth keeping in front of you:
 - **A report payload change breaks every document already in a client's hands.** Adding
@@ -202,6 +202,17 @@ rate limit says nothing about the agent.
 evidence gap cannot sit on a verdict, a rule-settled case cannot name a judge. All three
 were already true of every stored row and enforced in code — which is the point. A
 script with the service role bypasses the application and not the constraint.
+
+**A claimed action can now be verified, or contradicted (Phase 3).** An agent may carry
+a read-only endpoint in the customer's own system; a scenario says where to look and what
+must hold there. The read-back runs **before the models**, so when the system of record
+contradicts the agent the case fails on that basis with no model asked. Three outcomes:
+confirmed (the pass stands), contradicted (a failure settled by the read-back),
+unavailable (withheld, and a different gap from having no read-back at all). GET only by
+construction, a scenario's path cannot escape the configured origin, the credential has
+its own revocable scope, and the read-back body is never stored. Observations are
+append-only evidence recording which connector looked, its version and what it checked
+for. Configurable per agent at `/agents/[id]`, validated before it is saved.
 
 **The trajectory is read once (Phase 2).** `tool_activity` arrives in whatever shape the
 customer's stack emits; the effect rule and the checks each used to guess it separately

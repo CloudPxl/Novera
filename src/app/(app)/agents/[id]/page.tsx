@@ -8,7 +8,7 @@ import { createRun } from "@/lib/workflow/actions.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { SubmitButton } from "@/components/ui/button.tsx";
-import { PolicyEditor, ReprobeButton } from "./client.tsx";
+import { PolicyEditor, ReprobeButton, VerificationEndpoint } from "./client.tsx";
 
 export const metadata: Metadata = { title: "Agent · Novera" };
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
   });
 
   const { data: agent } = await db
-    .from("agents").select("id, name, kind, config, attestation_text, attested_at").eq("id", id).maybeSingle();
+    .from("agents").select("id, name, kind, config, verification, attestation_text, attested_at").eq("id", id).maybeSingle();
   if (!agent) notFound();
 
   const [{ data: probes }, { data: policies }, { data: runs }, { data: suites }] = await Promise.all([
@@ -86,6 +86,20 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
           ) : (
             <p className="mt-3 text-sm text-slate-600">No connection receipt yet.</p>
           )}
+        </section>
+      </Reveal>
+
+      <Reveal className="mt-10" delay={50}>
+        <section>
+          <h2 className="text-lg font-semibold tracking-tight">Verifying what the agent does</h2>
+          <p className="mt-1 text-sm leading-relaxed text-slate-600">
+            A tool call is not an effect, and the agent saying it refunded an order is
+            not a refund. This is where Novera goes to find out.
+          </p>
+          <VerificationEndpoint
+            agentId={agent.id}
+            current={(agent.verification as { url?: string; authHeaderName?: string } | null) ?? null}
+          />
         </section>
       </Reveal>
 

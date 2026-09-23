@@ -53,6 +53,8 @@ export function SubmitButton({
   size = "md",
   className = "",
   disabled,
+  name,
+  value,
 }: {
   children: ReactNode;
   pendingLabel?: string;
@@ -60,11 +62,20 @@ export function SubmitButton({
   size?: keyof typeof SIZES;
   className?: string;
   disabled?: boolean;
+  /**
+   * Carried into the submitted form data, so one form can offer two decisions
+   * without a hidden field the buttons have to keep in sync.
+   */
+  name?: string;
+  value?: string;
 }) {
   const { pending } = useFormStatus();
 
   return (
-    <Button type="submit" variant={variant} size={size} className={className} disabled={pending || disabled}>
+    <Button
+      type="submit" variant={variant} size={size} className={className}
+      disabled={pending || disabled} name={name} value={value}
+    >
       {pending && <Spinner />}
       {pending ? pendingLabel : children}
     </Button>

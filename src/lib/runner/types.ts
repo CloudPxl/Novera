@@ -41,6 +41,14 @@ export interface SuiteCase {
    * not a legal conclusion, and no report may present it as one.
    */
   duty_refs?: string[];
+  /**
+   * Carrying out the expected behaviour would do something irreversible, or the
+   * scenario only makes sense against scripted data. Either one bars the case from an
+   * agent that has not been marked as a test target: it is recorded as not having run,
+   * never executed and hoped for.
+   */
+  destructive?: boolean;
+  fixture_only?: boolean;
 }
 
 export interface Suite {

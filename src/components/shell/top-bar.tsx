@@ -11,7 +11,10 @@ import { NavLinks, type NavItem } from "./nav-links.tsx";
 import { RunLauncher, type LaunchAgent, type LaunchSuite } from "./run-launcher.tsx";
 import { ImportSuite } from "./import-suite.tsx";
 
-const NAV: NavItem[] = [{ href: "/dashboard", label: "Overview" }];
+const NAV: NavItem[] = [
+  { href: "/dashboard", label: "Overview" },
+  { href: "/scenarios", label: "Scenarios" },
+];
 
 /** An endpoint's host, which is what identifies an agent to an operator in a hurry. */
 function hostOf(config: unknown): string {

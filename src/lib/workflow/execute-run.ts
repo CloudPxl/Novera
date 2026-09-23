@@ -42,7 +42,7 @@ export async function startRunExecution(args: {
   if (error || !run) throw new Error(`Run not found: ${error?.message ?? "no such run"}`);
 
   const [agentRow, policyRow, suiteRow, workspaceRow] = await Promise.all([
-    client.from("agents").select("name, config, verification").eq("id", run.agent_id).single(),
+    client.from("agents").select("name, config, verification, is_production").eq("id", run.agent_id).single(),
     client.from("policies").select("version, body").eq("id", run.policy_id).single(),
     client.from("suites").select("key, version, name, cases").eq("id", run.suite_id).single(),
     client.from("workspaces").select("name").eq("id", workspaceId).single(),
@@ -52,7 +52,7 @@ export async function startRunExecution(args: {
     throw new Error("The run refers to something that no longer exists.");
   }
 
-  const agent = agentRow.data as { name: string; config: AgentConfig; verification: unknown };
+  const agent = agentRow.data as { name: string; config: AgentConfig; verification: unknown; is_production: boolean };
   const policy = policyRow.data as { version: number; body: string };
   const suite = suiteRow.data as Suite;
   const workspace = workspaceRow.data as { name: string };
@@ -85,6 +85,9 @@ export async function startRunExecution(args: {
     verifier: await buildVerifier({
       client, workspaceId, agentId: run.agent_id as string, verification: agent.verification,
     }),
+    // Undefined would be read as production, which is the safe default but not the
+    // true one. The column has a value for every agent, so pass it.
+    agentIsProduction: agent.is_production !== false,
     deadline,
   });
 

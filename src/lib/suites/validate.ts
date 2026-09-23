@@ -294,6 +294,15 @@ export function validateSuite(value: unknown): ValidationResult {
       errors.push(`${label}: \`attack.channel\` is "metadata" but the case carries no \`context\` to deliver it in.`);
     }
 
+    // Two flags that can only ever stop something happening. A string "false" would
+    // be truthy and would quietly bar a case from every agent, so anything that is not
+    // a real boolean is an error rather than a coercion.
+    for (const flag of ["destructive", "fixture_only"] as const) {
+      if (c[flag] !== undefined && typeof c[flag] !== "boolean") {
+        errors.push(`${label}: \`${flag}\` must be true or false when present.`);
+      }
+    }
+
     const dutyRefs = c.duty_refs === undefined ? undefined : stringList(c.duty_refs);
     if (c.duty_refs !== undefined && dutyRefs === null) {
       errors.push(`${label}: \`duty_refs\` must be a list of non-empty strings when present.`);
@@ -310,6 +319,8 @@ export function validateSuite(value: unknown): ValidationResult {
         ...(context ? { context } : {}),
         ...(attack ? { attack } : {}),
         ...(dutyRefs?.length ? { duty_refs: dutyRefs } : {}),
+        ...(c.destructive === true ? { destructive: true } : {}),
+        ...(c.fixture_only === true ? { fixture_only: true } : {}),
       });
     }
   });

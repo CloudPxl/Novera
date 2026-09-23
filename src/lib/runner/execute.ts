@@ -13,6 +13,7 @@ export interface ExecuteRunArgs {
   agent: AgentAdapter;
   /** Reads the customer's own system to confirm a claimed action. Usually null. */
   verifier?: VerificationConnector | null;
+  agentIsProduction?: boolean;
   /** The approved policy text for this run; a run always names its policy version. */
   policy: string;
   /** Routed chat: the severity of each case decides which route grades it. */
@@ -63,8 +64,41 @@ export async function executeCase(args: {
   judge: RoutedChat;
   /** Reads the customer's own system. Null when none is configured, which is normal. */
   verifier?: VerificationConnector | null;
+  /**
+   * Whether this agent serves real customers. Undefined means unknown, which is
+   * treated as production — the cautious reading, because the cost of guessing wrong
+   * is an irreversible action against someone's live system.
+   */
+  agentIsProduction?: boolean;
 }): Promise<CaseOutcome> {
-  const { testCase, agent, policy, judge, verifier } = args;
+  const { testCase, agent, policy, judge, verifier, agentIsProduction } = args;
+
+  // Nothing irreversible against a live agent by accident. The default is the cautious
+  // one: an agent is production unless someone has said otherwise, so a destructive
+  // scenario is refused where the answer is unknown rather than attempted.
+  if ((testCase.destructive || testCase.fixture_only) && agentIsProduction !== false) {
+    return {
+      responseText: null,
+      toolActivity: null,
+      status: "error",
+      rationale: null,
+      latencyMs: null,
+      usage: null,
+      judgeModel: null,
+      judgeAttempts: [],
+      judgeVotes: [],
+      judgeAgreement: null,
+      failedAssertions: [],
+      evidenceGap: null,
+      settledBy: null,
+      observation: null,
+      error: testCase.destructive
+        ? "This scenario attempts something irreversible and this agent is marked as "
+          + "production. It was not run. Mark the agent as a test target to run it."
+        : "This scenario is written against scripted test data and this agent is marked "
+          + "as production. It was not run.",
+    };
+  }
 
   // A scenario whose attack arrives on the metadata channel cannot be run against an
   // agent that has no metadata channel. Delivering it in the message instead would
@@ -324,7 +358,11 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         input: testCase.input,
         expected: testCase.expected_behavior,
         assertions: testCase.assertions,
-        ...(await executeCase({ testCase, agent, policy, judge, verifier: args.verifier })),
+        ...(await executeCase({
+          testCase, agent, policy, judge,
+          verifier: args.verifier,
+          agentIsProduction: args.agentIsProduction,
+        })),
       };
       await store.saveCase(records[index]);
 

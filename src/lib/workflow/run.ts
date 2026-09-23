@@ -104,7 +104,7 @@ export async function startRun(args: {
   // unverified even for an agent whose read-back endpoint was configured and working.
   // Two entry points to one product cannot disagree about what counts as evidence.
   const { data: agentRow } = await client
-    .from("agents").select("verification").eq("id", agentId).maybeSingle();
+    .from("agents").select("verification, is_production").eq("id", agentId).maybeSingle();
 
   return executeRun({
     runId: run.id as string,
@@ -116,6 +116,7 @@ export async function startRun(args: {
     verifier: await buildVerifier({
       client, workspaceId, agentId, verification: agentRow?.verification ?? null,
     }),
+    agentIsProduction: agentRow?.is_production !== false,
   });
 }
 

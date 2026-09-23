@@ -129,8 +129,12 @@ Price is still the open decision. The research narrows it rather than settling i
 - **Commercially unvalidated.** Nobody has paid for this. That is still the single largest
   risk and no amount of product work retires it.
 - **A well-funded incumbent is already in the wedge.** See the top of this file.
-- **No effect verification yet.** Our strongest claim — evidence over assertion — is
-  currently true of judgments and not yet true of actions.
+- **An action can be declared unverifiable, but not yet verified.** Effect verification
+  shipped on 2026-09-22: a scenario declares what should change and what would count as
+  proof, and a pass is withheld when nothing evidences it. What does not exist is the
+  read-back source, so `state_confirmed` is withheld in *every* case rather than
+  sometimes confirmed. The claim "evidence over assertion" is now true of judgments and
+  honest about actions — it is not yet strong about actions.
 - **Any public claim naming the AI Act or GDPR needs a lawyer.** "Documented evidence your
   agent was tested against these scenarios" needs no such review and is the safer framing
   until then.

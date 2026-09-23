@@ -98,10 +98,14 @@ our free tier, because the report states who funded the grading and that stateme
 to stay true. The cost is that a single-provider key has fewer places to fall back to,
 so a rate limit becomes an errored case — reported as one.
 
-Still blocking public signup: Supabase sends the confirmation email and has no SMTP
-configured, so the link never arrives. That is a dashboard step, not code — verify a
-domain in Resend, create an SMTP credential, paste it into Supabase Auth. Until then
-accounts must be created with the admin API.
+**Public signup works.** Verified end to end in production on 2026-09-23, not by
+inspection: a real `auth.signUp` returned no error and set `confirmation_sent_at`, so
+Supabase's SMTP accepted the message; the confirmation link redirected to `/dashboard`
+with a session cookie and set `email_confirmed_at`; an invalid token and a token with no
+type each redirect to `/sign-in` with the right message. The test account was deleted
+afterwards. One thing that check cannot cover: the Resend key is send-only, so delivery
+logs are unreadable from here and inbox *placement* is still unproven — which is what the
+`_dmarc` record is for.
 
 A6 is built: `/docs` (eight pages), `/support`, `/apply`, and a staff-only `/inbox`.
 Support answers are drafted only from the published pages, only with citations to

@@ -1071,3 +1071,40 @@ the throughput question Phase 0 left open. 14 stored reports render and export, 
 the revoked one refuses both. Production: every public page and docs slug 200s, gated
 routes redirect, a bad token 404s, both dev fixtures 403, and the report page is
 axe-clean at 390 and 1440 leaking no key and no policy text.
+
+## 2026-09-23 — Phase 5: the duty-to-test compiler
+
+A customer's policy is a list of things they have promised to do. This turns it into
+the scenarios that would show whether their agent does them — and, more importantly,
+into an answer to the question a client eventually asks: *why is this case in my
+report?*
+
+**The model drafts; a person decides.** A drafted scenario cannot run. It is stored as
+a draft, and only an approval with a name on it lets it enter a suite version. That is
+in the database (0022), not in the application: the text is frozen at insert, an
+approval records who and when, a rejection must say why, a draft cannot reach a suite
+without passing through approved, an included scenario cannot be withdrawn, and nothing
+here deletes except through `erase_workspace()`. The verification script attacks each of
+those with the service role, because a rule only the application knows is a rule for
+well-behaved callers.
+
+**A scenario must quote the policy, and the quote must be in it.** The same locator that
+stops a diagnosis inventing the line it is fixing, reused on the input side. A case
+drafted against a duty the document does not contain is precisely the case that cannot
+be defended, and it is refused rather than repaired.
+
+Two rules that only apply to drafted scenarios, because nobody hand-wrote them: case ids
+are assigned here and never taken from the model — a reused id puts two different
+scenarios under one name in a client's document, where the second reads as a regression
+of the first — and a compound assertion is refused, because the judge reports *which*
+assertions went unmet and two claims in one collapse that to "something in here failed".
+
+**`destructive` and `fixture_only` are enforced, not recorded.** `agents.is_production`
+defaults to true, and either flag against a production agent means the case is reported
+as not having run. Unknown is treated as production: the cost of guessing wrong is
+irreversible, so the cautious reading is the only one available.
+
+One thing measured rather than assumed: a request for twelve scenarios was cut off
+mid-reply, and "unreadable JSON" is an error nobody can act on. The ceiling is six —
+about as many as anyone reads carefully — and a truncated reply now says it ran out of
+room, which is a sentence with a next step in it.

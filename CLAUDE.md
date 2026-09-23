@@ -83,8 +83,8 @@ one recorded decision.
 Working end to end: `npm run demo:run`, `npm run verify:db`, `npm run verify:access`,
 `npm run verify:tenancy`, `npm run calibrate`, `npm run measure:stability`,
 `npm run migrate`, `npm run seed:suites`, `npm run verify:models`, `npm run verify:effect`, `npm run verify:channel`,
-`npm run seed:docs`. Scripts run with `--conditions=react-server`
-so `server-only` resolves to its no-op. `npm test` — 248 passing.
+`npm run verify:compiler`, `npm run seed:docs`. Scripts run with `--conditions=react-server`
+so `server-only` resolves to its no-op. `npm test` — 264 passing.
 
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
 policy text and no raw agent response, with expiry and revocation enforced.
@@ -121,6 +121,18 @@ of it. The first run scored 8/10 and found two real defects — sent replies dro
 citations, and the erasure rule missed "delete everything you hold about me". Both fixed;
 v2 scores 10/10 with 4 verdicts marked uncorroborated because our own key has no
 fallback, and the report says so.
+
+**A policy compiles into scenarios a person approved (Phase 5).** `/scenarios` drafts
+cases from a customer's own policy version, each one quoting the passage it tests — so
+"why is this case in my report" has an answer from their own document. A draft cannot
+run: 0022 freezes its text at insert, requires a name on every approval and a reason on
+every rejection, refuses a draft that tries to reach a suite unapproved, and refuses to
+withdraw a scenario already in a version. Case ids are ours, never the model's, and a
+compound assertion is refused because the judge reports which assertions failed.
+`destructive` and `fixture_only` are enforced by the runner against
+`agents.is_production`, which defaults to true — unknown counts as production, because
+the cost of guessing wrong is irreversible. `npm run verify:compiler` attacks every one
+of those rules with the service role.
 
 **Documentation is part of what a phase ships.** `/docs` is seeded from `data/docs/`
 and is what the support agent draws its answers from, with citations. A stale page does
@@ -170,7 +182,7 @@ Suites can be imported (JSON or CSV) and are validated case by case by
 `src/lib/suites/validate.ts`, which the seeder uses too.
 
 Measured, not assumed: no page overflows at 390/768/1024/1440, and every page passes
-axe-core at 390 and 1440. `npm test` — 248 passing.
+axe-core at 390 and 1440. `npm test` — 264 passing.
 
 Three rules learned the hard way and worth keeping in front of you:
 - **A report payload change breaks every document already in a client's hands.** Adding

@@ -13,6 +13,7 @@ import { DEFAULT_ROUTES } from "../router/routes.ts";
 import { connectionsFromEnv } from "../providers/registry.ts";
 import { buildReport } from "../report/build.ts";
 import { PROBE_INPUT } from "../agents/types.ts";
+import { discoverShape } from "../agents/discover.ts";
 
 /**
  * The product's spine: probe, run, report.
@@ -40,6 +41,11 @@ export async function probeAgent(args: {
       request: { input: PROBE_INPUT },
       status_code: result.statusCode ?? null,
       response_body: result.responseText,
+      // The shape, not the body. Enough to tell the operator where their reply is,
+      // and never more of the customer's response than that.
+      response_shape: result.raw === undefined || result.raw === null
+        ? null
+        : discoverShape(result.raw),
       latency_ms: result.latencyMs,
       error: result.error ?? null,
     })

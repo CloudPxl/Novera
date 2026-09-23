@@ -8,7 +8,7 @@ import { createRun } from "@/lib/workflow/actions.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { SubmitButton } from "@/components/ui/button.tsx";
-import { PolicyEditor, ReprobeButton, VerificationEndpoint } from "./client.tsx";
+import { PolicyEditor, ReprobeButton, VerificationEndpoint, ResponsePathPicker } from "./client.tsx";
 
 export const metadata: Metadata = { title: "Agent · Novera" };
 export const dynamic = "force-dynamic";
@@ -27,7 +27,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
   if (!agent) notFound();
 
   const [{ data: probes }, { data: policies }, { data: runs }, { data: suites }] = await Promise.all([
-    db.from("probes").select("id, status_code, response_body, latency_ms, error, created_at")
+    db.from("probes").select("id, status_code, response_body, response_shape, latency_ms, error, created_at")
       .eq("agent_id", id).order("created_at", { ascending: false }).limit(3),
     db.from("policies").select("id, version, body, created_at")
       .eq("agent_id", id).order("version", { ascending: false }),
@@ -38,7 +38,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
 
   const latestProbe = probes?.[0];
   const latestPolicy = policies?.[0];
-  const config = agent.config as { url?: string };
+  const config = agent.config as { url?: string; responsePath?: string; toolActivityPath?: string };
 
   return (
     <main className="w-full max-w-3xl py-8 text-ink">
@@ -82,6 +82,22 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
               <p className="mt-2 text-xs text-slate-500">
                 This is the saved receipt of one harmless request. Read it before trusting a full run.
               </p>
+
+              {/* Absent on probes recorded before the shape was kept, and on agents
+                  that are not HTTP. A receipt without one simply shows less, rather
+                  than showing an empty picker. */}
+              {latestProbe.response_shape && (
+                <ResponsePathPicker
+                  agentId={agent.id}
+                  current={config.responsePath ?? ""}
+                  currentTools={config.toolActivityPath ?? null}
+                  shape={latestProbe.response_shape as {
+                    paths: Array<{ path: string; preview: string; length: number }>;
+                    replyPaths: string[];
+                    toolPaths: string[];
+                  }}
+                />
+              )}
             </Card>
           ) : (
             <p className="mt-3 text-sm text-slate-600">No connection receipt yet.</p>

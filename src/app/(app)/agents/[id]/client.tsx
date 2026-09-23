@@ -5,6 +5,7 @@ import {
   savePolicyVersion,
   reprobeAgent,
   saveVerificationEndpoint,
+  applyResponsePath,
   type FormState,
 } from "@/lib/workflow/actions.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
@@ -32,29 +33,40 @@ export function PolicyEditor({
   return (
     <form action={submit} className="mt-4">
       <input type="hidden" name="agentId" value={agentId} />
+      {/* The label is visually redundant beside the section heading and not remotely
+          redundant to a screen reader, which otherwise announces "edit text, blank"
+          for the box a whole policy goes in. */}
+      <label htmlFor="policy-body" className="sr-only">
+        Policy text
+      </label>
       <textarea
+        id="policy-body"
         name="body"
         rows={9}
         value={body}
         onChange={(e) => setBody(e.target.value)}
+        aria-describedby="policy-body-hint"
         className={`${inputClass} leading-relaxed`}
       />
+      <p id="policy-body-hint" className="sr-only">
+        Saving creates a new immutable version. Existing versions are never edited.
+      </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <SubmitButton size="sm" pendingLabel="Saving…" disabled={!changed}>
           {latest ? `Save as version ${latest.version + 1}` : "Save version 1"}
         </SubmitButton>
         {!changed && latest && (
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-ink-faint">
             Unchanged from version {latest.version}. Edit the text to create a new version.
           </span>
         )}
-        {state.notice && <span className="text-xs font-medium text-emerald-700">{state.notice}</span>}
-        {state.error && <span className="text-xs font-medium text-rose-700">{state.error}</span>}
+        {state.notice && <span className="text-xs font-medium text-pass-text">{state.notice}</span>}
+        {state.error && <span className="text-xs font-medium text-fail-text">{state.error}</span>}
       </div>
 
       {history.length > 0 && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-ink-faint">
           {history.length} version{history.length === 1 ? "" : "s"} kept — v
           {history.map((h) => h.version).join(", v")}
         </p>
@@ -69,8 +81,8 @@ export function ReprobeButton({ agentId }: { agentId: string }) {
   return (
     <form action={submit} className="flex items-center gap-3">
       <input type="hidden" name="agentId" value={agentId} />
-      {state.notice && <span className="text-xs font-medium text-emerald-700">{state.notice}</span>}
-      {state.error && <span className="text-xs font-medium text-rose-700">{state.error}</span>}
+      {state.notice && <span className="text-xs font-medium text-pass-text">{state.notice}</span>}
+      {state.error && <span className="text-xs font-medium text-fail-text">{state.error}</span>}
       <SubmitButton variant="secondary" size="sm" pendingLabel="Testing…">
         Test connection
       </SubmitButton>
@@ -168,5 +180,116 @@ export function VerificationEndpoint({
       {state.error && <p className="mt-3 text-sm text-fail-text">{state.error}</p>}
       {state.notice && <p className="mt-3 text-sm text-pass-text">{state.notice}</p>}
     </form>
+  );
+}
+
+/**
+ * Where the reply actually is.
+ *
+ * Shown against the probe that found it. The operator does not have to understand dot
+ * paths, retype anything, or go back to a form: they see the text that came back, next
+ * to the path it came back at, and press the one that is theirs.
+ *
+ * The current path is marked rather than hidden. "This is what you are reading now" is
+ * the piece of information that makes the rest of the list make sense.
+ */
+export function ResponsePathPicker({
+  agentId,
+  current,
+  currentTools,
+  shape,
+}: {
+  agentId: string;
+  current: string;
+  currentTools: string | null;
+  shape: {
+    paths: Array<{ path: string; preview: string; length: number }>;
+    replyPaths: string[];
+    toolPaths: string[];
+  };
+}) {
+  const [state, submit] = useActionState<FormState, FormData>(applyResponsePath, {});
+
+  const ranked = [
+    ...shape.replyPaths,
+    ...shape.paths.map((p) => p.path).filter((p) => !shape.replyPaths.includes(p)),
+  ].slice(0, 6);
+
+  if (ranked.length === 0 && shape.toolPaths.length === 0) return null;
+
+  const preview = (path: string) => shape.paths.find((p) => p.path === path);
+
+  return (
+    <div className="mt-4 border-t border-line pt-4">
+      <h3 className="type-h3">What came back, and where</h3>
+      <p className="mt-1 text-xs leading-relaxed text-ink-faint">
+        Read from the probe above. Pick the field that holds your agent&rsquo;s reply and
+        Novera will re-probe to prove it.
+      </p>
+
+      <ul className="mt-3 space-y-1.5">
+        {ranked.map((path) => {
+          const p = preview(path);
+          const isCurrent = path === current;
+          return (
+            <li key={path}>
+              <form action={submit} className="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="agentId" value={agentId} />
+                <input type="hidden" name="field" value="reply" />
+                <input type="hidden" name="path" value={path} />
+                <code className="type-mono rounded bg-sunken px-1.5 py-0.5 text-ink">{path}</code>
+                {isCurrent ? (
+                  <span className="text-xs font-medium text-pass-text">reading this now</span>
+                ) : (
+                  <SubmitButton size="sm" variant="secondary" pendingLabel="Checking…">
+                    Use this
+                  </SubmitButton>
+                )}
+                {p && (
+                  <span className="min-w-0 flex-1 truncate text-xs text-ink-soft" title={p.preview}>
+                    {p.preview}
+                    {p.length > p.preview.length && (
+                      <span className="text-ink-faint"> ({p.length} characters)</span>
+                    )}
+                  </span>
+                )}
+              </form>
+            </li>
+          );
+        })}
+      </ul>
+
+      {shape.toolPaths.length > 0 && (
+        <>
+          <h3 className="mt-5 type-h3">Recorded tool activity</h3>
+          <p className="mt-1 text-xs leading-relaxed text-ink-faint">
+            Without this, a scenario expecting the agent to <em>do</em> something can
+            only be judged on what it said.
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {shape.toolPaths.map((path) => (
+              <li key={path}>
+                <form action={submit} className="flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="agentId" value={agentId} />
+                  <input type="hidden" name="field" value="tools" />
+                  <input type="hidden" name="path" value={path} />
+                  <code className="type-mono rounded bg-sunken px-1.5 py-0.5 text-ink">{path}</code>
+                  {path === currentTools ? (
+                    <span className="text-xs font-medium text-pass-text">reading this now</span>
+                  ) : (
+                    <SubmitButton size="sm" variant="secondary" pendingLabel="Checking…">
+                      Use this
+                    </SubmitButton>
+                  )}
+                </form>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {state.error && <p className="mt-3 text-sm text-fail-text">{state.error}</p>}
+      {state.notice && <p className="mt-3 text-sm text-pass-text">{state.notice}</p>}
+    </div>
   );
 }

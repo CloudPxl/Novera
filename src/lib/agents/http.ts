@@ -1,6 +1,7 @@
 import type { AgentAdapter, AgentInvocation, AgentResult, HttpAgentConfig } from "./types.ts";
 import { PROBE_INPUT } from "./types.ts";
 import { fillTemplate, readPath } from "./template.ts";
+import { suggestPathHint } from "./discover.ts";
 
 /**
  * Calls a customer's deployed agent over HTTP.
@@ -94,10 +95,13 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
 
     const extracted = readPath(parsed, config.responsePath);
     if (typeof extracted !== "string" || extracted.trim() === "") {
+      // The most common way an integration dies, and the least useful place to stop
+      // talking. The response is right here; saying where the reply appears to be
+      // turns a dead end into a one-line fix, at connection time and at run time both.
       return {
         ok: false, responseText: null, toolActivity: null, statusCode: response.status, latencyMs,
         raw: parsed,
-        error: `No text found at response path "${config.responsePath}"`,
+        error: `No text found at response path "${config.responsePath}".${suggestPathHint(parsed)}`,
       };
     }
 

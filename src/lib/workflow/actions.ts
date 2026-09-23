@@ -741,3 +741,51 @@ export async function saveVerificationEndpoint(_prev: FormState, form: FormData)
       + "will now be confirmed against this endpoint rather than reported as unverified.",
   };
 }
+
+/**
+ * Points an agent at a different field in its own response, and re-probes.
+ *
+ * This exists because "No text found at response path" is where integrations die. The
+ * probe has the response in its hands and can say where the reply appears to be; this
+ * is the button that acts on it, so the fix is one click rather than a form the
+ * operator has to find their way back to.
+ *
+ * It re-probes immediately, because a path nobody has proved is exactly the state this
+ * is meant to end. If the new path is also wrong, the receipt says so and suggests
+ * again — the loop is short and it converges.
+ */
+export async function applyResponsePath(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const agentId = String(form.get("agentId") ?? "");
+  const path = String(form.get("path") ?? "").trim();
+  const field = String(form.get("field") ?? "reply");
+
+  if (!path) return { error: "Choose a path." };
+  if (field !== "reply" && field !== "tools") return { error: "Unknown field." };
+
+  const admin = await assertMembership(user.id, workspace.id);
+
+  const { data: agent } = await admin
+    .from("agents").select("config").eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
+  if (!agent) return { error: "That agent could not be found in this workspace." };
+
+  const config = agent.config as HttpAgentConfig;
+  if (config.kind !== "http") {
+    return { error: "Only an HTTP agent reads its reply out of a response body." };
+  }
+
+  const updated: HttpAgentConfig = field === "reply"
+    ? { ...config, responsePath: path }
+    : { ...config, toolActivityPath: path };
+
+  const { error } = await admin
+    .from("agents").update({ config: updated }).eq("id", agentId).eq("workspace_id", workspace.id);
+  if (error) return { error: `Could not save it: ${error.message}` };
+
+  const probe = await probeAgent({ client: admin, workspaceId: workspace.id, agentId, config: updated });
+
+  revalidatePath(`/agents/${agentId}`);
+  return probe.ok
+    ? { notice: `Reading the ${field === "reply" ? "reply" : "tool activity"} from "${path}". The agent answered.` }
+    : { error: `Saved "${path}", but the agent still did not answer as expected: ${probe.error}` };
+}

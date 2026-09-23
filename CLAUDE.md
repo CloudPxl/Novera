@@ -83,7 +83,7 @@ one recorded decision.
 Working end to end: `npm run demo:run`, `npm run verify:db`, `npm run verify:access`,
 `npm run verify:tenancy`, `npm run calibrate`, `npm run measure:stability`,
 `npm run migrate`, `npm run seed:suites`, `npm run verify:models`, `npm run verify:effect`. Scripts run with `--conditions=react-server`
-so `server-only` resolves to its no-op. `npm test` — 172 passing.
+so `server-only` resolves to its no-op. `npm test` — 224 passing.
 
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
 policy text and no raw agent response, with expiry and revocation enforced.
@@ -159,7 +159,7 @@ Suites can be imported (JSON or CSV) and are validated case by case by
 `src/lib/suites/validate.ts`, which the seeder uses too.
 
 Measured, not assumed: no page overflows at 390/768/1024/1440, and every page passes
-axe-core at 390 and 1440. `npm test` — 172 passing.
+axe-core at 390 and 1440. `npm test` — 224 passing.
 
 Three rules learned the hard way and worth keeping in front of you:
 - **A report payload change breaks every document already in a client's hands.** Adding
@@ -176,6 +176,43 @@ distinction the database already stored: a case where two models deadlocked and 
 could not settle it is `disputed`, and it says something different about the agent from a
 timed-out endpoint. Reports also carry the **assurance gap** — the share of the suite that
 produced no verdict — because that is the number a reader needs beside INCOMPLETE.
+
+**The evidence-grade core is in (Phase 1).** A run declares its inputs *before* it
+executes — suite version and case ids in order, policy version, agent (host only), judge
+plan, pass mark, runner version, and a digest of the grading rubric itself — and the row
+refuses to let that change (0016). Reports chain to the previous report for the same
+agent. The content hash proves a document was not edited; the manifest proves the inputs
+were not chosen after the answers were known.
+
+**A rule settles what a rule can settle, before any model is asked.** Scenarios carry
+checks (contains, matches, tools allowed/forbidden/required/ordered, arguments excluded,
+no retry after failure, approval before an action, latency). **A check can fail a case
+and can never pass one** — passing "must not contain X" says nothing about whether the
+expectation was met. A rule-settled case records `settled_by = deterministic` (0017) and
+carries no judge, no votes and no agreement, because none were asked for.
+
+**Coverage is three numbers** — execution, resolution, evidence — each `null` rather
+than 0 or 100 when the run carries nothing to compute it from. A grade is `WITHHELD`
+when everything ran and the evidence still does not support a letter, and `INCOMPLETE`
+only when scenarios never ran: rerun the suite, versus fix what made the evidence
+unusable. An exhausted free tier stops the run and marks the rest **not run**, because a
+rate limit says nothing about the agent.
+
+**The invariants live in the database now (0019)**: an errored case cannot be a pass, an
+evidence gap cannot sit on a verdict, a rule-settled case cannot name a judge. All three
+were already true of every stored row and enforced in code — which is the point. A
+script with the service role bypasses the application and not the constraint.
+
+**The trajectory is read once (Phase 2).** `tool_activity` arrives in whatever shape the
+customer's stack emits; the effect rule and the checks each used to guess it separately
+and differently. Normalised on read, from the blob stored verbatim. A step that reports
+no outcome is `unknown`, not `ok`, and an empty entry is not a step — an action cannot be
+evidenced with `{}`. The operator can now see the steps, which the rules had been reading
+and nobody could look at.
+
+**Calibration is stored, and prints drift (0018).** Two models went bad under a fixed
+name in two days; both were caught by luck. Each run now compares against the last
+measurement taken under the same rubric hash and names newly false-passed cases.
 
 **A verdict is only as independent as the models behind it.** Grading has gone to two
 models since 0008, but nothing required them to be two *different vendors* — both votes
@@ -197,6 +234,15 @@ This was the prerequisite for 16 → 24, and those cases are written: **`eu-supp
 verifying. v2 adds AI Act Art. 50 transparency, subject access / rectification /
 objection, indirect prompt injection, a breach question, and the first two authorised
 actions that should succeed (T21 `tool_invoked`, T22 `state_confirmed`).
+
+**Two grading vendors, measured.** Over `eu-support v2`: `gpt-oss-120b` 19/19,
+`ministral-3b` 18/19, `ministral-8b` and `gpt-oss-20b` 17/19 — all with zero false
+passes. OpenRouter is out of both grading routes: `nemotron` false-passed T21 (an agent
+claiming an unsubscribe with no tool activity behind it), and its `:free` models come
+from a shared upstream pool that rate-limits as a class, so there is nothing to promote
+in its place. A funded OpenAI key is the cheapest way back to three vendors, which is why
+that key is kept rather than deleted. Groq limits **tokens** per minute (~8k), not
+requests — `npm run calibrate` paces for that, and for Mistral's ~1 request/second.
 
 **Route tables rot silently.** Nothing in the codebase changed and yet
 `google/gemini-3.5-flash-lite` — the second candidate on the judge route, the usual

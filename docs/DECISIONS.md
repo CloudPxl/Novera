@@ -871,3 +871,86 @@ seeded and unchanged, so every report already issued against it keeps verifying.
 Still to do: ground-truth labels for T17–T24 so `npm run calibrate` can measure over 24.
 They have to be written from reading the fixture's replies, not from the models' own
 verdicts, or the measurement is circular.
+
+## 2026-09-23 — The evidence-grade core (Phase 1)
+Five changes, each closing a gap between what the product claims and what it enforces.
+
+**Three coverage numbers, not one.** `score` says how the graded scenarios did; it
+cannot say how much of the evaluation happened. Execution (what ran), resolution (what
+produced an accountable reason — a fail naming no unmet assertion is a verdict with no
+reason, graded but unresolved), and evidence (what proof was asked for and got). Any of
+them is `null` rather than 0 or 100 where the run carries nothing to compute it from.
+
+**`WITHHELD` split from `INCOMPLETE`.** The remedies are opposites: rerun the suite, or
+fix what made the evidence unusable. One band said neither, and would have told a
+customer with a dead endpoint to try again.
+
+**A manifest declared before the run, frozen by the row (0016).** The content hash
+proves a document was not edited; it cannot answer whether the suite and the pass mark
+were fixed before anyone saw the answers. The manifest names the agent (host only — a
+URL can carry a token and this is quoted to a client), policy version, suite version and
+case ids in order, judge plan, pass mark, runner version, and a digest of the grading
+rubric, so changing the judge's instructions changes the manifest without anyone
+remembering to bump a number. Reports chain to the previous report for the same agent.
+
+**Deterministic checks before the judges.** A rule that is true or false about the
+transcript does not need a model: it is cheaper, stable, and quotable. **A check can
+fail a case and can never pass one** — "did not say the forbidden thing" is not "met the
+expectation", and letting a narrow rule grant a broad verdict is the same mistake as
+letting a model do it. A rule-settled case carries no judge model, no votes and no
+agreement, because none were asked for.
+
+**An exhausted free tier is "not run", not "failed".** A rate limit says nothing about
+the agent. Errored reads as WITHHELD — go fix something; not-run reads as INCOMPLETE —
+run it again, which is the true advice. Two consecutive all-vendor rate limits stop the
+run.
+
+**Calibration is stored, not printed (0018).** Two models went bad under a fixed name in
+two days and both were caught by luck. Each run now prints drift against the last
+measurement under the same rubric hash, including which case ids are newly false-passed.
+
+**And the invariants moved into the database (0019).** An errored case cannot be a pass;
+an evidence gap cannot sit on a verdict; a rule-settled case cannot name a judge. All
+three were already true of every stored row and enforced in code — which is the point. A
+script with the service role bypasses the application and not the constraint.
+
+## 2026-09-23 — OpenRouter is out of grading, for two independent reasons
+Measured over `eu-support v2`: `gpt-oss-120b` 19/19, `ministral-3b` 18/19, `ministral-8b`
+and `gpt-oss-20b` 17/19, all with zero false passes. `openrouter/nemotron` scored 12/19
+and **false-passed T21** — an agent claiming it had actioned an unsubscribe with no tool
+activity behind it, which is the exact failure this product exists to catch. The standing
+rule settles it alone: a model with false passes is unusable here.
+
+The second reason rules out the obvious fix. OpenRouter's `:free` models are served from
+a **shared upstream pool** and answer `temporarily rate-limited upstream` as a class, not
+per model — three separate candidates returned it on every case within seconds, and its
+health check was failing while this was being written. There is no free OpenRouter model
+to promote in nemotron's place.
+
+That leaves two dependable grading vendors. Consensus still crosses vendors for the
+second opinion; a third opinion on a critical scenario will sometimes be same-vendor, and
+the report says so when it is. A funded OpenAI key is the cheapest way to restore a third
+— which is why that key is kept rather than deleted.
+
+Also measured, not read: **Groq limits tokens per minute (~8k), not requests.** An
+unpaced 24-case sweep scored our best judge 6/19 with twelve rate limits; paced to the
+token budget it scores 19/19 with none.
+
+## 2026-09-23 — One reading of the agent's trajectory (Phase 2)
+`tool_activity` arrives in whatever shape the customer's stack emits. The effect rule and
+the checks each guessed that shape separately, and guessed differently. It is normalised
+once now, on read, from the blob stored verbatim — a view over what the hash already
+covers, so no migration and no new evidence.
+
+A step that reports no outcome is `unknown`, not `ok`. An agent that reported nothing has
+not reported a success, and an empty entry is not a step at all, so an action cannot be
+evidenced with `{}`.
+
+Rules can now reason about the path rather than the prose: tool order (compared only
+across tools actually called, so a rule about order does not become a rule about
+presence), content that must not travel into a tool call, a failed tool called again
+versus recovery with a different one, and an approval that must precede an action —
+where an approval recorded afterwards does not count.
+
+The operator can finally see the steps. The evidence an effect case turns on was stored,
+read by the rules, and never shown to the person deciding whether to trust the verdict.

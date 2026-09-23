@@ -17,6 +17,7 @@
  * Run: npm run calibrate
  */
 import { readFile } from "node:fs/promises";
+import { createClient } from "@supabase/supabase-js";
 import path from "node:path";
 import { httpAgent } from "../src/lib/agents/http.ts";
 import { judgeCase } from "../src/lib/judge/index.ts";
@@ -24,6 +25,7 @@ import { connectionsFromEnv } from "../src/lib/providers/registry.ts";
 import { createRoutedChat } from "../src/lib/router/execute.ts";
 import type { RouteTable } from "../src/lib/router/routes.ts";
 import type { SuiteCase } from "../src/lib/runner/types.ts";
+import { rubricHash } from "../src/lib/report/manifest.ts";
 
 const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 const suiteDir = path.join(process.cwd(), "data", "suites");
@@ -205,4 +207,70 @@ for (const [i, s] of ranked.entries()) {
     for (const reason of s.errorReasons) console.log(`       ${reason}`);
   }
 }
-console.log("\nThis measures agreement with our labels, not absolute correctness.\n");
+/* ------------------------------------------------------------------------ drift
+   A number printed once catches a model going bad by luck. A stored series catches
+   it on the next run, which is how gemini-3.5-flash-lite and nemotron were both
+   found after the fact rather than before. */
+
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const rubric = rubricHash();
+
+if (process.env.CALIBRATE_STORE === "0") {
+  console.log("Not stored (CALIBRATE_STORE=0).\n");
+} else if (!url || !serviceKey) {
+  console.log("Not stored: no Supabase service credentials in the environment.\n");
+} else {
+  const db = createClient(url, serviceKey, { auth: { persistSession: false } });
+  const suiteVersion = Number(suiteName.match(/-v(\d+)$/)?.[1] ?? 0);
+  const suiteKey = suiteName.replace(/-v\d+$/, "");
+
+  console.log("Drift against the last measurement under the same rubric:\n");
+
+  for (const score of scores) {
+    const [connection, ...rest] = score.candidate.split("/");
+    const model = rest.join("/");
+
+    const { data: previous } = await db
+      .from("judge_calibrations")
+      .select("measured_at, agreed, false_passes, false_fails, errors, labelled, false_pass_ids")
+      .eq("connection", connection).eq("model", model)
+      .eq("suite_key", suiteKey).eq("suite_version", suiteVersion)
+      // Only comparable under the same grading instructions.
+      .eq("rubric_hash", rubric)
+      .order("measured_at", { ascending: false }).limit(1).maybeSingle();
+
+    if (!previous) {
+      console.log(`  new    ${score.candidate} — no earlier measurement to compare`);
+    } else {
+      const delta = score.agreed - previous.agreed;
+      const newFalsePasses = score.falsePasses.filter((id) => !(previous.false_pass_ids ?? []).includes(id));
+      const worse = score.falsePasses.length > previous.false_passes || delta < 0;
+      console.log(
+        `  ${worse ? "DRIFT" : "  ok "} ${score.candidate.padEnd(46)} ` +
+        `agreement ${previous.agreed} -> ${score.agreed} (${delta >= 0 ? "+" : ""}${delta}), ` +
+        `false passes ${previous.false_passes} -> ${score.falsePasses.length}` +
+        (newFalsePasses.length ? `, NEW false pass on ${newFalsePasses.join(", ")}` : "") +
+        `  [last ${String(previous.measured_at).slice(0, 10)}]`,
+      );
+    }
+
+    const { error } = await db.from("judge_calibrations").insert({
+      suite_key: suiteKey, suite_version: suiteVersion, rubric_hash: rubric,
+      connection, model,
+      labelled: labelled.length,
+      agreed: score.agreed,
+      false_passes: score.falsePasses.length,
+      false_fails: score.falseFails.length,
+      errors: score.errors.length,
+      ms_per_case: Math.round(score.ms / Math.max(1, labelled.length)),
+      false_pass_ids: score.falsePasses,
+      false_fail_ids: score.falseFails,
+      error_ids: score.errors,
+    });
+    if (error) console.log(`         could not store: ${error.message}`);
+  }
+  console.log("");
+}
+
+console.log("This measures agreement with our labels, not absolute correctness.\n");

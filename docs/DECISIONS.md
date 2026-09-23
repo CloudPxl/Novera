@@ -1108,3 +1108,39 @@ One thing measured rather than assumed: a request for twelve scenarios was cut o
 mid-reply, and "unreadable JSON" is an error nobody can act on. The ceiling is six —
 about as many as anyone reads carefully — and a truncated reply now says it ran out of
 room, which is a sentence with a next step in it.
+
+## 2026-09-23 — Phase 6 begins: the report, the matrix, and two rules that outlive them
+
+The surface-by-surface pass, starting where the stakes are highest: the document a
+stranger reads, and the screen an operator decides from.
+
+**Customer-facing vocabulary is enforced, not agreed.** `src/lib/report/language.ts`
+refuses affirmative claims of certification, compliance, zero risk, safety and
+guarantees, and `tests/language.test.ts` runs it over every surface a customer can
+read. The rule is about claims rather than words, so the most important sentence in the
+product — *this is not a statement of legal compliance* — stays sayable; a match inside
+a negated clause is allowed. Every surface was already clean. The value is that the
+next one has to be too, including the ones written at speed.
+
+**A capability nobody can find is not there.** The Markdown and CSV exports were behind
+the same token gate as the page and were never mentioned on it. The report now carries
+a toolbar, and a print stylesheet that treats the document as something filed: findings,
+rows and the footer do not split across page breaks, and a heading never orphans.
+
+**Transparent is not hidden.** A tooltip rendered at `opacity-0` still occupies layout,
+and a 224px one centred near the right edge pushed the run page 28px past a 390px
+viewport — an invisible element producing a real horizontal scrollbar on every page that
+used one. Now `hidden` until hover or focus. This is the second time a measurement
+caught something inspection never would: the first was the severity chip at 2.82:1.
+
+**Verdict tabs are an engineer's view.** The matrix gained seven lenses — no evidence,
+action claimed, contradicted, judges disagreed, privacy or security, new since baseline,
+needs a person — each computed from a stored field rather than inferred. A filter that
+quietly includes the wrong scenario is worse than no filter, because a reviewer who
+selects one believes they have seen the whole set; that is why the lenses live in their
+own module with their own tests, and why the regression lens reads the same comparison
+the ribbon renders rather than deciding for itself what "newly broken" means.
+
+Measured: 14 sealed reports render and export across payload formats 1, 2, 4, 5, 7 and
+9 after the token migration; run page and dashboard axe-clean at 390 with no overflow;
+print rules verified under print emulation rather than by reading the CSS.

@@ -84,7 +84,7 @@ Working end to end: `npm run demo:run`, `npm run verify:db`, `npm run verify:acc
 `npm run verify:tenancy`, `npm run calibrate`, `npm run measure:stability`,
 `npm run migrate`, `npm run seed:suites`, `npm run verify:models`, `npm run verify:effect`, `npm run verify:channel`,
 `npm run verify:compiler`, `npm run seed:docs`. Scripts run with `--conditions=react-server`
-so `server-only` resolves to its no-op. `npm test` — 264 passing.
+so `server-only` resolves to its no-op. `npm test` — 294 passing.
 
 The artifact exists: `src/app/report/[token]/page.tsx`, verified to leak no key, no
 policy text and no raw agent response, with expiry and revocation enforced.
@@ -121,6 +121,23 @@ of it. The first run scored 8/10 and found two real defects — sent replies dro
 citations, and the erasure rule missed "delete everything you hold about me". Both fixed;
 v2 scores 10/10 with 4 verdicts marked uncorroborated because our own key has no
 fallback, and the report says so.
+
+**The words are a rule (Phase 6).** `src/lib/report/language.ts` refuses affirmative
+claims of certification, compliance, zero risk, safety or guarantees on any surface a
+customer reads, and a test runs it over the report page, the exporters, the landing page
+and every docs page. Claims, not words — "this is not a statement of legal compliance"
+stays sayable, because a match inside a negated clause is allowed. Fixtures are excluded
+on purpose: the scripted agent says "your data is completely safe" because that is the
+planted failure a scenario catches.
+
+**The report is a document, and the matrix is a reviewer's tool.** The report carries
+its exports and a print button on the page, and a print stylesheet that keeps findings,
+rows and the digest off page breaks. The case matrix carries seven evidence lenses — no
+evidence, action claimed, contradicted, judges disagreed, privacy or security, new since
+baseline, needs a person — each computed from a stored field, never inferred, and tested
+in their own module. Two measurements worth remembering: a severity chip at 2.82:1, and
+a transparent tooltip that still occupied layout and pushed every page that used one
+28px past a 390px viewport. Neither was visible to inspection.
 
 **A policy compiles into scenarios a person approved (Phase 5).** `/scenarios` drafts
 cases from a customer's own policy version, each one quoting the passage it tests — so
@@ -182,7 +199,7 @@ Suites can be imported (JSON or CSV) and are validated case by case by
 `src/lib/suites/validate.ts`, which the seeder uses too.
 
 Measured, not assumed: no page overflows at 390/768/1024/1440, and every page passes
-axe-core at 390 and 1440. `npm test` — 264 passing.
+axe-core at 390 and 1440. `npm test` — 294 passing.
 
 Three rules learned the hard way and worth keeping in front of you:
 - **A report payload change breaks every document already in a client's hands.** Adding

@@ -11,10 +11,27 @@ export type CaseStatus = "pass" | "fail" | "error";
 export interface CoverageInput {
   plannedCases: number;
   /**
-   * `agreement` and `evidenceGap` are optional: rows stored before those distinctions
-   * existed have neither, and must keep counting exactly as they always did.
+   * `agreement`, `evidenceGap`, `assertionCount`, `failedAssertionCount` and `requiresEvidence`
+   * are all optional: rows stored before each distinction existed have none of them,
+   * and must keep counting exactly as they always did. Where a number cannot be
+   * computed from what a row carries, it comes back `null` — never 0, and never 100.
    */
-  cases: Array<{ status: CaseStatus; agreement?: string | null; evidenceGap?: string | null }>;
+  cases: Array<{
+    status: CaseStatus;
+    agreement?: string | null;
+    evidenceGap?: string | null;
+    /**
+     * How many assertions this scenario carries, and how many the judge named as
+     * unmet. Counts, deliberately not named `assertions` / `failedAssertions`: a
+     * `RunCaseRecord` already uses those names for the `string[]`s themselves, and a
+     * record is passed straight into this function in several places. One name for
+     * two different facts at a boundary is how information goes missing here.
+     */
+    assertionCount?: number;
+    failedAssertionCount?: number;
+    /** Whether the scenario declared an effect, i.e. required evidence beyond words. */
+    requiresEvidence?: boolean;
+  }>;
 }
 
 export interface Coverage {
@@ -53,6 +70,25 @@ export interface Coverage {
   /** passed / graded, as a percentage rounded to one decimal. Null when nothing graded. */
   score: number | null;
   basis: string;
+  /**
+   * Three different questions a single percentage cannot answer.
+   *
+   * `score` says how the graded cases did. None of these do. They say how much of the
+   * evaluation actually happened, which is what a reviewer asks first and what the
+   * assurance gap was groping at with one number.
+   *
+   *  - **execution**: of the scenarios in scope, how many ran at all.
+   *  - **resolution**: of the assertions those scenarios carry, how many we can
+   *    actually account for. A fail that names no unmet assertion is a verdict
+   *    without a reason, and it is counted as unresolved here even though it is
+   *    counted as graded above.
+   *  - **evidence**: of the scenarios that required proof beyond the agent's words,
+   *    how many got it. `null` when none required any — a suite with no effect cases
+   *    has not achieved 100% evidence coverage, it simply asked for none.
+   */
+  executionCoverage: number;
+  resolutionCoverage: number | null;
+  evidenceCoverage: number | null;
 }
 
 export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
@@ -67,6 +103,24 @@ export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
   const assuranceGap =
     plannedCases === 0 ? 0 : Math.round(((errored + notRun) / plannedCases) * 1000) / 10;
 
+  // Assertion-level accounting, and only over rows that carry the counts. A row from
+  // before `failed_assertions` existed cannot say whether its assertions were
+  // resolved, so it is left out of both sides rather than assumed either way.
+  const accountable = cases.filter((c) => typeof c.assertionCount === "number" && c.assertionCount > 0);
+  const assertionsTotal = accountable.reduce((n, c) => n + (c.assertionCount ?? 0), 0);
+  const assertionsResolved = accountable.reduce((n, c) => {
+    if (c.status === "pass") return n + (c.assertionCount ?? 0);
+    // A fail naming no unmet assertion is a verdict with no reason attached: we know
+    // the case failed and not which requirement it failed. Nothing is resolved.
+    if (c.status === "fail" && (c.failedAssertionCount ?? 0) > 0) return n + (c.assertionCount ?? 0);
+    return n;
+  }, 0);
+
+  const evidenceRequired = cases.filter((c) => c.requiresEvidence).length;
+  const evidenceObserved = cases.filter((c) => c.requiresEvidence && !c.evidenceGap).length;
+
+  const percent = (part: number, whole: number) => Math.round((part / whole) * 1000) / 10;
+
   return {
     planned: plannedCases,
     graded,
@@ -77,6 +131,9 @@ export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
     unverifiable,
     notRun,
     assuranceGap,
+    executionCoverage: plannedCases === 0 ? 0 : percent(graded + errored, plannedCases),
+    resolutionCoverage: assertionsTotal === 0 ? null : percent(assertionsResolved, assertionsTotal),
+    evidenceCoverage: evidenceRequired === 0 ? null : percent(evidenceObserved, evidenceRequired),
     score,
     basis:
       graded === 0

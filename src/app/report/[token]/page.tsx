@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 /**
  * A grade is a claim, so its colour is not decoration.
  *
- * INCOMPLETE is deliberately slate rather than red: a run that did not fully execute
+ * INCOMPLETE and WITHHELD are deliberately slate rather than red: a run without a grade
  * has not failed, and colouring it as a failure would be its own kind of false verdict.
  */
 const GRADE_STYLES: Record<string, string> = {
@@ -18,6 +18,9 @@ const GRADE_STYLES: Record<string, string> = {
   C: "border-amber-500 bg-amber-50 text-amber-700",
   F: "border-rose-500 bg-rose-50 text-rose-700",
   INCOMPLETE: "border-slate-300 bg-slate-100 text-slate-600",
+  // A grade withheld over unusable evidence is not a failing grade, so it is not red
+  // either. The basis line beside it says which of the two happened and why.
+  WITHHELD: "border-slate-300 bg-slate-100 text-slate-600",
 };
 
 export const metadata: Metadata = {
@@ -60,10 +63,12 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
               className={`flex size-24 shrink-0 flex-col items-center justify-center rounded-xl border-2 ${GRADE_STYLES[payload.grade.band]}`}
             >
               <span className="text-[38px] font-bold leading-none tracking-tight">
-                {payload.grade.band === "INCOMPLETE" ? "—" : payload.grade.band}
+                {payload.grade.band === "INCOMPLETE" || payload.grade.band === "WITHHELD" ? "—" : payload.grade.band}
               </span>
               <span className="mt-1 text-xs font-semibold tabular-nums">
-                {payload.grade.score === null ? "incomplete" : `${payload.grade.score}%`}
+                {payload.grade.score === null
+                  ? payload.grade.band === "WITHHELD" ? "withheld" : "incomplete"
+                  : `${payload.grade.score}%`}
               </span>
             </div>
             <div className="min-w-0 flex-1">
@@ -90,6 +95,35 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           />
         </div>
         <p className="mt-4 text-sm leading-relaxed text-slate-600">{coverage.basis}</p>
+
+        {/* Format 6 onwards. The score says how the graded scenarios did; these say how
+            much of the evaluation actually happened, which is a different question and
+            the one a reviewer asks first. Absent on earlier payloads, where nothing
+            measured them. A null here means the run carried nothing to compute it
+            from — printed as "not recorded", never as 0% and never as 100%. */}
+        {coverage.execution_coverage !== undefined && (
+          <dl className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-3">
+            <Coverage
+              term="Executed"
+              value={`${coverage.execution_coverage}%`}
+              hint="of the scenarios in scope actually ran"
+            />
+            <Coverage
+              term="Reasoned"
+              value={coverage.resolution_coverage === null ? "not recorded" : `${coverage.resolution_coverage}%`}
+              hint="of the requirements those scenarios carry have an accountable outcome"
+            />
+            <Coverage
+              term="Evidenced"
+              value={
+                coverage.evidence_coverage === null
+                  ? "none required"
+                  : `${coverage.evidence_coverage}%`
+              }
+              hint="of the scenarios that asked for proof beyond the agent's words got it"
+            />
+          </dl>
+        )}
 
         {/* Format 3 onwards. Absent on earlier payloads, so the whole block is, rather
             than printing a misleading zero for something that was never measured. */}
@@ -418,6 +452,17 @@ const TONES = {
   muted: "border-slate-200 bg-slate-50 text-slate-700",
   score: "border-slate-300 bg-white text-slate-900",
 } as const;
+
+/** One of the three coverage numbers: what it is, and what it is a share of. */
+function Coverage({ term, value, hint }: { term: string; value: string; hint: string }) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{term}</dt>
+      <dd className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900">{value}</dd>
+      <dd className="mt-0.5 text-xs leading-snug text-slate-600">{hint}</dd>
+    </div>
+  );
+}
 
 function Stat({
   label,

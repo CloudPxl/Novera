@@ -187,9 +187,9 @@ test("an uncorroborated verdict counts as neither independent nor single-vendor"
   assert.equal(run.corroboration.single_vendor, 0);
 });
 
-test("the payload is format 5", () => {
+test("the payload is format 6", () => {
   const { payload } = buildReport(input());
-  assert.equal((payload as { novera: { format: number } }).novera.format, 5);
+  assert.equal((payload as { novera: { format: number } }).novera.format, 6);
 });
 
 test("a tie settled by a third model is not reported as a provider outage", () => {

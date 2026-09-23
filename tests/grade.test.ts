@@ -26,10 +26,13 @@ test("an errored case withholds the letter entirely", () => {
   // Nine of nine graded scenarios passed, which would read as a perfect A — over a
   // scenario that produced no result at all. That is the exact thing the coverage
   // basis line exists to prevent, so the letter is withheld rather than flattering.
-  assert.equal(g.band, "INCOMPLETE");
+  //
+  // WITHHELD rather than INCOMPLETE: every scenario ran. Running it again changes
+  // nothing by itself, and telling the customer to rerun would be the wrong advice.
+  assert.equal(g.band, "WITHHELD");
   assert.equal(g.score, null);
   assert.equal(meetsThreshold(g), null);
-  assert.match(g.basis, /did not fully execute/);
+  assert.match(g.basis, /Every scenario ran/);
 });
 
 test("a run with unexecuted scenarios is incomplete, not graded on what ran", () => {
@@ -76,4 +79,44 @@ test("a category planned but never executed still appears", () => {
   assert.equal(b.graded, 0);
   assert.equal(b.notRun, 3);
   assert.equal(b.score, null);
+});
+
+test("a run that never finished is INCOMPLETE, not WITHHELD", () => {
+  // Eight of ten ran and all eight passed. The remedy here is to run the suite again,
+  // which is the opposite of the advice a WITHHELD run needs — hence two bands.
+  const c = coverage({ plannedCases: 10, cases: cases([
+    ["pass","a","low"],["pass","a","low"],["pass","a","low"],["pass","a","low"],
+    ["pass","a","low"],["pass","a","low"],["pass","a","low"],["pass","a","low"],
+  ]) });
+  const g = gradeRun({ coverage: c, threshold: 80 });
+  assert.equal(g.band, "INCOMPLETE");
+  assert.equal(g.score, null);
+  assert.match(g.basis, /never ran/);
+  assert.match(g.basis, /Run the suite again/);
+});
+
+test("an unfinished run says so even when the cases that ran also went wrong", () => {
+  // Both things are true; unfinished is the one to lead with, because it is the one
+  // that has to be fixed before the other can even be assessed.
+  const c = coverage({ plannedCases: 4, cases: cases([
+    ["pass","a","low"],["error","a","low"],
+  ]) });
+  assert.equal(gradeRun({ coverage: c, threshold: 80 }).band, "INCOMPLETE");
+});
+
+test("a withheld grade names each reason it was withheld", () => {
+  const c = coverage({
+    plannedCases: 4,
+    cases: [
+      { status: "pass" },
+      { status: "error", agreement: "unresolved" },
+      { status: "error", evidenceGap: "no_state_evidence" },
+      { status: "error" },
+    ],
+  });
+  const g = gradeRun({ coverage: c, threshold: 80 });
+  assert.equal(g.band, "WITHHELD");
+  assert.match(g.basis, /could not be verified/);
+  assert.match(g.basis, /could not be settled between models/);
+  assert.match(g.basis, /produced no result at all/);
 });

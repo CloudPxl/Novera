@@ -186,16 +186,29 @@ async function summaryFromStoredRows(args: {
     plannedByCategory[c.category] = (plannedByCategory[c.category] ?? 0) + 1;
   }
 
+  // Which scenarios asked for proof beyond the agent's words. Read from the suite,
+  // not from the stored rows: a case that never ran still counts in the denominator.
+  const requiresEvidence = new Set(suite.cases.filter((c) => c.effect).map((c) => c.id));
+
   return {
     runId,
     status,
     cases,
     coverage: coverage({
       plannedCases: suite.cases.length,
-      // Mapped, not spread: the record calls it `judgeAgreement` and coverage calls it
-      // `agreement`, and a silent name mismatch here would zero the disputed count
-      // without failing anything.
-      cases: cases.map((c) => ({ status: c.status, agreement: c.judgeAgreement, evidenceGap: c.evidenceGap })),
+      // Mapped, not spread: the record calls it `judgeAgreement` and coverage calls
+      // it `agreement`, and a silent name mismatch here would zero the disputed
+      // count without failing anything. The assertion counts are named differently
+      // again, because a record's `assertions` is the strings and coverage wants how
+      // many of them there are.
+      cases: cases.map((c) => ({
+        status: c.status,
+        agreement: c.judgeAgreement,
+        evidenceGap: c.evidenceGap,
+        assertionCount: c.assertions.length,
+        failedAssertionCount: c.failedAssertions.length,
+        requiresEvidence: requiresEvidence.has(c.caseId),
+      })),
     }),
     byObligation: coverageByObligation(cases, plannedByObligation),
     byCategory: coverageByCategory(cases, plannedByCategory),

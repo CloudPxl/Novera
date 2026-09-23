@@ -45,7 +45,12 @@ export interface ReportPayload {
   };
   /** Absent on format 1. */
   grade?: {
-    band: "A" | "B" | "C" | "F" | "INCOMPLETE";
+    /**
+     * `WITHHELD` appears only from format 6. Earlier payloads used `INCOMPLETE` for
+     * both reasons a letter can be missing, so an older report saying `INCOMPLETE`
+     * may mean either — which is exactly why they were separated.
+     */
+    band: "A" | "B" | "C" | "F" | "INCOMPLETE" | "WITHHELD";
     score: number | null;
     threshold: number;
     basis: string;
@@ -71,6 +76,16 @@ export interface ReportPayload {
     errored: number;
     /** Absent before format 3. The subset of `errored` the models could not settle. */
     disputed?: number;
+    /**
+     * Absent before format 6. Three questions a single percentage cannot answer:
+     * how much of the suite ran, how much of what ran produced an accountable
+     * reason, and how much of the evidence a scenario asked for was actually
+     * observed. `resolution` and `evidence` are `null` where the run carries nothing
+     * to compute them from — never 0, and never 100.
+     */
+    execution_coverage?: number;
+    resolution_coverage?: number | null;
+    evidence_coverage?: number | null;
     /**
      * Absent before format 5. The subset of `errored` where the agent described an
      * action and nothing evidenced that it happened, so a pass was withheld. A limit

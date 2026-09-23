@@ -3,7 +3,7 @@ import type { Grade } from "@/lib/evidence/grade.ts";
 import type { Coverage } from "@/lib/evidence/coverage.ts";
 
 /**
- * The band's colour ring. `INCOMPLETE` is deliberately not red: it is not a bad
+ * The band's colour ring. `INCOMPLETE` and `WITHHELD` are deliberately not red: neither is a bad
  * result, it is the absence of one, and colouring it like a failure would push an
  * operator to explain away a gap instead of re-running it.
  */
@@ -13,6 +13,8 @@ const BAND_RING = {
   C: "border-warning-border bg-warning-surface text-warning-text",
   F: "border-fail-border bg-fail-surface text-fail-text",
   INCOMPLETE: "border-line-strong bg-sunken text-ink-soft",
+  // Same treatment, different reason. Neither is a bad grade, so neither is red.
+  WITHHELD: "border-line-strong bg-sunken text-ink-soft",
 } as const;
 
 export interface Corroboration {
@@ -70,6 +72,9 @@ export function Scorecard({
   runError: string | null;
 }) {
   const took = duration(startedAt, finishedAt);
+  // Two reasons for no letter: the run did not finish, or it finished and the evidence
+  // does not support one. Both hide the badge; only the wording differs.
+  const ungraded = grade.band === "INCOMPLETE" || grade.band === "WITHHELD";
 
   return (
     <section className="rounded-panel border border-line bg-surface p-5 shadow-card sm:p-6">
@@ -79,8 +84,10 @@ export function Scorecard({
           <div
             className={`grid size-24 shrink-0 place-items-center rounded-full border-4 ${BAND_RING[grade.band]}`}
           >
-            {grade.band === "INCOMPLETE" ? (
-              <span className="type-pill text-center leading-tight">Not<br />graded</span>
+            {ungraded ? (
+              <span className="type-pill text-center leading-tight">
+                {grade.band === "WITHHELD" ? <>Grade<br />withheld</> : <>Not<br />graded</>}
+              </span>
             ) : (
               <>
                 <span className="text-4xl font-bold leading-none">{grade.band}</span>
@@ -88,7 +95,7 @@ export function Scorecard({
               </>
             )}
           </div>
-          {grade.band !== "INCOMPLETE" && (
+          {!ungraded && (
             <p className="mt-2 text-center text-xs text-ink-faint sm:w-24">
               pass mark {grade.threshold}%
             </p>

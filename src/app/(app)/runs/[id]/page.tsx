@@ -183,6 +183,11 @@ export default async function RunPage({
     }
   }
 
+  // From the suite, so a scenario that never ran still counts as having asked for proof.
+  const requiresEvidence = new Set(
+    suiteCases.filter((c) => c.effect).map((c) => c.id as string),
+  );
+
   const statuses = rows.map((c) => ({
     status: c.status as "pass" | "fail" | "error",
     category: c.category as string,
@@ -191,6 +196,11 @@ export default async function RunPage({
     agreement: (c.judge_agreement as string | null) ?? null,
     // ...and an unverifiable action from both of them.
     evidenceGap: (c.evidence_gap as string | null) ?? null,
+    // Counts, not the strings: a fail that names no unmet assertion is a verdict with
+    // no reason attached, and resolution coverage has to see that.
+    assertionCount: asStrings(c.assertions).length,
+    failedAssertionCount: resolveAssertions(asStrings(c.assertions), asStrings(c.failed_assertions)).length,
+    requiresEvidence: requiresEvidence.has(c.case_id as string),
   }));
 
   const runCoverage = coverage({ plannedCases, cases: statuses });

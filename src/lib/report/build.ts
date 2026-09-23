@@ -157,10 +157,11 @@ export function buildReport(input: ReportInput): BuiltReport {
     // 2 adds the grade, the pass mark, category coverage and duration; 3 splits a
     // disputed verdict from a dead endpoint and adds the assurance gap; 4 says how
     // many verdicts were corroborated across vendors rather than within one; 5 counts
-    // the scenarios whose claimed action nothing evidenced. Reports
+    // the scenarios whose claimed action nothing evidenced; 5 also introduced the
+    // WITHHELD band and the three coverage numbers at 6. Reports
     // sealed as any earlier format are still rendered from their own payload and must
     // keep verifying — every reader of this payload branches on absence.
-    novera: { format: 5 },
+    novera: { format: 6 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -211,6 +212,9 @@ export function buildReport(input: ReportInput): BuiltReport {
       // number a reader needs beside an INCOMPLETE grade.
       disputed: input.coverage.disputed,
       unverifiable: input.coverage.unverifiable,
+      execution_coverage: input.coverage.executionCoverage,
+      resolution_coverage: input.coverage.resolutionCoverage,
+      evidence_coverage: input.coverage.evidenceCoverage,
       assurance_gap: input.coverage.assuranceGap,
       not_run: input.coverage.notRun,
       score: input.coverage.score,

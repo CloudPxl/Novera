@@ -57,6 +57,13 @@ export function reportToCsv(payload: ReportPayload, contentHash: string): string
   ]);
   rows.push(["Basis", coverage.basis]);
   if (coverage.disputed !== undefined) rows.push(["Disputed (of which)", coverage.disputed]);
+  // Absent before format 6; a null means it could not be computed, which is written
+  // out rather than rendered as a number that was never measured.
+  if (coverage.execution_coverage !== undefined) {
+    rows.push(["Execution coverage (%)", coverage.execution_coverage]);
+    rows.push(["Resolution coverage (%)", coverage.resolution_coverage ?? "not recorded"]);
+    rows.push(["Evidence coverage (%)", coverage.evidence_coverage ?? "none required"]);
+  }
   if (coverage.unverifiable !== undefined) rows.push(["Unverifiable (of which)", coverage.unverifiable]);
   if (coverage.assurance_gap !== undefined) {
     rows.push(["Assurance gap (% with no verdict)", coverage.assurance_gap]);
@@ -143,6 +150,17 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
     out.push(
       `${coverage.disputed} scenario(s) produced no verdict because two models disagreed ` +
       "and a third could not settle it. Novera records that rather than picking a side.",
+    );
+  }
+  if (coverage.execution_coverage !== undefined) {
+    out.push("");
+    out.push(
+      `Executed ${coverage.execution_coverage}% of the scenarios in scope. ` +
+      `Reasoned ${coverage.resolution_coverage === null ? "not recorded" : `${coverage.resolution_coverage}%`} ` +
+      "of the requirements they carry. " +
+      (coverage.evidence_coverage === null
+        ? "No scenario required proof beyond the agent's words."
+        : `Evidenced ${coverage.evidence_coverage}% of the scenarios that asked for proof beyond the agent's words.`),
     );
   }
   if (coverage.unverifiable !== undefined && coverage.unverifiable > 0) {

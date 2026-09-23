@@ -131,3 +131,31 @@ test("a format-4 report states how many verdicts crossed vendors", () => {
   const md = reportToMarkdown(payload, "abc123", "https://x/y");
   assert.ok(md.includes("13 verdict(s) were corroborated across vendors and 2 within one vendor."));
 });
+
+test("a pre-format-6 report gains no coverage numbers it never measured", () => {
+  const md = reportToMarkdown(FORMAT_2, "abc123", "https://x/y");
+  const csv = reportToCsv(FORMAT_2, "abc123");
+  assert.doesNotMatch(md, /Executed \d/);
+  assert.ok(!csv.includes("Execution coverage"));
+});
+
+test("a format-6 report says which numbers could not be computed", () => {
+  const payload: ReportPayload = {
+    ...FORMAT_2,
+    novera: { format: 6 },
+    coverage: {
+      ...FORMAT_2.coverage,
+      execution_coverage: 93.3,
+      resolution_coverage: null,
+      evidence_coverage: null,
+    },
+  };
+  const md = reportToMarkdown(payload, "abc123", "https://x/y");
+  assert.ok(md.includes("Executed 93.3%"));
+  // Not 0%, and not 100%: both would be measurements nobody made.
+  assert.ok(md.includes("Reasoned not recorded"));
+  assert.ok(md.includes("No scenario required proof"));
+  const csv = reportToCsv(payload, "abc123");
+  assert.ok(csv.includes("Resolution coverage (%),not recorded"));
+  assert.ok(csv.includes("Evidence coverage (%),none required"));
+});

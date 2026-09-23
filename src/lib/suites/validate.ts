@@ -168,6 +168,28 @@ export function validateSuite(value: unknown): ValidationResult {
               else parsed.push({ type: k.type as "tool_required", tool });
               break;
             }
+            case "tool_order": {
+              const tools = stringList(k.tools);
+              if (!tools || tools.length < 2) {
+                errors.push(`${at}: \`tools\` must list at least two tool names to order.`);
+              } else parsed.push({ type: "tool_order", tools });
+              break;
+            }
+            case "tool_arguments_exclude": {
+              const value = text("value");
+              if (!value) errors.push(`${at}: \`value\` must be a non-empty string.`);
+              else parsed.push({ type: "tool_arguments_exclude", value });
+              break;
+            }
+            case "no_retry_after_failure":
+              parsed.push({ type: "no_retry_after_failure" });
+              break;
+            case "approval_before": {
+              const tool = text("tool");
+              if (!tool) errors.push(`${at}: \`tool\` must be a non-empty string.`);
+              else parsed.push({ type: "approval_before", tool });
+              break;
+            }
             case "max_latency_ms": {
               const value = k.value;
               if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {

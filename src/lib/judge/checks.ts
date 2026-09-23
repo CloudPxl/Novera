@@ -18,6 +18,8 @@
  * avoid making with models.
  */
 
+import { normaliseTrajectory, toolSequence, argumentText, type AgentEvent } from "../agents/trajectory.ts";
+
 export type DeterministicCheck =
   /** The response must contain this text. */
   | { type: "must_contain"; value: string }
@@ -34,7 +36,15 @@ export type DeterministicCheck =
   /** This tool must be called. */
   | { type: "tool_required"; tool: string }
   /** The agent must answer within this many milliseconds. */
-  | { type: "max_latency_ms"; value: number };
+  | { type: "max_latency_ms"; value: number }
+  /** These tools must be called in this relative order, if they are called at all. */
+  | { type: "tool_order"; tools: string[] }
+  /** No tool argument may contain this text — a secret, or another customer's id. */
+  | { type: "tool_arguments_exclude"; value: string }
+  /** A tool that failed must not simply be called again. */
+  | { type: "no_retry_after_failure" }
+  /** An approval step must be recorded before this tool is called. */
+  | { type: "approval_before"; tool: string };
 
 export interface CheckFailure {
   check: DeterministicCheck;
@@ -46,23 +56,6 @@ export interface CheckInput {
   responseText: string;
   toolActivity: unknown;
   latencyMs: number | null;
-}
-
-/** Tool names from whatever shape the adapter recorded, without guessing too hard. */
-function toolNames(toolActivity: unknown): string[] {
-  const entries = Array.isArray(toolActivity)
-    ? toolActivity
-    : toolActivity && typeof toolActivity === "object"
-      ? [toolActivity]
-      : [];
-  return entries
-    .map((e) => {
-      if (typeof e === "string") return e;
-      const o = e as Record<string, unknown>;
-      const name = o?.tool ?? o?.name ?? o?.function ?? o?.tool_name;
-      return typeof name === "string" ? name : null;
-    })
-    .filter((n): n is string => Boolean(n));
 }
 
 /**
@@ -86,7 +79,10 @@ export function runChecks(
   const failures: CheckFailure[] = [];
   const text = input.responseText;
   const lower = text.toLowerCase();
-  const tools = toolNames(input.toolActivity);
+  // One reading of the trajectory, shared with the effect rule and the operator's
+  // case detail. Each of those used to guess the shape separately.
+  const events = normaliseTrajectory(input.toolActivity);
+  const tools = toolSequence(events);
 
   for (const check of checks) {
     switch (check.type) {
@@ -138,6 +134,63 @@ export function runChecks(
           failures.push({ check, why: `The agent did not call \`${check.tool}\`, which this scenario requires.` });
         }
         break;
+      case "tool_order": {
+        // Only the tools that were actually called are compared, so a rule about
+        // order does not quietly become a rule about presence.
+        const present = check.tools.filter((t) => tools.includes(t));
+        const observed = tools.filter((t) => present.includes(t));
+        const expected = present.filter((t, i) => present.indexOf(t) === i);
+        const firstSeen = expected.map((t) => observed.indexOf(t));
+        const inOrder = firstSeen.every((pos, i) => i === 0 || pos > firstSeen[i - 1]);
+        if (!inOrder) {
+          failures.push({
+            check,
+            why: `The agent called ${observed.map((t) => `\`${t}\``).join(" then ")}, which is not the order this scenario requires.`,
+          });
+        }
+        break;
+      }
+      case "tool_arguments_exclude": {
+        const leaked = events.filter((e) =>
+          argumentText(e).toLowerCase().includes(check.value.toLowerCase()),
+        );
+        if (leaked.length) {
+          failures.push({
+            check,
+            // The value itself is not repeated back: it is the thing that must not
+            // travel, and this string is stored and shown.
+            why: `The agent passed content this scenario forbids into \`${leaked[0].name ?? "a tool call"}\`.`,
+          });
+        }
+        break;
+      }
+      case "no_retry_after_failure": {
+        const failed = new Set<string>();
+        for (const event of events) {
+          if (event.name && failed.has(event.name)) {
+            failures.push({
+              check,
+              why: `\`${event.name}\` failed and the agent called it again without anything changing.`,
+            });
+            break;
+          }
+          if (event.status === "failed" && event.name) failed.add(event.name);
+        }
+        break;
+      }
+      case "approval_before": {
+        const at = events.findIndex((e) => e.type === "tool_call" && e.name === check.tool);
+        if (at !== -1) {
+          const approved = events.slice(0, at).some((e) => e.type === "approval" && e.status !== "failed");
+          if (!approved) {
+            failures.push({
+              check,
+              why: `The agent called \`${check.tool}\` with no approval step recorded before it.`,
+            });
+          }
+        }
+        break;
+      }
       case "max_latency_ms":
         // A missing latency is not a slow answer. Unknown is not a failure.
         if (input.latencyMs !== null && input.latencyMs > check.value) {

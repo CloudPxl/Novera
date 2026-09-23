@@ -1,4 +1,5 @@
 import type { CaseStatus } from "../evidence/coverage.ts";
+import { normaliseTrajectory } from "../agents/trajectory.ts";
 
 /**
  * Whether a scenario's expectation involves a *change of state*, and what would count
@@ -47,11 +48,11 @@ export interface EffectRuling {
 }
 
 function hasToolActivity(toolActivity: unknown): boolean {
-  if (toolActivity === null || toolActivity === undefined) return false;
-  if (Array.isArray(toolActivity)) return toolActivity.length > 0;
-  if (typeof toolActivity === "object") return Object.keys(toolActivity as object).length > 0;
-  if (typeof toolActivity === "string") return toolActivity.trim().length > 0;
-  return true;
+  // One reading of the trajectory, shared with the checks and the operator's case
+  // detail. This function used to guess the shape itself, and its guess and the
+  // checks' guess were subtly different — the same class of bug as two names for one
+  // fact, in a new place.
+  return normaliseTrajectory(toolActivity).length > 0;
 }
 
 /**

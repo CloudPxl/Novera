@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Badge, ProgressBar, inputClass } from "@/components/ui/primitives.tsx";
 import { gradingNote } from "./grading-note.ts";
+import type { AgentEvent } from "@/lib/agents/trajectory.ts";
 
 export interface CaseRow {
   id: string;
@@ -25,6 +26,8 @@ export interface CaseRow {
   judgeVotes: Array<{ model?: unknown; status?: unknown }>;
   /** Set when a pass was withheld for want of evidence, rather than the agent failing. */
   evidenceGap: string | null;
+  /** The agent's recorded steps, normalised. Operator-only: arguments are raw. */
+  trajectory: AgentEvent[];
   latencyMs: number | null;
 }
 
@@ -319,6 +322,48 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
               failed, so they are shown as unassessed. The judge&rsquo;s reasoning below
               is the evidence for the verdict.
             </p>
+          )}
+
+          {/* The steps the agent actually took. This is the evidence an effect case
+              turns on, and until now the operator could not see it at all — the
+              blob was stored, read by the rules, and never shown to the person
+              deciding whether to trust the verdict. Operator-only: arguments are
+              verbatim and never reach a client report. */}
+          {row.trajectory.length > 0 && (
+            <>
+              <h4 className="mt-4 type-pill text-ink-faint">What the agent did</h4>
+              <ol className="mt-1.5 space-y-1">
+                {row.trajectory.map((event) => (
+                  <li
+                    key={event.sequence}
+                    className="flex items-baseline gap-2 rounded-control bg-sunken px-2.5 py-1.5 type-mono text-xs"
+                  >
+                    <span className="tnum text-ink-faint">{event.sequence}.</span>
+                    <span
+                      className={
+                        event.status === "failed"
+                          ? "font-semibold text-fail-text"
+                          : event.type === "approval"
+                            ? "font-semibold text-info-text"
+                            : "font-semibold text-ink"
+                      }
+                    >
+                      {event.name ?? "(unnamed step)"}
+                    </span>
+                    {event.arguments !== undefined && event.arguments !== null && (
+                      <span className="min-w-0 flex-1 truncate text-ink-soft">
+                        {typeof event.arguments === "string"
+                          ? event.arguments
+                          : JSON.stringify(event.arguments)}
+                      </span>
+                    )}
+                    {/* "unknown" is shown, not hidden: a step that reported no
+                        outcome is different from one that reported success. */}
+                    <span className="shrink-0 text-ink-faint">{event.status}</span>
+                  </li>
+                ))}
+              </ol>
+            </>
           )}
 
           {row.rationale && (

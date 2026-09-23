@@ -9,6 +9,7 @@ import { coverage, coverageByCategory } from "@/lib/evidence/coverage.ts";
 import { categoryMeta } from "@/lib/evidence/categories.ts";
 import { gradeRun } from "@/lib/evidence/grade.ts";
 import { obligationLabel } from "@/lib/report/payload.ts";
+import { normaliseTrajectory } from "@/lib/agents/trajectory.ts";
 import { resolveAssertions } from "@/lib/judge/parse.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
@@ -74,7 +75,7 @@ export default async function RunPage({
         await db
           .from("run_cases")
           .select(
-            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by",
+            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by, tool_activity",
           )
           .eq("run_id", id)
           .order("case_id")
@@ -253,6 +254,10 @@ export default async function RunPage({
     // Which vendors actually voted. Stored since 0008 and never read: two votes from
     // one vendor's own model family were being shown as "confirmed by a second model".
     judgeVotes: Array.isArray(c.judge_votes) ? (c.judge_votes as CaseRow["judgeVotes"]) : [],
+    // Normalised on the server, from the blob stored verbatim. The operator could
+    // not see the agent's steps at all before this — which meant the evidence that
+    // decides an effect case was invisible to the person inspecting it.
+    trajectory: normaliseTrajectory(c.tool_activity),
     evidenceGap: (c.evidence_gap as string | null) ?? null,
     latencyMs: (c.latency_ms as number | null) ?? null,
   }));

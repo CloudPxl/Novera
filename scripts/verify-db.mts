@@ -98,6 +98,28 @@ if (userErr || !created?.user) {
       .insert({ workspace_id: ws.id, agent_id: agent.id, policy_id: policy!.id, suite_id: suiteId, status: "completed" })
       .select("id")
       .single();
+    // ------------------------------------------------ verdict invariants (0019)
+    // The application already refuses to write these. The point of checking them
+    // here is that a script with the service role bypasses the application and not
+    // the constraint — which is the difference between "we are careful" and "it
+    // cannot be stored".
+    const invariant = async (label: string, row: Record<string, unknown>) => {
+      const { error } = await db.from("run_cases").insert({
+        workspace_id: ws.id, run_id: run!.id, case_id: "V-INV", category: "verify",
+        obligation: "policy_accuracy", severity: "low", input: "x", expected: "y",
+        assertions: [], ...row,
+      });
+      report(Boolean(error), label, error?.message ?? "the row was accepted");
+      if (!error) await db.from("run_cases").delete().eq("run_id", run!.id).eq("case_id", "V-INV");
+    };
+
+    await invariant("a case that errored cannot also be a pass",
+      { status: "pass", error: "the endpoint timed out" });
+    await invariant("an evidence gap cannot sit on a verdict",
+      { status: "pass", evidence_gap: "no_state_evidence" });
+    await invariant("a rule-settled case cannot name a judge",
+      { status: "fail", settled_by: "deterministic", judge_model: "groq/openai/gpt-oss-120b" });
+
     // ---------------------------------------------------- the run manifest (0016)
     // A run row is updated several times as it progresses, so the manifest cannot
     // rely on the append-only trigger the evidence tables use. It gets its own, and

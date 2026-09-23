@@ -97,6 +97,7 @@ export async function retestCase(args: {
       rationale: outcome.rationale,
       failed_assertions: outcome.failedAssertions,
       evidence_gap: outcome.evidenceGap,
+      settled_by: outcome.settledBy,
       judge_model: outcome.judgeModel,
       judge_votes: outcome.judgeVotes,
       judge_agreement: outcome.judgeAgreement,

@@ -15,7 +15,7 @@ function caseRecord(over: Partial<RunCaseRecord>): RunCaseRecord {
     assertions: ["a"], responseText: `The agent quoted: ${POLICY}`, toolActivity: null,
     status: "pass", rationale: "Matched the approved wording.", latencyMs: 100,
     usage: null, judgeModel: "google/gemini-3.5-flash", judgeAttempts: [],
-    judgeVotes: [], judgeAgreement: "agreed", failedAssertions: [], evidenceGap: null,
+    judgeVotes: [], judgeAgreement: "agreed", failedAssertions: [], evidenceGap: null, settledBy: "models",
     error: null, ...over,
   };
 }
@@ -187,9 +187,9 @@ test("an uncorroborated verdict counts as neither independent nor single-vendor"
   assert.equal(run.corroboration.single_vendor, 0);
 });
 
-test("the payload is format 7", () => {
+test("the payload is format 8", () => {
   const { payload } = buildReport(input());
-  assert.equal((payload as { novera: { format: number } }).novera.format, 7);
+  assert.equal((payload as { novera: { format: number } }).novera.format, 8);
 });
 
 test("a tie settled by a third model is not reported as a provider outage", () => {

@@ -31,6 +31,8 @@ export interface CoverageInput {
     failedAssertionCount?: number;
     /** Whether the scenario declared an effect, i.e. required evidence beyond words. */
     requiresEvidence?: boolean;
+    /** "deterministic" when a rule settled it and no model was asked. */
+    settledBy?: string | null;
   }>;
 }
 
@@ -59,6 +61,15 @@ export interface Coverage {
    * the agent — and a client reading INCOMPLETE deserves to know which they have.
    */
   unverifiable: number;
+  /**
+   * How many cases a rule in the scenario settled, with no model asked.
+   *
+   * Worth reporting rather than hiding: these verdicts are the most defensible ones
+   * in the run — true or false about the transcript, quotable, and identical on a
+   * rerun. They are also the ones with no corroboration, because nothing about them
+   * needed corroborating.
+   */
+  settledByCheck: number;
   notRun: number;
   /**
    * How much of the suite produced no verdict, as a share of what was planned.
@@ -116,6 +127,7 @@ export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
     return n;
   }, 0);
 
+  const settledByCheck = cases.filter((c) => c.settledBy === "deterministic").length;
   const evidenceRequired = cases.filter((c) => c.requiresEvidence).length;
   const evidenceObserved = cases.filter((c) => c.requiresEvidence && !c.evidenceGap).length;
 
@@ -129,6 +141,7 @@ export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
     errored,
     disputed,
     unverifiable,
+    settledByCheck,
     notRun,
     assuranceGap,
     executionCoverage: plannedCases === 0 ? 0 : percent(graded + errored, plannedCases),

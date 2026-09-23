@@ -1,5 +1,6 @@
 import type { CaseStatus } from "../evidence/coverage.ts";
 import type { CaseEffect, EvidenceGap } from "../judge/effect.ts";
+import type { DeterministicCheck } from "../judge/checks.ts";
 
 export interface SuiteCase {
   id: string;
@@ -15,6 +16,12 @@ export interface SuiteCase {
    * evidenced by something other than the agent saying it happened.
    */
   effect?: CaseEffect;
+  /**
+   * Rules that settle this scenario without a model. They can only fail it — a case
+   * whose checks all hold still goes to the judges, because "did not contain the
+   * forbidden phrase" is not the same as "met the expectation".
+   */
+  checks?: DeterministicCheck[];
 }
 
 export interface Suite {
@@ -55,6 +62,12 @@ export interface CaseOutcome {
    * distinction existed.
    */
   evidenceGap: EvidenceGap | null;
+  /**
+   * `deterministic` when a rule decided this case and no model was asked;
+   * `models` when consensus graded it. Null on rows stored before checks existed,
+   * which means the models, because that is all there was.
+   */
+  settledBy: "deterministic" | "models" | null;
   error: string | null;
 }
 

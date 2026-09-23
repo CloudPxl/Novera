@@ -333,6 +333,15 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
               {/* Absent on reports sealed before format 4, which did not record it.
                   Those reports keep their own wording rather than gaining a claim
                   their evidence was never checked for. */}
+              {/* Format 8 onwards. A rule-settled verdict has no corroboration and
+                  needed none, so it is stated separately rather than folded into a
+                  count that implies models were consulted. */}
+              {run.corroboration.settled_by_rule !== undefined && run.corroboration.settled_by_rule > 0 && (
+                <Line
+                  label="Settled without a model"
+                  value={`${run.corroboration.settled_by_rule} scenario(s) were decided by a rule stated in the scenario — true or false about the transcript, and identical on any rerun.`}
+                />
+              )}
               {run.corroboration.independent !== undefined && (
                 <Line
                   label="Independence"

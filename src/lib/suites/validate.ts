@@ -124,6 +124,65 @@ export function validateSuite(value: unknown): ValidationResult {
       }
     }
 
+    // A check that cannot be understood is rejected rather than dropped. A silently
+    // ignored `tool_forbidden` would turn the strictest rule in a suite into no rule
+    // at all, and the run would look like it had enforced it.
+    let checks: SuiteCase["checks"];
+    if (c.checks !== undefined) {
+      if (!Array.isArray(c.checks)) {
+        errors.push(`${label}: \`checks\` must be a list when present.`);
+      } else {
+        const parsed: NonNullable<SuiteCase["checks"]> = [];
+        c.checks.forEach((raw: unknown, i: number) => {
+          const k = raw as Record<string, unknown>;
+          const at = `${label}: check ${i + 1}`;
+          const text = (key: string) => (typeof k?.[key] === "string" && (k[key] as string).trim() ? (k[key] as string) : null);
+          switch (k?.type) {
+            case "must_contain":
+            case "must_not_contain": {
+              const value = text("value");
+              if (!value) errors.push(`${at}: \`value\` must be a non-empty string.`);
+              else parsed.push({ type: k.type as "must_contain", value });
+              break;
+            }
+            case "must_match":
+            case "must_not_match": {
+              const pattern = text("pattern");
+              if (!pattern) { errors.push(`${at}: \`pattern\` must be a non-empty string.`); break; }
+              try { new RegExp(pattern, "i"); } catch {
+                errors.push(`${at}: /${pattern}/ is not a valid regular expression.`); break;
+              }
+              parsed.push({ type: k.type as "must_match", pattern });
+              break;
+            }
+            case "tools_allowed": {
+              const tools = stringList(k.tools);
+              if (!tools) errors.push(`${at}: \`tools\` must be a list of non-empty strings.`);
+              else parsed.push({ type: "tools_allowed", tools });
+              break;
+            }
+            case "tool_forbidden":
+            case "tool_required": {
+              const tool = text("tool");
+              if (!tool) errors.push(`${at}: \`tool\` must be a non-empty string.`);
+              else parsed.push({ type: k.type as "tool_required", tool });
+              break;
+            }
+            case "max_latency_ms": {
+              const value = k.value;
+              if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+                errors.push(`${at}: \`value\` must be a positive number of milliseconds.`);
+              } else parsed.push({ type: "max_latency_ms", value });
+              break;
+            }
+            default:
+              errors.push(`${at}: unknown check type ${JSON.stringify(k?.type ?? null)}.`);
+          }
+        });
+        checks = parsed;
+      }
+    }
+
     if (id && category && obligation && severity && input && expected && assertions?.length) {
       cases.push({
         id, category, obligation, severity, input,
@@ -131,6 +190,7 @@ export function validateSuite(value: unknown): ValidationResult {
         assertions,
         ...(forbidden?.length ? { forbidden } : {}),
         ...(effect ? { effect } : {}),
+        ...(checks?.length ? { checks } : {}),
       });
     }
   });

@@ -74,7 +74,7 @@ export default async function RunPage({
         await db
           .from("run_cases")
           .select(
-            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap",
+            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by",
           )
           .eq("run_id", id)
           .order("case_id")
@@ -201,6 +201,7 @@ export default async function RunPage({
     assertionCount: asStrings(c.assertions).length,
     failedAssertionCount: resolveAssertions(asStrings(c.assertions), asStrings(c.failed_assertions)).length,
     requiresEvidence: requiresEvidence.has(c.case_id as string),
+    settledBy: (c.settled_by as string | null) ?? null,
   }));
 
   const runCoverage = coverage({ plannedCases, cases: statuses });

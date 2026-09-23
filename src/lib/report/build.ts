@@ -130,6 +130,12 @@ export function buildReport(input: ReportInput): BuiltReport {
     ? " Scenarios marked critical were put to a third model even where the first two agreed."
     : "";
 
+  // Named only when it happened, because it changes what "corroboration" covers in
+  // the sentence below: a rule-settled verdict was never put to a model at all.
+  const ruleNote = input.coverage.settledByCheck > 0
+    ? ` ${input.coverage.settledByCheck} scenario(s) were settled by a rule in the scenario itself — a statement that is true or false about the transcript — and no model was asked.`
+    : "";
+
   const corroboration = {
     method:
       (singleVendor === 0
@@ -137,13 +143,14 @@ export function buildReport(input: ReportInput): BuiltReport {
         : "Each verdict was put to two models, a different vendor's wherever one could be reached; "
           + "a third settled any disagreement. Where no second vendor was available, a second model "
           + "from the same vendor was used instead, and those verdicts are counted separately below.")
-      + criticalNote,
+      + criticalNote + ruleNote,
     agreed: agreementCount("agreed"),
     majority: agreementCount("majority"),
     uncorroborated: agreementCount("unconfirmed"),
     unresolved: agreementCount("unresolved"),
     independent,
     single_vendor: singleVendor,
+    settled_by_rule: input.coverage.settledByCheck,
   };
 
   let comparison: Comparison | null = null;
@@ -163,10 +170,11 @@ export function buildReport(input: ReportInput): BuiltReport {
     // many verdicts were corroborated across vendors rather than within one; 5 counts
     // the scenarios whose claimed action nothing evidenced; 5 also introduced the
     // WITHHELD band and the three coverage numbers at 6; 7 carries the pre-execution
-    // manifest digest and chains each report to the previous one for the agent. Reports
+    // manifest digest and chains each report to the previous one for the agent; 8
+    // counts the verdicts a rule settled without a model. Reports
     // sealed as any earlier format are still rendered from their own payload and must
     // keep verifying — every reader of this payload branches on absence.
-    novera: { format: 7 },
+    novera: { format: 8 },
     subject: {
       client: input.client,
       agent: input.agentName,

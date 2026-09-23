@@ -2,6 +2,7 @@ import type { AgentAdapter } from "../agents/types.ts";
 import type { RoutedChat } from "../router/execute.ts";
 import { gradeCase } from "../judge/consensus.ts";
 import { applyEffectRule } from "../judge/effect.ts";
+import { runChecks, describeFailures } from "../judge/checks.ts";
 import { coverage, coverageByObligation, coverageByCategory, type Coverage, type ObligationCoverage, type CategoryCoverage } from "../evidence/coverage.ts";
 import type { CaseOutcome, RunCaseRecord, RunStore, Suite, SuiteCase } from "./types.ts";
 
@@ -80,7 +81,40 @@ export async function executeCase(args: {
       // dead endpoint read as "we could not confirm the action", which is far kinder
       // than the truth.
       evidenceGap: null,
+      settledBy: null,
       error: agentResult.error ?? "The agent produced no response.",
+    };
+  }
+
+  // Deterministic first. A rule that is true or false about the transcript does not
+  // need a model's opinion, and a failure it finds is cheaper, stable and quotable —
+  // three properties no judge call has. Checks can only fail a case; one that passes
+  // them all still goes to the models, because "did not say the forbidden thing" is
+  // not "met the expectation".
+  const checkFailures = runChecks(testCase.checks, {
+    responseText: agentResult.responseText,
+    toolActivity: agentResult.toolActivity,
+    latencyMs: agentResult.latencyMs,
+  });
+
+  if (checkFailures.length > 0) {
+    return {
+      responseText: agentResult.responseText,
+      toolActivity: agentResult.toolActivity ?? null,
+      status: "fail",
+      rationale: describeFailures(checkFailures),
+      latencyMs: agentResult.latencyMs,
+      usage: { agent: agentResult.usage ?? null, judge: {} },
+      // No model was asked, so there is nothing to attribute or corroborate. Saying
+      // "graded by X" or "uncorroborated" here would both be untrue.
+      judgeModel: null,
+      judgeAttempts: [],
+      judgeVotes: [],
+      judgeAgreement: null,
+      failedAssertions: [],
+      evidenceGap: null,
+      settledBy: "deterministic",
+      error: null,
     };
   }
 
@@ -127,6 +161,7 @@ export async function executeCase(args: {
     judgeAgreement: verdict.agreement,
     failedAssertions: verdict.failedAssertions,
     evidenceGap: ruled.evidenceGap,
+    settledBy: "models",
     error: ruled.error,
   };
 }
@@ -285,6 +320,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         assertionCount: c.assertions.length,
         failedAssertionCount: c.failedAssertions.length,
         requiresEvidence: requiresEvidence.has(c.caseId),
+        settledBy: c.settledBy,
       })),
     }),
     byObligation: coverageByObligation(saved, plannedByObligation),

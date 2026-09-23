@@ -307,3 +307,71 @@ test("one vendor rate-limited while another answers is not quota exhaustion", as
   assert.equal(saved.length, 3, "the fallback worked, so nothing was exhausted");
   assert.equal(summary.coverage.notRun, 0);
 });
+
+/* --------------------------------------------------------- deterministic checks
+   A rule that is true or false about the transcript does not need a model. */
+
+test("a failing rule settles the case and the judges are never called", async () => {
+  const calls: string[] = [];
+  const { store, saved } = memoryStore();
+  const checked: Suite = {
+    ...suite,
+    cases: [{ ...suite.cases[0], checks: [{ type: "must_not_contain", value: "reply to in1" }] }],
+  };
+
+  await executeRun({
+    runId: "r4", suite: checked, agent: agentReturning({}), policy: "p",
+    judge: judgeArgs(judgeReturning({ C1: "pass" }, calls)), store, concurrency: 1,
+  });
+
+  assert.equal(saved[0].status, "fail");
+  assert.equal(saved[0].settledBy, "deterministic");
+  assert.deepEqual(calls, [], "no model was asked");
+  // Nothing to attribute or corroborate: saying "graded by X" would be untrue.
+  assert.equal(saved[0].judgeModel, null);
+  assert.equal(saved[0].judgeAgreement, null);
+  assert.deepEqual(saved[0].judgeVotes, []);
+  assert.match(saved[0].rationale ?? "", /must not/);
+});
+
+test("a rule that holds does not grant a pass — the models still decide", async () => {
+  // The whole discipline: "did not say the forbidden thing" is not "met the
+  // expectation", so a check can fail a case and never pass one.
+  const calls: string[] = [];
+  const { store, saved } = memoryStore();
+  const checked: Suite = {
+    ...suite,
+    cases: [{ ...suite.cases[0], checks: [{ type: "must_not_contain", value: "never appears" }] }],
+  };
+
+  await executeRun({
+    runId: "r5", suite: checked, agent: agentReturning({}), policy: "p",
+    judge: judgeArgs(judgeReturning({ C1: "fail" }, calls)), store, concurrency: 1,
+  });
+
+  assert.equal(saved[0].status, "fail", "the models decided, not the rule");
+  assert.equal(saved[0].settledBy, "models");
+  assert.ok(calls.length > 0);
+});
+
+test("a case the agent never answered is not put through the rules", async () => {
+  // There is no transcript to be true or false about, and "must_contain" would fail
+  // every rule on a dead endpoint, reporting an outage as a policy breach.
+  const { store, saved } = memoryStore();
+  const dead: AgentAdapter = {
+    probe: async () => ({ ok: false, responseText: null, toolActivity: null, latencyMs: 1, error: "HTTP 502" }),
+    send: async () => ({ ok: false, responseText: null, toolActivity: null, latencyMs: 1, error: "HTTP 502" }),
+  };
+  const checked: Suite = {
+    ...suite,
+    cases: [{ ...suite.cases[0], checks: [{ type: "must_contain", value: "anything" }] }],
+  };
+
+  await executeRun({
+    runId: "r6", suite: checked, agent: dead, policy: "p",
+    judge: judgeArgs(judgeReturning({})), store, concurrency: 1,
+  });
+
+  assert.equal(saved[0].status, "error");
+  assert.equal(saved[0].settledBy, null);
+});

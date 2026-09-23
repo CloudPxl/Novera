@@ -44,6 +44,7 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
         judge_agreement: record.judgeAgreement,
         failed_assertions: record.failedAssertions,
         evidence_gap: record.evidenceGap,
+        settled_by: record.settledBy,
         error: record.error,
       });
       if (error) throw new Error(`Could not save case ${record.caseId}: ${error.message}`);

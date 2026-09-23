@@ -28,65 +28,64 @@ export interface Candidate {
 export type RouteTable = Record<Task, Candidate[]>;
 
 /**
- * Ordered by the 2026-09-22 calibration run (npm run calibrate), 11 labelled cases,
- * 5 excluded as arguable. FALSE PASSES first, then agreement, then latency:
+ * Ordered by the 2026-09-23 calibration (npm run calibrate) over `eu-support v2`:
+ * 24 cases, 19 labelled, 5 excluded as arguable. FALSE PASSES first, then agreement:
  *
- *   groq/openai/gpt-oss-120b     11/11   0.8s per case   0 false passes
- *   groq/openai/gpt-oss-20b      10/11   0.8s per case   0 false passes
- *   mistral/ministral-3b-latest  10/11   2.1s per case   0 false passes
- *   mistral/ministral-8b-latest   9/11   2.5s per case   0 false passes
- *   mistral/ministral-14b-latest  9/11   2.7s per case   0 false passes
- *   openrouter/nemotron-3-super   9/11   7.0s per case   2 unreadable verdicts
- *   google/gemini-3.5-flash-lite  8/11  11.4s per case   MISSED T11
- *   google/gemini-3.5-flash       0/11   4.8s per case   no readable verdict, 11/11
+ *   groq/openai/gpt-oss-120b     19/19   0 false passes   0 unreadable
+ *   mistral/ministral-3b-latest  18/19   0 false passes   0 unreadable
+ *   mistral/ministral-8b-latest  17/19   0 false passes   0 unreadable
+ *   groq/openai/gpt-oss-20b      17/19   0 false passes   1 unreadable
+ *   openrouter/nemotron-3-super  12/19   MISSED T21       6 unreadable
  *
- * Two things changed from the 2026-09-19 table, and both were found by re-measuring
- * rather than by anything going visibly wrong:
+ * **OpenRouter is out of both grading routes**, for two independent reasons.
  *
- * **Google is out of both grading routes.** `gemini-3.5-flash-lite` was the second
- * candidate — the usual corroborating vote — and it now misses a planted failure
- * (T11), reproducibly, across two separate runs. A model with false passes is
- * unusable here: a false fail is annoying, a false pass is the one failure mode a
- * customer cannot detect. It stays on `diagnose` and `draft`, where a human approves
- * the output before it counts as anything. `gemini-3.5-flash` returned no readable
- * verdict on every case. Nothing was edited to cause this; the models moved under a
- * fixed name, which is the reason this table is re-measured rather than maintained.
+ * It false-passed T21 — an agent claiming it had actioned an unsubscribe with no tool
+ * activity behind it, which is the exact failure this product exists to catch. The
+ * standing rule is that a model with false passes is unusable here: a false fail is
+ * annoying, a false pass is the one a customer cannot detect. That alone settles it.
  *
- * **Mistral is in, and it is placed second on purpose.** It is not the second most
- * accurate candidate by a hair — `gpt-oss-20b` ties it — but it is the first
- * candidate from a *different vendor*, and consensus asks the second opinion of a
- * different vendor before a different model. Two gpt-oss votes agreeing is close to
- * one vote counted twice. Ordering the table so the natural fallback also crosses
- * vendors means the degraded path stays independent too.
+ * The second reason is structural and worth writing down, because it rules out the
+ * obvious fix. OpenRouter's `:free` models are served from a **shared upstream pool**
+ * and answer `temporarily rate-limited upstream` as a class, not per model — three
+ * separate candidates returned it on every case within seconds. There is no free
+ * OpenRouter model to promote in nemotron's place. It stays on `diagnose` and
+ * `draft`, where a person approves the output before it counts as anything.
  *
- * Both connections were verified funded on 2026-09-22 (`npm run verify:models`).
- * OpenAI authenticates but has no credits, so it is deliberately in no route: an
- * unfunded connection would burn a failed attempt on every single call.
+ * That leaves **two dependable grading vendors**, groq and mistral, both measured with
+ * no false passes. Consensus still crosses vendors for the second opinion, which is
+ * the one that matters most; a third opinion on a critical scenario will sometimes
+ * have to come from a model of the same vendor, and the report says so when it does.
+ * Adding a genuine third vendor — a funded OpenAI key is the cheapest route — would
+ * restore it, and is the reason that key is kept rather than deleted.
+ *
+ * Google was removed on 2026-09-22 for a reproducible false pass of its own.
+ *
+ * Two facts about the free tiers, both found by measuring rather than reading docs:
+ * Groq limits **tokens** per minute (~8k), not requests, so a judge prompt is ~1,500
+ * of them; Mistral limits requests (~1/s). `npm run calibrate` paces for both.
  */
 export const DEFAULT_ROUTES: RouteTable = {
   judge: [
     { connection: "groq", model: "openai/gpt-oss-120b" },
     { connection: "mistral", model: "ministral-3b-latest" },
-    { connection: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free" },
-    { connection: "groq", model: "openai/gpt-oss-20b" },
     { connection: "mistral", model: "ministral-8b-latest" },
+    { connection: "groq", model: "openai/gpt-oss-20b" },
   ],
-  // Same models as `judge`, same measurement: every candidate here caught every
-  // planted failure. The task stays separate because it is where a stricter policy
-  // would land first — three votes rather than two, say — once there is evidence for
-  // one.
+  // Same models and same order: every candidate here has zero measured false passes,
+  // and there is no evidence for preferring a different one on a critical scenario.
+  // What differs is the rule, not the route — a critical case is put to a third model
+  // even when the first two agree (src/lib/judge/consensus.ts).
   judge_critical: [
     { connection: "groq", model: "openai/gpt-oss-120b" },
     { connection: "mistral", model: "ministral-3b-latest" },
-    { connection: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free" },
     { connection: "mistral", model: "ministral-8b-latest" },
     { connection: "groq", model: "openai/gpt-oss-20b" },
   ],
-  // Not measured by the calibration harness: diagnosis is a different job from
-  // grading (long reasoning, a proposed edit) and has no labelled ground truth.
-  // Ordered by size as a placeholder, which is a guess and labelled as one. Google
-  // is allowed here because a diagnosis is a proposal a human approves, never an
-  // edit, so a weak one costs a click rather than a wrong verdict in a report.
+  // Not measured by the calibration harness: diagnosis is a different job from grading
+  // (long reasoning, a proposed edit) and has no labelled ground truth. Ordered by
+  // size, which is a guess and labelled as one. Google and OpenRouter are allowed here
+  // because a diagnosis is a proposal a human approves, never an edit, so a weak one
+  // costs a click rather than a wrong verdict in a client's report.
   diagnose: [
     { connection: "groq", model: "openai/gpt-oss-120b" },
     { connection: "mistral", model: "ministral-14b-latest" },

@@ -151,7 +151,7 @@ async function summaryFromStoredRows(args: {
 
   const { data: rows } = await client
     .from("run_cases")
-    .select("case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, failed_assertions, evidence_gap, error")
+    .select("case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, failed_assertions, evidence_gap, settled_by, error")
     .eq("run_id", runId)
     .order("case_id");
 
@@ -176,6 +176,7 @@ async function summaryFromStoredRows(args: {
     judgeAgreement: (r.judge_agreement as string | null) ?? null,
     failedAssertions: Array.isArray(r.failed_assertions) ? (r.failed_assertions as string[]) : [],
     evidenceGap: (r.evidence_gap as RunCaseRecord["evidenceGap"]) ?? null,
+    settledBy: (r.settled_by as RunCaseRecord["settledBy"]) ?? null,
     error: (r.error as string | null) ?? null,
   }));
 
@@ -208,6 +209,7 @@ async function summaryFromStoredRows(args: {
         assertionCount: c.assertions.length,
         failedAssertionCount: c.failedAssertions.length,
         requiresEvidence: requiresEvidence.has(c.caseId),
+        settledBy: c.settledBy,
       })),
     }),
     byObligation: coverageByObligation(cases, plannedByObligation),

@@ -40,6 +40,12 @@ export interface ReportPayload {
       independent?: number;
       /** Absent before format 4. Corroborated, but within a single vendor. */
       single_vendor?: number;
+      /**
+       * Absent before format 8. Verdicts a rule in the scenario settled, with no
+       * model asked. They carry no corroboration because none was needed: the
+       * statement is true or false about the transcript and identical on a rerun.
+       */
+      settled_by_rule?: number;
     };
     grading_funded_by: string;
     /**

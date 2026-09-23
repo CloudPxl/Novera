@@ -199,6 +199,12 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
     );
     // Absent before format 4; an older report says nothing here rather than gaining
     // a claim about evidence nobody examined at the time it was sealed.
+    if (c.settled_by_rule !== undefined && c.settled_by_rule > 0) {
+      out.push("");
+      out.push(
+        `${c.settled_by_rule} scenario(s) were settled by a rule stated in the scenario, with no model asked.`,
+      );
+    }
     if (c.independent !== undefined) {
       out.push("");
       out.push(

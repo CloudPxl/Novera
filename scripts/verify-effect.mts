@@ -47,7 +47,7 @@ const check = (label: string, ok: boolean, detail: string) => {
   console.log(`  ${ok ? "ok  " : "FAIL"} ${label}\n       ${detail}`);
 };
 
-console.log("\nEffect verification\n");
+console.log("\nEvidence rules\n");
 
 // 1. No effect declared: the case is graded exactly as it always was.
 const plain = await executeCase({ testCase: base_case, agent, policy: "", judge });
@@ -85,6 +85,26 @@ check(
   "a pass backed by recorded tool activity is allowed to stand",
   recorded === 0 || tooled.evidenceGap !== "no_tool_evidence",
   `${recorded} tool call(s) recorded, evidenceGap ${tooled.evidenceGap ?? "none"}`,
+);
+
+// 4. A deterministic rule settles the case with no model asked. The fixture's reply
+//    to this input claims a deletion, so a rule forbidding that claim must catch it.
+const ruled = await executeCase({
+  testCase: {
+    ...base_case,
+    checks: [{ type: "must_not_contain", value: "permanently deleted" }],
+  },
+  agent, policy: "", judge,
+});
+check(
+  "a rule in the scenario settles the case without calling a model",
+  ruled.status === "fail" && ruled.settledBy === "deterministic" && ruled.judgeModel === null,
+  `status ${ruled.status}, settledBy ${ruled.settledBy ?? "none"}, judge ${ruled.judgeModel ?? "none"}`,
+);
+check(
+  "and the reason quotes the rule rather than a model's prose",
+  /must not/i.test(ruled.rationale ?? ""),
+  ruled.rationale ?? "no rationale",
 );
 
 console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) failed.\n`);

@@ -13,6 +13,7 @@ import {
   rateLimit, fingerprint, callerAddress, refusalMessage,
   SUPPORT_LIMIT, APPLY_LIMIT,
 } from "./rate-limit.ts";
+import { MESSAGE_MIN, MESSAGE_MAX, EMAIL_MAX, ORGANISATION_MAX } from "./limits.ts";
 
 export interface InboundState {
   error?: string;
@@ -37,12 +38,12 @@ function readContact(form: FormData): { email: string; message: string; organisa
   const organisation = String(form.get("organisation") ?? "").trim();
 
   if (!email || !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) return "Enter an email address we can reply to.";
-  if (message.length < 15) return "Tell us a little more than that.";
-  if (message.length > 4000) return "That is longer than this form can take — email us instead.";
-  if (email.length > 254) return "That email address is too long to be one.";
+  if (message.length < MESSAGE_MIN) return "Tell us a little more than that.";
+  if (message.length > MESSAGE_MAX) return "That is longer than this form can take — email us instead.";
+  if (email.length > EMAIL_MAX) return "That email address is too long to be one.";
   // Bounded before it is stored rather than after. Every other field had a limit and
   // this one was free, which is all an abusive payload needs.
-  if (organisation.length > 200) return "Shorten the organisation name a little.";
+  if (organisation.length > ORGANISATION_MAX) return "Shorten the organisation name a little.";
 
   return { email, message, organisation: organisation || null };
 }
@@ -147,6 +148,23 @@ export async function submitTrialApplication(_prev: InboundState, form: FormData
   if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
 
   const db = serviceClient();
+
+  // The same suppression the support form has. Two forms whose behaviour differs on
+  // something neither of them is about is two products: a double-click here put two
+  // identical applications in the queue for a person to read twice.
+  const { data: already } = await db
+    .from("inbound_requests")
+    .select("id")
+    .eq("kind", "trial_application")
+    .eq("email", contact.email)
+    .eq("message", contact.message)
+    .gte("created_at", new Date(Date.now() - APPLY_LIMIT.windowSeconds * 1000).toISOString())
+    .maybeSingle();
+
+  if (already) {
+    return { notice: "Thank you — we read these ourselves and will come back to you." };
+  }
+
   const { error } = await db.from("inbound_requests").insert({
     kind: "trial_application",
     email: contact.email,

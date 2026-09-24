@@ -1381,3 +1381,36 @@ confident, sourced, wrong replies, and that is why documentation is part of what
 ships.
 
 336 tests; axe-core clean with no overflow at 390 and 1440 on both the index and a page.
+
+## 2026-09-24 — The public forms, after the abuse row (Phase 6, surface 8)
+
+Phase 6A made these forms impossible to make free. This is the interface row on the
+same two pages.
+
+**The limits the server enforces are now on the fields, and the one a person can reach
+is in the hint.** A 4,000-character message was rejected after a round trip with "that
+is longer than this form can take", having been typed in full. Both numbers now come
+from `src/lib/support/limits.ts` so the field and the action cannot drift: a field that
+allows more than the action accepts is a rejection waiting to happen, and one that
+allows less is a limit nobody agreed to. A counter appears at 400 characters remaining
+and not before — a character count on an empty box is a discouragement to write, which
+is the opposite of what a support form is for.
+
+**The acknowledgement takes focus.** The form is replaced by it, so focus fell to the
+body: a keyboard or screen-reader user completed the one action on the page and landed
+nowhere. `role="status"` announced the text; nothing put the reader inside it.
+
+**`Field` attaches its hint to its control.** The hint carries the part that matters —
+how long a message may be, that a key is encrypted, what a model id looks like — and
+rendered as a loose paragraph it was read by everyone except the people who most need
+it. It now gets an id and the control gets `aria-describedby`, cloning only a real form
+control and preserving any existing value. This is a shared primitive, so every form in
+the product gained it at once.
+
+**`/apply` did not suppress duplicates and `/support` did.** A double-click put two
+identical applications in the queue for a person to read twice. Two forms differing on
+something neither of them is about is two products. Measured: two identical submissions,
+one stored row.
+
+axe-core clean with no overflow at 390 and 1440 on both pages; `verify:throttle` still
+9/9; 336 tests.

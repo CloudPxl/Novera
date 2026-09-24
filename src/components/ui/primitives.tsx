@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 
 export function Card({
   children,
@@ -179,6 +179,18 @@ export function EmptyState({
   );
 }
 
+/**
+ * A labelled control with a hint that is actually attached to it.
+ *
+ * The hint carries the part a person needs — how long the message may be, that a key is
+ * encrypted, what a model id looks like. Rendered as a loose paragraph it is read by
+ * everyone except the people who most need it: a screen reader announces the label and
+ * the input and skips straight past the sentence explaining them.
+ *
+ * So the hint gets an id and the control is given `aria-describedby`. Only a real form
+ * control is cloned — putting the attribute on a wrapping `<div>` would describe nothing
+ * — and an existing `aria-describedby` is kept rather than replaced.
+ */
 export function Field({
   label,
   hint,
@@ -190,16 +202,36 @@ export function Field({
   children: ReactNode;
   htmlFor?: string;
 }) {
+  const hintId = hint && htmlFor ? `${htmlFor}-hint` : undefined;
+
+  const described =
+    hintId && isValidElement(children) && CONTROLS.has(children.type as string)
+      ? cloneElement(children as ReactElement<{ "aria-describedby"?: string }>, {
+          "aria-describedby": [
+            (children.props as { "aria-describedby"?: string })["aria-describedby"],
+            hintId,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        })
+      : children;
+
   return (
     <div>
       <label htmlFor={htmlFor} className="block text-sm font-medium text-ink">
         {label}
       </label>
-      {hint && <p className="mt-0.5 text-xs leading-relaxed text-ink-faint">{hint}</p>}
-      <div className="mt-1.5">{children}</div>
+      {hint && (
+        <p id={hintId} className="mt-0.5 text-xs leading-relaxed text-ink-faint">
+          {hint}
+        </p>
+      )}
+      <div className="mt-1.5">{described}</div>
     </div>
   );
 }
+
+const CONTROLS = new Set(["input", "textarea", "select"]);
 
 export const inputClass =
   "w-full rounded-control border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-ink focus:ring-1 focus:ring-ink";

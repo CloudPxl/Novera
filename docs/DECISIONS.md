@@ -1296,3 +1296,55 @@ requests raced `requireWorkspace`'s find-or-create. It is benign today — the o
 chosen deterministically and the other is orphaned — but a unique index on `owner_id`
 would block the multi-workspace membership already in the schema, so the fix belongs
 with that work rather than here.
+
+## 2026-09-24 — The front door, and where the data actually goes (Phase 6, surface 6)
+
+The public landing page is the only surface a stranger meets before deciding anything.
+Three things on it were wrong, in ascending order of seriousness.
+
+**"Sixteen scenarios, every time."** The EU suite is thirty-six and has been since
+Phase 4. The same correction was made across `data/docs` at the time and the landing
+page was missed — so the first number a stranger read understated the product by more
+than half. The sample report was labelled `eu-support v1` with figures to match; it now
+shows v3, with 24 of 36 passed, 9 failed and 3 producing no result, and states that the
+score is 24 of the 33 that were graded. An illustrative figure is still a figure, and
+the one that demonstrates the product is the one where three cases are named rather
+than counted as passing.
+
+**"Every scenario is graded by two independent models."** True on our key — groq and
+mistral are different vendors — and not true on the customer's own key, which is one
+vendor and possibly one model. The page urges a reader to bring their own key two
+paragraphs earlier. It now says which grading they get in which case.
+
+**"Data stays in the EU: the database runs in Frankfurt."** The database is in
+Frankfurt. The agent's answers are sent to the models that grade them, and on the trial
+that means Groq, in the United States. For a product sold to European buyers as
+evidence for GDPR work, a residency claim that covers storage and quietly omits
+processing is the most dangerous sentence that could be on the site. It is now stated
+plainly on the page, documented properly in `data/docs/data-and-privacy.md` — what is
+sent where, on the trial and on each supported key, and what is never sent at all — and
+added to the report's own limitations block, because a report is read apart from the
+site by the person the claim matters to. Existing sealed reports keep the text that was
+true when they were sealed; `limitations` has been a required field since payload
+format 1, so nothing needed an absence branch.
+
+**Two defects in `Reveal`, both invisible to inspection and both found by measuring.**
+
+axe-core, serious: the four-step list wrapped each `<li>` in the animation's `<div>`,
+putting non-`li` children directly inside an `<ol>`. The list stopped being a list —
+four unrelated paragraphs, no order announced. `Reveal` now takes an `as` prop, because
+a decorative wrapper has to take the role of whatever it wraps.
+
+Worse, and pre-existing everywhere: an IntersectionObserver reports *changes*. Jump
+straight to the bottom of the page — the End key, an anchor, a restored scroll position
+— and an element goes from below the viewport to above it with no intersecting frame in
+between. No callback fires, and that content stays at opacity 0 for as long as the page
+is open. Measured: 14 of 19 blocks on the landing page were permanently invisible after
+one jump to the footer. The component's own comment says an animation must never be the
+thing that makes content appear; it is now true, via one shared passive scroll listener
+that reveals anything the viewport has already passed and removes itself when the last
+element has been revealed. Staging from the top is unchanged: 3 shown, 16 waiting.
+
+Verified live: axe-core clean at 390 and 1440 with no horizontal overflow, on all three
+tabs of the sample report; the jump-to-bottom case leaves nothing invisible; 329 tests,
+build and lint clean; the language rule clean over every file changed.

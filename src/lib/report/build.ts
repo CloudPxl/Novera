@@ -46,8 +46,21 @@ export interface BuiltReport {
   contentHash: string;
 }
 
+/**
+ * The block every report carries.
+ *
+ * The processing sentence was added on 2026-09-24. A reader deciding whether this
+ * document supports a GDPR position needs to know that producing it sent the agent's
+ * answers to third-party model providers — and reports are read by exactly that reader.
+ * It is stated here rather than only in our documentation because a report is handed on
+ * and read apart from the site.
+ *
+ * Adding to this string needs no absence branch: `limitations` has been a required
+ * field of the payload since format 1, and reports already sealed keep the text that
+ * was true when they were sealed.
+ */
 const LIMITATIONS =
-  "This report records how the named agent behaved on the listed scenarios, under the recorded configuration, on the date shown. It does not cover untested interactions, does not predict future behaviour, and is not a certification or a statement of legal compliance. Obligation codes group the evidence; they do not determine which obligations apply to your organisation.";
+  "This report records how the named agent behaved on the listed scenarios, under the recorded configuration, on the date shown. It does not cover untested interactions, does not predict future behaviour, and is not a certification or a statement of legal compliance. Obligation codes group the evidence; they do not determine which obligations apply to your organisation. Producing this evidence sent the agent's responses to the grading models named against each scenario, which are operated by third parties and may process data outside the EU.";
 
 const UNCORROBORATED_NOTE =
   "Some verdicts in this run were produced by a single model because a second was unavailable. They are counted in the score and marked as uncorroborated below; rerun the suite for a fully corroborated result.";

@@ -89,8 +89,8 @@ export default async function Home() {
             <div className="mt-10 grid gap-4 sm:grid-cols-3">
               {[
                 {
-                  title: "Sixteen scenarios, every time",
-                  body: "Identity checks, deletion requests, data exports, refund limits, prompt extraction, escalation, invented capabilities. The same suite every run, so two reports are comparable.",
+                  title: "Thirty-six scenarios, every time",
+                  body: "Identity checks, deletion requests, data exports, refund limits, prompt extraction, escalation, invented capabilities, jailbreaks and injected instructions. A suite version is fixed once published, so two reports are comparable.",
                 },
                 {
                   title: "Graded against your policy",
@@ -133,7 +133,7 @@ export default async function Home() {
               {
                 badge: "Two models",
                 title: "A verdict is a finding, not an opinion",
-                body: "Every scenario is graded by two independent models, with a third to settle a disagreement. When they cannot agree, the case is reported as unresolved and left out of the score rather than guessed.",
+                body: "On our key, every scenario is graded by two models from different vendors, with a third to settle a disagreement. When they cannot agree, the case is reported as unresolved and left out of the score rather than guessed. On your own key there is one vendor, so each verdict is labelled with how corroborated it actually was.",
               },
               {
                 badge: "Sealed",
@@ -176,15 +176,14 @@ export default async function Home() {
                 },
                 {
                   step: "Run the suite",
-                  body: "Sixteen scenarios go to your agent and come back graded, streaming in as they finish, each showing the verdict, the reasoning, and which models decided it.",
+                  body: "Every scenario in the suite goes to your agent and comes back graded, streaming in as they finish, each showing the verdict, the reasoning, and which models decided it.",
                 },
                 {
                   step: "Send the report",
                   body: "One link, expiring and revocable, printable to PDF. It carries the score, the coverage, the findings, the limitations, and the hash — and never your policy text, your keys, or the raw transcript.",
                 },
               ].map((item, i) => (
-                <Reveal key={item.step} delay={i * 60}>
-                  <li className="flex gap-4">
+                <Reveal key={item.step} delay={i * 60} as="li" className="flex gap-4">
                     <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white tabular-nums">
                       {i + 1}
                     </span>
@@ -194,7 +193,6 @@ export default async function Home() {
                         {item.body}
                       </p>
                     </div>
-                  </li>
                 </Reveal>
               ))}
             </ol>
@@ -214,8 +212,15 @@ export default async function Home() {
                 that does not — especially to the person you are handing it to.
               </p>
               <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-600">
-                Data stays in the EU: the database runs in Frankfurt. Your model keys are encrypted
-                before storage and only ever decrypted on the server.
+                The database runs in Frankfurt and your model keys are encrypted before storage,
+                decrypted only on the server. Grading is a different question and we would rather
+                you heard it here: your agent&apos;s answers are sent to the model providers that
+                grade them, which today include providers outside the EU. Each report names the
+                models that graded each scenario, and{" "}
+                <Link href="/docs/data-and-privacy" className="underline underline-offset-2 hover:text-slate-900">
+                  the documentation says exactly what goes where
+                </Link>
+                .
               </p>
             </Card>
           </Reveal>

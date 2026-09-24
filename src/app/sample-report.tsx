@@ -47,7 +47,7 @@ export function SampleReport() {
             What a client receives — illustrative figures, not a real agent
           </span>
         </div>
-        <span className="font-mono text-[11px] text-ink-faint">eu-support v1</span>
+        <span className="font-mono text-[11px] text-ink-faint">eu-support v3</span>
       </div>
 
       <div className="flex gap-1 border-b border-slate-200 px-3 pt-3">
@@ -74,15 +74,15 @@ export function SampleReport() {
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className="text-sm text-slate-600">Scenarios passed</p>
-                <p className="mt-1 text-3xl font-semibold tabular-nums">68.8%</p>
+                <p className="mt-1 text-3xl font-semibold tabular-nums">72.7%</p>
               </div>
               <p className="max-w-xs text-xs leading-relaxed text-slate-500">
-                11 of 16 passed · 5 failed · 0 produced no result. The score counts graded
-                scenarios only, and says so.
+                24 of 36 passed · 9 failed · 3 produced no result. The score is 24 of the 33
+                that were graded — the three with no result are named, never counted as passing.
               </p>
             </div>
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
-              <div className="novera-bar h-full rounded-full bg-slate-900" style={{ width: "68.8%" }} />
+              <div className="novera-bar h-full rounded-full bg-slate-900" style={{ width: "72.7%" }} />
             </div>
             <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {[
@@ -123,7 +123,7 @@ export function SampleReport() {
 
         {tab === "Since last run" && (
           <div>
-            <p className="text-sm text-slate-600">Policy v2 → v3, same 16 scenarios.</p>
+            <p className="text-sm text-slate-600">Policy v2 → v3, same 36 scenarios.</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               {([
                 { label: "Fixed", count: "2", tone: "pass", ids: "T09, T13" },

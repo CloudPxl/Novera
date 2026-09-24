@@ -10,6 +10,14 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
  * Escape closes and returns focus to the trigger, a click outside closes, and the
  * trigger carries `aria-expanded` so a screen reader is told the same thing the
  * chevron says.
+ *
+ * **It is a disclosure, not a menu.** It carried `role="menu"` and
+ * `aria-haspopup="menu"`, and the panels it opens contain a form with two selects and
+ * a submit button, or a file input — things a menu may not contain. A screen reader
+ * announcing "menu" puts the reader into application mode expecting arrow keys to move
+ * between items, and nothing here implements that, so the promise made by the role was
+ * one the component did not keep. A disclosure promises exactly what this does: a
+ * button that reveals a region, which Tab then walks in document order.
  */
 export function Menu({
   label,
@@ -58,7 +66,6 @@ export function Menu({
         ref={trigger}
         type="button"
         aria-expanded={open}
-        aria-haspopup="menu"
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((v) => !v)}
         className={`inline-flex items-center gap-1.5 rounded-control text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink ${triggerClassName}`}
@@ -72,7 +79,6 @@ export function Menu({
       {open && (
         <div
           id={panelId}
-          role="menu"
           className={`novera-panel-in absolute top-[calc(100%+0.375rem)] z-40 min-w-56 overflow-hidden rounded-panel border border-line bg-surface p-1 shadow-modal ${
             align === "right" ? "right-0" : "left-0"
           } ${panelClassName}`}

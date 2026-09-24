@@ -7,8 +7,17 @@ import {
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { inputClass } from "@/components/ui/primitives.tsx";
 
+/**
+ * Both outcomes announced, not only the bad one.
+ *
+ * The error was an alert and the confirmation was a plain span — on the page whose
+ * actions approve wording and put it in a stranger's inbox. "Sent." is exactly the
+ * sentence a person needs to hear without having to go and look for it.
+ */
 function Feedback({ state }: { state: InboundState }) {
-  if (state.notice) return <span className="text-xs font-medium text-emerald-700">{state.notice}</span>;
+  if (state.notice) {
+    return <span role="status" className="text-xs font-medium text-emerald-700">{state.notice}</span>;
+  }
   if (state.error) return <span role="alert" className="text-xs font-medium text-rose-700">{state.error}</span>;
   return null;
 }
@@ -109,7 +118,9 @@ export function EraseButton({ requestId }: { requestId: string }) {
   const [state, submit] = useActionState<InboundState, FormData>(eraseRequest, {});
   const [armed, setArmed] = useState(false);
 
-  if (state.notice) return <span className="text-xs font-medium text-emerald-700">{state.notice}</span>;
+  if (state.notice) {
+    return <span role="status" className="text-xs font-medium text-emerald-700">{state.notice}</span>;
+  }
 
   if (!armed) {
     return (

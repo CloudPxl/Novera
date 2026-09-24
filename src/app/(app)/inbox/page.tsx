@@ -18,6 +18,22 @@ const TONE = {
   closed: "neutral",
 } as const;
 
+/**
+ * A timestamp that says which clock it is on.
+ *
+ * These were rendered as a sliced ISO string — UTC, with nothing saying so, on the one
+ * screen where "how long has this person been waiting" is the question. An operator in
+ * Europe read every one of them an hour or two wrong.
+ */
+function Stamp({ at, className = "" }: { at: string; className?: string }) {
+  const when = new Date(at);
+  return (
+    <time dateTime={when.toISOString()} className={className}>
+      {when.toISOString().slice(0, 16).replace("T", " ")} UTC
+    </time>
+  );
+}
+
 export default async function InboxPage() {
   await requireStaff();
   const db = serviceClient();
@@ -45,7 +61,12 @@ export default async function InboxPage() {
     draftsByRequest.set(d.request_id as string, list);
   }
 
-  const waiting = (requests ?? []).filter((r) => r.status !== "sent").length;
+  // Counted from the rows on screen, and described by what they are. The line used to
+  // read "Nothing here has been sent to anyone", which stopped being true the moment a
+  // sent reply appeared in the list underneath it.
+  const rows = requests ?? [];
+  const waiting = rows.filter((r) => r.status !== "sent").length;
+  const sent = rows.length - waiting;
 
   return (
     <main className="w-full max-w-3xl py-8 text-ink">
@@ -55,7 +76,8 @@ export default async function InboxPage() {
 
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">Inbox</h1>
       <p className="mt-1 text-sm text-slate-600">
-        {waiting} waiting on you. Nothing here has been sent to anyone.
+        {waiting} waiting on you
+        {sent > 0 ? `, ${sent} already sent` : ""}. A draft is never sent until you send it.
       </p>
 
       {(requests ?? []).length === 0 ? (
@@ -72,7 +94,7 @@ export default async function InboxPage() {
             const superseded = forRequest.slice(1);
 
             return (
-              <Reveal key={r.id as string} delay={Math.min(i, 8) * 40}>
+              <Reveal key={r.id as string} delay={Math.min(i, 8) * 40} as="li">
                 <Card className="p-5">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={TONE[r.status as keyof typeof TONE] ?? "neutral"}>
@@ -85,9 +107,7 @@ export default async function InboxPage() {
                     {r.organisation && (
                       <span className="text-sm text-slate-500">· {r.organisation as string}</span>
                     )}
-                    <span className="ml-auto text-xs text-ink-faint">
-                      {new Date(r.created_at as string).toISOString().slice(0, 16).replace("T", " ")}
-                    </span>
+                    <Stamp at={r.created_at as string} className="ml-auto text-xs text-ink-faint" />
                   </div>
 
                   <p className="mt-3 whitespace-pre-wrap rounded-lg bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-700">
@@ -146,8 +166,7 @@ export default async function InboxPage() {
                         )}
                         {current.status === "sent" && (
                           <p className="text-xs text-slate-500">
-                            Sent{" "}
-                            {new Date(current.sent_at as string).toISOString().slice(0, 16).replace("T", " ")}.
+                            Sent <Stamp at={current.sent_at as string} />.
                           </p>
                         )}
                         {current.status !== "sent" && (

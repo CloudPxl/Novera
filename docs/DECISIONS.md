@@ -1475,3 +1475,48 @@ on every request would cost a round trip on every page. It is unrelated to
 
 340 tests; axe-core clean with no overflow at 390 in all three form modes;
 `verify:throttle` now 12 checks.
+
+## 2026-09-24 — The inbox and the shell (Phase 6, surfaces 10 and 11)
+
+**The inbox said something the rows underneath it contradicted.** "N waiting on you.
+Nothing here has been sent to anyone." — true until the first reply was sent, after
+which the list showed a card marked `sent` directly below a sentence denying it. It now
+counts both and says the thing that is actually load-bearing: a draft is never sent
+until you send it.
+
+**Its timestamps were UTC with nothing saying so**, on the one screen where "how long
+has this person been waiting" is the question. Rendered by slicing an ISO string, they
+read an hour or two wrong to an operator in Europe every time. They are now `<time>`
+elements carrying the machine-readable value and a visible "UTC".
+
+**Its list was not a list.** `<Reveal>` sat directly inside the `<ul>`, so assistive
+technology read two unrelated blocks rather than a queue of two — the same defect found
+on the landing page an hour earlier, and the `/docs` index carries a comment explaining
+how it was avoided there. `as="li"` now, and the `Reveal` fix has paid for itself twice.
+
+**A confirmation was a plain span while an error was an alert**, on the page whose
+actions approve wording and put it in a stranger's inbox. "Sent." is the sentence a
+person most needs to hear without going to look for it.
+
+**The dropdown was not a menu.** It carried `role="menu"` and `aria-haspopup="menu"`,
+and the panels it opens contain a form with two selects and a submit button, or a file
+input — things a menu may not contain. A screen reader announcing "menu" puts the reader
+in application mode expecting arrow keys between items, and nothing implemented that: the
+role promised an interaction the component did not have. It is a disclosure now, which
+promises exactly what it does. `aria-expanded` and `aria-controls` stay, Escape still
+closes and returns focus to the trigger — verified in the browser — and Tab walks the
+panel in document order because it follows the trigger in the DOM.
+
+**A keyboard user met eight controls before the page.** Every operator screen put the
+nav, the agent list, import, the run launcher and the account menu in front of the
+content. Once per page is an annoyance; on the run matrix, where the work is, it is the
+difference between the keyboard being usable and not. A skip link is now the first thing
+focused on every operator page, visible only when focused. Measured: first focusable
+element, visible when focused, target present.
+
+This is where Phase 7 begins. What is deliberately **not** done here is the systematising
+— one definition per component for loading, empty, error and disabled; focus and density
+as a system; dark mode. Those are 7.1, and doing them piecemeal per surface is what
+produces an interface consistent with nothing but itself.
+
+340 tests; axe-core clean with no overflow at 390 and 1440 on the inbox and the shell.

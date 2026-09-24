@@ -44,9 +44,13 @@ export interface LimitResult {
  * application are counted separately — someone asking a question should not be turned
  * away because they also applied.
  */
-export async function rateLimit(identifier: string, limit: Limit): Promise<LimitResult> {
+export async function rateLimit(
+  identifier: string,
+  limit: Limit,
+  options: { peek?: boolean } = {},
+): Promise<LimitResult> {
   try {
-    const { data, error } = await serviceClient().rpc("throttle_hit", {
+    const { data, error } = await serviceClient().rpc(options.peek ? "throttle_peek" : "throttle_hit", {
       key: identifier,
       window_seconds: limit.windowSeconds,
     });
@@ -56,7 +60,9 @@ export async function rateLimit(identifier: string, limit: Limit): Promise<Limit
     }
 
     return {
-      allowed: data <= limit.max,
+      // A peek asks "is this identifier already over?", so the count it reads has not
+      // been spent on this request and the boundary is one different from a hit.
+      allowed: options.peek ? data < limit.max : data <= limit.max,
       retryAfterMinutes: windowResetMinutes(limit.windowSeconds),
       hits: data,
     };

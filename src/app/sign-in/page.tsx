@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth/session.ts";
 import { SignInForm } from "./form.tsx";
+import { problemMessage } from "../auth/confirm/problems.ts";
 
 export const metadata: Metadata = { title: "Sign in · Novera" };
 
@@ -11,7 +12,9 @@ export default async function SignInPage({
   searchParams: Promise<{ problem?: string }>;
 }) {
   if (await currentUser()) redirect("/dashboard");
-  const { problem } = await searchParams;
+  // Mapped from a code this application defined, never rendered from the query string:
+  // a link someone was sent must not be able to put its own sentence inside our alert.
+  const problem = problemMessage((await searchParams).problem);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center bg-white px-6 text-slate-900">

@@ -2,77 +2,117 @@
 
 import { useActionState, useState } from "react";
 import { authenticate, type AuthState } from "./actions.ts";
+import { SubmitButton } from "@/components/ui/button.tsx";
+import { Field, inputClass } from "@/components/ui/primitives.tsx";
 
+type Mode = "signin" | "signup" | "reset";
+
+const SUBMIT: Record<Mode, string> = {
+  signin: "Sign in",
+  signup: "Create account",
+  reset: "Email me a reset link",
+};
+
+/**
+ * Sign in, create an account, or ask for a reset link.
+ *
+ * Three modes rather than two, because there was no third: a person who forgot their
+ * password had no path at all except writing to support — while `/auth/confirm` had
+ * handled `recovery` tokens all along and redirected them to a page that ignored it.
+ *
+ * The mode is a hidden field, not a bound action. Swapping the function passed to
+ * `useActionState` does not reliably rebind it, so a user who toggled to "Sign in" was
+ * still running sign-up; reading it from the submitted form removes that class of bug
+ * and keeps the form working without JavaScript.
+ */
 export function SignInForm() {
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [state, submit, pending] = useActionState<AuthState, FormData>(authenticate, {});
+  const [mode, setMode] = useState<Mode>("signin");
+  const [state, submit] = useActionState<AuthState, FormData>(authenticate, {});
 
   return (
     <form action={submit} className="mt-8 space-y-4">
-      {/* The server reads the mode from here rather than from which function was
-          bound at render time — see the note on `authenticate`. */}
       <input type="hidden" name="mode" value={mode} />
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium">
-          Email address
-        </label>
+
+      <Field label="Email address" htmlFor="email">
         <input
           id="email"
           name="email"
           type="email"
           autoComplete="email"
           required
-          className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
+          maxLength={254}
+          className={inputClass}
         />
-      </div>
+      </Field>
 
-      <div>
-        <label htmlFor="password" className="block text-sm font-medium">
-          Password
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete={mode === "signin" ? "current-password" : "new-password"}
-          required
-          minLength={8}
-          className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
-        />
-        {mode === "signup" && (
-          <p className="mt-1.5 text-xs text-slate-500">At least 8 characters.</p>
-        )}
-      </div>
+      {mode !== "reset" && (
+        <Field
+          label="Password"
+          htmlFor="password"
+          hint={mode === "signup" ? "At least 8 characters." : undefined}
+        >
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete={mode === "signin" ? "current-password" : "new-password"}
+            required
+            // Only when a password is being set. Enforcing a minimum on sign-in would
+            // reject the correct password on an account created before the minimum.
+            minLength={mode === "signup" ? 8 : undefined}
+            maxLength={200}
+            className={inputClass}
+          />
+        </Field>
+      )}
 
       {state.error && (
-        <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm leading-relaxed text-rose-800">
           {state.error}
         </p>
       )}
       {state.notice && (
-        <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm leading-relaxed text-emerald-800">
           {state.notice}
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-60"
-      >
-        {pending ? "Working…" : mode === "signin" ? "Sign in" : "Create account"}
-      </button>
+      <SubmitButton className="w-full justify-center" pendingLabel="Working…">
+        {SUBMIT[mode]}
+      </SubmitButton>
 
-      <p className="text-sm text-slate-600">
-        {mode === "signin" ? "No account yet? " : "Already have an account? "}
-        <button
-          type="button"
-          onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-          className="font-medium text-slate-900 underline underline-offset-2"
-        >
-          {mode === "signin" ? "Create one" : "Sign in"}
-        </button>
-      </p>
+      <div className="space-y-1 text-sm text-slate-600">
+        {mode === "reset" ? (
+          <p>
+            Remembered it?{" "}
+            <button type="button" onClick={() => setMode("signin")} className={linkClass}>
+              Sign in
+            </button>
+          </p>
+        ) : (
+          <>
+            <p>
+              {mode === "signin" ? "No account yet? " : "Already have an account? "}
+              <button
+                type="button"
+                onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+                className={linkClass}
+              >
+                {mode === "signin" ? "Create one" : "Sign in"}
+              </button>
+            </p>
+            {mode === "signin" && (
+              <p>
+                <button type="button" onClick={() => setMode("reset")} className={linkClass}>
+                  Forgotten your password?
+                </button>
+              </p>
+            )}
+          </>
+        )}
+      </div>
     </form>
   );
 }
+
+const linkClass = "font-medium text-ink underline underline-offset-2 hover:text-slate-600";

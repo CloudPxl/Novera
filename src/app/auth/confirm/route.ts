@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { sessionClient } from "@/lib/supabase/server.ts";
+import type { ProblemCode } from "./problems.ts";
 
 /**
  * Where the link in a confirmation email lands.
@@ -17,11 +18,13 @@ export async function GET(request: NextRequest) {
   const tokenHash = url.searchParams.get("token_hash");
   const type = url.searchParams.get("type") as EmailOtpType | null;
 
-  const failed = (reason: string) =>
-    NextResponse.redirect(new URL(`/sign-in?problem=${encodeURIComponent(reason)}`, url.origin));
+  // A code, never a message. `/sign-in` owns the words, so a link someone was sent
+  // cannot put a sentence of its own inside our alert box — see ./problems.ts.
+  const failed = (code: ProblemCode) =>
+    NextResponse.redirect(new URL(`/sign-in?problem=${code}`, url.origin));
 
   if (!tokenHash || !type || !CONFIRMABLE.includes(type)) {
-    return failed("That confirmation link is not valid. Ask for a new one.");
+    return failed("link_invalid");
   }
 
   const supabase = await sessionClient();
@@ -30,9 +33,13 @@ export async function GET(request: NextRequest) {
   if (error) {
     // Expired and already-used links are the common cases, and both are the user's
     // problem to solve the same way. The provider's wording is not shown.
-    return failed("That confirmation link has expired or was already used. Ask for a new one.");
+    return failed(type === "recovery" ? "reset_expired" : "link_spent");
   }
 
-  const destination = type === "recovery" ? "/sign-in?mode=reset" : "/dashboard";
+  // Recovery signs the person in, which is the whole of what the token does. It must
+  // land somewhere that lets them set a password: it used to redirect to
+  // `/sign-in?mode=reset`, and the sign-in page has never read `mode` — so a recovery
+  // link signed you in and bounced you to the dashboard with the password unchanged.
+  const destination = type === "recovery" ? "/reset-password" : "/dashboard";
   return NextResponse.redirect(new URL(destination, url.origin));
 }

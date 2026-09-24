@@ -96,7 +96,27 @@ try {
     "the refusal says when, and offers a way that does not involve waiting",
   );
 
-  await db.from("request_throttle").delete().in("identifier", [who, racer, bystander]);
+  // 8. A peek reads without spending.
+  //
+  // The sign-in limit only counts failures, because counting successes would lock a
+  // person out of their own evidence for signing in too often. That needs a read that
+  // does not increment, and a read that quietly incremented would turn every sign-in
+  // attempt into two.
+  const peeker = `verify-peek-${Date.now()}`;
+  const { data: firstPeek } = await db.rpc("throttle_peek", { key: peeker, window_seconds: 3600 });
+  report(firstPeek === 0, "an identifier nobody has counted peeks at zero", `saw ${firstPeek}`);
+
+  await db.rpc("throttle_hit", { key: peeker, window_seconds: 3600 });
+  await db.rpc("throttle_hit", { key: peeker, window_seconds: 3600 });
+  const { data: afterTwo } = await db.rpc("throttle_peek", { key: peeker, window_seconds: 3600 });
+  const { data: afterPeeking } = await db.rpc("throttle_peek", { key: peeker, window_seconds: 3600 });
+  report(afterTwo === 2 && afterPeeking === 2, "peeking three times does not count three times",
+    `two hits, then two peeks: ${afterTwo} then ${afterPeeking}`);
+
+  const { error: badPeekWindow } = await db.rpc("throttle_peek", { key: peeker, window_seconds: 0 });
+  report(Boolean(badPeekWindow), "a peek refuses a zero-length window too");
+
+  await db.from("request_throttle").delete().in("identifier", [who, racer, bystander, peeker]);
   report(true, "the verification counters were removed");
 } catch (error) {
   report(false, "the checks could not run", error instanceof Error ? error.message : String(error));

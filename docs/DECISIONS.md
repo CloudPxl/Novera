@@ -1414,3 +1414,64 @@ one stored row.
 
 axe-core clean with no overflow at 390 and 1440 on both pages; `verify:throttle` still
 9/9; 336 tests.
+
+## 2026-09-24 — Sign-in, and a password nobody could reset (Phase 6, surface 9)
+
+**`/sign-in?problem=` rendered whatever it was given.** The confirmation route redirected
+with its message in the query string and the page printed it inside an amber alert. React
+escaped it, so there was no markup injection — but a link reading `…/sign-in?problem=Your
+account is locked. Call +44 20 0000 0000 to restore it.` put a stranger's sentence inside
+Novera's own branded alert, on the one page that asks for a password. Text injection is a
+phishing primitive even when it cannot execute. The route now sends a code and
+`src/app/auth/confirm/problems.ts` owns the words; anything unrecognised gets a neutral
+line. Verified against the live page: the sentence above renders as "That link did not
+work. Sign in, or ask for a new one."
+
+**A person who forgot their password had no path at all.** There was no "forgotten your
+password" control anywhere, so the only route back into an account was writing to support.
+Worse, the machinery was half-built and quietly broken: `/auth/confirm` accepted
+`recovery` tokens and redirected to `/sign-in?mode=reset`, and the sign-in page has never
+read `mode` — so a recovery link signed you in, bounced you to the dashboard, and left the
+password exactly as it was. A recovery link now lands on `/reset-password`, which exists.
+
+Proved end to end rather than reasoned about, using `auth.admin.generateLink` to obtain
+exactly what the email would carry: the link landed on the new page, mismatched passwords
+were refused, the new password was saved, **the old password was then rejected and the new
+one signed in**, and re-using the spent link redirects to `/sign-in?problem=reset_expired`.
+A token with no type and a type we do not confirm both redirect to `link_invalid`. The one
+thing this cannot cover from here is Supabase's recovery *email template*: the signup
+template is already customised to send `{{ .TokenHash }}` to `/auth/confirm`, and the
+recovery one must match or the link in the email will not reach this route.
+
+The page doubles as change-password for anyone signed in, because a product holding
+customers' encrypted model keys should not require losing access in order to rotate the
+password guarding them.
+
+**Sign-up leaked whether an address had an account.** Two lines below a comment explaining
+that it must not, `signUp` returned `error.message` verbatim — and Supabase answers "User
+already registered" in some configurations. Mapped to the same neutral notice as the
+session-less success.
+
+**The sign-in path enforced a sign-up rule.** An eight-character minimum was applied when
+a password was *used*, not only when it was set, so an account created before the minimum
+existed could never sign in — rejected for supplying the correct password.
+
+**Failed sign-ins are now counted.** Ten per address per hour, and only failures: counting
+successes would lock someone out of their own evidence for signing in too often. That
+needed a read that does not increment, so migration 0027 adds `throttle_peek` beside
+`throttle_hit` — computing the window in application code instead would have put the same
+bucket arithmetic in two languages, which is how the two stop agreeing. `verify:throttle`
+proves two hits followed by three peeks still reads two.
+
+The form was also the last place still writing raw Tailwind palette steps instead of the
+design tokens, and therefore the last form not to get the `aria-describedby` wiring that
+`Field` gained an hour earlier.
+
+**Noted, not fixed:** a deleted account's JWT still renders a full dashboard until it
+expires, because a JWT is self-contained and `currentUser()` does not re-check that the
+user exists. That is a property of stateless auth rather than a defect here, and checking
+on every request would cost a round trip on every page. It is unrelated to
+`erase_workspace()`, which is the product's actual erasure path.
+
+340 tests; axe-core clean with no overflow at 390 in all three form modes;
+`verify:throttle` now 12 checks.

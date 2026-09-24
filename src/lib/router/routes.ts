@@ -28,8 +28,12 @@ export interface Candidate {
 export type RouteTable = Record<Task, Candidate[]>;
 
 /**
- * Ordered by the 2026-09-23 calibration (npm run calibrate) over `eu-support v2`:
- * 24 cases, 19 labelled, 5 excluded as arguable. FALSE PASSES first, then agreement:
+ * Ordered by the 2026-09-24 calibration over `eu-support v3`: 36 cases, 31 labelled,
+ * 5 excluded as arguable. FALSE PASSES first, then agreement. The per-route ordering
+ * and the reasoning behind the change are on `DEFAULT_ROUTES` below.
+ *
+ * The 2026-09-23 measurement over v2 that this replaces, kept because it is what the
+ * OpenRouter and Google decisions rest on:
  *
  *   groq/openai/gpt-oss-120b     19/19   0 false passes   0 unreadable
  *   mistral/ministral-3b-latest  18/19   0 false passes   0 unreadable
@@ -65,21 +69,41 @@ export type RouteTable = Record<Task, Candidate[]>;
  * of them; Mistral limits requests (~1/s). `npm run calibrate` paces for both.
  */
 export const DEFAULT_ROUTES: RouteTable = {
+  // Reordered 2026-09-24, after the first measurement over v3's 31 labelled cases.
+  //
+  //   groq/openai/gpt-oss-20b       31/31   0 false passes
+  //   mistral/ministral-8b-latest   30/31   0 false passes   (T07)
+  //   mistral/ministral-3b-latest   30/31   1 FALSE PASS     (T08)
+  //   groq/openai/gpt-oss-120b      30/31   1 FALSE PASS     (T08)
+  //
+  // The previous order was the exact inverse on the only measure that matters. A false
+  // pass reports a broken agent as fine, and consensus takes its first two opinions
+  // from candidate one and then the first candidate of another vendor — which was
+  // gpt-oss-120b and ministral-3b, the two that both accepted a vague deflection on
+  // T08, a *critical* bulk-export scenario. Two models agreeing on a false pass is the
+  // one failure consensus exists to prevent, and this route was choosing the pair that
+  // shared it.
+  //
+  // Honest limits on this: it rests on one labelled case, and models are not
+  // deterministic even at temperature 0 — ministral-3b said fail on T08 in the morning
+  // run and pass in the afternoon one. It is not a claim that 20b is a better grader
+  // than 120b. It is the conservative order given what has actually been measured, and
+  // all four stay in the route, so nothing is lost to availability.
   judge: [
-    { connection: "groq", model: "openai/gpt-oss-120b" },
-    { connection: "mistral", model: "ministral-3b-latest" },
-    { connection: "mistral", model: "ministral-8b-latest" },
     { connection: "groq", model: "openai/gpt-oss-20b" },
+    { connection: "mistral", model: "ministral-8b-latest" },
+    { connection: "mistral", model: "ministral-3b-latest" },
+    { connection: "groq", model: "openai/gpt-oss-120b" },
   ],
-  // Same models and same order: every candidate here has zero measured false passes,
-  // and there is no evidence for preferring a different one on a critical scenario.
-  // What differs is the rule, not the route — a critical case is put to a third model
-  // even when the first two agree (src/lib/judge/consensus.ts).
+  // Same models and same order. What differs is the rule, not the route — a critical
+  // case is put to a third model even when the first two agree
+  // (src/lib/judge/consensus.ts), which is also what catches the T08 pair: the third
+  // opinion now comes from a model that did not miss it.
   judge_critical: [
-    { connection: "groq", model: "openai/gpt-oss-120b" },
-    { connection: "mistral", model: "ministral-3b-latest" },
-    { connection: "mistral", model: "ministral-8b-latest" },
     { connection: "groq", model: "openai/gpt-oss-20b" },
+    { connection: "mistral", model: "ministral-8b-latest" },
+    { connection: "mistral", model: "ministral-3b-latest" },
+    { connection: "groq", model: "openai/gpt-oss-120b" },
   ],
   // Not measured by the calibration harness: diagnosis is a different job from grading
   // (long reasoning, a proposed edit) and has no labelled ground truth. Ordered by

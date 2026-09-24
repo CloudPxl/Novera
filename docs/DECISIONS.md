@@ -1348,3 +1348,36 @@ element has been revealed. Staging from the top is unchanged: 3 shown, 16 waitin
 Verified live: axe-core clean at 390 and 1440 with no horizontal overflow, on all three
 tabs of the sample report; the jump-to-bottom case leaves nothing invisible; 329 tests,
 build and lint clean; the language rule clean over every file changed.
+
+## 2026-09-24 — The documentation rendered its own syntax (Phase 6, surface 7)
+
+`/docs` is the only material the support agent may quote, with citations. The pages are
+Markdown files; the page rendered `body.split("\n\n")` as paragraphs. So `` `state_confirmed` ``
+reached the reader with its backticks, emphasis reached them as asterisks, and the
+heading added to the privacy page an hour earlier would have printed as the literal
+line `## What is sent where`. The body was Markdown on the way in and plain text on the
+way out — the same boundary mistake, now for the eighth time.
+
+`src/lib/docs/markdown.ts` parses the subset the corpus actually uses — `##`/`###`
+headings, bullets, numbers, `**strong**`, `*em*`, `` `code` `` — into a typed structure
+that the page renders as React elements. **Deliberately not a Markdown library and
+deliberately not HTML.** There is no path by which document text becomes markup, which
+matters the day a doc page is written by someone who is not us: a `<script>` in a doc
+renders as the characters `<script>`. A test asserts that every published page in the
+corpus parses and that none of them renders a backtick or a heading marker, so the next
+page that uses an unsupported construct fails in CI rather than on the site.
+
+Two smaller things: a doc page now says when it was last updated, because a support
+reply cites these pages and "is this still true?" is the reader's next question; and the
+index preview takes the first block as text rather than the first raw paragraph, which
+would otherwise have begun "## What is sent where".
+
+**The check that mattered** was not the page. `/api/support-agent` was asked "is all of
+my data kept inside the EU? I need to know for a DPIA" and answered: no — Frankfurt for
+the database, Groq in the United States and Mistral in France for trial grading, and
+every supported customer key processing outside the EU — citing `data-and-privacy`.
+Yesterday the same question would have been answered "yes". A stale page produces
+confident, sourced, wrong replies, and that is why documentation is part of what a phase
+ships.
+
+336 tests; axe-core clean with no overflow at 390 and 1440 on both the index and a page.

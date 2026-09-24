@@ -3,6 +3,7 @@ import Link from "next/link";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card } from "@/components/ui/primitives.tsx";
+import { parseDocBody, plainText } from "@/lib/docs/markdown.ts";
 
 export const metadata: Metadata = { title: "Documentation · Novera" };
 export const dynamic = "force-dynamic";
@@ -34,8 +35,10 @@ export default async function DocsIndex() {
               <Link href={`/docs/${page.slug}`} className="block">
                 <Card interactive className="p-4">
                   <p className="font-medium">{page.title as string}</p>
+                  {/* The first paragraph, as text — a preview that starts "## What is
+                      sent where" describes the syntax rather than the page. */}
                   <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-slate-600">
-                    {(page.body as string).split("\n\n")[0]}
+                    {plainText(parseDocBody(page.body as string)[0])}
                   </p>
                 </Card>
               </Link>

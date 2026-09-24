@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sessionClient } from "@/lib/supabase/server.ts";
+import { parseDocBody, type Span } from "@/lib/docs/markdown.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,32 @@ export async function generateMetadata({
   return { title: data ? `${data.title} · Novera` : "Novera" };
 }
 
+/**
+ * Renders the parsed spans as elements.
+ *
+ * Nothing here takes a string of markup. The corpus is Markdown, it is parsed to a
+ * typed structure, and that structure becomes React elements — so a doc page cannot
+ * introduce markup no matter who writes one.
+ */
+function Spans({ spans }: { spans: Span[] }) {
+  return (
+    <>
+      {spans.map((span, i) => {
+        if (span.kind === "code") {
+          return (
+            <code key={i} className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[0.9em] text-ink">
+              {span.text}
+            </code>
+          );
+        }
+        if (span.kind === "em") return <em key={i}>{span.text}</em>;
+        if (span.kind === "strong") return <strong key={i} className="font-semibold text-ink">{span.text}</strong>;
+        return <span key={i}>{span.text}</span>;
+      })}
+    </>
+  );
+}
+
 export default async function DocPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const db = await sessionClient();
@@ -24,20 +51,67 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
 
   if (!page) notFound();
 
+  const blocks = parseDocBody(page.body as string);
+  const updated = page.updated_at
+    ? new Date(page.updated_at as string).toLocaleDateString("en-GB", {
+        day: "numeric", month: "long", year: "numeric",
+      })
+    : null;
+
   return (
     <main className="mx-auto w-full max-w-2xl bg-white px-6 py-10 text-slate-900 sm:px-8">
       <Link href="/docs" className="text-sm text-slate-500 underline-offset-2 hover:underline">
         ← Documentation
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">{page.title as string}</h1>
-      <p className="mt-1 font-mono text-xs text-ink-faint">{slug}</p>
+
+      {/* The date is not decoration. A support reply cites these pages, so "is this
+          still true?" is the reader's next question and it should not need asking. */}
+      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">
+        <span className="font-mono">{slug}</span>
+        {updated && <span>Last updated {updated}</span>}
+      </p>
 
       <div className="mt-6 space-y-4">
-        {(page.body as string).split(/\n\n+/).map((paragraph, i) => (
-          <p key={i} className="text-[15px] leading-relaxed text-slate-700">
-            {paragraph}
-          </p>
-        ))}
+        {blocks.map((block, i) => {
+          if (block.kind === "heading") {
+            const Tag = block.level === 2 ? "h2" : "h3";
+            return (
+              <Tag
+                key={i}
+                className={`pt-2 font-semibold tracking-tight text-ink ${
+                  block.level === 2 ? "text-lg" : "text-base"
+                }`}
+              >
+                <Spans spans={block.spans} />
+              </Tag>
+            );
+          }
+
+          if (block.kind === "list") {
+            const Tag = block.ordered ? "ol" : "ul";
+            return (
+              <Tag
+                key={i}
+                className={`space-y-1 pl-5 text-[15px] leading-relaxed text-slate-700 ${
+                  block.ordered ? "list-decimal" : "list-disc"
+                }`}
+              >
+                {block.items.map((item, j) => (
+                  <li key={j}>
+                    <Spans spans={item} />
+                  </li>
+                ))}
+              </Tag>
+            );
+          }
+
+          return (
+            <p key={i} className="text-[15px] leading-relaxed text-slate-700">
+              <Spans spans={block.spans} />
+            </p>
+          );
+        })}
       </div>
 
       <p className="mt-10 border-t border-slate-200 pt-4 text-sm text-slate-600">

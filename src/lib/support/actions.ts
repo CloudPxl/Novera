@@ -1,7 +1,5 @@
 "use server";
 
-import { createHash } from "node:crypto";
-import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { requireStaff } from "@/lib/auth/staff.ts";
@@ -11,18 +9,26 @@ import { connectionsFromEnv } from "@/lib/providers/registry.ts";
 import { checkEscalation, withSources } from "./escalate.ts";
 import { draftAnswer, type DocPage } from "./answer.ts";
 import { sendEmail } from "@/lib/mail/send.ts";
+import {
+  rateLimit, fingerprint, callerAddress, refusalMessage,
+  SUPPORT_LIMIT, APPLY_LIMIT,
+} from "./rate-limit.ts";
 
 export interface InboundState {
   error?: string;
   notice?: string;
 }
 
-/** Hashed, never stored raw: enough to spot a flood, not enough to track a person. */
+/**
+ * Hashed, never stored raw: enough to spot a flood, not enough to track a person.
+ *
+ * Salted with the key the product already holds. The previous version hashed the
+ * address with a fixed literal, which is a lookup table for anyone who can read the
+ * column — there are only four billion addresses to try.
+ */
 async function requestFingerprint(): Promise<string | null> {
-  const list = await headers();
-  const ip = list.get("x-forwarded-for")?.split(",")[0]?.trim() ?? list.get("x-real-ip");
-  if (!ip) return null;
-  return createHash("sha256").update(`novera:${ip}`).digest("hex").slice(0, 32);
+  const ip = await callerAddress();
+  return ip ? fingerprint(["ip", ip]) : null;
 }
 
 function readContact(form: FormData): { email: string; message: string; organisation: string | null } | string {
@@ -33,6 +39,10 @@ function readContact(form: FormData): { email: string; message: string; organisa
   if (!email || !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) return "Enter an email address we can reply to.";
   if (message.length < 15) return "Tell us a little more than that.";
   if (message.length > 4000) return "That is longer than this form can take — email us instead.";
+  if (email.length > 254) return "That email address is too long to be one.";
+  // Bounded before it is stored rather than after. Every other field had a limit and
+  // this one was free, which is all an abusive payload needs.
+  if (organisation.length > 200) return "Shorten the organisation name a little.";
 
   return { email, message, organisation: organisation || null };
 }
@@ -48,6 +58,32 @@ export async function submitSupportRequest(_prev: InboundState, form: FormData):
   if (typeof contact === "string") return { error: contact };
 
   const db = serviceClient();
+
+  // Counted per person and per form: asking a question and applying for a trial are
+  // different acts, and one should not spend the other's allowance.
+  const who = fingerprint(["support", contact.email, await callerAddress()]);
+  const limit = await rateLimit(who, SUPPORT_LIMIT);
+  if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
+
+  // The same question sent twice is one question. Accepted, acknowledged, and not
+  // drafted again — silently dropping it would teach someone to press the button
+  // harder, and drafting it again costs a model call to produce the same answer.
+  const { data: already } = await db
+    .from("inbound_requests")
+    .select("id")
+    .eq("kind", "support")
+    .eq("email", contact.email)
+    .eq("message", contact.message)
+    .gte("created_at", new Date(Date.now() - SUPPORT_LIMIT.windowSeconds * 1000).toISOString())
+    .maybeSingle();
+
+  if (already) {
+    return {
+      notice:
+        "Thank you — that has reached us. A person reads every message here, so you will get a reply from a human rather than an automatic one.",
+    };
+  }
+
   const escalation = checkEscalation(contact.message);
 
   const { data: request, error } = await db
@@ -105,6 +141,10 @@ export async function submitSupportRequest(_prev: InboundState, form: FormData):
 export async function submitTrialApplication(_prev: InboundState, form: FormData): Promise<InboundState> {
   const contact = readContact(form);
   if (typeof contact === "string") return { error: contact };
+
+  const who = fingerprint(["apply", contact.email, await callerAddress()]);
+  const limit = await rateLimit(who, APPLY_LIMIT);
+  if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
 
   const db = serviceClient();
   const { error } = await db.from("inbound_requests").insert({

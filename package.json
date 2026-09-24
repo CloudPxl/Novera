@@ -20,6 +20,7 @@
     "verify:effect": "node --conditions=react-server --env-file=.env.local scripts/verify-effect.mts",
     "verify:channel": "node --conditions=react-server --env-file=.env.local scripts/verify-channel.mts",
     "verify:compiler": "node --conditions=react-server --env-file=.env.local scripts/verify-compiler.mts",
+    "verify:throttle": "node --conditions=react-server --env-file=.env.local scripts/verify-throttle.mts",
     "verify:models": "node --conditions=react-server --env-file=.env.local scripts/verify-models.mts",
     "verify:byok": "node --conditions=react-server --env-file=.env.local scripts/verify-byok.mts",
     "seed:docs": "node --conditions=react-server --env-file=.env.local scripts/seed-docs.mts"

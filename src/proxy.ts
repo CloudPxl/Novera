@@ -1,39 +1,86 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient } from "@supabase/ssr";
 
 /**
- * Keeps the Supabase session fresh.
+ * The headers every page is served with.
  *
- * Next 16 renamed this file convention from `middleware` to `proxy`; the behaviour
- * is unchanged. Server components cannot write cookies, so a refreshed token has to
- * be written back to the response here or sessions expire unpredictably.
+ * Until now `next.config.ts` was the default stub: no CSP, no frame policy, no
+ * referrer policy. A sealed client report — a document whose only access control is
+ * that the link is unguessable — could be framed inside any page on the internet, and
+ * an injected script would have had nothing standing in its way.
+ *
+ * This is `proxy.ts`, not `middleware.ts`: Next 16 renamed the file convention and the
+ * exported function. Written from `node_modules/next/dist/docs/01-app/02-guides/
+ * content-security-policy.md` rather than from memory, which is the whole reason
+ * AGENTS.md says to read it.
+ *
+ * The CSP is nonce-based, so it needs no `'unsafe-inline'` for scripts. Next extracts
+ * the nonce from this header during server rendering and attaches it to the framework
+ * and page bundles itself — which is also why every page it covers must be dynamically
+ * rendered: a page built at build time has no request to take a nonce from.
  */
-export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
+export function proxy(request: NextRequest) {
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const isDev = process.env.NODE_ENV === "development";
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll: (toSet) => {
-          for (const { name, value } of toSet) request.cookies.set(name, value);
-          response = NextResponse.next({ request });
-          for (const { name, value, options } of toSet) response.cookies.set(name, value, options);
-        },
-      },
-    },
+  // The browser client talks to Supabase directly from the run page, which is what
+  // makes a live run update without polling our own server. Named explicitly rather
+  // than opened to https:, so a script that did get in could not exfiltrate anywhere.
+  const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+
+  const csp = [
+    "default-src 'self'",
+    // `'unsafe-eval'` in development only: React uses eval there to rebuild
+    // server-side error stacks in the browser. Neither React nor Next needs it in
+    // production, so production does not get it.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    `style-src 'self' 'nonce-${nonce}'`,
+    // Progress bars and the reveal animation set a width or a delay as an attribute.
+    // `style-src-attr` is the narrow permission for exactly that, and it does not
+    // allow a `<style>` block or an external sheet.
+    "style-src-attr 'unsafe-inline'",
+    "img-src 'self' blob: data:",
+    // Fonts are self-hosted by next/font at build time; nothing is fetched at runtime.
+    "font-src 'self'",
+    `connect-src 'self'${supabase ? ` ${supabase}` : ""}${isDev ? " ws: wss:" : ""}`,
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    // A report is a document someone was sent, not a widget. It is never framed.
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+
+  response.headers.set("Content-Security-Policy", csp);
+  // Belt and braces with frame-ancestors, for anything that does not read CSP.
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  // A report token lives in the path. Sending it to another origin in a Referer header
+  // would hand the link to whoever the reader clicks through to next.
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
   );
-
-  // getUser revalidates the token with Supabase; getSession would trust the cookie.
-  await supabase.auth.getUser();
 
   return response;
 }
 
 export const config = {
-  // Everything except static assets and the public report, which is deliberately
-  // reachable without a session.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|report/|api/test-agent|api/support-agent).*)"],
+  matcher: [
+    {
+      // API routes set their own headers — the export route already sends `no-store`
+      // and `noindex`, which a blanket rule here would be at risk of contradicting.
+      source: "/((?!api|_next/static|_next/image|favicon.ico).*)",
+      missing: [
+        { type: "header", key: "next-router-prefetch" },
+        { type: "header", key: "purpose", value: "prefetch" },
+      ],
+    },
+  ],
 };

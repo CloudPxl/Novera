@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { InboundForm } from "../support/form.tsx";
 
+// Dynamic so the CSP nonce can reach it: Next injects the nonce during server
+// rendering, and a page built once at build time has no request to take one from.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = { title: "Try Novera · Novera" };
 
 export default function ApplyPage() {

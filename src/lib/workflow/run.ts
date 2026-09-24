@@ -9,8 +9,7 @@ import { executeRun, type RunSummary } from "../runner/execute.ts";
 import type { Suite } from "../runner/types.ts";
 import { supabaseRunStore } from "../store/supabase-run-store.ts";
 import { createRoutedChat } from "../router/execute.ts";
-import { DEFAULT_ROUTES } from "../router/routes.ts";
-import { connectionsFromEnv } from "../providers/registry.ts";
+import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
 import { buildReport } from "../report/build.ts";
 import { PROBE_INPUT } from "../agents/types.ts";
 import { discoverShape } from "../agents/discover.ts";
@@ -68,12 +67,21 @@ export async function startRun(args: {
   attestation: string | null;
   baselineRunId?: string | null;
   createdBy?: string | null;
-  judgeSource: "trial_free" | "workspace_key";
 }): Promise<RunSummary> {
   const { client, workspaceId, agentId, agentConfig, policyId, policyBody, suiteId, suite } = args;
 
+  // Who funds the grading is resolved here, from the same call that picks the
+  // credential, rather than passed in. This path took it as an argument and then
+  // graded on `connectionsFromEnv()` regardless — so a workspace on its own key had
+  // runs stamped `workspace_key` that our free tier had actually paid for. The other
+  // run path resolved it properly, which is the seventh time a capability has landed
+  // on one of the two and left the other looking like the same product.
+  const { connections, routes, source: judgeSource } = await connectionsForWorkspace({
+    client, workspaceId,
+  });
+
   const declared = await manifestForNewRun({
-    client, agentId, policyId, suiteId, judgeSource: args.judgeSource,
+    client, agentId, policyId, suiteId, judgeSource, routes,
   });
 
   const { data: run, error } = await client
@@ -88,7 +96,7 @@ export async function startRun(args: {
       suite_id: suiteId,
       baseline_run_id: args.baselineRunId ?? null,
       status: "queued",
-      judge_source: args.judgeSource,
+      judge_source: judgeSource,
       attestation_text: args.attestation,
       created_by: args.createdBy ?? null,
     })
@@ -99,8 +107,8 @@ export async function startRun(args: {
 
   const adapter = await buildAgentAdapter({ client, workspaceId, agentId, config: agentConfig });
   const judge = createRoutedChat({
-    connections: connectionsFromEnv(),
-    routes: DEFAULT_ROUTES,
+    connections,
+    routes,
     onFallback: (attempt) =>
       console.warn(`  judge fallback: ${attempt.connection}/${attempt.model} — ${attempt.error}`),
   });

@@ -1210,3 +1210,89 @@ support pipeline rather than a copy of it. The first run scored 8/10 and found t
 defects — sent replies dropped their citations, and the erasure rule missed "delete
 everything you hold about me". Both fixed; v2 scores 10/10, with 4 verdicts marked
 uncorroborated because our own key has no fallback, and the report says so.
+
+## 2026-09-24 — Settings, and a key that could not grade (Phase 6, surface 5)
+
+The rubric row for this surface was "check the error shape when a key is wrong, what is
+said about storage, and that removal is as easy as adding". It found a defect three
+layers below the page.
+
+**Three of the four providers the form offers could not grade anything.** The route
+table is keyed by connection *name* — `groq`, `mistral` — and names the connections *we*
+hold keys for. A workspace that brings its own key holds exactly one connection, and the
+router resolves candidates by name. So a google, anthropic or openrouter key matched no
+candidate at all: the router recorded "no credential configured for this connection" four
+times, exhausted the route and errored every case in the run. The customer would have
+reached that state by connecting a key on the strength of a page promising unmetered
+grading, having just left a trial they could not return to. Proved first, in
+`tests/byok-routes.test.ts`, then fixed.
+
+Groq worked, which is why nothing caught it: `verify:byok` tested one provider out of
+four, and it was the one in the table. A verification that exercises one value of four
+proves one thing. It now asserts every provider the form offers can route every task.
+
+**The model the form asked for was thrown away.** It proved the key and was discarded,
+so nothing knew what the customer's key could actually serve. It is now stored with the
+credential (0025) and is what the route is built from. The form takes a second model
+too, optional, because it changes what a verdict *means*: one model is `single-model` —
+"Not corroborated" — and two from one vendor is `single-vendor`. The page states which
+one the workspace is getting, before the key is connected rather than after the run.
+
+**The manifest declared a judge plan the run could not have used.** `judge_plan` was
+read from `DEFAULT_ROUTES` regardless of who was grading, so a BYOK run froze a
+declaration of our four-candidate panel over evidence produced by someone else's single
+model. The manifest's whole claim is that the inputs were declared before anything ran;
+it now takes the route it will actually use.
+
+**`startRun` graded on our key while stamping the run `workspace_key`.** It accepted
+`judgeSource` as an argument and then built its judge from `connectionsFromEnv()`. Only
+the demo script reaches it today, so this was latent rather than live — but it is the
+seventh time a capability has landed on one of the two run paths and left the other
+looking like the same product. Both now resolve the credential and the attribution from
+the same call, so caller and reality cannot disagree.
+
+**A key that cannot be routed now refuses the run** rather than falling back to ours.
+Falling through to the trial connections would have graded an unmetered workspace on our
+free tier indefinitely. `workspaceEntitlement` returns `canRun: false` with a sentence
+naming the fix, so the refusal lands on the settings page instead of as 36 errored cases.
+
+Four smaller things on the surface itself:
+
+- **Rotating a key required deleting the working one first**, which dropped the
+  workspace onto a trial allowance it had usually exhausted and left it with nothing if
+  the new key then failed. Replacement is now in place: the new key is proved, stored,
+  and only then is the old one deleted. `storeSecret` inserts rather than upserts, so
+  every superseded credential had been kept indefinitely — a key the customer believed
+  they had retired, which is the one thing rotation is for.
+- **"That key did not work" was the answer to every failure**, including a 404 from a
+  model id the provider had retired. Our own route table rots that way about twice a
+  quarter; theirs will too. The status code says which it was, and discarding it sent
+  customers to regenerate a working credential. Measured against Groq: a valid key with
+  an unknown model returns 404, not 401. A 429 is now "nothing was saved, try in a
+  minute" rather than an accusation.
+- **The form held a second route table.** Four model ids written down beside the real
+  one, with nothing measuring them; the suggestions are now read from `DEFAULT_ROUTES`.
+- **Removal said "runs would go back to the trial allowance"** without saying whether
+  any were left. Every run a workspace has ever made counts against the trial, including
+  the ones its own key paid for — so removing a key after four runs does not restore an
+  allowance, it ends running altogether. It now says which of the two, from the count.
+
+Verified live: 329 unit tests; `verify:byok` 20 checks including every provider;
+`verify:db` for the new column and constraint; the page in a browser at 390 and 1440,
+axe-core clean with no horizontal overflow in either, in the trial, own-key and
+unroutable states; and the production CSP proved to allow the progress bar's inline
+width attribute (`style-src-attr`) while still refusing `eval` — the console is empty on
+a production build, where the 16 `style-src` errors in development come from Next's
+devtools overlay injecting `<style>` elements.
+
+**A constraint that did not hold, and what it shows.** 0025 checked
+`array_length(models, 1) >= 1`, which is NULL for an empty array — and a CHECK that
+evaluates to NULL passes. The one value it was written to refuse was storable.
+`verify:byok` caught it by trying the insert; reading the SQL would not have. Corrected
+in 0026 rather than by editing a migration that had already run.
+
+**Noted, not fixed:** two workspaces were created for one throwaway user when two
+requests raced `requireWorkspace`'s find-or-create. It is benign today — the oldest is
+chosen deterministically and the other is orphaned — but a unique index on `owner_id`
+would block the multi-workspace membership already in the schema, so the fix belongs
+with that work rather than here.

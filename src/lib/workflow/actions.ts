@@ -13,7 +13,8 @@ import { applyPolicyChange } from "@/lib/diagnose/parse.ts";
 import { createRoutedChat } from "@/lib/router/execute.ts";
 import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
 import { connectionsFromEnv } from "@/lib/providers/registry.ts";
-import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
+import { plannedRoutes, workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
+import { explainKeyFailure } from "@/lib/providers/key-failure.ts";
 import { manifestForNewRun } from "../report/manifest.ts";
 import { httpVerificationConnector } from "../evidence/connectors/http.ts";
 import { connectionFor } from "@/lib/providers/workspace-connections.ts";
@@ -202,7 +203,7 @@ export async function createRun(formData: FormData): Promise<void> {
   // Declared before anything runs, and frozen by the row (migration 0016).
   const declared = await manifestForNewRun({
     client: admin, agentId, policyId: policy.id, suiteId: suite.id,
-    judgeSource: entitlement.judgeSource,
+    judgeSource: entitlement.judgeSource, routes: plannedRoutes(entitlement),
   });
 
   const { data: run, error } = await admin
@@ -427,6 +428,7 @@ export async function rerunFrom(formData: FormData): Promise<void> {
   const declared = await manifestForNewRun({
     client: admin, agentId: baseline.agent_id as string, policyId: policy.id,
     suiteId: baseline.suite_id as string, judgeSource: entitlement.judgeSource,
+    routes: plannedRoutes(entitlement),
   });
 
   const { data: run, error } = await admin
@@ -455,11 +457,32 @@ export async function rerunFrom(formData: FormData): Promise<void> {
 const JUDGE_PROVIDERS = ["groq", "google", "openrouter", "anthropic"] as const;
 
 /**
+ * A pasted key is a credential, not a document. Nothing legitimate is anywhere near
+ * this long, and the value is encrypted and stored before anything else looks at it.
+ */
+const MAX_KEY_LENGTH = 500;
+const MAX_MODEL_LENGTH = 120;
+
+/**
  * Stores the workspace's own model key, which is what ends the trial.
  *
- * The key is proved before it is kept. Saving a key that does not work would move the
- * workspace off the trial allowance and onto a credential that cannot grade anything,
- * turning every subsequent run into a page of errored cases.
+ * Three rules, each of which was a defect first:
+ *
+ * **The key is proved before it is kept.** Saving a key that does not work would move
+ * the workspace off the trial allowance and onto a credential that cannot grade
+ * anything, turning every subsequent run into a page of errored cases.
+ *
+ * **The models are kept too.** The form has always asked for one, used it to prove the
+ * key, and discarded it — while the run took its route from `DEFAULT_ROUTES`, which
+ * names *our* connections. A google, anthropic or openrouter key therefore had no
+ * routable candidate at all and errored every case in the run. The model the customer
+ * named is the only thing that knows what their key can serve, so it travels with it
+ * (migration 0025).
+ *
+ * **Replacing a key removes the one it replaced.** `storeSecret` inserts and
+ * `revealSecret` reads the newest, so a rotated credential used to sit in the table
+ * indefinitely — holding a key a customer believes they have retired, which is the one
+ * thing rotation is for.
  */
 export async function saveJudgeKey(_prev: FormState, form: FormData): Promise<FormState> {
   const { user, workspace } = await requireWorkspace();
@@ -470,30 +493,45 @@ export async function saveJudgeKey(_prev: FormState, form: FormData): Promise<Fo
     return { error: "Choose which provider this key belongs to." };
   }
   if (!apiKey) return { error: "Paste the key." };
+  if (apiKey.length > MAX_KEY_LENGTH) {
+    return { error: "That is longer than any API key we know of — check you pasted the key rather than a file." };
+  }
 
   const connection = connectionFor(provider, apiKey);
   if (!connection) return { error: "That provider is not supported yet." };
 
-  const probeModel = String(form.get("model") ?? "").trim();
-  if (!probeModel) return { error: "Name a model this key can use, so we can test it." };
+  const models = [String(form.get("model") ?? ""), String(form.get("secondModel") ?? "")]
+    .map((m) => m.trim())
+    .filter((m, i, all) => m.length > 0 && all.indexOf(m) === i);
 
-  try {
-    await connection.provider.chat(
-      {
-        model: probeModel,
-        messages: [{ role: "user", content: "Reply with the single word: ok" }],
-        maxTokens: 16,
-        temperature: 0,
-      },
-      apiKey,
-    );
-  } catch (error) {
-    return {
-      error: `That key did not work: ${error instanceof Error ? error.message : String(error)}`,
-    };
+  if (!models.length) return { error: "Name a model this key can use, so we can test it." };
+  if (models.some((m) => m.length > MAX_MODEL_LENGTH)) {
+    return { error: "That is not a model id." };
+  }
+
+  // Every model is proved, not just the first. A second model that cannot be reached
+  // would be a route candidate that fails on every case it is asked — visible in the
+  // run as a fallback, and pointless when it could be caught in one call here.
+  for (const model of models) {
+    try {
+      await connection.provider.chat(
+        {
+          model,
+          messages: [{ role: "user", content: "Reply with the single word: ok" }],
+          maxTokens: 16,
+          temperature: 0,
+        },
+        apiKey,
+      );
+    } catch (error) {
+      return { error: explainKeyFailure(provider, model, error) };
+    }
   }
 
   const admin = await assertMembership(user.id, workspace.id);
+
+  const { data: superseded } = await admin
+    .from("secrets").select("id").eq("workspace_id", workspace.id).eq("scope", "judge_key");
 
   await storeSecret({
     client: admin,
@@ -501,11 +539,25 @@ export async function saveJudgeKey(_prev: FormState, form: FormData): Promise<Fo
     scope: "judge_key",
     plaintext: apiKey,
     provider,
+    models,
   });
+
+  // After the new one is safely stored, never before: a delete-then-insert that failed
+  // halfway would leave an unmetered workspace with no credential at all.
+  if (superseded?.length) {
+    await admin.from("secrets").delete().in("id", superseded.map((row) => row.id));
+  }
 
   revalidatePath("/settings");
   revalidatePath("/dashboard");
-  return { notice: `Saved. Runs are graded on your ${provider} key from now on, and the trial cap no longer applies.` };
+
+  const corroboration = models.length > 1
+    ? `Verdicts will be corroborated across ${models.length} of your models — recorded as within one vendor, since both are ${provider}.`
+    : `One model means one opinion: verdicts will be reported as not corroborated. Naming a second ${provider} model changes that.`;
+
+  return {
+    notice: `Saved${superseded?.length ? " and the previous key removed" : ""}. Runs are graded on your ${provider} key from now on, and the trial cap no longer applies. ${corroboration}`,
+  };
 }
 
 /** Removes the workspace's key, which puts it back on the trial allowance. */
@@ -519,9 +571,19 @@ export async function removeJudgeKey(_prev: FormState, form: FormData): Promise<
 
   if (error) return { error: `Could not remove the key: ${error.message}` };
 
+  // What actually happens next, from the stored count rather than a general statement.
+  // Every run this workspace has ever made counts against the trial, including the ones
+  // its own key paid for — so removing a key after four runs does not restore an
+  // allowance, it ends the ability to run at all until another key is connected.
+  const after = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
+
   revalidatePath("/settings");
   revalidatePath("/dashboard");
-  return { notice: "Removed. Runs go back to the trial allowance, which is capped." };
+  return {
+    notice: after.canRun
+      ? `Removed. ${TRIAL_RUN_LIMIT - after.runsUsed} of the ${TRIAL_RUN_LIMIT} trial runs are left.`
+      : `Removed. This workspace has run ${after.runsUsed} suites and the trial covers ${TRIAL_RUN_LIMIT}, so no further run can start until a key is connected.`,
+  };
 }
 
 /**

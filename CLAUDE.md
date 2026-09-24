@@ -55,6 +55,7 @@ someone with the service role, not merely someone using the application.
 | A destructive or fixture-only scenario never runs against a production agent | `agents.is_production`, checked in the runner |
 | A support reply goes draft → approved → sent, forward only; editing writes a new draft | 0009 |
 | A public form cannot be made free | 0024, counted in Postgres |
+| A workspace key grades only on models it was proved to reach, and one it cannot reach refuses the run rather than erroring every case | 0025 + 0026, route built from the key |
 
 **A verdict is the finding of two models from different vendors.** A single judge drifted
 on 25% of scenarios re-grading byte-identical responses, which the comparison reported to
@@ -99,7 +100,11 @@ Next.js 16 (App Router, `src/`, TypeScript) · Tailwind 4 · Supabase (Postgres 
 RLS, **Frankfurt / eu-central-1**) · Vercel Hobby, functions pinned to `fra1` · Resend.
 Judge funding is hybrid: our free-tier key for trials, the customer's own key otherwise —
 and **a workspace with its own key is graded on that key alone**, because the report
-states who funded the grading.
+states who funded the grading. That key's route is built from the models the customer
+named and we proved, not from `DEFAULT_ROUTES`, which names *our* connections: pairing
+the two errored every case for three of the four providers the form offers. One model
+is reported as not corroborated, two from one vendor as corroborated within one vendor,
+and the settings page says which before the key is connected.
 
 **Next.js 16 is newer than training data.** Read the relevant guide under
 `node_modules/next/dist/docs/` before writing route handlers, server actions, caching,
@@ -137,7 +142,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 318 unit tests | free |
+| `npm test` | 329 unit tests | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
@@ -178,7 +183,11 @@ they drive the scripted fixture at `/api/test-agent`.
   `draft`, where a person approves the output.
 - **When a capability lands on one run path, the other is not the old path** — it is a
   second product with the same name. `startRun` graded without a read-back for a week
-  while `startRunExecution` had one.
+  while `startRunExecution` had one, and later stamped runs `workspace_key` while
+  grading on our own env keys. Both now resolve credential, route and attribution from
+  one call.
+- **A verification that exercises one value out of four proves one thing.** `verify:byok`
+  tested the one provider that happened to be in the route table for a month.
 - **One name meaning two things at a boundary** has now cost seven debugging sessions.
   `assertions`, `observation`, `context` — if a field means one thing on each side, rename
   one of them.
@@ -195,6 +204,9 @@ they drive the scripted fixture at `/api/test-agent`.
   Consensus doubles judge calls, so throughput is the thing to measure before promising
   concurrent customer runs. A full 36-case v3 run measured 27 seconds with four rate
   limits absorbed by fallback and no case lost.
+- **A judge key stored before 2026-09-24 has no models recorded**, so it falls back to
+  whatever `DEFAULT_ROUTES` measures on that connection — which is groq only. Any other
+  provider's legacy key refuses the run with a sentence saying to reconnect it.
 - **`_dmarc` TXT record is not set.** Signup works end to end in production, but the
   Resend key is send-only, so inbox *placement* is unproven.
 - **v3's T22 declares `state_confirmed` with no `verify` block**, so it always reports as

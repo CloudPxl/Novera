@@ -1,6 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { revealSecret } from "../store/secrets.ts";
+import { connectionFor, modelsForStoredKey } from "../providers/workspace-connections.ts";
+import { DEFAULT_ROUTES, routesForConnection, type RouteTable } from "../router/routes.ts";
 
 /**
  * What a workspace is allowed to do, in one place.
@@ -26,6 +28,10 @@ export interface Entitlement {
   /** Why not, in words a customer should read. Null when they can run. */
   blockedReason: string | null;
   judgeSource: "trial_free" | "workspace_key";
+  /** For a workspace on its own key: the models it grades with, in order. */
+  judgeModels: string[];
+  /** When the key was stored. Null on the trial allowance. */
+  keyStoredAt: string | null;
 }
 
 export async function workspaceEntitlement(args: {
@@ -46,14 +52,27 @@ export async function workspaceEntitlement(args: {
   const runsUsed = count ?? 0;
 
   if (key) {
+    // A key that cannot be routed is worse than no key: the workspace is unmetered, so
+    // nothing stops it starting runs, and every case in every one of them would come
+    // back errored. Refusing here turns that into one sentence on the settings page.
+    const models = key.provider ? modelsForStoredKey(key.provider, key.models) : [];
+    const routable = Boolean(key.provider && connectionFor(key.provider, key.value)) && models.length > 0;
+
     return {
       ownKey: true,
       provider: key.provider,
       runsUsed,
       runsAllowed: null,
-      canRun: true,
-      blockedReason: null,
+      canRun: routable,
+      blockedReason: routable
+        ? null
+        // Read on the dashboard, in the run launcher and on Settings itself, so it
+        // names no page: "open Settings" is wrong advice on Settings.
+        : `The ${key.provider ?? "stored"} key in this workspace has no model recorded to grade with, so nothing can be graded on it. Connect the key again naming a model — it is proved before it is saved.`,
       judgeSource: "workspace_key",
+      /** The models this key grades with, in order. Empty only when it cannot grade. */
+      judgeModels: models,
+      keyStoredAt: key.createdAt,
     };
   }
 
@@ -69,5 +88,22 @@ export async function workspaceEntitlement(args: {
       ? `The trial covers ${TRIAL_RUN_LIMIT} runs and you have used all of them. Connect your own model key to keep running the suite — there is nothing to pay us, the grading simply runs on your key from then on.`
       : null,
     judgeSource: "trial_free",
+    judgeModels: [],
+    keyStoredAt: null,
   };
+}
+
+/**
+ * The route a run in this workspace will grade on, without touching the credential.
+ *
+ * The manifest declares the judge plan *before* the run starts, and it has to be the
+ * plan that is actually used: a BYOK run that declared our four-candidate panel and
+ * then graded on the customer's single model would put a false declaration in the one
+ * document whose entire claim is that the inputs were fixed in advance.
+ */
+export function plannedRoutes(entitlement: Entitlement): RouteTable {
+  if (entitlement.ownKey && entitlement.provider && entitlement.judgeModels.length) {
+    return routesForConnection(entitlement.provider, entitlement.judgeModels);
+  }
+  return DEFAULT_ROUTES;
 }

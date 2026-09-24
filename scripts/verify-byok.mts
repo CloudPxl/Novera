@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { storeSecret } from "../src/lib/store/secrets.ts";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "../src/lib/auth/entitlement.ts";
 import { connectionsForWorkspace } from "../src/lib/providers/workspace-connections.ts";
+import type { Task } from "../src/lib/router/routes.ts";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -100,6 +101,68 @@ try {
   report(connections.size === 1 && connections.has("groq"),
     "our own keys are NOT silently available as a fallback",
     `resolved: ${[...connections.keys()].join(", ") || "none"}`);
+
+  // Every provider the settings form offers, not just the one that happened to work.
+  // Until 2026-09-24 this check tested groq alone, and groq alone was routable: a
+  // google, anthropic or openrouter key resolved no candidate at all and errored every
+  // case in the run. A verification that exercises one value of four proves one thing.
+  const tasks: Task[] = ["judge", "judge_critical", "diagnose", "draft"];
+  for (const provider of ["groq", "google", "openrouter", "anthropic"]) {
+    await db.from("secrets").delete().eq("workspace_id", workspaceId).eq("scope", "judge_key");
+    await storeSecret({
+      client: db, workspaceId, scope: "judge_key",
+      plaintext: "sk-not-a-real-key-only-used-to-prove-resolution",
+      provider, models: ["their-model-a", "their-model-b"],
+    });
+
+    const resolved = await connectionsForWorkspace({ client: db, workspaceId });
+    const everyTaskRoutable = tasks.every(
+      (task) => resolved.routes[task].length > 0
+        && resolved.routes[task].every((c) => resolved.connections.has(c.connection)),
+    );
+    report(everyTaskRoutable, `a ${provider} key can actually grade`,
+      everyTaskRoutable
+        ? resolved.routes.judge.map((c) => `${c.connection}/${c.model}`).join(", ")
+        : "at least one task routes to a connection this workspace has no key for");
+  }
+
+  // A key stored before models travelled with it (migration 0025) falls back to the
+  // models our own table measures on that connection — and when there are none, the
+  // workspace is refused rather than quietly graded on our allowance.
+  await db.from("secrets").delete().eq("workspace_id", workspaceId).eq("scope", "judge_key");
+  await storeSecret({
+    client: db, workspaceId, scope: "judge_key", plaintext: "legacy-key", provider: "groq",
+  });
+  const legacy = await connectionsForWorkspace({ client: db, workspaceId });
+  report(legacy.source === "workspace_key" && legacy.routes.judge.length > 0,
+    "a key stored before models were recorded still grades",
+    legacy.routes.judge.map((c) => c.model).join(", "));
+
+  await db.from("secrets").delete().eq("workspace_id", workspaceId).eq("scope", "judge_key");
+  await storeSecret({
+    client: db, workspaceId, scope: "judge_key", plaintext: "legacy-key", provider: "anthropic",
+  });
+  const unroutable = await workspaceEntitlement({ client: db, workspaceId });
+  report(!unroutable.canRun && Boolean(unroutable.blockedReason),
+    "an unroutable key refuses the run instead of erroring every case",
+    unroutable.blockedReason?.slice(0, 60) ?? "it was allowed to run");
+  let fellBack = false;
+  try {
+    await connectionsForWorkspace({ client: db, workspaceId });
+    fellBack = true;
+  } catch {
+    fellBack = false;
+  }
+  report(!fellBack, "an unroutable key never falls back to our own credentials");
+
+  // The database refuses the state that caused all of this: a key recorded as having
+  // models, with none in the list.
+  const { error: emptyModels } = await db.from("secrets").insert({
+    workspace_id: workspaceId, scope: "judge_key", provider: "groq",
+    models: [], ciphertext: "x", iv: "y", tag: "z",
+  });
+  report(Boolean(emptyModels), "a judge key cannot be stored with an empty model list",
+    emptyModels ? "refused by the constraint" : "it was accepted, which is wrong");
 
   // Removing it puts the workspace back on the capped allowance.
   await db.from("secrets").delete().eq("workspace_id", workspaceId).eq("scope", "judge_key");

@@ -162,7 +162,7 @@ const summary = await startRun({
   client: db, workspaceId, agentId, agentConfig,
   policyId: policy.id, policyBody: policy.body,
   suiteId: suiteRow.id as string, suite,
-  attestation: ATTESTATION, judgeSource: "trial_free",
+  attestation: ATTESTATION,
 });
 
 const c = summary.coverage;

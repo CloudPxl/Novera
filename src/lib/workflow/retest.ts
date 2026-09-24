@@ -5,7 +5,6 @@ import { buildAgentAdapter } from "../agents/factory.ts";
 import { executeCase } from "../runner/execute.ts";
 import type { Suite, SuiteCase } from "../runner/types.ts";
 import { createRoutedChat } from "../router/execute.ts";
-import { DEFAULT_ROUTES } from "../router/routes.ts";
 import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
 
 export interface RetestResult {
@@ -81,8 +80,8 @@ export async function retestCase(args: {
   const adapter = await buildAgentAdapter({
     client, workspaceId, agentId: run.agent_id as string, config: agentRow.config as AgentConfig,
   });
-  const { connections } = await connectionsForWorkspace({ client, workspaceId });
-  const judge = createRoutedChat({ connections, routes: DEFAULT_ROUTES });
+  const { connections, routes } = await connectionsForWorkspace({ client, workspaceId });
+  const judge = createRoutedChat({ connections, routes });
 
   const outcome = await executeCase({ testCase, agent: adapter, policy: policy.body as string, judge });
 

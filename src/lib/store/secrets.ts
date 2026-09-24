@@ -18,8 +18,14 @@ export async function storeSecret(args: {
   plaintext: string;
   agentId?: string;
   provider?: string;
+  /**
+   * For a judge key: the models it may grade with, already proved reachable. Kept with
+   * the credential because nothing else can say what this key can serve — see
+   * migration 0025.
+   */
+  models?: string[];
 }): Promise<string> {
-  const { client, workspaceId, scope, plaintext, agentId, provider } = args;
+  const { client, workspaceId, scope, plaintext, agentId, provider, models } = args;
   const sealed = seal(plaintext, secretAad(workspaceId, scope, agentId ?? ""));
 
   const { data, error } = await client
@@ -29,6 +35,7 @@ export async function storeSecret(args: {
       scope,
       agent_id: agentId ?? null,
       provider: provider ?? null,
+      models: models?.length ? models : null,
       ciphertext: sealed.ciphertext,
       iv: sealed.iv,
       tag: sealed.tag,
@@ -45,12 +52,12 @@ export async function revealSecret(args: {
   workspaceId: string;
   scope: SecretScope;
   agentId?: string;
-}): Promise<{ value: string; provider: string | null } | null> {
+}): Promise<{ value: string; provider: string | null; models: string[] | null; createdAt: string } | null> {
   const { client, workspaceId, scope, agentId } = args;
 
   let query = client
     .from("secrets")
-    .select("ciphertext, iv, tag, provider")
+    .select("ciphertext, iv, tag, provider, models, created_at")
     .eq("workspace_id", workspaceId)
     .eq("scope", scope)
     .order("created_at", { ascending: false })
@@ -66,5 +73,7 @@ export async function revealSecret(args: {
   return {
     value: open(sealed, secretAad(workspaceId, scope, agentId ?? "")),
     provider: data.provider ?? null,
+    models: Array.isArray(data.models) && data.models.length ? (data.models as string[]) : null,
+    createdAt: String(data.created_at),
   };
 }

@@ -9,7 +9,6 @@ import { coverage, coverageByObligation, coverageByCategory } from "../evidence/
 import type { Suite } from "../runner/types.ts";
 import { supabaseRunStore } from "../store/supabase-run-store.ts";
 import { createRoutedChat } from "../router/execute.ts";
-import { DEFAULT_ROUTES } from "../router/routes.ts";
 import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
 import { publishReport } from "./run.ts";
 
@@ -63,8 +62,8 @@ export async function startRunExecution(args: {
 
   // A workspace with its own key grades on that key alone. The run row already
   // recorded which of the two funded it, at the moment it was created.
-  const { connections } = await connectionsForWorkspace({ client, workspaceId });
-  const judge = createRoutedChat({ connections, routes: DEFAULT_ROUTES });
+  const { connections, routes } = await connectionsForWorkspace({ client, workspaceId });
+  const judge = createRoutedChat({ connections, routes });
 
   // What an earlier attempt already graded. Cases are never re-sent to the agent:
   // a second verdict over the same scenario would be new evidence replacing old.

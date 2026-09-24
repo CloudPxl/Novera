@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash, randomUUID } from "node:crypto";
 import { contentHash, type Json } from "./hash.ts";
 import { JUDGE_SYSTEM } from "../judge/index.ts";
-import { DEFAULT_ROUTES } from "../router/routes.ts";
+import { DEFAULT_ROUTES, type RouteTable } from "../router/routes.ts";
 
 /**
  * Bumped by hand when the way a run is executed changes in a way that could change a
@@ -74,9 +74,18 @@ export function buildRunManifest(args: {
   suiteVersion: number;
   caseIds: string[];
   judgeSource: "trial_free" | "workspace_key";
+  /**
+   * The route this run will actually grade on. It is an argument rather than a read of
+   * `DEFAULT_ROUTES` because a workspace on its own key grades on a route built from
+   * that key — and a manifest that declared our panel over a run graded by someone
+   * else's single model would be a false declaration in the one document whose whole
+   * purpose is that the inputs were declared before anything ran.
+   */
+  routes?: RouteTable;
   passThreshold: number;
   runnerVersion: string;
 }): { manifest: RunManifest; hash: string } {
+  const routes = args.routes ?? DEFAULT_ROUTES;
   const manifest: RunManifest = {
     novera_manifest: 1,
     run_id: args.runId,
@@ -92,7 +101,7 @@ export function buildRunManifest(args: {
       case_ids: args.caseIds,
     },
     judge_plan: (["judge", "judge_critical"] as const).flatMap((task) =>
-      DEFAULT_ROUTES[task].map((c) => ({ connection: c.connection, model: c.model, task })),
+      routes[task].map((c) => ({ connection: c.connection, model: c.model, task })),
     ),
     judge_source: args.judgeSource,
     rubric_hash: rubricHash(),
@@ -129,6 +138,8 @@ export async function manifestForNewRun(args: {
   policyId: string;
   suiteId: string;
   judgeSource: "trial_free" | "workspace_key";
+  /** The route the run will grade on; the default panel when the caller has none. */
+  routes?: RouteTable;
   passThreshold?: number;
   runnerVersion?: string;
 }): Promise<{ id: string; manifest: RunManifest | null; manifest_hash: string | null }> {
@@ -155,6 +166,7 @@ export async function manifestForNewRun(args: {
       suiteVersion: Number(suite.version),
       caseIds: cases.map((c) => String(c.id)),
       judgeSource: args.judgeSource,
+      routes: args.routes,
       passThreshold: args.passThreshold ?? 80,
       runnerVersion: args.runnerVersion ?? RUNNER_VERSION,
     });

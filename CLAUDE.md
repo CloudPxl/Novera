@@ -112,7 +112,7 @@ params or proxy code. It is `proxy.ts` exporting `proxy`, not `middleware.ts` �
 rename is exactly the kind of thing recalled conventions get wrong.
 
 ```
-src/app/(app)/        operator routes, behind one shared top bar
+src/app/(app)/        operator routes, behind one shared top bar + skip link
 src/app/report/       the client's artifact — outside (app); its reader is not an operator
 src/app/api/          route handlers
 src/proxy.ts          security headers + nonce CSP
@@ -122,7 +122,8 @@ src/lib/judge/        consensus, checks, effect rule, independence
 src/lib/evidence/     coverage, grade, read-back connectors
 src/lib/report/       payload, build, hash, export, language rule
 src/lib/scenarios/    the duty-to-test compiler
-src/lib/support/      public forms, drafting, escalation, throttle
+src/lib/support/      public forms, drafting, escalation, throttle, size limits
+src/lib/docs/         the documentation renderer — parsed, never markup
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites + calibration labels
 data/docs/            the published documentation, seeded into the database
@@ -136,13 +137,20 @@ this, both invisible to inspection: a severity chip at 2.82:1 contrast on the cl
 report, and a transparent tooltip that still occupied layout and pushed every page using
 one 28px past a 390px viewport.
 
+**Measure the interface, never inspect it.** Every accessibility defect found in Phase 6
+was invisible to reading the code *and* to looking at the page: a list whose items were
+wrapped in a `<div>` and stopped being a list, a dropdown announcing itself as a menu it
+did not implement, a hint paragraph no screen reader ever reached, and fifteen blocks
+left permanently at opacity 0 by one jump to the footer. axe-core at 390 and 1440, plus
+an overflow check, on every surface touched.
+
 ## Commands
 
 Scripts run with `--conditions=react-server` so `server-only` resolves to its no-op.
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 329 unit tests | free |
+| `npm test` | 340 unit tests | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
@@ -188,9 +196,15 @@ they drive the scripted fixture at `/api/test-agent`.
   one call.
 - **A verification that exercises one value out of four proves one thing.** `verify:byok`
   tested the one provider that happened to be in the route table for a month.
-- **One name meaning two things at a boundary** has now cost seven debugging sessions.
-  `assertions`, `observation`, `context` — if a field means one thing on each side, rename
+- **One name meaning two things at a boundary** has now cost eight debugging sessions.
+  `assertions`, `observation`, `context`, and a documentation `body` that was Markdown
+  going in and plain text coming out — if a field means one thing on each side, rename
   one of them.
+- **A refusal has to be in the shape its caller reads.** A route handler that redirects
+  an unauthenticated caller hands `fetch` a 200 and an HTML page; the run page read that
+  as success and sat at "running" in silence.
+- **A page must not render a sentence a stranger supplied.** `/sign-in?problem=` printed
+  whatever arrived inside Novera's own alert box, on the page that asks for a password.
 
 ## Open questions and known limits
 

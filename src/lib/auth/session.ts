@@ -67,6 +67,33 @@ function defaultWorkspaceName(user: User): string {
  * Writes use the service role, which bypasses RLS — so membership has to be proven
  * here, explicitly, rather than assumed from the fact that a page rendered.
  */
+/**
+ * The signed-in user and their workspace, or null — never a redirect.
+ *
+ * `requireWorkspace` redirects, which is right for a page and wrong for a route
+ * handler: `fetch` follows the 307 transparently, so a client polling an API got the
+ * sign-in page's HTML with status 200, read `res.ok` as success, and left the run
+ * sitting at "running" forever with nothing said. A route that declines has to say so
+ * in the shape its caller is reading.
+ *
+ * It also never *creates* a workspace. Creating one as a side effect of an API call is
+ * how an expired session ends up owning an empty second workspace.
+ */
+export async function currentWorkspace(): Promise<{ user: User; workspace: Workspace } | null> {
+  const user = await currentUser();
+  if (!user) return null;
+
+  const client = await sessionClient();
+  const { data } = await client
+    .from("workspaces")
+    .select("id, name, plan")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  return data ? { user, workspace: data as Workspace } : null;
+}
+
 export async function assertMembership(userId: string, workspaceId: string): Promise<SupabaseClient> {
   const admin = serviceClient();
   const { data, error } = await admin

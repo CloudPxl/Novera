@@ -90,14 +90,22 @@ export function LiveRun({
       lastKick.current = Date.now();
       started.current = true;
 
-      fetch(`/api/runs/${runId}/execute`, { method: "POST" })
+      fetch(`/api/runs/${runId}/execute`, { method: "POST", redirect: "error" })
         .then(async (res) => {
           if (!res.ok) {
             const body = await res.json().catch(() => ({}));
             if (!cancelled) setFailure(body.error ?? `The run could not be started (${res.status}).`);
           }
         })
-        .catch((e) => !cancelled && setFailure(String(e)));
+        // `redirect: "error"` rather than the default: a redirect to the sign-in page
+        // is followed transparently and arrives as HTML with status 200, which this
+        // read as success — leaving the run at "running" forever, silently. The route
+        // answers 401 with a body now, and this refuses to mistake a redirect for one.
+        .catch(() => {
+          if (!cancelled) {
+            setFailure("The run could not be started. Your session may have expired — sign in again and it will pick up where it stopped.");
+          }
+        });
     }
 
     async function drive() {

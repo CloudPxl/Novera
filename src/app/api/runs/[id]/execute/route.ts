@@ -1,4 +1,4 @@
-import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
+import { currentWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { startRunExecution } from "@/lib/workflow/execute-run.ts";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +26,19 @@ const LEASE_MS = 70_000;
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { user, workspace } = await requireWorkspace();
+
+  // 401 with a body, not a redirect to the sign-in page. `fetch` follows a redirect
+  // transparently, so the run page received sign-in HTML with status 200, read it as
+  // success, and left the run at "running" indefinitely while saying nothing.
+  const session = await currentWorkspace();
+  if (!session) {
+    return Response.json(
+      { error: "Your session has expired. Sign in again and the run will pick up where it stopped." },
+      { status: 401 },
+    );
+  }
+
+  const { user, workspace } = session;
   const admin = await assertMembership(user.id, workspace.id);
 
   const { data: run, error } = await admin

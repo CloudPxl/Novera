@@ -1520,3 +1520,38 @@ as a system; dark mode. Those are 7.1, and doing them piecemeal per surface is w
 produces an interface consistent with nothing but itself.
 
 340 tests; axe-core clean with no overflow at 390 and 1440 on the inbox and the shell.
+
+## 2026-09-24 — The API routes, and a refusal in the wrong shape (Phase 6, surface 12)
+
+The remit here was authorisation, the shape of a refusal, and what each route says when
+it declines. One of the five was saying nothing at all.
+
+**`/api/runs/[id]/execute` redirected instead of refusing.** It called
+`requireWorkspace()`, which redirects an unauthenticated caller to `/sign-in` — correct
+for a page, wrong for a route handler. `fetch` follows a redirect transparently, so the
+run page received the sign-in page's HTML with status 200, read `res.ok` as success, and
+left the run sitting at "running" indefinitely with nothing on screen. A run that stops
+because a session expired now says so, in the shape its caller is reading: 401 with a
+body, and the client passes `redirect: "error"` so it can no longer mistake a redirect
+for a result. `currentWorkspace()` also never *creates* a workspace, which is how an
+expired session could otherwise end up owning an empty second one.
+
+Every refusal, probed live against the running server:
+
+| Route | Declines with |
+|---|---|
+| `POST /api/runs/[id]/execute` unauthenticated | 401 JSON, naming the session |
+| `POST /api/support-agent` without the token | 401 JSON |
+| `GET /api/reports/[token]/export` unknown | 404 |
+| …with `format=xlsx` | 400 naming the two that work |
+| …for a revoked report, both formats | 410 |
+| `POST /api/test-agent` with no JSON body | 400 JSON |
+| `GET /api/test-verification/...` unknown invoice | 404, still labelled a fixture |
+
+A live export carries `cache-control: no-store` and `x-robots-tag: noindex, nofollow`,
+because the link is the access control, and a filename built from a slugged agent name
+and the run date. Both fixtures refuse outright outside development, and the verification
+fixture labels itself as one even in its 404 — a fixture is never displayed as a real
+external action, including when it fails.
+
+340 tests, build and lint clean.

@@ -1176,3 +1176,37 @@ server component nothing could reach them, and these are the parts worth defendi
 
 One accessibility defect fixed while here: the policy textarea had no label, so a
 screen reader announced "edit text, blank" for the box a whole policy is typed into.
+
+## 2026-09-24 — Relocated from CLAUDE.md, so it is kept rather than lost
+
+`CLAUDE.md` was restructured from a phase-by-phase changelog into an orientation
+document (Phase 6B). Most of what it held is already recorded above under its own date.
+Three things were not, and they are operational facts worth having:
+
+**The Vercel preset that made every route 404 while the build log looked perfect.** The
+project was created with framework preset "Other". Next.js built correctly and Vercel
+then served the empty `public/` folder, so every route returned 404 with a green build.
+`vercel.json` pins the framework in code so the dashboard setting cannot do this again.
+Functions are pinned to `fra1`; the apex redirects to `www`.
+
+**Public signup, verified end to end in production on 2026-09-23** — not by inspection.
+A real `auth.signUp` returned no error and set `confirmation_sent_at`, so Supabase's SMTP
+accepted the message; the confirmation link redirected to `/dashboard` with a session
+cookie and set `email_confirmed_at`; an invalid token and a token with no type each
+redirect to `/sign-in` with the right message. The test account was deleted afterwards.
+The one thing that check cannot cover: the Resend key is send-only, so delivery logs are
+unreadable from here and inbox *placement* remains unproven — which is what the `_dmarc`
+record is for.
+
+**The run page is four tiers**: grade scorecard, category grid, a filterable matrix of
+every scenario with its assertion checklist and judge provenance, and a comparison ribbon
+with a run-vs-run picker. A failing scenario can be diagnosed, the proposal is shown as a
+diff, and one scenario can be retested alone — `case_retests`, never counted in a score
+and never published, because a report is always a whole suite.
+
+**Dogfooding, for the record:** `docs-support v1/v2` (10 scenarios for a
+documentation-grounded agent) runs against `/api/support-agent`, which exposes the real
+support pipeline rather than a copy of it. The first run scored 8/10 and found two real
+defects — sent replies dropped their citations, and the erasure rule missed "delete
+everything you hold about me". Both fixed; v2 scores 10/10, with 4 verdicts marked
+uncorroborated because our own key has no fallback, and the report says so.

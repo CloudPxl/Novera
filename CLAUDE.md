@@ -64,6 +64,13 @@ settles a disagreement; an unsettleable disagreement is an error, never a guess.
 25% → 6.3% by `npm run measure:stability`. Independence is derived from `judge_votes`, so
 a same-vendor second opinion is reported as exactly that.
 
+**The route is ordered by measured false passes, and that order is load-bearing.**
+Consensus takes its second opinion from the first candidate of a *different vendor*, so
+the first two entries are the pair that will grade almost every case. Until 2026-09-24
+those two were the only two models with a measured false pass — on the same critical
+scenario. Two models agreeing on a false pass is the one failure consensus exists to
+prevent, so calibration is not advisory: it decides the order.
+
 **A verdict has three ways to be absent, not one:** errored, `disputed` (two models
 deadlocked, a third could not settle it), and unexecuted. Reports carry the **assurance
 gap** — the share of the suite that produced no verdict.

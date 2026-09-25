@@ -18,7 +18,21 @@ import { NextResponse, type NextRequest } from "next/server";
  * and page bundles itself — which is also why every page it covers must be dynamically
  * rendered: a page built at build time has no request to take a nonce from.
  */
+/**
+ * The one address production answers on. Vercel also serves every production build on
+ * `*.vercel.app` aliases, which put a second copy of the site — sign-in included — at an
+ * address nobody was told about, with its own cookies. Only production is redirected:
+ * a preview deployment exists to be looked at on its own URL.
+ */
+const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "www.nover.space";
+
 export function proxy(request: NextRequest) {
+  const host = request.headers.get("host");
+  if (process.env.VERCEL_ENV === "production" && host && host !== CANONICAL_HOST) {
+    const target = new URL(request.nextUrl.pathname + request.nextUrl.search, `https://${CANONICAL_HOST}`);
+    return NextResponse.redirect(target, 308);
+  }
+
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
 

@@ -159,3 +159,42 @@ test("a format-6 report says which numbers could not be computed", () => {
   assert.ok(csv.includes("Resolution coverage (%),not recorded"));
   assert.ok(csv.includes("Evidence coverage (%),none required"));
 });
+
+// Format 10 names the moved scenarios whose verdict had moved before under one policy
+// version. A format-9 comparison has no such field and must export exactly as before.
+const BASE_COMPARISON = {
+  baseline_run: "run-0", baseline_policy_version: 2,
+  fixed: ["T03"], persistent_failures: ["T07"], new_failures: ["T12", "T20"],
+  now_errored: [], error_resolved: [], partial: false, note: "Both runs covered the same cases.",
+};
+
+test("a format-10 comparison names the scenarios that moved before without a change", () => {
+  const md = reportToMarkdown(
+    {
+      ...FORMAT_2,
+      novera: { format: 10 },
+      comparison: { ...BASE_COMPARISON, unstable: [{ case_id: "T12", passes: 2, fails: 1, runs: 3 }] },
+    },
+    "abc123", "https://example.test/report/x",
+  );
+  assert.match(md, /Moved before under an unchanged policy: T12 \(passed 2, failed 1 of 3\)/);
+  // Flagged, never removed: the regression is still reported as one.
+  assert.match(md, /Newly broken: T12, T20/);
+});
+
+test("an older comparison makes no claim about stability it never measured", () => {
+  const md = reportToMarkdown(
+    { ...FORMAT_2, novera: { format: 9 }, comparison: BASE_COMPARISON },
+    "abc123", "https://example.test/report/x",
+  );
+  assert.doesNotMatch(md, /unchanged policy/);
+  assert.match(md, /Newly broken: T12, T20/);
+});
+
+test("checked and nothing qualified reads as nothing, not as an empty claim", () => {
+  const md = reportToMarkdown(
+    { ...FORMAT_2, novera: { format: 10 }, comparison: { ...BASE_COMPARISON, unstable: [] } },
+    "abc123", "https://example.test/report/x",
+  );
+  assert.doesNotMatch(md, /unchanged policy/);
+});

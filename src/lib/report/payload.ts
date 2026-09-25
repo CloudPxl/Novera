@@ -154,6 +154,14 @@ export interface ReportPayload {
     error_resolved: string[];
     partial: boolean;
     note: string;
+    /**
+     * Format 10. Scenarios in `fixed` or `new_failures` whose verdict had already
+     * changed between earlier runs under one policy version — so their movement here is
+     * not, on its own, evidence about the change. They are never removed from those
+     * lists. Absent on reports sealed as format 9 or earlier, which made no such claim;
+     * an empty array means it was checked and nothing qualified.
+     */
+    unstable?: Array<{ case_id: string; passes: number; fails: number; runs: number }>;
   } | null;
   limitations: string;
 }

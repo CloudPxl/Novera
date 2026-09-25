@@ -1619,3 +1619,37 @@ how the next `gemini-3.5-flash-lite` gets caught before it grades a customer's r
 
 A run's manifest records the judge plan it will use, so reports issued before today
 continue to declare the order they were actually graded under.
+
+## 2026-09-25 — A regression and a coin flip, told apart (Phase 6C, first logic gap)
+
+Prospecting found this one in two places at once. TestMu's Agent Assurance reports
+separate **flaky** scenarios from newly failing ones; Braintrust and LangSmith run
+repeated trials and group them by input to expose "inputs where the model behaves
+inconsistently". Novera's comparison did neither. It reported "newly broken" from two
+runs — one sample each — of an agent that is a language model and does not answer the
+same way twice. A scenario that breaks some of the time regardless looked exactly like
+one the policy edit broke, and the operator's reasonable response was to revert a change
+that was fine.
+
+We needed no extra runs to fix it: every completed run is stored. Two earlier runs of the
+same suite version against the same agent **under the same policy version** that disagree
+on a scenario are direct evidence its verdict moves without a policy change.
+`src/lib/evidence/stability.ts` derives that; the run page names such scenarios under the
+comparison, and reports carry them as payload **format 10**.
+
+Three decisions, each the less comfortable option:
+
+- **Flagged, never removed.** A flagged scenario stays in "newly broken". Hiding a real
+  regression because a scenario has been flaky before would be the worse error.
+- **No claim about why.** The agent belongs to the customer and can change without us
+  knowing, and the graders are models too. "Its verdict has differed before under this
+  policy version" is the stored fact, and it is all the report says.
+- **Only what was known when sealed.** History is read up to the run's own timestamp, so
+  a run finished next week cannot change what this week's report says. Proved against the
+  live database: a scenario that flipped only in a *later* run was not flagged.
+
+Errors are not flips — a case that produced no verdict is evidence of neither. Omitted
+means nobody looked; an empty list means it was checked and nothing qualified; format-9
+and earlier reports render no line at all rather than an "all stable" they never measured.
+All 14 sealed reports across formats 1–9 still render and export; the revoked one still
+refuses. 351 tests.

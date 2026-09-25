@@ -321,6 +321,17 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             Baseline: run {comparison.baseline_run} on policy v{comparison.baseline_policy_version}.{" "}
             {comparison.note}
           </p>
+          {/* Format 10. Absent on older reports, which made no claim either way, so
+              nothing is rendered for them — not an "all stable" line they never made. */}
+          {comparison.unstable && comparison.unstable.length > 0 && (
+            <p className="mt-3 rounded-lg border border-warning-border bg-warning-surface p-3 text-sm leading-relaxed text-warning-text">
+              {comparison.unstable.map((u) => u.case_id).join(", ")}{" "}
+              {comparison.unstable.length === 1 ? "has" : "have"} passed and failed in earlier runs
+              under a single policy version, so {comparison.unstable.length === 1 ? "its" : "their"}{" "}
+              movement here is not, on its own, evidence that the change caused it. They remain
+              in the lists above.
+            </p>
+          )}
         </Section>
       )}
 

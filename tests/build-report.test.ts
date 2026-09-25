@@ -108,6 +108,31 @@ test("a comparison names what the policy change broke as well as what it fixed",
   assert.equal(comparison.partial, false);
 });
 
+test("a regression whose verdict has moved before is flagged and still reported", () => {
+  const baseline = { runId: "run-0", policyVersion: 1, cases: [
+    { caseId: "T01", status: "pass" as const }, { caseId: "T15", status: "pass" as const },
+  ] };
+  const stability = new Map([
+    ["T15", { caseId: "T15", policyId: "p1", passes: 2, fails: 1, runs: 3 }],
+  ]);
+
+  const { payload } = buildReport(input({ policyVersion: 2, baseline, stability }));
+  const comparison = (payload as unknown as { comparison: { new_failures: string[]; unstable?: unknown[] } }).comparison;
+
+  assert.deepEqual(comparison.new_failures, ["T15"]);
+  assert.deepEqual(comparison.unstable, [{ case_id: "T15", passes: 2, fails: 1, runs: 3 }]);
+});
+
+test("a comparison built without looking makes no stability claim at all", () => {
+  // Omitted rather than empty: an empty list would say "checked, and none moved".
+  const { payload } = buildReport(input({
+    policyVersion: 2,
+    baseline: { runId: "run-0", policyVersion: 1, cases: [{ caseId: "T15", status: "pass" }] },
+  }));
+  const comparison = (payload as unknown as { comparison: Record<string, unknown> }).comparison;
+  assert.equal("unstable" in comparison, false);
+});
+
 test("a builder bug that leaks a credential fails the build", () => {
   const leaky = input({
     cases: [caseRecord({ status: "fail", rationale: "Agent echoed Bearer sk-ant-api03-AAAAAAAAAAAAAAAAAAAA" })],
@@ -187,9 +212,9 @@ test("an uncorroborated verdict counts as neither independent nor single-vendor"
   assert.equal(run.corroboration.single_vendor, 0);
 });
 
-test("the payload is format 9", () => {
+test("the payload is format 10", () => {
   const { payload } = buildReport(input());
-  assert.equal((payload as { novera: { format: number } }).novera.format, 9);
+  assert.equal((payload as { novera: { format: number } }).novera.format, 10);
 });
 
 test("a tie settled by a third model is not reported as a provider outage", () => {

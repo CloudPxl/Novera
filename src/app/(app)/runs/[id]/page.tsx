@@ -5,6 +5,8 @@ import { requireWorkspace } from "@/lib/auth/session.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { rerunFrom } from "@/lib/workflow/actions.ts";
 import { compareRuns } from "@/lib/evidence/compare.ts";
+import { loadStability } from "@/lib/evidence/stability-history.ts";
+import { unstableInComparison } from "@/lib/evidence/stability.ts";
 import { coverage, coverageByCategory } from "@/lib/evidence/coverage.ts";
 import { categoryMeta } from "@/lib/evidence/categories.ts";
 import { gradeRun } from "@/lib/evidence/grade.ts";
@@ -183,6 +185,17 @@ export default async function RunPage({
       baselinePolicyVersion = (beforePolicy?.version as number | undefined) ?? null;
     }
   }
+
+  // Which of the moved scenarios have moved before with nothing changed. Only asked
+  // when there is a comparison to annotate, and only from runs up to this one, so the
+  // answer on this page matches what a report sealed from this run would say.
+  const stability = comparison
+    ? await loadStability({
+        client: db, agentId: run.agent_id as string, suiteId: run.suite_id as string,
+        asOf: run.created_at as string,
+      })
+    : new Map();
+  const unstableMoved = comparison ? unstableInComparison(comparison, stability) : [];
 
   // What an independent read of the customer's system showed, per case. Its own
   // table, so its own query — and the operator needs it most: a case that failed
@@ -488,6 +501,32 @@ export default async function RunPage({
                       <ChangeGroup title="No result this time" tone={CHANGE_TONES.nowErrored} ids={comparison.nowErrored}
                         empty="Every scenario produced a verdict." />
                     </div>
+
+                    {/* A regression and a coin flip look identical from two runs. These
+                        scenarios have passed and failed before under one policy version,
+                        so their movement here is not, on its own, evidence about the
+                        change. They stay in their lists — hiding a real regression would
+                        be the worse error — and are named here instead. */}
+                    {unstableMoved.length > 0 && (
+                      <div className="mt-3 rounded-lg border border-warning-border bg-warning-surface px-3 py-2 text-sm leading-relaxed text-warning-text">
+                        <p className="font-medium">
+                          {unstableMoved.length === 1 ? "One of these has" : `${unstableMoved.length} of these have`} changed
+                          verdict before with the policy unchanged.
+                        </p>
+                        <ul className="mt-1 space-y-0.5">
+                          {unstableMoved.map((id) => {
+                            const s = stability.get(id)!;
+                            return (
+                              <li key={id}>
+                                <span className="type-mono">{id}</span> — passed {s.passes} and failed {s.fails} of{" "}
+                                {s.runs} earlier runs under one policy version. Rerun before treating its
+                                movement as caused by this change.
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
 
                     {comparison.missingFromCurrent.length > 0 && (
                       <p className="mt-3 text-sm text-warning-text">

@@ -1,6 +1,7 @@
 import { contentHash, type Json } from "./hash.ts";
 import { assertPublishable } from "./redact.ts";
 import { compareRuns, type Comparison } from "../evidence/compare.ts";
+import { unstableInComparison, type CaseStability } from "../evidence/stability.ts";
 import type { Coverage, ObligationCoverage, CategoryCoverage } from "../evidence/coverage.ts";
 import { gradeRun, meetsThreshold } from "../evidence/grade.ts";
 import { independenceOf } from "../judge/independence.ts";
@@ -33,6 +34,11 @@ export interface ReportInput {
   /** Wall time from first case to last, when both timestamps were recorded. */
   durationMs: number | null;
   baseline?: { runId: string; policyVersion: number; cases: Array<{ caseId: string; status: RunCaseRecord["status"] }> };
+  /**
+   * Scenarios whose verdict has moved before under one policy version, from stored
+   * runs up to this one. Omitted when nobody looked, which is different from empty.
+   */
+  stability?: Map<string, CaseStability>;
   /** Verbatim strings that must not appear in the output (policy body, system prompt). */
   privateMaterial?: string[];
   /** Declared before the run and frozen on the row; null for runs that predate it. */
@@ -188,10 +194,12 @@ export function buildReport(input: ReportInput): BuiltReport {
     // WITHHELD band and the three coverage numbers at 6; 7 carries the pre-execution
     // manifest digest and chains each report to the previous one for the agent; 8
     // counts the verdicts a rule settled without a model; 9 says how many claimed
-    // actions were confirmed or contradicted by the customer's own system. Reports
+    // actions were confirmed or contradicted by the customer's own system; 10 names the
+    // scenarios in a comparison whose verdict had already moved under one policy
+    // version, so a coin flip is not reported as a regression without saying so. Reports
     // sealed as any earlier format are still rendered from their own payload and must
     // keep verifying — every reader of this payload branches on absence.
-    novera: { format: 9 },
+    novera: { format: 10 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -275,6 +283,14 @@ export function buildReport(input: ReportInput): BuiltReport {
           now_errored: comparison.nowErrored,
           error_resolved: comparison.errorResolved,
           partial: !comparison.comparable,
+          ...(input.stability
+            ? {
+                unstable: unstableInComparison(comparison, input.stability).map((id) => {
+                  const s = input.stability!.get(id)!;
+                  return { case_id: id, passes: s.passes, fails: s.fails, runs: s.runs };
+                }),
+              }
+            : {}),
           note: comparison.comparable
             ? "Both runs covered the same cases."
             : `The suite changed between runs. Added: ${comparison.notInBaseline.join(", ") || "none"}. Removed: ${comparison.missingFromCurrent.join(", ") || "none"}.`,

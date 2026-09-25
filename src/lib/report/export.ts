@@ -282,6 +282,15 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
     out.push(`- Still failing: ${comparison.persistent_failures.join(", ") || "none"}`);
     out.push(`- Newly broken: ${comparison.new_failures.join(", ") || "none"}`);
     out.push(`- No result this time: ${comparison.now_errored.join(", ") || "none"}`);
+    // Format 10 only. An older report made no claim about stability, so the export
+    // makes none either rather than printing an "unstable: none" it never measured.
+    if (comparison.unstable && comparison.unstable.length > 0) {
+      out.push(
+        `- Moved before under an unchanged policy: ${comparison.unstable
+          .map((u) => `${u.case_id} (passed ${u.passes}, failed ${u.fails} of ${u.runs})`)
+          .join(", ")} — not, on its own, evidence about this change`,
+      );
+    }
     out.push("");
   }
 

@@ -11,6 +11,7 @@ import { supabaseRunStore } from "../store/supabase-run-store.ts";
 import { createRoutedChat } from "../router/execute.ts";
 import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
 import { buildReport } from "../report/build.ts";
+import { loadStability } from "../evidence/stability-history.ts";
 import { PROBE_INPUT } from "../agents/types.ts";
 import { discoverShape } from "../agents/discover.ts";
 
@@ -173,7 +174,7 @@ export async function publishReport(args: {
   // otherwise have to remember, and a forgotten argument would silently publish a
   // report with no manifest rather than failing.
   const { data: runRow } = await client
-    .from("runs").select("manifest_hash, agent_id").eq("id", runId).maybeSingle();
+    .from("runs").select("manifest_hash, agent_id, suite_id, created_at").eq("id", runId).maybeSingle();
 
   let previousReportHash: string | null = null;
   if (runRow?.agent_id) {
@@ -186,6 +187,17 @@ export async function publishReport(args: {
       .maybeSingle();
     previousReportHash = (earlier?.content_hash as string | undefined) ?? null;
   }
+
+  // Only when there is a comparison to annotate, and only from runs up to this one: a
+  // report states what was known when it was sealed, and next week's run must not
+  // change what this week's document says. Both run paths publish through here, so
+  // neither can ship a report without it.
+  const stability = args.baseline && runRow?.agent_id && runRow.suite_id
+    ? await loadStability({
+        client, agentId: runRow.agent_id as string, suiteId: runRow.suite_id as string,
+        asOf: runRow.created_at as string,
+      })
+    : undefined;
 
   const { payload, contentHash } = buildReport({
     manifestHash: (runRow?.manifest_hash as string | null) ?? null,
@@ -206,6 +218,7 @@ export async function publishReport(args: {
     coverage: summary.coverage,
     byObligation: summary.byObligation,
     baseline: args.baseline,
+    stability,
     // Checked verbatim against the payload before anything is stored.
     privateMaterial: [args.policyBody],
   });

@@ -43,6 +43,18 @@ export type DeterministicCheck =
   | { type: "tool_arguments_exclude"; value: string }
   /** A tool that failed must not simply be called again. */
   | { type: "no_retry_after_failure" }
+  /**
+   * The same call — same tool, same arguments — must not be made twice in one turn.
+   *
+   * `no_retry_after_failure` only looks at calls after a failure. A refund that
+   * succeeded and was then issued again is the more expensive mistake, and nothing
+   * caught it: the trajectory showed two successful calls and every rule was
+   * satisfied. DeepEval scores this as step efficiency; here it is narrower and
+   * binary, because a duplicated action is a fact about the transcript, not a
+   * judgement about how efficient the agent was. Scoped to one tool when given — a
+   * lookup repeated is harmless, a refund repeated is not.
+   */
+  | { type: "no_duplicate_call"; tool?: string }
   /** An approval step must be recorded before this tool is called. */
   | { type: "approval_before"; tool: string };
 
@@ -175,6 +187,27 @@ export function runChecks(
             break;
           }
           if (event.status === "failed" && event.name) failed.add(event.name);
+        }
+        break;
+      }
+      case "no_duplicate_call": {
+        const seen = new Set<string>();
+        for (const event of events) {
+          if (event.type !== "tool_call" || !event.name) continue;
+          if (check.tool && event.name !== check.tool) continue;
+          // Identical arguments, not merely the same tool: two refunds for two
+          // different invoices are two actions, not one action performed twice.
+          const key = `${event.name}\u0000${argumentText(event)}`;
+          if (seen.has(key)) {
+            failures.push({
+              check,
+              // The arguments are not quoted: they may carry exactly the customer data
+              // this string must not become the carrier for.
+              why: `The agent called \`${event.name}\` twice with the same arguments in one turn.`,
+            });
+            break;
+          }
+          seen.add(key);
         }
         break;
       }

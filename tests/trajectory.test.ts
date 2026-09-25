@@ -101,6 +101,44 @@ test("a different tool after a failure is recovery, not a retry", () => {
   );
 });
 
+test("the same successful action performed twice is caught", () => {
+  // no_retry_after_failure cannot see this: both calls succeeded.
+  const twice = withTools([
+    { tool: "issue_refund", arguments: { invoice: "NW-1182" } },
+    { tool: "issue_refund", arguments: { invoice: "NW-1182" } },
+  ]);
+  assert.deepEqual(runChecks([{ type: "no_retry_after_failure" }], twice), []);
+
+  const failures = runChecks([{ type: "no_duplicate_call", tool: "issue_refund" }], twice);
+  assert.equal(failures.length, 1);
+  assert.match(failures[0].why, /twice with the same arguments/);
+  // The arguments may be customer data; the stored reason does not repeat them.
+  assert.ok(!failures[0].why.includes("NW-1182"));
+});
+
+test("two refunds for two invoices are two actions, not a duplicate", () => {
+  assert.deepEqual(
+    runChecks(
+      [{ type: "no_duplicate_call", tool: "issue_refund" }],
+      withTools([
+        { tool: "issue_refund", arguments: { invoice: "NW-1182" } },
+        { tool: "issue_refund", arguments: { invoice: "NW-4417" } },
+      ]),
+    ),
+    [],
+  );
+});
+
+test("a duplicate scoped to one tool ignores a repeated lookup", () => {
+  const lookups = withTools([
+    { tool: "lookup_order", arguments: { order: "55120" } },
+    { tool: "lookup_order", arguments: { order: "55120" } },
+  ]);
+  assert.deepEqual(runChecks([{ type: "no_duplicate_call", tool: "issue_refund" }], lookups), []);
+  // Unscoped, it applies to every tool.
+  assert.equal(runChecks([{ type: "no_duplicate_call" }], lookups).length, 1);
+});
+
 test("an action taken with no approval recorded before it is caught", () => {
   const failures = runChecks(
     [{ type: "approval_before", tool: "delete_workspace" }],

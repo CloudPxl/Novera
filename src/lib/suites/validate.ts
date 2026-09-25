@@ -67,6 +67,14 @@ function validateChecks(
             case "no_retry_after_failure":
               parsed.push({ type: "no_retry_after_failure" });
               break;
+            case "no_duplicate_call": {
+              // Optional: scoped to one tool, or every tool when omitted.
+              if (k.tool === undefined) { parsed.push({ type: "no_duplicate_call" }); break; }
+              const tool = text("tool");
+              if (!tool) errors.push(`${at}: \`tool\`, when given, must be a non-empty string.`);
+              else parsed.push({ type: "no_duplicate_call", tool });
+              break;
+            }
             case "approval_before": {
               const tool = text("tool");
               if (!tool) errors.push(`${at}: \`tool\` must be a non-empty string.`);

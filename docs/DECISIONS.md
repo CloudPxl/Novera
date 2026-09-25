@@ -1653,3 +1653,33 @@ means nobody looked; an empty list means it was checked and nothing qualified; f
 and earlier reports render no line at all rather than an "all stable" they never measured.
 All 14 sealed reports across formats 1–9 still render and export; the revoked one still
 refuses. 351 tests.
+
+## 2026-09-25 — The same action twice, and a format nobody could look up (Phase 6C)
+
+**`no_duplicate_call`.** DeepEval scores step efficiency; the narrower fact inside it is
+the one that matters for a support agent — the same action performed twice in one turn.
+`no_retry_after_failure` only looked at calls after a failure, so a refund that
+*succeeded* and was then issued again satisfied every rule we had: the trajectory showed
+two successful calls and nothing objected. The new rule compares tool *and* arguments —
+two refunds for two invoices are two actions — can be scoped to one tool, since a
+repeated lookup is harmless and a repeated refund is not, and never quotes the arguments
+in its stored reason.
+
+**The suite format was undocumented.** Customers can import suites as JSON or CSV, the
+validator enforces fifteen field rules and eleven rule types, and none of it was written
+down anywhere a customer could find — Promptfoo and DeepEval document every assertion
+they support. Since the support agent may only answer from `/docs`, it could not answer
+"how do I write a rule" at all. `data/docs/writing-a-suite.md` is written from the
+validator rather than from memory, and two of its claims were checked against the runner
+and corrected before publishing: a scenario barred from a production agent is recorded
+as producing no result with the reason, not as "not run", and an agent is production
+until explicitly marked otherwise. The support agent now answers the question correctly
+and cites the page.
+
+**`how-a-run-works` was a day stale.** It said every verdict goes to two vendors, which
+has been false on a customer's own key since the settings work. Corrected.
+
+Noted, not changed: a question *about writing refund rules* was escalated to a person by
+the keyword rule for money. That is the conservative direction — it costs a person's
+time, never a customer's trust — and loosening a safety escalation for a docs question
+is the wrong trade.

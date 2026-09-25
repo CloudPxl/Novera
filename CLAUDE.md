@@ -230,6 +230,11 @@ they drive the scripted fixture at `/api/test-agent`.
 - **A judge key stored before 2026-09-24 has no models recorded**, so it falls back to
   whatever `DEFAULT_ROUTES` measures on that connection — which is groq only. Any other
   provider's legacy key refuses the run with a sentence saying to reconnect it.
+- **Production is behind `main` since 2026-09-25.** The three pushes that day created
+  Vercel production deployments with status UNKNOWN and no build; the last Ready one is
+  from 2026-09-23. The database is shared, so suites and docs seeded that day *are* live
+  while the code that reads them is not. A CLI deploy from this session was refused by the
+  auto-mode permission check, so this needs the user.
 - **`_dmarc` TXT record is not set.** Signup works end to end in production, but the
   Resend key is send-only, so inbox *placement* is unproven.
 - **`eu-support v4` has not had a full calibration sweep.** Its five new scenarios were

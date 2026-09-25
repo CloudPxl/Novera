@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth/session.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge } from "@/components/ui/primitives.tsx";
@@ -23,17 +22,24 @@ export const metadata: Metadata = {
  * the first dishonest thing on the site.
  */
 export default async function Home() {
-  if (await currentUser()) redirect("/dashboard");
+  // The home page for everyone. A signed-in visitor used to be bounced to the dashboard,
+  // which left no way back to "what is this" and dropped new users into the deep end.
+  const signedIn = Boolean(await currentUser());
 
   return (
     <div className="bg-white text-slate-900">
       <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6 sm:px-8">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Novera</p>
-        <Link href="/sign-in">
-          <Button variant="secondary" size="sm">
-            Sign in
-          </Button>
-        </Link>
+        <nav aria-label="Primary" className="flex items-center gap-4 text-sm">
+          <Link href="/guide" className="font-medium text-slate-600 underline-offset-2 hover:underline">
+            How it works
+          </Link>
+          <Link href={signedIn ? "/dashboard" : "/sign-in"}>
+            <Button variant="secondary" size="sm">
+              {signedIn ? "Open your dashboard" : "Sign in"}
+            </Button>
+          </Link>
+        </nav>
       </header>
 
       <main>
@@ -58,8 +64,11 @@ export default async function Home() {
 
           <Reveal delay={80}>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link href="/sign-in">
-                <Button>Start with three free runs</Button>
+              <Link href={signedIn ? "/dashboard" : "/sign-in"}>
+                <Button>{signedIn ? "Open your dashboard" : "Start with three free runs"}</Button>
+              </Link>
+              <Link href="/guide" className="text-sm font-medium text-slate-700 underline underline-offset-2">
+                See the steps first
               </Link>
               <span className="text-sm text-slate-500">
                 No card. Bring your own model key to keep going.

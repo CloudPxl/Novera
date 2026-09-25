@@ -139,7 +139,9 @@ export async function TopBar() {
             <div className="border-t border-line py-1 md:border-t-0">
               <Link href="/agents/new" className={menuItemClass}>Connect an agent</Link>
               <Link href="/settings" className={menuItemClass}>Settings</Link>
+              <Link href="/guide" className={menuItemClass}>Step-by-step guide</Link>
               <Link href="/docs" className={menuItemClass}>Documentation</Link>
+              <Link href="/" className={menuItemClass}>Home page</Link>
             </div>
 
             <form action={signOut} className="border-t border-line py-1">

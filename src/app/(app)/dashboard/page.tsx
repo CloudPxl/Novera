@@ -7,6 +7,7 @@ import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { buildAttention } from "./attention.ts";
+import { Help } from "@/components/ui/help.tsx";
 
 export const metadata: Metadata = { title: "Dashboard · Novera" };
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export default async function DashboardPage() {
   const db = await sessionClient();
 
   // Read through the user's own client: whatever comes back, RLS allowed.
-  const [{ data: agents }, { data: runs }, { count: reportCount }, { data: probes }, { count: draftCount }] =
+  const [{ data: agents }, { data: runs }, { count: reportCount }, { data: probes }, { count: draftCount }, { count: policyCount }] =
     await Promise.all([
       db.from("agents").select("id, name, config, attested_at").order("created_at"),
       db.from("runs").select("id, status, created_at, agent_id").order("created_at", { ascending: false }).limit(6),
@@ -26,7 +27,19 @@ export default async function DashboardPage() {
       // dashboard that gets slower every time the workspace succeeds.
       db.from("probes").select("agent_id, error, created_at").order("created_at", { ascending: false }).limit(60),
       db.from("scenario_drafts").select("*", { count: "exact", head: true }).eq("status", "draft"),
+      db.from("policies").select("*", { count: "exact", head: true }),
     ]);
+
+  // The first-run checklist, from stored rows only: a step is done when the row that
+  // proves it exists, never because a page was visited.
+  const firstAgent = agents?.[0]?.id as string | undefined;
+  const setup = [
+    { done: (agents ?? []).length > 0, label: "Connect the agent you want to test", href: "/agents/new" },
+    { done: (policyCount ?? 0) > 0, label: "Write the policy it should follow", href: firstAgent ? `/agents/${firstAgent}` : "/agents/new" },
+    { done: (runs ?? []).length > 0, label: "Run the suite against it", href: firstAgent ? `/agents/${firstAgent}` : "/agents/new" },
+    { done: (reportCount ?? 0) > 0, label: "Open the report a finished run produces", href: (runs ?? [])[0] ? `/runs/${runs![0].id}` : "/guide" },
+  ];
+  const setupDone = setup.filter((s) => s.done).length;
 
   const agentNames = new Map((agents ?? []).map((a) => [a.id, a.name]));
   const completed = (runs ?? []).filter((r) => r.status === "completed").length;
@@ -104,6 +117,40 @@ export default async function DashboardPage() {
         </div>
       )}
 
+      {setupDone < setup.length && (
+        <section aria-labelledby="setup-heading" className="mt-8 rounded-xl border border-line bg-surface p-5">
+          <h2 id="setup-heading" className="type-h2">
+            Getting started · {setupDone} of {setup.length}
+            <Help label="Getting started">
+              Four steps from nothing to a report you can hand over. Each ticks itself when it has
+              actually happened. The <Link href="/guide" className="underline underline-offset-2">step-by-step guide</Link> explains each one.
+            </Help>
+          </h2>
+          <ol className="mt-3 space-y-2">
+            {setup.map((step, i) => {
+              const next = !step.done && setup.slice(0, i).every((s) => s.done);
+              return (
+                <li key={step.label} className="flex items-center gap-3 text-sm">
+                  <span
+                    aria-hidden="true"
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${step.done ? "bg-pass-surface text-pass-text" : next ? "bg-ink text-white" : "border border-line-strong text-ink-faint"}`}
+                  >
+                    {step.done ? "✓" : i + 1}
+                  </span>
+                  {step.done ? (
+                    <span className="text-ink-faint line-through">{step.label}<span className="sr-only"> — done</span></span>
+                  ) : (
+                    <Link href={step.href} className={next ? "font-medium text-ink underline underline-offset-2" : "text-ink-soft hover:text-ink"}>
+                      {step.label}
+                    </Link>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
+
       {attention.length > 0 && (
         <Reveal className="mt-8">
           <section aria-labelledby="attention-heading">
@@ -142,7 +189,13 @@ export default async function DashboardPage() {
 
       <Reveal className="mt-10" delay={60}>
         <section>
-          <h2 className="type-h2">Agents</h2>
+          <h2 className="type-h2">
+            Agents
+            <Help label="Agents">
+              The support agents you have connected. Open one to write its policy, check its
+              connection and run the suite against it. Only test agents you own or are authorised to test.
+            </Help>
+          </h2>
           {agents && agents.length > 0 ? (
             <ul className="mt-3 space-y-2">
               {agents.map((a) => (
@@ -185,7 +238,13 @@ export default async function DashboardPage() {
 
       <Reveal className="mt-10" delay={120}>
         <section>
-          <h2 className="type-h2">Recent runs</h2>
+          <h2 className="type-h2">
+            Recent runs
+            <Help label="Runs">
+              A run sends every scenario in a suite to one agent and grades each answer against its
+              policy. Open a run to see each verdict, fix failures and share the report.
+            </Help>
+          </h2>
           {runs && runs.length > 0 ? (
             <ul className="mt-3 space-y-2">
               {runs.map((r) => (

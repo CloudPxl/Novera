@@ -15,6 +15,7 @@ import { gradeRun } from "@/lib/evidence/grade.ts";
 import { obligationLabel } from "@/lib/report/payload.ts";
 import { normaliseTrajectory } from "@/lib/agents/trajectory.ts";
 import { resolveAssertions } from "@/lib/judge/parse.ts";
+import { Help } from "@/components/ui/help.tsx";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { Menu, menuItemClass } from "@/components/ui/menu.tsx";
@@ -522,7 +523,13 @@ export default async function RunPage({
           {/* ------------------------------------------------ tier 2: categories */}
           {categories.length > 0 && (
             <section className="mt-8">
-              <h2 className="type-h2">By category</h2>
+              <h2 className="type-h2">
+                By category
+                <Help label="Categories">
+                  The same results grouped by the kind of behaviour tested — identity checks, refunds,
+                  attacks and so on — so you can see where the agent is weak.
+                </Help>
+              </h2>
               <p className="mt-1 type-body text-ink-soft">
                 A percentage can look healthy while the one case that mattered is the one
                 that failed, so a failed critical scenario is marked on its category.
@@ -548,7 +555,14 @@ export default async function RunPage({
 
           {/* --------------------------------------------------- tier 3: matrix */}
           <section className="mt-8">
-            <h2 className="type-h2">Scenarios</h2>
+            <h2 className="type-h2">
+              Scenarios
+              <Help label="Scenarios">
+                Every test in this run. Passed and failed are verdicts; &ldquo;no result&rdquo; means the agent
+                errored, the grading models could not agree, or a claimed action could not be checked — never
+                counted as a pass. Open one to read the exchange, ask for a diagnosis, retest it or record your own finding.
+              </Help>
+            </h2>
             {caseRows.length === 0 ? (
               <div className="mt-3">
                 <EmptyState title="Nothing was graded">
@@ -585,7 +599,14 @@ export default async function RunPage({
             <Reveal className="mt-10">
               <section>
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="type-h2">Compared with another run</h2>
+                  <h2 className="type-h2">
+                  Compared with another run
+                  <Help label="Comparison">
+                    Scenario by scenario against an earlier run of the same suite: what got fixed, what still
+                    fails, what newly broke. A scenario that already flipped on its own under one policy is flagged,
+                    so a coin flip is not mistaken for a regression.
+                  </Help>
+                </h2>
                   {(comparableRuns ?? []).length > 0 && (
                     <BaselinePicker
                       runId={id}

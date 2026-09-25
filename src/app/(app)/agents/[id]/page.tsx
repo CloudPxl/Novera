@@ -33,7 +33,9 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
       .eq("agent_id", id).order("version", { ascending: false }),
     db.from("runs").select("id, status, created_at, suite_id").eq("agent_id", id)
       .order("created_at", { ascending: false }).limit(8),
-    db.from("suites").select("id, key, version, name").order("key"),
+    // Newest version first within a key, so the default below is the current suite
+    // rather than whichever row Postgres happened to return first.
+    db.from("suites").select("id, key, version, name").order("key").order("version", { ascending: false }),
   ]);
 
   const latestProbe = probes?.[0];

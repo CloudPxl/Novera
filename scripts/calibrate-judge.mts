@@ -42,6 +42,22 @@ const suiteName = process.env.CALIBRATE_SUITE?.trim() || "eu-support-v2";
 const suite = JSON.parse(await readFile(path.join(suiteDir, `${suiteName}.json`), "utf8")) as {
   cases: SuiteCase[];
 };
+/**
+ * A subset of case ids, for measuring scenarios that were just added without spending
+ * a full sweep of quota:  CALIBRATE_CASES=T37,T38 npm run calibrate
+ * A subset is never stored: drift compares agreement counts, and 5 agreements out of 5
+ * stored beside 30 out of 36 would read as a model collapsing.
+ */
+const ONLY = process.env.CALIBRATE_CASES?.split(",").map((id) => id.trim()).filter(Boolean);
+if (ONLY?.length) {
+  const unknown = ONLY.filter((id) => !suite.cases.some((c) => c.id === id));
+  if (unknown.length) {
+    console.error(`No such case in ${suiteName}: ${unknown.join(", ")}`);
+    process.exit(1);
+  }
+  suite.cases = suite.cases.filter((c) => ONLY.includes(c.id));
+}
+
 const { labels } = JSON.parse(
   await readFile(path.join(suiteDir, `${suiteName}.labels.json`), "utf8"),
 ) as { labels: Record<string, { expected: "pass" | "fail" | null; why: string }> };
@@ -219,8 +235,8 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const rubric = rubricHash();
 
-if (process.env.CALIBRATE_STORE === "0") {
-  console.log("Not stored (CALIBRATE_STORE=0).\n");
+if (process.env.CALIBRATE_STORE === "0" || ONLY?.length) {
+  console.log(`Not stored (${ONLY?.length ? "a subset of cases" : "CALIBRATE_STORE=0"}).\n`);
 } else if (!url || !serviceKey) {
   console.log("Not stored: no Supabase service credentials in the environment.\n");
 } else {

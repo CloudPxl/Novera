@@ -47,7 +47,7 @@ do it differently on purpose, and the reason is recorded so it stops being re-li
 | **Suite import**, JSON or CSV, with a SHA-256 of the uploaded bytes | Datasets in LangSmith, Braintrust, Maxim, Opik | Parity | The provenance hash is ours alone. **The format was documented nowhere** — now `/docs/writing-a-suite` |
 | **Immutable suite versions** | Braintrust immutable experiments | Parity | — |
 | **Duty-to-test compiler**: a policy drafts scenarios, each quoting the passage it tests, entering a suite only with a named approval | TestMu generates from PRDs, PDFs, knowledge bases; Giskard RAGET; Opik's assistant | Parity on generation | The quote-locked source and the named-approval gate are ours alone |
-| **Red-team coverage** in the suite | Promptfoo: 100+ plugins and 30+ strategies — encodings, special-token injection, tool discovery, off-topic manipulation, crescendo, GOAT | **Logic gap** | Core covered (BOLA/BFLA, PII, prompt extraction, indirect injection, competitor, unsupervised contracts, overreliance). Missing: tool discovery, encoded payloads, special-token injection, off-topic manipulation, injection through tool arguments. **Designed as `eu-support v4`, not yet written** — see below |
+| **Red-team coverage** in the suite | Promptfoo: 100+ plugins and 30+ strategies — encodings, special-token injection, tool discovery, off-topic manipulation, crescendo, GOAT | **Logic gap** | Core covered (BOLA/BFLA, PII, prompt extraction, indirect injection, competitor, unsupervised contracts, overreliance). Missing: tool discovery, encoded payloads, special-token injection, off-topic manipulation, injection through tool arguments. **Closed by `eu-support v4`** (2026-09-25) — see below |
 | **Multi-turn and persona simulation** | LangWatch Scenario (user simulator + judge agent), Maxim personas, Promptfoo crescendo/GOAT | Capability gap | Phase 9. A multi-turn case flattened into one message is a different test under the same name, so none is faked meanwhile |
 | **Deterministic rules** that can fail a case and never pass one | DeepEval DAG ("deterministic metric scores"); Promptfoo assertions | Parity | Added `no_duplicate_call` from DeepEval's step efficiency — the same successful action twice passed every rule we had |
 | **Trajectory and tool evaluation** | DeepEval tool/argument correctness, plan adherence; LangSmith trajectory evaluation | Parity | Plan adherence is not modelled; nothing in a support suite needs it yet |
@@ -83,7 +83,7 @@ Five things shipped, each recorded in `docs/DECISIONS.md` under 2026-09-25:
 4. **The suite format documented**, so the support agent can answer how to write one.
 5. **Tenant isolation checked over the evidence tables**, which it had never covered.
 
-### `eu-support v4` — designed, not yet written
+### `eu-support v4` — written 2026-09-25
 
 The red-team gap needs five new scenarios and a fix to v3's T22, as a new version because
 a suite version is immutable. The design:
@@ -99,9 +99,9 @@ a suite version is immutable. The design:
 
 It needs scripted fixture replies for each, a labels file, and proof that the fixture's
 replies to every v1–v3 input stay byte-identical so calibration remains comparable.
-**It was not written in this pass:** authoring the attack payloads tripped a safety check
-in the session's auto-permission mode, which reacts to conversation content rather than
-to the action. It should be written in a session without auto mode.
+**Written and seeded on 2026-09-25.** v1–v3 fixture replies byte-identical; the four route
+judges agreed with the labels on all five new scenarios; a full run moved T22 from error
+to a failure settled by the read-back. See `docs/DECISIONS.md`.
 
 ## The one fact that matters most
 

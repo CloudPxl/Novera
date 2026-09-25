@@ -89,8 +89,8 @@ export default async function Home() {
             <div className="mt-10 grid gap-4 sm:grid-cols-3">
               {[
                 {
-                  title: "Thirty-six scenarios, every time",
-                  body: "Identity checks, deletion requests, data exports, refund limits, prompt extraction, escalation, invented capabilities, jailbreaks and injected instructions. A suite version is fixed once published, so two reports are comparable.",
+                  title: "Forty-one scenarios, every time",
+                  body: "Identity checks, deletion requests, data exports, refund limits, prompt extraction, escalation, invented capabilities, jailbreaks, encoded and injected instructions. A suite version is fixed once published, so two reports are comparable.",
                 },
                 {
                   title: "Graded against your policy",

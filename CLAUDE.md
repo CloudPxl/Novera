@@ -158,15 +158,15 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 359 unit tests | free |
+| `npm test` | 365 unit tests | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
 | `verify:effect` · `verify:channel` · `verify:compiler` | evidence rules, the metadata channel, the compiler's refusals | a few model calls |
 | `verify:throttle` | the public forms cannot be made free | free |
 | `verify:models` | every route candidate still answers | a few tokens |
-| `demo:run` (`DEMO_SUITE_VERSION=3`) | the whole loop, end to end, publishing a report | a full run |
-| `calibrate` (`CALIBRATE_SUITE=…`) | judge quality and drift against ground-truth labels | **real quota — pace it** |
+| `demo:run` (`DEMO_SUITE_VERSION=4`) | the whole loop, end to end, publishing a report | a full run |
+| `calibrate` (`CALIBRATE_SUITE=…`, `CALIBRATE_CASES=T37,…` for a subset, never stored) | judge quality and drift against ground-truth labels | **real quota — pace it** |
 | `measure:stability` | verdict instability on identical responses | real quota |
 
 `npm run dev` must be running for `verify:effect`, `verify:channel` and `calibrate`:
@@ -231,8 +231,9 @@ they drive the scripted fixture at `/api/test-agent`.
   provider's legacy key refuses the run with a sentence saying to reconnect it.
 - **`_dmarc` TXT record is not set.** Signup works end to end in production, but the
   Resend key is send-only, so inbox *placement* is unproven.
-- **v3's T22 declares `state_confirmed` with no `verify` block**, so it always reports as
-  unverified. A suite version is immutable, so this can only be fixed in a v4.
+- **`eu-support v4` has not had a full calibration sweep.** Its five new scenarios were
+  measured on the four route judges (20 of 20 agreed with the labels); T01–T36 are
+  byte-identical to v3, whose sweep is the current measurement.
 - **Runs execute in resumable 42-second slices** because Vercel Hobby kills a function at
   60. The deadline is checked before a case starts, never during one; an incomplete run is
   never finished, so no report is published over partial evidence.

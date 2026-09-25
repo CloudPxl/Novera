@@ -183,7 +183,10 @@ export async function createRun(formData: FormData): Promise<void> {
   const suiteQuery = admin.from("suites").select("id, workspace_id");
   const { data: suite } = requestedSuiteId
     ? await suiteQuery.eq("id", requestedSuiteId).maybeSingle()
-    : await suiteQuery.is("workspace_id", null).eq("key", "eu-support").eq("version", 1).maybeSingle();
+    // With no choice made, the newest built-in version: pinning `version 1` here
+    // quietly ran a 16-scenario suite for anyone who never opened the dropdown.
+    : await suiteQuery.is("workspace_id", null).eq("key", "eu-support")
+        .order("version", { ascending: false }).limit(1).maybeSingle();
 
   if (!suite) throw new Error("That suite could not be found.");
   if (suite.workspace_id !== null && suite.workspace_id !== workspace.id) {

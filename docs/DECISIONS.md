@@ -1789,3 +1789,14 @@ Found in passing, each fixed:
   workspace's run indistinguishable from a missing one.
 - The CSP console errors seen in the browser are the dev server's own injected style tags;
   a production build of the same page logs none.
+
+## 2026-09-25 — Ten blocked deploys: the commit author
+
+Every deploy from 2026-09-24 evening on was **Blocked** by Vercel Hobby: "the commit author
+doesn't have permission". Commits were authored as the user's other GitHub account; the
+repo and the Vercel project belong to `cloudpxlsupport@gmail.com`. The repo's git email is
+now that address; the next push went live in about a minute. A production smoke test then
+passed: public pages 200, operator pages redirect to sign-in, the fixture refuses in
+production, CSP / frame / referrer headers present, v4 copy and the reissued report live,
+and a crafted `?problem=` is not rendered (it appears only URL-encoded in Next's router
+state).

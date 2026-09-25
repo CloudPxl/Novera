@@ -57,6 +57,7 @@ someone with the service role, not merely someone using the application.
 | A public form cannot be made free | 0024, counted in Postgres |
 | A workspace key grades only on models it was proved to reach, and one it cannot reach refuses the run rather than erroring every case | 0025 + 0026, route built from the key |
 | A person's finding sits beside a verdict and never replaces it; it needs a reason, freezes the verdict it read, and cannot be filed against another workspace's case | 0028 |
+| A review reaches a client only as a *new* sealed report that carries the original unchanged, names it by hash, and labels the reviewers as the tested party — never as a changed score | `src/lib/report/reissue.ts`, format 11 |
 
 **A verdict is the finding of two models from different vendors.** A single judge drifted
 on 25% of scenarios re-grading byte-identical responses, which the comparison reported to
@@ -158,7 +159,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 365 unit tests | free |
+| `npm test` | 373 unit tests | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
@@ -187,7 +188,7 @@ they drive the scripted fixture at `/api/test-agent`.
 
 - **A report payload change breaks every document already in a client's hands.** An added
   field ships with its absence branch in the same commit. Two reports were returning 500
-  in production before this was caught. 14 sealed reports now span payload formats 1–9.
+  in production before this was caught. 16 sealed reports now span payload formats 1–11.
 - **A model's rendering of our data is not our data.** The judge echoed assertions back
   with the numbering the prompt added; storing that verbatim made every failed case render
   as fully passing.

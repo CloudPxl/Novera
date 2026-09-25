@@ -163,6 +163,37 @@ export interface ReportPayload {
      */
     unstable?: Array<{ case_id: string; passes: number; fails: number; runs: number }>;
   } | null;
+  /**
+   * Format 11, and only on a report reissued to disclose human review. What members of
+   * the tested workspace found when they reviewed the verdicts above. It changes no
+   * verdict, count, grade or score in this document; `with_findings_applied` is their
+   * reading, stated beside the automated one and never in place of it. Absent on every
+   * report sealed at the end of a run, which is every report before format 11.
+   */
+  human_review?: {
+    reviewed_by: string;
+    as_of: string;
+    reviewed: number;
+    agreed: number;
+    disagreed: number;
+    resolved_gaps: number;
+    /** Disagreements and gap fills, each with the reason given. Agreements are counted only. */
+    findings: Array<{
+      case_id: string;
+      verdict: "pass" | "fail" | "error";
+      finding: "pass" | "fail";
+      note: string;
+      reviewed_at: string;
+    }>;
+    with_findings_applied: { passed: number; failed: number; no_verdict: number; changed: number };
+    note: string;
+  };
+  /**
+   * Format 11. Present when this document reissues an earlier report for the same run.
+   * `of` is that report's content hash; everything above `human_review` is carried from
+   * it unchanged, so the two can be compared line by line.
+   */
+  reissue?: { of: string; reason: string };
   limitations: string;
 }
 

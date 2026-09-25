@@ -335,6 +335,41 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         </Section>
       )}
 
+      {/* Format 11, and only on a reissue. Absent on every report sealed at the end of a
+          run, and nothing is rendered for those: they made no statement about review. */}
+      {payload.human_review && (
+        <Section title="Review by the tested party">
+          <p className="text-sm leading-relaxed text-ink-soft">{payload.human_review.note}</p>
+          <dl className="mt-4 space-y-2 text-sm text-ink-soft">
+            <Line label="Reviewed by" value={payload.human_review.reviewed_by} />
+            <Line
+              label="Verdicts reviewed"
+              value={`${payload.human_review.reviewed} — agreed with ${payload.human_review.agreed}, disagreed with ${payload.human_review.disagreed}${payload.human_review.resolved_gaps > 0 ? `, and gave a finding on ${payload.human_review.resolved_gaps} with no automated result` : ""}`}
+            />
+            <Line
+              label="Their reading"
+              value={`${payload.human_review.with_findings_applied.passed} passed, ${payload.human_review.with_findings_applied.failed} failed${payload.human_review.with_findings_applied.no_verdict > 0 ? `, ${payload.human_review.with_findings_applied.no_verdict} without a result` : ""} if their findings replaced the verdicts they dispute. Not a score.`}
+            />
+            <Line label="As of" value={`${payload.human_review.as_of.slice(0, 16).replace("T", " ")} UTC`} />
+          </dl>
+          {payload.human_review.findings.length > 0 && (
+            <ol className="mt-4 space-y-3">
+              {payload.human_review.findings.map((f) => (
+                <li key={f.case_id} className="rounded-lg border border-line p-3 text-sm leading-relaxed">
+                  <p className="font-medium">
+                    <span className="font-mono text-xs text-ink-faint">{f.case_id}</span>{" "}
+                    {f.verdict === "error"
+                      ? `no automated result; the reviewer found it ${f.finding === "pass" ? "passed" : "failed"}`
+                      : `graded ${f.verdict === "pass" ? "passed" : "failed"}; the reviewer found it ${f.finding === "pass" ? "passed" : "failed"}`}
+                  </p>
+                  <p className="mt-1 text-ink-soft">{f.note}</p>
+                </li>
+              ))}
+            </ol>
+          )}
+        </Section>
+      )}
+
       <Section title="Scope and limitations">
         <p className="rounded-lg border border-line bg-ground p-4 text-sm leading-relaxed text-ink-soft">
           {payload.limitations}
@@ -427,6 +462,12 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             </p>
             <p className="mt-3 break-all font-mono text-xs text-ink-soft">{run.manifest_hash}</p>
           </>
+        )}
+        {payload.reissue && (
+          <p className="mt-4 leading-relaxed">
+            This report reissues an earlier report for the same run, to disclose review, whose digest was{" "}
+            <span className="break-all font-mono text-xs text-ink-soft">{payload.reissue.of}</span>.
+          </p>
         )}
         {run.previous_report_hash && (
           <p className="mt-4 leading-relaxed">

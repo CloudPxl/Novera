@@ -24,4 +24,12 @@ You cannot change a verdict, and neither can we. What you can do is record your 
 
 Your finding is kept next to the automated verdict and never replaces it. It changes no count, no grade and no score. Changing your mind records a second finding; the first stays on record. A client report already sealed from the run does not change either — its hash is what proves nothing was edited after it was issued.
 
-The run page shows how often people who reviewed verdicts agreed with them. A finding on a scenario that produced no automated result is counted separately: it fills a gap rather than agreeing or disagreeing with anything.
+The run page shows how often people who reviewed verdicts agreed with them. A finding on a scenario that produced no automated result is counted separately: it fills a gap rather than agreeing or disagreeing with anything. Where your findings differ from the verdicts, the run page also shows what the run would look like read your way, as a comparison and not as a score.
+
+### Putting your review in front of a client
+
+A report is sealed the moment its run completes, so it cannot contain a review written afterwards. If you want a client to see your findings, issue a new report from the run page. The new report carries the original unchanged, adds a section listing every verdict you disagreed with and the reason you gave, states the result with your findings applied, and names the report it reissues by its hash. The original keeps working and keeps verifying.
+
+The new report says plainly that the reviewers are members of the workspace whose agent was tested, and that their findings change no verdict, grade or score. That is deliberate. Some testing tools let a reviewer's "false positive" recalculate the grade; that suits an internal risk dashboard, but a report you hand to an auditor would then be one you graded yourself. Showing both readings side by side lets the reader judge the difference.
+
+A reason that quotes your policy text word for word is refused, because a report never contains the policy itself. Reword it and issue again.

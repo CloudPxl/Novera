@@ -5,7 +5,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { storeSecret } from "@/lib/store/secrets.ts";
-import { probeAgent } from "@/lib/workflow/run.ts";
+import { probeAgent, reissueReportWithReview } from "@/lib/workflow/run.ts";
+import { NothingToDisclose } from "@/lib/report/reissue.ts";
+import { LeakError } from "@/lib/report/redact.ts";
 import { retestCase } from "@/lib/workflow/retest.ts";
 import { validateSuite, suiteFromCsv } from "@/lib/suites/validate.ts";
 import { diagnoseFailure } from "@/lib/diagnose/index.ts";
@@ -645,6 +647,35 @@ export async function reviewVerdict(_prev: FormState, form: FormData): Promise<F
       ? "Recorded — you agree with the verdict."
       : "Recorded — you disagree with the verdict. It stands as graded, and your finding is kept beside it on this run.",
   };
+}
+
+/**
+ * Seals a new report for a run that discloses the human review filed since its latest
+ * report. The earlier report is left exactly as it was and keeps verifying.
+ */
+export async function reissueReport(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const runId = String(form.get("runId") ?? "").trim();
+  if (!runId) return { error: "No run was named." };
+
+  const admin = await assertMembership(user.id, workspace.id);
+  const { data: run } = await admin
+    .from("runs").select("id").eq("id", runId).eq("workspace_id", workspace.id).maybeSingle();
+  if (!run) return { error: "That run could not be found." };
+
+  try {
+    await reissueReportWithReview({ client: admin, workspaceId: workspace.id, runId });
+  } catch (e) {
+    if (e instanceof NothingToDisclose) return { error: e.message };
+    // A reason that quotes the policy verbatim would put the policy in a client's hands.
+    if (e instanceof LeakError) {
+      return { error: "A reason given in a review contains material that cannot go in a client report, such as your policy text. The report was not issued." };
+    }
+    return { error: e instanceof Error ? e.message : "The report could not be issued." };
+  }
+
+  revalidatePath(`/runs/${runId}`);
+  return { notice: "Issued. The new report discloses the review; the earlier one is unchanged and still verifies." };
 }
 
 /**

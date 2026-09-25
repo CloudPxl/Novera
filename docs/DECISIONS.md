@@ -1750,3 +1750,42 @@ Found in passing: **a new run defaulted to `eu-support v1`.** The agent page's s
 select was ordered by key only, and `createRun`'s fallback pinned `version 1`. A customer
 who never opened the dropdown ran 16 scenarios while the landing page promised 36. Both
 now take the newest version.
+
+## 2026-09-25 — Does a person's finding count? Measured against the market, then decided
+
+Asked whether a reviewer's finding should ever count in the score, I checked what the
+market does, from current docs. **Giskard Hub** recalculates the security grade the
+moment a finding is marked a false positive. **Opik** routes human and LLM-judge scores
+through one path and averages them. **LangSmith** turns corrections into few-shot examples
+for the evaluator; **Braintrust** keeps human scores beside automated ones for calibration.
+
+So it does matter elsewhere — and the answer here is still no, for a reason specific to
+what we sell. In those products the reviewer is a team improving its own agent. In
+Novera the reviewer is the party the report is *about*. A score the tested party can move
+is a self-graded document, which is the one thing a report handed to an auditor cannot be.
+
+What changed instead:
+- **The run page shows the run read the reviewer's way** — "this run would have 9 passed,
+  32 failed" — as a comparison, never as a score. `withFindingsApplied`, from stored rows.
+- **A review can reach a client, as a new sealed report** (format 11). Reports seal when a
+  run completes, so no review can predate one, and a sealed report cannot change. The
+  reissue carries the original payload unchanged, adds `human_review` (every disagreement
+  and gap fill with its reason; agreements counted), names the original by hash in
+  `reissue.of`, and chains to the agent's latest report. Refused when nothing new was
+  reviewed (no minting copies), when the latest report was revoked (a reissue would undo a
+  withdrawal), and when a reason quotes the policy verbatim.
+- Live: two reviews on the v4 demo run, reissued; both reports verify, the second reissue
+  with nothing new is refused, all 16 sealed reports render and export across formats
+  1–11, the revoked one still refuses. Run page and report axe-clean at 390 and 1440.
+
+Found in passing, each fixed:
+- **The run page read its report with `.maybeSingle()`**, which returns nothing once a run
+  has two reports — the "Open the client report" button would have vanished the moment
+  anyone reissued. `live.tsx` had the same read. Both now take the newest.
+- **The success message could never be seen**: the form unmounts when nothing is left to
+  disclose. The confirmation is now a line derived from the stored report.
+- **The 404 page had no `<main>` landmark** — Next's built-in page, and the only page axe
+  failed. It now also says "or you are not a member", because RLS makes another
+  workspace's run indistinguishable from a missing one.
+- The CSP console errors seen in the browser are the dev server's own injected style tags;
+  a production build of the same page logs none.

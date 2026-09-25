@@ -6,8 +6,8 @@ import { sessionClient } from "@/lib/supabase/server.ts";
 import { rerunFrom } from "@/lib/workflow/actions.ts";
 import { compareRuns } from "@/lib/evidence/compare.ts";
 import { loadStability } from "@/lib/evidence/stability-history.ts";
-import { alignment, latestReviews, type VerdictReview } from "@/lib/evidence/reviews.ts";
-import { ReviewVerdict, ReviewHistory, type ReviewEntry } from "./review.tsx";
+import { alignment, latestReviews, withFindingsApplied, type VerdictReview } from "@/lib/evidence/reviews.ts";
+import { ReviewVerdict, ReviewHistory, ReissueReport, type ReviewEntry } from "./review.tsx";
 import { unstableInComparison } from "@/lib/evidence/stability.ts";
 import { coverage, coverageByCategory } from "@/lib/evidence/coverage.ts";
 import { categoryMeta } from "@/lib/evidence/categories.ts";
@@ -61,11 +61,14 @@ export default async function RunPage({
     .maybeSingle();
   if (!run) notFound();
 
-  const [{ data: agent }, { data: policy }, { data: suite }, { data: report }] = await Promise.all([
+  const [{ data: agent }, { data: policy }, { data: suite }, { data: reportRows }] = await Promise.all([
     db.from("agents").select("name").eq("id", run.agent_id).maybeSingle(),
     db.from("policies").select("version").eq("id", run.policy_id).maybeSingle(),
     db.from("suites").select("name, version, cases").eq("id", run.suite_id).maybeSingle(),
-    db.from("reports").select("token").eq("run_id", id).maybeSingle(),
+    // Newest first: a run can carry a reissue that discloses human review, and a
+    // single-row read of more than one report returns nothing at all.
+    db.from("reports").select("token, created_at, revoked_at, disclosed:payload->human_review->>as_of").eq("run_id", id)
+      .order("created_at", { ascending: false }),
   ]);
 
   const suiteCases = Array.isArray(suite?.cases) ? (suite.cases as Array<Record<string, unknown>>) : [];
@@ -127,6 +130,17 @@ export default async function RunPage({
   }));
   const currentReviews = latestReviews(reviews);
   const reviewAlignment = alignment(currentReviews.values());
+
+  const report = reportRows?.[0] ?? null;
+  const earlierReports = (reportRows ?? []).slice(1);
+  // Reviews the latest report does not carry — the only reason to issue another.
+  const undisclosedReviews = report && !report.revoked_at
+    ? reviews.filter((r) => r.createdAt > (report.created_at as string)).length
+    : 0;
+  const applied = withFindingsApplied(
+    rows.map((c) => ({ runCaseId: c.id as string, status: c.status as "pass" | "fail" | "error" })),
+    currentReviews,
+  );
 
   // Map the policy a proposal produced to its version number, so an approved change
   // can say what it became rather than showing an opaque id.
@@ -422,7 +436,42 @@ export default async function RunPage({
                   person.{" "}
                 </>
               )}
-              Reviews sit beside the verdicts and change no count, grade or report.
+              Reviews sit beside the verdicts and change no count or grade.
+              {applied.changed > 0 && (
+                <>
+                  {" "}Read with your findings in place of the verdicts they dispute, this run would have{" "}
+                  {applied.passed} passed, {applied.failed} failed
+                  {applied.noVerdict > 0 && <> and {applied.noVerdict} without a result</>} — your own reading,
+                  shown for comparison, not a score.
+                </>
+              )}
+            </p>
+          )}
+          {undisclosedReviews > 0 && <ReissueReport runId={run.id} pending={undisclosedReviews} />}
+          {/* Read from the stored report rather than from the action's reply: the form
+              unmounts once nothing is left to disclose, and its confirmation with it. */}
+          {undisclosedReviews === 0 && report?.disclosed && (
+            <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+              The newest report discloses the review recorded up to{" "}
+              <time dateTime={report.disclosed as string} className="tnum">
+                {String(report.disclosed).slice(0, 16).replace("T", " ")} UTC
+              </time>
+              , beside the verdicts it concerns.
+            </p>
+          )}
+          {earlierReports.length > 0 && (
+            <p className="mt-3 text-xs leading-relaxed text-ink-faint">
+              The button below opens the newest report for this run. Earlier ones stay exactly as issued:{" "}
+              {earlierReports.map((r, i) => (
+                <span key={r.token as string}>
+                  {i > 0 && ", "}
+                  <Link href={`/report/${r.token}`} className="underline underline-offset-2 hover:text-ink">
+                    issued {String(r.created_at).slice(0, 10)}
+                  </Link>
+                  {r.revoked_at ? " (revoked)" : ""}
+                </span>
+              ))}
+              .
             </p>
           )}
 

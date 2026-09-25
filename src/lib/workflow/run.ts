@@ -11,6 +11,9 @@ import { supabaseRunStore } from "../store/supabase-run-store.ts";
 import { createRoutedChat } from "../router/execute.ts";
 import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
 import { buildReport } from "../report/build.ts";
+import { reissueWithReview, NothingToDisclose } from "../report/reissue.ts";
+import type { ReportPayload } from "../report/payload.ts";
+import type { VerdictReview } from "../evidence/reviews.ts";
 import { loadStability } from "../evidence/stability-history.ts";
 import { PROBE_INPUT } from "../agents/types.ts";
 import { discoverShape } from "../agents/discover.ts";
@@ -239,6 +242,89 @@ export async function publishReport(args: {
     .select("id")
     .single();
 
+  if (error) throw new Error(`Could not store the report: ${error.message}`);
+  return { reportId: data.id as string, token, contentHash, expiresAt };
+}
+
+/**
+ * Seals a new report for a run, disclosing the human review filed since its latest one.
+ *
+ * The original stays exactly as issued and keeps verifying; the new document carries it
+ * unchanged, adds the review, and names the report it reissues. Refused when nothing
+ * was reviewed since the latest report — a second copy with nothing new in it would
+ * only be a second link to keep track of — and when that report was revoked, because a
+ * revoked document was withdrawn for a reason a reissue would quietly undo.
+ */
+export async function reissueReportWithReview(args: {
+  client: SupabaseClient;
+  workspaceId: string;
+  runId: string;
+  expiresInDays?: number;
+}): Promise<PublishedReport> {
+  const { client, workspaceId, runId } = args;
+
+  const { data: latest } = await client
+    .from("reports")
+    .select("content_hash, payload, created_at, revoked_at")
+    .eq("run_id", runId).eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!latest) throw new Error("This run has no report to reissue.");
+  if (latest.revoked_at) throw new Error("The latest report for this run was revoked, so it is not reissued.");
+
+  const { data: cases, error: casesError } = await client
+    .from("run_cases").select("id, case_id, status").eq("run_id", runId).eq("workspace_id", workspaceId);
+  if (casesError) throw new Error(`Could not read the run's cases: ${casesError.message}`);
+  const caseIds = (cases ?? []).map((c) => c.id as string);
+
+  const { data: reviewRows, error: reviewError } = caseIds.length
+    ? await client
+        .from("verdict_reviews")
+        .select("id, run_case_id, reviewer_id, verdict_status, finding, note, created_at")
+        .in("run_case_id", caseIds)
+    : { data: [], error: null };
+  if (reviewError) throw new Error(`Could not read the reviews: ${reviewError.message}`);
+
+  const reviews: VerdictReview[] = (reviewRows ?? []).map((r) => ({
+    id: r.id as string,
+    runCaseId: r.run_case_id as string,
+    reviewerId: r.reviewer_id as string,
+    verdictStatus: r.verdict_status as VerdictReview["verdictStatus"],
+    finding: r.finding as VerdictReview["finding"],
+    note: r.note as string,
+    createdAt: r.created_at as string,
+  }));
+  if (!reviews.some((r) => r.createdAt > (latest.created_at as string))) throw new NothingToDisclose();
+
+  const { data: runRow } = await client
+    .from("runs").select("agent_id, policy_id").eq("id", runId).single();
+  const { data: earlier } = await client
+    .from("reports")
+    .select("content_hash, runs!inner(agent_id)")
+    .eq("runs.agent_id", runRow!.agent_id)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const { data: policy } = await client
+    .from("policies").select("body").eq("id", runRow!.policy_id).single();
+
+  const { payload, contentHash } = reissueWithReview({
+    original: latest.payload as ReportPayload,
+    originalHash: latest.content_hash as string,
+    previousReportHash: (earlier?.content_hash as string | undefined) ?? null,
+    cases: (cases ?? []).map((c) => ({
+      runCaseId: c.id as string,
+      caseId: c.case_id as string,
+      status: c.status as "pass" | "fail" | "error",
+    })),
+    reviews,
+    asOf: new Date().toISOString(),
+    privateMaterial: policy?.body ? [policy.body as string] : [],
+  });
+
+  const token = randomBytes(24).toString("base64url");
+  const expiresAt = new Date(Date.now() + (args.expiresInDays ?? 30) * 86_400_000).toISOString();
+  const { data, error } = await client
+    .from("reports")
+    .insert({ workspace_id: workspaceId, run_id: runId, token, content_hash: contentHash, payload, expires_at: expiresAt })
+    .select("id").single();
   if (error) throw new Error(`Could not store the report: ${error.message}`);
   return { reportId: data.id as string, token, contentHash, expiresAt };
 }

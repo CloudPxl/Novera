@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { reviewVerdict, type FormState } from "@/lib/workflow/actions.ts";
+import { reissueReport, reviewVerdict, type FormState } from "@/lib/workflow/actions.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { Badge, Field, inputClass } from "@/components/ui/primitives.tsx";
 import { REVIEW_NOTE_MAX, REVIEW_NOTE_MIN } from "@/lib/evidence/reviews.ts";
@@ -48,7 +48,8 @@ export function ReviewVerdict({ runCaseId, status }: { runCaseId: string; status
         The automated verdict here is <strong className="font-semibold text-ink">{label(status)}</strong> and
         stays that way. Your finding is kept beside it, with your reason, on this page. A
         client report already sealed from this run does not change: its hash is what proves
-        nothing was edited after it was issued.
+        nothing was edited after it was issued. You can issue a new report that discloses
+        your finding and its reason, beside the verdict.
       </p>
 
       <fieldset>
@@ -128,5 +129,32 @@ export function ReviewHistory({ reviews }: { reviews: ReviewEntry[] }) {
         })}
       </ul>
     </div>
+  );
+}
+
+/**
+ * Issues a new sealed report that discloses the review. Offered only while there is
+ * review the latest report does not carry, so it cannot be used to mint copies.
+ */
+export function ReissueReport({ runId, pending }: { runId: string; pending: number }) {
+  const [state, submit] = useActionState<FormState, FormData>(reissueReport, {});
+
+  return (
+    <form action={submit} className="mt-3 rounded-lg border border-line p-3">
+      <input type="hidden" name="runId" value={runId} />
+      <p className="text-sm leading-relaxed text-ink-soft">
+        {pending} {pending === 1 ? "review was" : "reviews were"} recorded after this run&rsquo;s report was
+        issued. A new report can disclose {pending === 1 ? "it" : "them"}: every disagreement and its reason, beside the verdict,
+        and the result with your findings applied, labelled as your own reading. The score and grade
+        stay as graded, and the earlier report is unchanged.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <SubmitButton size="sm" variant="secondary" pendingLabel="Issuing…">
+          Issue a report with the review disclosed
+        </SubmitButton>
+        {state.notice && <p role="status" className="text-xs font-medium text-pass-text">{state.notice}</p>}
+        {state.error && <p role="alert" className="text-xs font-medium text-fail-text">{state.error}</p>}
+      </div>
+    </form>
   );
 }

@@ -107,6 +107,26 @@ export function reportToCsv(payload: ReportPayload, contentHash: string): string
   }
   rows.push([]);
 
+  // Format 11, reissues only.
+  if (payload.human_review) {
+    const review = payload.human_review;
+    rows.push(["Review by the tested party", review.note]);
+    rows.push(["Reviewed by", review.reviewed_by]);
+    rows.push(["Reviewed", "Agreed", "Disagreed", "Finding with no automated result"]);
+    rows.push([review.reviewed, review.agreed, review.disagreed, review.resolved_gaps]);
+    rows.push(["Their reading — not a score", "Passed", "Failed", "Without a result"]);
+    rows.push(["", review.with_findings_applied.passed, review.with_findings_applied.failed, review.with_findings_applied.no_verdict]);
+    rows.push(["Scenario", "Automated verdict", "Reviewer's finding", "Reason", "Reviewed at"]);
+    for (const f of review.findings) {
+      rows.push([f.case_id, f.verdict === "error" ? "no result" : f.verdict, f.finding, f.note, f.reviewed_at]);
+    }
+    rows.push([]);
+  }
+  if (payload.reissue) {
+    rows.push(["Reissues report", payload.reissue.of]);
+    rows.push([]);
+  }
+
   // Never dropped. A list of failures without its scope reads as a finished audit.
   rows.push(["Scope and limitations", limitations]);
 
@@ -241,6 +261,10 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
       `this run executed, sealed as \`${run.manifest_hash}\`.`,
     );
   }
+  if (payload.reissue) {
+    out.push("");
+    out.push(`Reissues an earlier report for the same run, to disclose review, digest \`${payload.reissue.of}\`.`);
+  }
   if (run.previous_report_hash) {
     out.push("");
     out.push(`Follows an earlier report for the same agent, digest \`${run.previous_report_hash}\`.`);
@@ -292,6 +316,29 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
       );
     }
     out.push("");
+  }
+
+  // Format 11, and only on a reissue. Nothing is printed for a report that made no
+  // statement about review.
+  const review = payload.human_review;
+  if (review) {
+    const applied = review.with_findings_applied;
+    out.push("## Review by the tested party");
+    out.push("");
+    out.push(review.note);
+    out.push("");
+    out.push(`- Reviewed by: ${review.reviewed_by}`);
+    out.push(`- Verdicts reviewed: ${review.reviewed} — agreed with ${review.agreed}, disagreed with ${review.disagreed}`
+      + (review.resolved_gaps > 0 ? `, finding on ${review.resolved_gaps} with no automated result` : ""));
+    out.push(`- Their reading: ${applied.passed} passed, ${applied.failed} failed`
+      + (applied.no_verdict > 0 ? `, ${applied.no_verdict} without a result` : "")
+      + " if their findings replaced the verdicts they dispute. Not a score.");
+    out.push(`- As of: ${review.as_of.slice(0, 16).replace("T", " ")} UTC`);
+    out.push("");
+    for (const f of review.findings) {
+      out.push(`**${f.case_id}** — ${f.verdict === "error" ? "no automated result" : `graded ${f.verdict}`}; the reviewer found it ${f.finding}. ${f.note}`);
+      out.push("");
+    }
   }
 
   out.push("## Scope and limitations");

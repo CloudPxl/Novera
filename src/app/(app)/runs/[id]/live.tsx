@@ -66,7 +66,8 @@ export function LiveRun({
       setStatus(run.status as Status);
       if (run.error) setFailure(run.error);
       if (run.status === "completed" || run.status === "aborted") {
-        const { data: rep } = await db.from("reports").select("token").eq("run_id", runId).maybeSingle();
+        const { data: rep } = await db.from("reports").select("token").eq("run_id", runId)
+          .order("created_at", { ascending: false }).limit(1).maybeSingle();
         if (rep?.token) setToken(rep.token);
         return true;
       }

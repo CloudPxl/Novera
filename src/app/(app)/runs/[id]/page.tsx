@@ -6,6 +6,8 @@ import { sessionClient } from "@/lib/supabase/server.ts";
 import { rerunFrom } from "@/lib/workflow/actions.ts";
 import { compareRuns } from "@/lib/evidence/compare.ts";
 import { loadStability } from "@/lib/evidence/stability-history.ts";
+import { alignment, latestReviews, type VerdictReview } from "@/lib/evidence/reviews.ts";
+import { ReviewVerdict, ReviewHistory, type ReviewEntry } from "./review.tsx";
 import { unstableInComparison } from "@/lib/evidence/stability.ts";
 import { coverage, coverageByCategory } from "@/lib/evidence/coverage.ts";
 import { categoryMeta } from "@/lib/evidence/categories.ts";
@@ -46,7 +48,8 @@ export default async function RunPage({
 }) {
   const { id } = await params;
   const { compare } = await searchParams;
-  await requireWorkspace();
+  const { user: viewer } = await requireWorkspace();
+  const viewerId = viewer.id;
   const db = await sessionClient();
 
   const { data: run } = await db
@@ -102,6 +105,28 @@ export default async function RunPage({
         .in("run_case_id", rows.map((c) => c.id))
         .order("created_at", { ascending: false })
     : { data: null };
+
+  // A person's findings on verdicts. Kept beside each verdict, never in place of it
+  // (migration 0028), and read in one query for the whole run.
+  const { data: reviewRows } = settled && rows.length
+    ? await db
+        .from("verdict_reviews")
+        .select("id, run_case_id, reviewer_id, verdict_status, finding, note, created_at")
+        .in("run_case_id", rows.map((c) => c.id))
+        .order("created_at", { ascending: false })
+    : { data: null };
+
+  const reviews: VerdictReview[] = (reviewRows ?? []).map((r) => ({
+    id: r.id as string,
+    runCaseId: r.run_case_id as string,
+    reviewerId: r.reviewer_id as string,
+    verdictStatus: r.verdict_status as VerdictReview["verdictStatus"],
+    finding: r.finding as VerdictReview["finding"],
+    note: r.note as string,
+    createdAt: r.created_at as string,
+  }));
+  const currentReviews = latestReviews(reviews);
+  const reviewAlignment = alignment(currentReviews.values());
 
   // Map the policy a proposal produced to its version number, so an approved change
   // can say what it became rather than showing an opaque id.
@@ -305,16 +330,30 @@ export default async function RunPage({
   // matrix as slots, so the server actions they submit to stay server actions.
   const diagnosis: Record<string, React.ReactNode> = {};
   for (const c of rows) {
-    if (c.status === "pass") continue;
     const forCase = proposalsByCase.get(c.id as string) ?? [];
+    const caseReviews: ReviewEntry[] = reviews
+      .filter((r) => r.runCaseId === c.id)
+      .map((r) => ({ ...r, mine: r.reviewerId === viewerId }));
+    // Review is offered on passes too: a false pass is the verdict a person most needs
+    // to be able to dispute. Diagnosis and retest stay on the ones that did not pass.
     diagnosis[c.id as string] = (
       <>
-        <DiagnoseButton runCaseId={c.id as string} hasProposal={forCase.length > 0} />
-        {forCase.map((p) => (
-          <ProposalCard key={p.id} proposal={p} />
-        ))}
-        <RetestButton runCaseId={c.id as string} />
-        <RetestHistory retests={retestsByCase.get(c.id as string) ?? []} />
+        {c.status !== "pass" && (
+          <>
+            <DiagnoseButton runCaseId={c.id as string} hasProposal={forCase.length > 0} />
+            {forCase.map((p) => (
+              <ProposalCard key={p.id} proposal={p} />
+            ))}
+            <RetestButton runCaseId={c.id as string} />
+            <RetestHistory retests={retestsByCase.get(c.id as string) ?? []} />
+          </>
+        )}
+        {settled && (
+          <>
+            <ReviewHistory reviews={caseReviews} />
+            <ReviewVerdict runCaseId={c.id as string} status={c.status as "pass" | "fail" | "error"} />
+          </>
+        )}
       </>
     );
   }
@@ -358,6 +397,34 @@ export default async function RunPage({
               runError={(run.error as string | null) ?? null}
             />
           </div>
+
+          {/* How often the automated verdicts matched a person who read the transcript —
+              LangSmith calls it the alignment score. Counted only over verdicts that were
+              verdicts: a person settling a disputed case is filling a gap, not agreeing
+              with the grader, and is counted separately. Changes no other number. */}
+          {currentReviews.size > 0 && (
+            <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+              {reviewAlignment.rate !== null && (
+                <>
+                  A person reviewed {reviewAlignment.agreed + reviewAlignment.disagreed} automated{" "}
+                  {reviewAlignment.agreed + reviewAlignment.disagreed === 1 ? "verdict" : "verdicts"} in this run
+                  and agreed with {reviewAlignment.agreed}
+                  {reviewAlignment.disagreed > 0 && (
+                    <>, <strong className="font-semibold text-fail-text">disagreed with {reviewAlignment.disagreed}</strong></>
+                  )}
+                  .{" "}
+                </>
+              )}
+              {reviewAlignment.resolvedGaps > 0 && (
+                <>
+                  {reviewAlignment.resolvedGaps} {reviewAlignment.resolvedGaps === 1 ? "scenario" : "scenarios"} with
+                  no automated result {reviewAlignment.resolvedGaps === 1 ? "was" : "were"} given a finding by a
+                  person.{" "}
+                </>
+              )}
+              Reviews sit beside the verdicts and change no count, grade or report.
+            </p>
+          )}
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
             {report?.token && (

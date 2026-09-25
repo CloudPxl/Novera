@@ -116,11 +116,27 @@ try {
       suite_id: suite!.id, status: "completed",
     })
     .select("id").single();
-  await admin.from("run_cases").insert({
+  const { data: runCase } = await admin.from("run_cases").insert({
     workspace_id: aliceWs.id, run_id: run!.id, case_id: "T01", category: "policy",
     obligation: "policy_accuracy", severity: "low", input: "i", expected: "e",
     assertions: [], status: "fail", judge_model: null, judge_attempts: [],
+  }).select("id").single();
+
+  // The evidence tables added since this script was written. It covered eight tables
+  // and every later one was assumed to inherit the pattern; a check over a subset
+  // proves the subset. Each is seeded, then read by its owner — so "the other account
+  // sees nothing" cannot pass merely because the seed silently failed.
+  const seeded: Array<{ table: string; ok: boolean; why?: string }> = [];
+  const { error: obsErr } = await admin.from("evidence_observations").insert({
+    workspace_id: aliceWs.id, run_case_id: runCase!.id, connector: "http_read",
+    connector_version: "1.0.0", mode: "read_only", status: "confirmed", detail: "seeded",
   });
+  seeded.push({ table: "evidence_observations", ok: !obsErr, why: obsErr?.message });
+  const { error: revErr } = await admin.from("verdict_reviews").insert({
+    workspace_id: aliceWs.id, run_case_id: runCase!.id, reviewer_id: alice.userId,
+    verdict_status: "fail", finding: "pass", note: "Seeded to prove isolation.",
+  });
+  seeded.push({ table: "verdict_reviews", ok: !revErr, why: revErr?.message });
 
   check((await alice.client.from("runs").select("id").eq("id", run!.id)).data?.length === 1,
     "the owner can read her own run");
@@ -136,6 +152,16 @@ try {
     ((await bob.client.from("workspaces").select("id").eq("id", aliceWs.id)).data ?? []).length === 0,
     "a second account cannot read the first's workspace",
   );
+
+  const aliceSees = async (table: string) =>
+    ((await alice.client.from(table).select("id").eq("workspace_id", aliceWs.id)).data ?? []).length;
+
+  for (const { table, ok, why } of seeded) {
+    check(ok, `a row can be seeded in ${table}`, why?.slice(0, 60));
+    if (!ok) continue;
+    check((await aliceSees(table)) > 0, `the owner can read her own ${table}`);
+    check((await bobSees(table)) === 0, `a second account cannot read the first's ${table}`);
+  }
 
   const { data: secrets } = await bob.client.from("secrets").select("id");
   check((secrets ?? []).length === 0, "no signed-in user can read the secrets table at all");

@@ -1683,3 +1683,42 @@ Noted, not changed: a question *about writing refund rules* was escalated to a p
 the keyword rule for money. That is the conservative direction — it costs a person's
 time, never a customer's trust — and loosening a safety escalation for a docs question
 is the wrong trade.
+
+## 2026-09-25 — A person's finding, beside the verdict (Phase 6C, capability gap)
+
+LangSmith, Opik and Maxim all route verdicts to a person; LangSmith derives an
+*alignment score* — how often the judge matched the human — from exactly that. Novera
+had no path at all. A disputed case could only be rerun, and an operator who believed a
+verdict was wrong had nowhere to say so except outside the product.
+
+The feature is shaped by how it could be abused. The operator is usually the agency
+whose agent was tested, and a review that *replaced* a verdict would let them turn a
+failure into a pass before a client saw it. So migration 0028 makes `verdict_reviews` a
+record beside the verdict: the verdict is never touched, the review freezes the verdict
+it read (taken from the stored row, never from the form), a reason of at least ten
+characters is required, "no result" is not a finding a person can give, a changed mind
+is a second row, and a review cannot be filed against another workspace's case even with
+the service role. All eight properties are proved by `verify:db`, and the tenancy check
+now seeds and reads the evidence tables it had never covered — non-vacuously, so "the
+other account sees nothing" cannot pass because the seed failed.
+
+**Alignment is counted only over verdicts that were verdicts.** A person resolving a
+disputed case is filling a gap, not agreeing with a grader; folding the two together
+would let a run full of hand-settled disputes read as a grader people always agreed
+with. The run page states both, separately, and says reviews change no count.
+
+**A review is offered on passes.** A false pass is the verdict a person most needs to be
+able to dispute, because nothing else in a report ever will.
+
+**Caught before shipping:** the form first said a review would appear "in a report sealed
+from this run". It cannot — the report is sealed when the run completes, and its hash is
+the point. Corrected in both the form and the confirmation. How a person's finding could
+reach a client without breaking the seal is a real open question: a signed addendum
+chained to the report's hash is the shape that fits, and it is not built.
+
+**Not decided here, deliberately:** whether a person's finding on a disputed case should
+ever count in the score. Today it counts nowhere. That is a product decision about what a
+score means, and it is yours.
+
+Found in passing: an expanded case's detail headings skipped from `<h2>` to `<h4>`.
+Earlier audits of the run page never expanded a case, so axe never saw them. Fixed.

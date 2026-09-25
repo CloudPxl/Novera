@@ -15,6 +15,7 @@ import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
 import { connectionsFromEnv } from "@/lib/providers/registry.ts";
 import { plannedRoutes, workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
 import { explainKeyFailure } from "@/lib/providers/key-failure.ts";
+import { REVIEW_NOTE_MIN, REVIEW_NOTE_MAX } from "@/lib/evidence/reviews.ts";
 import { manifestForNewRun } from "../report/manifest.ts";
 import { httpVerificationConnector } from "../evidence/connectors/http.ts";
 import { connectionFor } from "@/lib/providers/workspace-connections.ts";
@@ -583,6 +584,63 @@ export async function removeJudgeKey(_prev: FormState, form: FormData): Promise<
     notice: after.canRun
       ? `Removed. ${TRIAL_RUN_LIMIT - after.runsUsed} of the ${TRIAL_RUN_LIMIT} trial runs are left.`
       : `Removed. This workspace has run ${after.runsUsed} suites and the trial covers ${TRIAL_RUN_LIMIT}, so no further run can start until a key is connected.`,
+  };
+}
+
+/**
+ * Records a person's finding on a verdict, beside it — never in place of it.
+ *
+ * The verdict being reviewed is read from the stored row, not taken from the form: a
+ * review that froze whatever status the browser claimed could record "the person
+ * agreed with a pass" over a case that had failed. The operator reviewing is often the
+ * agency whose agent was tested, which is exactly why the verdict is untouchable and a
+ * reason is required (migration 0028).
+ */
+export async function reviewVerdict(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const runCaseId = String(form.get("runCaseId") ?? "").trim();
+  const finding = String(form.get("finding") ?? "");
+  const note = String(form.get("note") ?? "").trim();
+
+  if (!runCaseId) return { error: "No scenario was named." };
+  if (finding !== "pass" && finding !== "fail") {
+    return { error: "Say whether you find this scenario passed or failed." };
+  }
+  if (note.length < REVIEW_NOTE_MIN) {
+    return { error: "Say why, in a sentence. A finding with no reason is an assertion, not evidence." };
+  }
+  if (note.length > REVIEW_NOTE_MAX) {
+    return { error: `Keep the reason under ${REVIEW_NOTE_MAX.toLocaleString("en-GB")} characters.` };
+  }
+
+  const admin = await assertMembership(user.id, workspace.id);
+  const { data: runCase } = await admin
+    .from("run_cases")
+    .select("id, run_id, status")
+    .eq("id", runCaseId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+  if (!runCase) return { error: "That scenario could not be found." };
+
+  const { error } = await admin.from("verdict_reviews").insert({
+    workspace_id: workspace.id,
+    run_case_id: runCaseId,
+    reviewer_id: user.id,
+    verdict_status: runCase.status,
+    finding,
+    note,
+  });
+  if (error) return { error: `Could not record the review: ${error.message}` };
+
+  revalidatePath(`/runs/${runCase.run_id}`);
+
+  if (runCase.status === "error") {
+    return { notice: "Recorded. The scenario still counts as producing no automated result; your finding is shown beside it." };
+  }
+  return {
+    notice: runCase.status === finding
+      ? "Recorded — you agree with the verdict."
+      : "Recorded — you disagree with the verdict. It stands as graded, and your finding is kept beside it on this run.",
   };
 }
 

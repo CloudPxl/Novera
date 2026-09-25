@@ -314,12 +314,12 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
     <div className="novera-panel-in border-t border-line bg-ground px-3 py-4 sm:px-4">
       <div className="grid gap-4 lg:grid-cols-2">
         <section>
-          <h4 className="type-pill text-ink-faint">What the scenario sent</h4>
+          <h3 className="type-pill text-ink-faint">What the scenario sent</h3>
           <p className="mt-1.5 whitespace-pre-wrap rounded-control bg-surface px-3 py-2 text-sm leading-relaxed text-ink ring-1 ring-line">
             {row.input}
           </p>
 
-          <h4 className="mt-4 type-pill text-ink-faint">What the agent replied</h4>
+          <h3 className="mt-4 type-pill text-ink-faint">What the agent replied</h3>
           {row.responseText ? (
             <p className="mt-1.5 whitespace-pre-wrap rounded-control bg-surface px-3 py-2 text-sm leading-relaxed text-ink ring-1 ring-line">
               {row.responseText}
@@ -332,7 +332,7 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
         </section>
 
         <section>
-          <h4 className="type-pill text-ink-faint">Assertions</h4>
+          <h3 className="type-pill text-ink-faint">Assertions</h3>
           {row.assertions.length === 0 ? (
             <p className="mt-1.5 text-sm text-ink-soft">This scenario recorded no assertions.</p>
           ) : (
@@ -421,7 +421,7 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
               verbatim and never reach a client report. */}
           {row.trajectory.length > 0 && (
             <>
-              <h4 className="mt-4 type-pill text-ink-faint">What the agent did</h4>
+              <h3 className="mt-4 type-pill text-ink-faint">What the agent did</h3>
               <ol className="mt-1.5 space-y-1">
                 {row.trajectory.map((event) => (
                   <li
@@ -458,7 +458,7 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
 
           {row.rationale && (
             <>
-              <h4 className="mt-4 type-pill text-ink-faint">Why the judge decided that</h4>
+              <h3 className="mt-4 type-pill text-ink-faint">Why the judge decided that</h3>
               <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">{row.rationale}</p>
             </>
           )}

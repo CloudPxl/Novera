@@ -17,3 +17,11 @@ Anything still open goes to the models. On the trial allowance, every verdict is
 Runs continue through failure. One dead endpoint on scenario three still leaves the rest of the suite as evidence.
 
 Three things are counted separately and never as passes: a scenario that errored, a scenario that never ran, and a scenario whose expected action nothing could evidence. If scenarios never ran, the grade is `INCOMPLETE` and the remedy is to run the suite again. If everything ran and the evidence still does not support a letter, the grade is `WITHHELD`, and the remedy is different.
+
+## When you disagree with a verdict
+
+You cannot change a verdict, and neither can we. What you can do is record your own finding beside it: open the scenario on the run page, say whether you find that it passed or failed, and say why. A reason is required, because a finding with no reason is an assertion rather than evidence.
+
+Your finding is kept next to the automated verdict and never replaces it. It changes no count, no grade and no score. Changing your mind records a second finding; the first stays on record. A client report already sealed from the run does not change either — its hash is what proves nothing was edited after it was issued.
+
+The run page shows how often people who reviewed verdicts agreed with them. A finding on a scenario that produced no automated result is counted separately: it fills a gap rather than agreeing or disagreeing with anything.

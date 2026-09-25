@@ -234,6 +234,62 @@ if (userErr || !created?.user) {
         observeDelete?.message.slice(0, 70) ?? "the delete SUCCEEDED, which is wrong");
     }
 
+    // ------------------------------------------ verdict reviews (0028)
+    // A person's finding sits beside a verdict. The dangerous version of this feature is
+    // one where the agency whose agent was tested quietly rewrites a failure before a
+    // client sees it, so every property that prevents that is checked here, not read.
+    const { data: reviewed, error: reviewErr } = await db
+      .from("verdict_reviews")
+      .insert({
+        workspace_id: ws.id, run_case_id: runCase!.id, reviewer_id: userId,
+        verdict_status: "fail", finding: "pass",
+        note: "Read the transcript; the agent declined correctly.",
+      })
+      .select("id")
+      .single();
+    report(!reviewErr, "a person's finding can be recorded", reviewErr?.message.slice(0, 70) ?? "");
+
+    if (reviewed) {
+      const { error: reviewUpdate } = await db
+        .from("verdict_reviews").update({ finding: "fail" }).eq("id", reviewed.id);
+      report(!!reviewUpdate, "verdict_reviews refuses UPDATE — a changed mind is a second review",
+        reviewUpdate?.message.slice(0, 70) ?? "the update SUCCEEDED, which is wrong");
+
+      const { error: reviewDelete } = await db.from("verdict_reviews").delete().eq("id", reviewed.id);
+      report(!!reviewDelete, "verdict_reviews refuses DELETE outside an erasure",
+        reviewDelete?.message.slice(0, 70) ?? "the delete SUCCEEDED, which is wrong");
+    }
+
+    const { data: stillFailed } = await db.from("run_cases").select("status").eq("id", runCase!.id).single();
+    report(stillFailed?.status === "fail", "a review that disagrees leaves the verdict exactly as graded",
+      `the case reads ${stillFailed?.status}`);
+
+    const { error: reasonless } = await db.from("verdict_reviews").insert({
+      workspace_id: ws.id, run_case_id: runCase!.id, reviewer_id: userId,
+      verdict_status: "fail", finding: "pass", note: "ok",
+    });
+    report(!!reasonless, "a finding with no real reason is refused",
+      reasonless ? "refused by the constraint" : "it was ACCEPTED, which is wrong");
+
+    const { error: indecisive } = await db.from("verdict_reviews").insert({
+      workspace_id: ws.id, run_case_id: runCase!.id, reviewer_id: userId,
+      verdict_status: "fail", finding: "error", note: "I could not decide either way here.",
+    });
+    report(!!indecisive, "a person cannot record 'no result' as a finding",
+      indecisive ? "refused by the constraint" : "it was ACCEPTED, which is wrong");
+
+    // A review cannot be attached to another workspace's case, even with the service
+    // role, because a finding on someone else's evidence is not a finding.
+    const { data: otherWs } = await db
+      .from("workspaces").insert({ name: "__novera_verify_other__", owner_id: userId }).select("id").single();
+    const { error: crossTenant } = await db.from("verdict_reviews").insert({
+      workspace_id: otherWs!.id, run_case_id: runCase!.id, reviewer_id: userId,
+      verdict_status: "fail", finding: "pass", note: "Filed against a case in another workspace.",
+    });
+    report(!!crossTenant, "a review cannot be filed against another workspace's case",
+      crossTenant?.message.slice(0, 70) ?? "it was ACCEPTED, which is wrong");
+    await db.rpc("erase_workspace", { target: otherWs!.id });
+
     // The support queue carries the same draft/approved/sent discipline, and holds
     // the personal data of people who are not customers — so it gets both halves:
     // the states cannot be skipped, and the whole thing can still be erased.
@@ -300,6 +356,10 @@ if (userErr || !created?.user) {
     const { count: observationsLeft } = await db
       .from("evidence_observations").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id);
     report(observationsLeft === 0, "no observation survives the erasure", `${observationsLeft} row(s) left`);
+
+    const { count: reviewsLeft } = await db
+      .from("verdict_reviews").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id);
+    report(reviewsLeft === 0, "no review survives the erasure", `${reviewsLeft} row(s) left`);
   } catch (error) {
     report(false, "integrity checks could not run", error instanceof Error ? error.message : String(error));
   } finally {

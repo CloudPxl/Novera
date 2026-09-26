@@ -2133,3 +2133,31 @@ sits beside each heading. Measured: `verify:regressions` (13 live checks incl. R
 real sessions and erasure), full UI walk (record with an email, a card and a name → name
 removed by the person → approve → promote onto eu-support v1 → 17-case run → R01 "still
 failing"), axe clean at 390 and 1440. Persona simulation (9.2) is next.
+
+## 2026-09-26 — Phase 9.2a: conversation scenarios; retests ran a different test
+
+A scenario may declare `earlier_turns`: the customer's messages before `input`. Each is
+sent as its own turn with the conversation so far (`{{history}}` as a real message array,
+or a stable `{{conversation_id}}` for agents that keep state); the whole exchange is kept
+(`transcript`, 0032, on run_cases and case_retests). An agent with neither slot is not
+sent the scenario — the same rule as the metadata channel: turns sent as unrelated
+messages would be a different test under the same name. Rules apply to every turn; the
+judges see every reply, labelled. The judge rubric is unchanged on purpose: it is sealed
+by digest into every manifest and calibrated as written, so a conversation is presented
+through the fields it already grades rather than through a second rubric.
+
+Measured (`verify:conversation`): the same final message *passes* alone and *fails* as
+the third turn — the fixture gives a credit on the third reframing, which no
+single-message test can see; the unwired agent is sent 0 messages. Walked in the UI: a
+two-scenario suite, transcript rendered turn by turn, axe clean at 390 and 1440.
+
+**Found while building it — retests ran a different test from the run.** A retest
+rebuilt its scenario from the stored row plus `forbidden` and `effect`, dropping the
+scenario's rules, its `context`, and now its earlier turns; it also ran with no read-back
+and no production flag. So a retest of a metadata injection ran as a direct injection,
+and a retest of an action scenario reported "unverified" where the run could confirm it.
+It now runs the suite's own case, with the run's verifier and production guard. Proven
+live: a conversation's retest stored the full 6-turn transcript and the same verdict.
+Also: the validator silently drops unknown fields, so `earlier_turns` had to be parsed —
+a conversation that lost its turns would have imported as a single message. 9.2b next:
+a model-played simulated customer with a versioned persona.

@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentConfig } from "../agents/types.ts";
 import { buildAgentAdapter } from "../agents/factory.ts";
+import { buildVerifier } from "../evidence/connectors/index.ts";
 import { executeCase } from "../runner/execute.ts";
 import type { Suite, SuiteCase } from "../runner/types.ts";
 import { createRoutedChat } from "../router/execute.ts";
@@ -53,19 +54,21 @@ export async function retestCase(args: {
   if (!policy) throw new Error("This agent has no policy version to test against.");
 
   const { data: agentRow } = await client
-    .from("agents").select("config").eq("id", run.agent_id).maybeSingle();
+    .from("agents").select("config, verification, is_production").eq("id", run.agent_id).maybeSingle();
   if (!agentRow) throw new Error("The agent this scenario was run against no longer exists.");
 
-  // `forbidden` and `effect` live only in the suite — run_cases never stored either —
-  // and the judge needs them to grade the same way it did the first time. Without
-  // them the retest would be a slightly easier test than the run, which is the one
-  // thing it must not be: a retest exists to predict the run.
+  // The scenario comes from the suite version the run used, whole. It used to be
+  // rebuilt from the stored row plus `forbidden` and `effect`, which quietly dropped the
+  // scenario's rules, its `context` and its earlier turns: a retest of a metadata
+  // injection ran with no metadata, and a retest of a conversation sent one message.
+  // A retest exists to predict the run, so it runs exactly what the run ran. The row
+  // is the fallback only for a suite that no longer carries the case.
   const { data: suiteRow } = await client
     .from("suites").select("cases").eq("id", run.suite_id).maybeSingle();
   const suiteCases = Array.isArray(suiteRow?.cases) ? (suiteRow.cases as Suite["cases"]) : [];
   const fromSuite = suiteCases.find((c) => c.id === runCase.case_id);
 
-  const testCase: SuiteCase = {
+  const testCase: SuiteCase = fromSuite ?? {
     id: runCase.case_id as string,
     category: runCase.category as string,
     obligation: runCase.obligation as string,
@@ -73,8 +76,6 @@ export async function retestCase(args: {
     input: runCase.input as string,
     expected_behavior: runCase.expected as string,
     assertions: Array.isArray(runCase.assertions) ? (runCase.assertions as string[]) : [],
-    forbidden: fromSuite?.forbidden,
-    effect: fromSuite?.effect,
   };
 
   const adapter = await buildAgentAdapter({
@@ -83,7 +84,16 @@ export async function retestCase(args: {
   const { connections, routes } = await connectionsForWorkspace({ client, workspaceId });
   const judge = createRoutedChat({ connections, routes });
 
-  const outcome = await executeCase({ testCase, agent: adapter, policy: policy.body as string, judge });
+  // The same read-back and the same production guard as the run: without them a
+  // retest of an action scenario reports "unverified" where the run could confirm it,
+  // and a destructive scenario is judged by a different rule.
+  const outcome = await executeCase({
+    testCase, agent: adapter, policy: policy.body as string, judge,
+    verifier: await buildVerifier({
+      client, workspaceId, agentId: run.agent_id as string, verification: agentRow.verification,
+    }),
+    agentIsProduction: agentRow.is_production !== false,
+  });
 
   const { data: stored, error } = await client
     .from("case_retests")
@@ -92,6 +102,7 @@ export async function retestCase(args: {
       run_case_id: runCaseId,
       policy_id: policy.id,
       response_text: outcome.responseText,
+      transcript: outcome.transcript ?? null,
       status: outcome.status,
       rationale: outcome.rationale,
       failed_assertions: outcome.failedAssertions,

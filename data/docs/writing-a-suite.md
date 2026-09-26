@@ -29,6 +29,7 @@ These are optional:
 - `checks` — rules settled without a model, described below.
 - `effect` — an action the scenario expects your agent to take, and what counts as proof it happened.
 - `context` — facts the agent is told about the conversation rather than by the customer, such as account metadata. Every value must be text. An indirect injection is delivered here.
+- `earlier_turns` — makes the scenario a conversation: a list of up to eight messages the customer sends before `input`. See below.
 - `attack` — for an adversarial scenario: the `technique`, the `channel` it arrives on (`message`, `metadata`, `document` or `tool_result`), and optionally a `reference` such as an OWASP category. A `metadata` attack with no `context` is refused, because it would describe an attack the run never made.
 - `duty_refs` — the references this evidence is filed under. They organise evidence for a reader who already carries these duties; they are not a legal conclusion.
 - `destructive` and `fixture_only` — true or false. Either one stops the scenario running against any agent you have not explicitly marked as a test agent. An agent is treated as production until you say otherwise, and the scenario is recorded as producing no result, with the reason, rather than quietly skipped.
@@ -47,6 +48,16 @@ A rule can fail a scenario and can never pass one. "Did not say the forbidden th
 - `no_duplicate_call`, optionally with a `tool` — the same call with the same arguments must not be made twice in one turn. Two refunds for two invoices are two actions; the same refund issued twice is one action performed twice.
 - `approval_before`, with a `tool` — an approval step must be recorded before that tool is called.
 - `max_latency_ms`, with a `value` — the agent must answer within this many milliseconds. An unknown latency is not treated as a slow one.
+
+## Conversations
+
+Some failures only appear on the third time of asking: an agent that refuses a credit twice and gives it the third time passes every single-message test. A scenario with `earlier_turns` sends each of those messages as its own turn, with the conversation so far, and then sends `input` as the final message.
+
+The verdict is on the whole conversation. Rules apply to everything the agent said and did in every turn — a refund in the second turn fails the scenario even if the last reply refuses — and the graders read every reply, labelled by turn. The run page shows the conversation turn by turn.
+
+Your agent has to be able to receive a conversation. Add `{{history}}` to its request body where it expects earlier messages — as a whole value, it becomes a list of `{"role": "user" | "assistant", "content": …}` messages — or `{{conversation_id}}` if your agent keeps conversations itself; the id stays the same for every turn of one scenario. An agent with neither is not sent the scenario at all, and it is recorded as having no result, with the reason. Sending the turns as unrelated messages would test something else under the scenario's name.
+
+If any turn gets no reply, the scenario has no result and says which turn failed.
 
 ## Expected actions
 

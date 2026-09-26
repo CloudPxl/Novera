@@ -16,6 +16,7 @@ export function modelAgent(
     input: string,
     policy: string,
     context?: Record<string, string>,
+    history?: AgentInvocation["history"],
   ): Promise<AgentResult> {
     const started = Date.now();
     const base = policy
@@ -34,7 +35,15 @@ export function modelAgent(
 
     try {
       const response = await provider.chat(
-        { model: config.model, system, messages: [{ role: "user", content: input }], maxTokens: 2000 },
+        {
+          model: config.model,
+          system,
+          messages: [
+            ...(history ?? []).map((t) => ({ role: t.role === "customer" ? "user" as const : "assistant" as const, content: t.content })),
+            { role: "user" as const, content: input },
+          ],
+          maxTokens: 2000,
+        },
         apiKey,
       );
 
@@ -67,7 +76,9 @@ export function modelAgent(
   return {
     probe: () => call(PROBE_INPUT, ""),
     send: (invocation: AgentInvocation) =>
-      call(invocation.input, invocation.policy, invocation.context),
+      call(invocation.input, invocation.policy, invocation.context, invocation.history),
     acceptsContext: () => true,
+    // A prompt-based agent is called with the whole conversation every time.
+    acceptsConversation: () => true,
   };
 }

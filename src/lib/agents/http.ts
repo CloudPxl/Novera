@@ -11,20 +11,23 @@ import { suggestPathHint } from "./discover.ts";
  * throwing. The runner turns that into an `error` case, which is excluded from the
  * score and shown in the report's coverage block.
  */
-const CONTEXT_PLACEHOLDER = "{{context}}";
-
 /**
- * Whether the operator's body template has a slot for a scenario's context. Walked
- * as a parsed object, like `fillTemplate` itself, so a placeholder nested three
- * levels inside the template still counts.
+ * Whether the operator's body template has a given placeholder. Walked as a parsed
+ * object, like `fillTemplate` itself, so a placeholder nested three levels inside the
+ * template still counts.
  */
-function templateCarriesContext(template: unknown): boolean {
-  if (typeof template === "string") return template.includes(CONTEXT_PLACEHOLDER);
-  if (Array.isArray(template)) return template.some(templateCarriesContext);
+function templateCarries(template: unknown, placeholder: string): boolean {
+  if (typeof template === "string") return template.includes(placeholder);
+  if (Array.isArray(template)) return template.some((t) => templateCarries(t, placeholder));
   if (template && typeof template === "object") {
-    return Object.values(template as Record<string, unknown>).some(templateCarriesContext);
+    return Object.values(template as Record<string, unknown>).some((t) => templateCarries(t, placeholder));
   }
   return false;
+}
+
+/** The conversation so far, in the role names chat APIs use. */
+function chatHistory(history: AgentInvocation["history"]): Array<{ role: "user" | "assistant"; content: string }> {
+  return (history ?? []).map((t) => ({ role: t.role === "customer" ? "user" : "assistant", content: t.content }));
 }
 
 export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAdapter {
@@ -32,18 +35,25 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
     input: string,
     policy: string,
     context?: Record<string, string>,
+    history?: AgentInvocation["history"],
+    conversationId?: string,
   ): Promise<AgentResult> {
     const started = Date.now();
     const headers: Record<string, string> = { "content-type": "application/json", ...config.headers };
     if (authValue && config.authHeaderName) headers[config.authHeaderName] = authValue;
 
+    const messages = chatHistory(history);
     const body = fillTemplate(config.bodyTemplate, {
       input,
       policy,
       // Serialised rather than spread, because the shape of a customer's metadata is
       // theirs, not ours: one placeholder carries whatever the scenario declared.
       context: JSON.stringify(context ?? {}),
-    });
+      history: JSON.stringify(messages),
+      // A single-message scenario still gets an id, so a stateful agent never mixes two
+      // scenarios into one conversation.
+      conversation_id: conversationId ?? crypto.randomUUID(),
+    }, { history: messages });
 
     let response: Response;
     try {
@@ -118,7 +128,9 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
   return {
     probe: () => call(PROBE_INPUT, ""),
     send: (invocation: AgentInvocation) =>
-      call(invocation.input, invocation.policy, invocation.context),
-    acceptsContext: () => templateCarriesContext(config.bodyTemplate),
+      call(invocation.input, invocation.policy, invocation.context, invocation.history, invocation.conversationId),
+    acceptsContext: () => templateCarries(config.bodyTemplate, "{{context}}"),
+    acceptsConversation: () =>
+      templateCarries(config.bodyTemplate, "{{history}}") || templateCarries(config.bodyTemplate, "{{conversation_id}}"),
   };
 }

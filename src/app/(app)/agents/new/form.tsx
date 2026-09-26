@@ -33,7 +33,12 @@ export function ConnectAgentForm() {
             policy should go, if your endpoint takes one. Add{" "}
             <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{context}}"}</code> if your
             agent receives account or user metadata alongside the message — scenarios that attack that
-            channel are skipped, not rerouted through the message, when there is nowhere to put them.
+            channel are skipped, not rerouted through the message, when there is nowhere to put them. For
+            conversation scenarios, add{" "}
+            <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{history}}"}</code> (the earlier
+            turns, as a list of chat messages) or{" "}
+            <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{conversation_id}}"}</code> (if
+            your agent remembers conversations itself); without either, they are skipped too.
           </>
         }
       >

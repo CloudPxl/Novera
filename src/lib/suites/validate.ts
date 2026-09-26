@@ -1,4 +1,5 @@
 import type { Suite, SuiteCase } from "../runner/types.ts";
+import { MAX_EARLIER_TURNS } from "../runner/conversation.ts";
 
 /**
  * Parses a list of deterministic checks, reporting every problem rather than the
@@ -274,6 +275,21 @@ export function validateSuite(value: unknown): ValidationResult {
       }
     }
 
+    // The customer's messages before `input`. Refused rather than dropped when
+    // malformed: the validator keeps only fields it knows, so a conversation that lost
+    // its earlier turns here would run as a single message under the same name.
+    let earlierTurns: string[] | undefined;
+    if (c.earlier_turns !== undefined) {
+      const list = stringList(c.earlier_turns);
+      if (!list || list.length === 0) {
+        errors.push(`${label}: \`earlier_turns\` must be a list of the customer's earlier messages, or left out.`);
+      } else if (list.length > MAX_EARLIER_TURNS) {
+        errors.push(`${label}: \`earlier_turns\` can hold at most ${MAX_EARLIER_TURNS} messages.`);
+      } else {
+        earlierTurns = list;
+      }
+    }
+
     // An attack declaration is evidence, so a malformed one is refused. A report that
     // named the wrong channel would describe an attack the run never made.
     let attack: SuiteCase["attack"];
@@ -325,6 +341,7 @@ export function validateSuite(value: unknown): ValidationResult {
         ...(effect ? { effect } : {}),
         ...(checks?.length ? { checks } : {}),
         ...(context ? { context } : {}),
+        ...(earlierTurns ? { earlier_turns: earlierTurns } : {}),
         ...(attack ? { attack } : {}),
         ...(dutyRefs?.length ? { duty_refs: dutyRefs } : {}),
         ...(c.destructive === true ? { destructive: true } : {}),

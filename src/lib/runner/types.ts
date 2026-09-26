@@ -30,6 +30,13 @@ export interface SuiteCase {
    */
   context?: Record<string, string>;
   /**
+   * The customer's messages before `input`, in order, making the scenario a
+   * conversation. Each is sent as its own turn with the conversation so far, and the
+   * verdict is on all of it. Never joined into one message: a refusal that has to hold
+   * across three turns is a different test from one long message.
+   */
+  earlier_turns?: string[];
+  /**
    * What this scenario is an attack on, when it is one. Recorded as evidence so a
    * report can say which channel the input arrived on and which published weakness
    * it exercises, rather than leaving a reader to infer it from the prompt.
@@ -100,7 +107,18 @@ export interface CaseOutcome {
    * action. Null when the scenario asked for none, or no read-back is configured.
    */
   observation: VerificationObservation | null;
+  /**
+   * Every turn of a conversation scenario, customer and agent, in order. Null for a
+   * single-message scenario; `responseText` is always the final agent reply.
+   */
+  transcript?: ConversationTurn[] | null;
   error: string | null;
+}
+
+export interface ConversationTurn {
+  role: "customer" | "agent";
+  content: string;
+  latencyMs?: number;
 }
 
 /** One fully-evidenced case, exactly as it is persisted against a run. */

@@ -80,6 +80,12 @@ prevent, so calibration is not advisory: it decides the order.
 deadlocked, a third could not settle it), and unexecuted. Reports carry the **assurance
 gap** — the share of the suite that produced no verdict.
 
+**A conversation is graded whole.** A scenario with `earlier_turns` sends each turn with
+the conversation so far; rules apply to every turn and the judges read every reply. An
+agent with no `{{history}}` or `{{conversation_id}}` slot is not sent it — recorded as
+not run, never flattened into separate messages. A retest runs the suite's own case,
+with the run's read-back and production guard — never a reconstruction from the row.
+
 **Evaluation order is cheapest-sufficient: rules → read-back → models.**
 A scenario's checks (contains, matches, tools allowed/forbidden/required/ordered,
 arguments excluded, no retry after failure, approval before an action, latency) can
@@ -166,11 +172,11 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 421 unit tests | free |
+| `npm test` | 430 unit tests | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
-| `verify:effect` · `verify:channel` · `verify:compiler` | evidence rules, the metadata channel, the compiler's refusals | a few model calls |
+| `verify:effect` · `verify:channel` · `verify:compiler` · `verify:conversation` | evidence rules, the metadata channel, the compiler's refusals, multi-turn scenarios | a few model calls |
 | `verify:throttle` | the public forms cannot be made free | free |
 | `verify:imports` | an imported case is a draft with frozen provenance, held to the same approval | free |
 | `verify:regressions` | a production failure is stored redacted, append-only, tenant-isolated, and reaches a suite only as a draft naming it | free |

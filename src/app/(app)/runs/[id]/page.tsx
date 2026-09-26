@@ -85,7 +85,7 @@ export default async function RunPage({
         await db
           .from("run_cases")
           .select(
-            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by, tool_activity",
+            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by, tool_activity, transcript",
           )
           .eq("run_id", id)
           .order("case_id")
@@ -326,6 +326,8 @@ export default async function RunPage({
     // rows cannot be rewritten — they are resolved on the way out instead.
     failedAssertions: resolveAssertions(asStrings(c.assertions), asStrings(c.failed_assertions)),
     responseText: (c.response_text as string | null) ?? null,
+    // Null on every single-message scenario and on every row stored before 0032.
+    transcript: Array.isArray(c.transcript) ? (c.transcript as Array<{ role: "customer" | "agent"; content: string }>) : null,
     rationale: (c.rationale as string | null) ?? null,
     error: (c.error as string | null) ?? null,
     judgeModel: (c.judge_model as string | null) ?? null,

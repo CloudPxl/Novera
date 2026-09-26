@@ -19,6 +19,8 @@ export interface CaseRow {
   assertions: string[];
   failedAssertions: string[];
   responseText: string | null;
+  /** Every turn of a conversation scenario, in order; null for a single message. */
+  transcript?: Array<{ role: "customer" | "agent"; content: string }> | null;
   rationale: string | null;
   error: string | null;
   judgeModel: string | null;
@@ -314,6 +316,33 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
     <div className="novera-panel-in border-t border-line bg-ground px-3 py-4 sm:px-4">
       <div className="grid gap-4 lg:grid-cols-2">
         <section>
+          {row.transcript ? (
+            <>
+              <h3 className="type-pill text-ink-faint">The conversation, turn by turn</h3>
+              <p className="mt-1 text-xs text-ink-soft">
+                Graded as a whole: a rule broken in any turn fails the scenario.
+              </p>
+              <ol className="mt-1.5 space-y-2">
+                {row.transcript.map((t, i) => (
+                  <li
+                    key={i}
+                    className={`whitespace-pre-wrap rounded-control px-3 py-2 text-sm leading-relaxed ring-1 ${
+                      t.role === "customer" ? "bg-sunken text-ink ring-line" : "bg-surface text-ink ring-line"
+                    }`}
+                  >
+                    <span className="type-pill text-ink-faint">{t.role === "customer" ? "Scenario" : "Agent"} · </span>
+                    {t.content}
+                  </li>
+                ))}
+              </ol>
+              {!row.responseText && (
+                <p className="mt-2 rounded-control bg-warning-surface px-3 py-2 text-sm leading-relaxed text-warning-text ring-1 ring-warning-border">
+                  {row.error ?? "The conversation ended without a reply."}
+                </p>
+              )}
+            </>
+          ) : (
+            <>
           <h3 className="type-pill text-ink-faint">What the scenario sent</h3>
           <p className="mt-1.5 whitespace-pre-wrap rounded-control bg-surface px-3 py-2 text-sm leading-relaxed text-ink ring-1 ring-line">
             {row.input}
@@ -328,6 +357,8 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
             <p className="mt-1.5 rounded-control bg-warning-surface px-3 py-2 text-sm leading-relaxed text-warning-text ring-1 ring-warning-border">
               {row.error ?? "No reply was recorded for this scenario."}
             </p>
+          )}
+            </>
           )}
         </section>
 

@@ -8,16 +8,24 @@
 export function fillTemplate(
   template: unknown,
   values: Record<string, string>,
+  /**
+   * Values substituted as themselves rather than as text, when a template string is
+   * *exactly* one placeholder: `"messages": "{{history}}"` becomes an array, which is
+   * what a chat endpoint expects. Anywhere else the text form in `values` is used.
+   */
+  structured: Record<string, unknown> = {},
 ): unknown {
   if (typeof template === "string") {
+    const whole = /^\{\{(\w+)\}\}$/.exec(template);
+    if (whole && Object.prototype.hasOwnProperty.call(structured, whole[1])) return structured[whole[1]];
     return template.replace(/\{\{(\w+)\}\}/g, (match, key: string) =>
       Object.prototype.hasOwnProperty.call(values, key) ? values[key] : match,
     );
   }
-  if (Array.isArray(template)) return template.map((item) => fillTemplate(item, values));
+  if (Array.isArray(template)) return template.map((item) => fillTemplate(item, values, structured));
   if (template && typeof template === "object") {
     return Object.fromEntries(
-      Object.entries(template as Record<string, unknown>).map(([k, v]) => [k, fillTemplate(v, values)]),
+      Object.entries(template as Record<string, unknown>).map(([k, v]) => [k, fillTemplate(v, values, structured)]),
     );
   }
   return template;

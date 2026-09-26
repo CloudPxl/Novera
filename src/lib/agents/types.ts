@@ -9,6 +9,13 @@ export interface AgentInvocation {
    * never typed and the agent never treats as a message.
    */
   context?: Record<string, string>;
+  /**
+   * The conversation so far, for a scenario with earlier turns: every customer message
+   * and agent reply before this one. Absent on a single-message scenario.
+   */
+  history?: Array<{ role: "customer" | "agent"; content: string }>;
+  /** Stable across one conversation's turns, for an agent that keeps its own state. */
+  conversationId?: string;
 }
 
 export interface AgentResult {
@@ -38,6 +45,13 @@ export interface AgentAdapter {
    * wrong attack, which is worse than reporting nothing.
    */
   acceptsContext(): boolean;
+  /**
+   * Whether this agent can be told the earlier turns of a conversation — by receiving
+   * them, or by a conversation id it keeps state against. Absent means no. A
+   * conversation scenario run against an agent that cannot carry one is recorded as
+   * not run: sending the turns as unrelated messages would test something else.
+   */
+  acceptsConversation?(): boolean;
 }
 
 export interface HttpAgentConfig {

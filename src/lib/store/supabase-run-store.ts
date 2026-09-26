@@ -31,6 +31,7 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
         expected: record.expected,
         assertions: record.assertions,
         response_text: record.responseText,
+        transcript: record.transcript ?? null,
         tool_activity: record.toolActivity,
         status: record.status,
         rationale: record.rationale,

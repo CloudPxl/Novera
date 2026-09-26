@@ -5,7 +5,8 @@ import { applyEffectRule } from "../judge/effect.ts";
 import { runChecks, describeFailures } from "../judge/checks.ts";
 import type { VerificationConnector, VerificationObservation } from "../evidence/connectors/types.ts";
 import { coverage, coverageByObligation, coverageByCategory, type Coverage, type ObligationCoverage, type CategoryCoverage } from "../evidence/coverage.ts";
-import type { CaseOutcome, RunCaseRecord, RunStore, Suite, SuiteCase } from "./types.ts";
+import type { CaseOutcome, ConversationTurn, RunCaseRecord, RunStore, Suite, SuiteCase } from "./types.ts";
+import { conversationInput, conversationResponse, mergeToolActivity } from "./conversation.ts";
 
 export interface ExecuteRunArgs {
   runId: string;
@@ -127,15 +128,95 @@ export async function executeCase(args: {
     };
   }
 
+  // A conversation needs an agent that can be told what came before. Sending the
+  // earlier turns as unrelated messages would test whether each one is refused on its
+  // own — a different test from whether a refusal holds — under this scenario's name.
+  const earlierTurns = testCase.earlier_turns ?? [];
+  if (earlierTurns.length > 0 && !agent.acceptsConversation?.()) {
+    return {
+      responseText: null,
+      toolActivity: null,
+      status: "error",
+      rationale: null,
+      latencyMs: null,
+      usage: null,
+      judgeModel: null,
+      judgeAttempts: [],
+      judgeVotes: [],
+      judgeAgreement: null,
+      failedAssertions: [],
+      evidenceGap: null,
+      settledBy: null,
+      observation: null,
+      error:
+        "This scenario is a conversation, and this agent's request template has no "
+        + "{{history}} or {{conversation_id}} slot to carry one. It was not run, rather "
+        + "than run as separate messages.",
+    };
+  }
+
+  const conversationId = crypto.randomUUID();
+  const transcript: ConversationTurn[] = [];
+  const history: Array<{ role: "customer" | "agent"; content: string }> = [];
+  const activities: unknown[] = [];
+  let slowest = 0;
+
+  for (const [i, message] of earlierTurns.entries()) {
+    const turn = await agent.send({
+      input: message,
+      policy,
+      ...(testCase.context ? { context: testCase.context } : {}),
+      history: [...history],
+      conversationId,
+    });
+    transcript.push({ role: "customer", content: message });
+    if (!turn.ok || turn.responseText === null) {
+      // A conversation that broke part-way produced no verdict on the conversation.
+      return {
+        responseText: null,
+        toolActivity: mergeToolActivity([...activities, turn.toolActivity]),
+        status: "error",
+        rationale: null,
+        latencyMs: turn.latencyMs,
+        usage: null,
+        judgeModel: null,
+        judgeAttempts: [],
+        judgeVotes: [],
+        judgeAgreement: null,
+        failedAssertions: [],
+        evidenceGap: null,
+        settledBy: null,
+        observation: null,
+        transcript: transcript.length >= 2 ? transcript : null,
+        error: `Turn ${i + 1} of the conversation got no reply: ${turn.error ?? "the agent produced no response."}`,
+      };
+    }
+    transcript.push({ role: "agent", content: turn.responseText, latencyMs: turn.latencyMs });
+    history.push({ role: "customer", content: message }, { role: "agent", content: turn.responseText });
+    activities.push(turn.toolActivity);
+    slowest = Math.max(slowest, turn.latencyMs);
+  }
+
   const agentResult = await agent.send({
     input: testCase.input,
     policy,
     ...(testCase.context ? { context: testCase.context } : {}),
+    ...(earlierTurns.length ? { history, conversationId } : {}),
   });
+
+  const isConversation = earlierTurns.length > 0;
+  if (isConversation) {
+    transcript.push({ role: "customer", content: testCase.input });
+    if (agentResult.ok && agentResult.responseText !== null) {
+      transcript.push({ role: "agent", content: agentResult.responseText, latencyMs: agentResult.latencyMs });
+    }
+  }
+  const finalTranscript = isConversation ? transcript : null;
 
   if (!agentResult.ok || agentResult.responseText === null) {
     return {
       responseText: null,
+      transcript: finalTranscript,
       toolActivity: agentResult.toolActivity ?? null,
       status: "error",
       rationale: null,
@@ -162,16 +243,25 @@ export async function executeCase(args: {
   // three properties no judge call has. Checks can only fail a case; one that passes
   // them all still goes to the models, because "did not say the forbidden thing" is
   // not "met the expectation".
+  // In a conversation, rules apply to everything the agent said and did across every
+  // turn: "must not issue a refund" is broken by a refund in turn two, whatever the last
+  // reply says. The latency limit applies to the slowest reply.
+  const toolActivity = isConversation
+    ? mergeToolActivity([...activities, agentResult.toolActivity])
+    : agentResult.toolActivity;
   const checkFailures = runChecks(testCase.checks, {
-    responseText: agentResult.responseText,
-    toolActivity: agentResult.toolActivity,
-    latencyMs: agentResult.latencyMs,
+    responseText: isConversation
+      ? transcript.filter((t) => t.role === "agent").map((t) => t.content).join("\n\n")
+      : agentResult.responseText,
+    toolActivity,
+    latencyMs: isConversation ? Math.max(slowest, agentResult.latencyMs) : agentResult.latencyMs,
   });
 
   if (checkFailures.length > 0) {
     return {
       responseText: agentResult.responseText,
-      toolActivity: agentResult.toolActivity ?? null,
+      transcript: finalTranscript,
+      toolActivity: toolActivity ?? null,
       status: "fail",
       rationale: describeFailures(checkFailures),
       latencyMs: agentResult.latencyMs,
@@ -207,7 +297,8 @@ export async function executeCase(args: {
     // No model is asked: there is nothing left for one to weigh.
     return {
       responseText: agentResult.responseText,
-      toolActivity: agentResult.toolActivity ?? null,
+      transcript: finalTranscript,
+      toolActivity: toolActivity ?? null,
       status: "fail",
       rationale: observation.detail,
       latencyMs: agentResult.latencyMs,
@@ -232,13 +323,13 @@ export async function executeCase(args: {
     severity: testCase.severity,
     testCase: {
       caseId: testCase.id,
-      input: testCase.input,
+      input: isConversation ? conversationInput(transcript) : testCase.input,
       expectedBehavior: testCase.expected_behavior,
       assertions: testCase.assertions,
       forbidden: testCase.forbidden,
     },
-    agentResponse: agentResult.responseText,
-    toolActivity: agentResult.toolActivity,
+    agentResponse: isConversation ? conversationResponse(transcript) : agentResult.responseText,
+    toolActivity,
   });
 
   // Deterministic, and applied after grading rather than inside the prompt: whether
@@ -248,13 +339,14 @@ export async function executeCase(args: {
     status: verdict.status,
     rationale: verdict.rationale,
     error: verdict.error,
-    toolActivity: agentResult.toolActivity,
+    toolActivity,
     observation,
   });
 
   return {
     responseText: agentResult.responseText,
-    toolActivity: agentResult.toolActivity ?? null,
+    transcript: finalTranscript,
+    toolActivity: toolActivity ?? null,
     status: ruled.status,
     rationale: ruled.rationale,
     latencyMs: agentResult.latencyMs,

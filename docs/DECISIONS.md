@@ -2039,3 +2039,34 @@ server down 4. Found while building: a strip-only TypeScript syntax error crashe
 with exit 1 — which a pipeline reads as "a scenario failed". A test now runs the binary.
 Docs gained fenced code blocks (still text nodes, never markup). Run triggering waits
 for a deliberately designed workspace API key (Phase 10's public API).
+
+## 2026-09-26 — Phase 8.2: importing Promptfoo, DeepEval, LangSmith and Langfuse datasets
+
+Imports enter through the gate Phase 5 built, not a new one: every converted test case
+is a `scenario_drafts` row (`origin = 'import'`, 0030) that a named person approves
+before it can join a suite version. A second path into a suite would need a second set
+of rules, and would eventually disagree with the first. 0030 makes each origin carry its
+own proof — a policy draft its quoted passage, an import its tool, file hash and item
+hash — and freezes both; no new table, so the existing erasure path covers it.
+
+`src/lib/imports/datasets.ts` converts, and says where Novera reads a case differently:
+`contains` is case-insensitive here and not in Promptfoo; `equals` becomes a graded
+expectation (exact match would fail a correct rewording); DeepEval `context` is
+reference knowledge, while Novera's `context` is the injection channel — so it becomes
+"must not contradict" and is never sent to the agent (one name, two meanings, again).
+Unmappable assertions (`javascript`, similarity scores) are listed, never approximated.
+Previous outputs and scores are ignored: an imported score is not a verdict. Refused per
+item with a reason: rules only (a rule can fail and never pass), ambiguous input
+variable, invalid pattern, key-shaped text. Personal data is flagged, not removed.
+YAML via `yaml` 2.9.1 (pinned, ISC, no dependencies; alias expansion bounded).
+
+Found while walking it: the draft card never showed a scenario's rule checks — for
+policy drafts too — so a reviewer approved rules they had not read. `describeCheck`
+now words every rule on the card. Measured: `verify:imports` (13 live checks: the
+origin-proof constraint five ways, frozen provenance, nameless approval refused,
+deletion refused, erasure); UI walked with a throwaway account — 3-test Promptfoo file
+→ 2 drafts + 1 refusal with its reason → approve → promoted onto eu-support v4 as a
+42-case suite whose provenance names the file by hash and says `from_policy: 0`
+(it used to claim `drafted_from_policies: true` unconditionally). axe clean at 390 and
+1440. JUnit *import* (results) and trace import are deferred to Phase 9, where a
+production failure becomes a draft.

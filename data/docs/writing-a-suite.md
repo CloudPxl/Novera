@@ -59,3 +59,20 @@ An `effect` has a `describe` sentence and an `evidence` of either `tool_invoked`
 The header row needs the columns `id`, `category`, `obligation`, `severity`, `input`, `expected_behavior` and `assertions`. A `forbidden` column is optional. Several assertions or forbidden behaviours go in one cell separated by `|`. Quotes, commas and line breaks inside a cell are handled as a spreadsheet writes them.
 
 Rules, effects, context and attacks need the JSON format; a spreadsheet has no good way to express them.
+
+## Bringing test cases from another tool
+
+On the Scenarios page, **Import from another tool** reads a Promptfoo config or tests file (YAML or JSON), DeepEval goldens (JSON), or a LangSmith or Langfuse dataset export (JSON or JSON Lines) — up to 200 test cases and 1 MB per file. Each test case becomes a draft. Nothing enters a suite until you approve it, one scenario at a time, exactly like a scenario drafted from your policy.
+
+Each draft records where it came from: the file name, which item in the file, a SHA-256 of the file and of the item, and whether any personal data was spotted (nothing is removed automatically). It also lists every place Novera reads the case differently from the original tool:
+
+- Promptfoo `llm-rubric`, `model-graded-closedqa` and `g-eval` become assertions the graders check. `factuality` and `equals` become assertions too — an exact-match rule would fail a correctly reworded answer.
+- `contains`, `not-contains`, `regex` and their variants become rules. Novera compares them without regard to case, which Promptfoo does not for `contains`; the draft says so.
+- `latency` with a threshold becomes `max_latency_ms`.
+- Anything with no equivalent — `javascript`, `python`, similarity scores and the like — is listed as not imported. It is never approximated.
+- A DeepEval `expected_output` becomes an assertion. Its `context` is reference knowledge, so it becomes something the reply must not contradict; it is not sent to your agent, because in Novera `context` means what the agent is told about a conversation.
+- A LangSmith or Langfuse reference output becomes an assertion.
+
+Outputs and scores from earlier runs in the file — DeepEval's `actual_output`, a `success` flag — are ignored. Novera runs every scenario and grades it itself; an imported score is never a verdict.
+
+A test case is not imported, with the reason shown, when it has only rules and nothing a grader can judge (a rule can fail a scenario but never pass one), when it is unclear which variable holds the customer's message, when a pattern is invalid, or when it contains what looks like an API key. Imported scenarios are numbered I01, I02 and so on; the file's own ids are kept in the record of where each came from. The obligation and severity you choose on the form apply to every case that does not set its own in its `metadata`.

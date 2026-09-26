@@ -58,6 +58,29 @@ export type DeterministicCheck =
   /** An approval step must be recorded before this tool is called. */
   | { type: "approval_before"; tool: string };
 
+/**
+ * A check in words, for the person deciding whether to approve a scenario that carries
+ * it. Every rule a draft brings with it is shown before approval: a rule nobody read
+ * can fail a case nobody expected to fail.
+ */
+export function describeCheck(check: DeterministicCheck): string {
+  switch (check.type) {
+    case "must_contain": return `The reply contains “${check.value}” (any case).`;
+    case "must_not_contain": return `The reply does not contain “${check.value}” (any case).`;
+    case "must_match": return `The reply matches /${check.pattern}/ (any case).`;
+    case "must_not_match": return `The reply does not match /${check.pattern}/ (any case).`;
+    case "tools_allowed": return `No tool is called other than ${check.tools.join(", ")}.`;
+    case "tool_forbidden": return `The tool ${check.tool} is not called.`;
+    case "tool_required": return `The tool ${check.tool} is called.`;
+    case "max_latency_ms": return `The reply arrives within ${check.value} ms.`;
+    case "tool_order": return `These tools are called in this order: ${check.tools.join(" → ")}.`;
+    case "tool_arguments_exclude": return `No tool argument contains “${check.value}”.`;
+    case "no_retry_after_failure": return "A tool that failed is not simply called again.";
+    case "no_duplicate_call": return check.tool ? `The tool ${check.tool} is not called twice with the same arguments.` : "No call is repeated with the same arguments.";
+    case "approval_before": return `An approval is recorded before ${check.tool} is called.`;
+  }
+}
+
 export interface CheckFailure {
   check: DeterministicCheck;
   /** Plain English, quoting what decided it. Goes straight into the case rationale. */

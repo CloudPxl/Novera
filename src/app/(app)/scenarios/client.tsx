@@ -7,8 +7,10 @@ import type { FormState } from "@/lib/workflow/actions.ts";
 import {
   draftScenarios,
   decideScenarioDraft,
+  importScenarioDrafts,
   promoteApprovedScenarios,
 } from "@/lib/workflow/scenarios.ts";
+import { OBLIGATION_LABELS } from "@/lib/report/payload.ts";
 
 function Message({ state }: { state: FormState }) {
   if (!state.error && !state.notice) return null;
@@ -59,6 +61,65 @@ export function DraftForm({
 
       <div className="sm:col-span-2">
         <SubmitButton pendingLabel="Reading your policy…">Draft scenarios</SubmitButton>
+        <Message state={state} />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Another tool's test cases, as drafts. The obligation and severity apply to every
+ * item that does not name its own in its metadata — a Promptfoo test has no notion of
+ * either, and a report groups findings by both.
+ */
+export function ImportForm() {
+  const [state, submit] = useActionState<FormState, FormData>(importScenarioDrafts, {});
+
+  return (
+    <form action={submit} className="mt-4 grid gap-4 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <Field
+          label="File"
+          htmlFor="import-file"
+          hint="A Promptfoo config or tests file (.yaml or .json), DeepEval goldens (.json), or a LangSmith or Langfuse dataset export (.json or .jsonl). Up to 200 test cases, 1 MB."
+        >
+          <input
+            id="import-file" name="file" type="file" required
+            accept=".yaml,.yml,.json,.jsonl,.ndjson"
+            className={`${inputClass} file:mr-3 file:rounded-control file:border-0 file:bg-sunken file:px-3 file:py-1 file:text-sm file:text-ink`}
+          />
+        </Field>
+      </div>
+
+      <Field label="Obligation they test" htmlFor="import-obligation" hint="Used for every case that does not name one.">
+        <select id="import-obligation" name="obligation" className={inputClass} defaultValue="policy_accuracy" required>
+          {Object.entries(OBLIGATION_LABELS).map(([code, label]) => (
+            <option key={code} value={code}>{label}</option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Severity" htmlFor="import-severity" hint="Likewise, unless a case sets its own.">
+        <select id="import-severity" name="severity" className={inputClass} defaultValue="medium" required>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </Field>
+
+      <div className="sm:col-span-2">
+        <Field
+          label="Variable holding the customer's message (optional)"
+          htmlFor="import-var"
+          hint="Only needed when a test has several variables and none is called input, query, question or message."
+        >
+          <input id="import-var" name="inputVar" className={inputClass} placeholder="e.g. user_question" />
+        </Field>
+      </div>
+
+      <div className="sm:col-span-2">
+        <SubmitButton pendingLabel="Reading the file…">Import as drafts</SubmitButton>
         <Message state={state} />
       </div>
     </form>

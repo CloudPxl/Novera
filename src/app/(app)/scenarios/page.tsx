@@ -4,14 +4,18 @@ import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import type { SuiteCase } from "@/lib/runner/types.ts";
-import { DraftForm, DecideForm, PromoteForm } from "./client.tsx";
+import { describeCheck } from "@/lib/judge/checks.ts";
+import { DraftForm, DecideForm, ImportForm, PromoteForm } from "./client.tsx";
+import { SOURCE_LABELS, type ImportProvenance, type SourceTool } from "@/lib/imports/datasets.ts";
 
 export const metadata: Metadata = { title: "Scenarios · Novera" };
 export const dynamic = "force-dynamic";
 
 interface DraftRow {
   id: string;
-  source_quote: string;
+  origin: "policy" | "import";
+  import_provenance: (ImportProvenance & { imported_at: string }) | null;
+  source_quote: string | null;
   scenario: SuiteCase;
   duty_refs: string[];
   risk_level: string;
@@ -36,7 +40,7 @@ export default async function ScenariosPage() {
   const [{ data: drafts }, { data: agents }, { data: suites }] = await Promise.all([
     admin
       .from("scenario_drafts")
-      .select("id, source_quote, scenario, duty_refs, risk_level, destructive, fixture_only, status, model, rejection_reason, approved_at, created_at, policies(version), suites!scenario_drafts_included_in_suite_id_fkey(key, version)")
+      .select("id, origin, import_provenance, source_quote, scenario, duty_refs, risk_level, destructive, fixture_only, status, model, rejection_reason, approved_at, created_at, policies(version), suites!scenario_drafts_included_in_suite_id_fkey(key, version)")
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: false }),
     admin.from("agents").select("id, name, is_production").eq("workspace_id", workspace.id).order("created_at"),
@@ -57,21 +61,34 @@ export default async function ScenariosPage() {
         ← Dashboard
       </Link>
 
-      <h1 className="mt-4 type-h1">Scenarios from your policy</h1>
+      <h1 className="mt-4 type-h1">Scenarios</h1>
       <p className="mt-2 max-w-2xl type-body text-ink-soft">
         A policy is a list of things you have promised to do. This drafts the scenarios that would
         show whether your agent actually does them — each one tied to the sentence of your own
         policy it tests, so you can always answer <em>why is this case in my report</em>.
       </p>
       <p className="mt-2 max-w-2xl type-body text-ink-soft">
-        A draft cannot run. You approve it or you reject it, and only an approval lets it enter a
-        suite version.
+        You can also bring test cases you already wrote for another tool. Either way, a draft cannot
+        run: you approve it or you reject it, and only an approval lets it enter a suite version.
       </p>
 
       <Reveal className="mt-8">
         <Card className="p-5">
           <h2 className="type-h2">Draft from a policy version</h2>
           <DraftForm agents={(agents ?? []) as Array<{ id: string; name: string; is_production: boolean }>} />
+        </Card>
+      </Reveal>
+
+      <Reveal className="mt-6">
+        <Card className="p-5">
+          <h2 className="type-h2">Import from another tool</h2>
+          <p className="mt-1 type-body text-ink-soft">
+            Promptfoo, DeepEval, LangSmith or Langfuse. Each test case becomes a draft for you to
+            review. Where Novera reads something differently from the original tool, the draft says so.
+            Assertions with no equivalent are listed, never guessed at. Outputs and scores from
+            earlier runs are ignored: Novera runs every scenario and grades it itself.
+          </p>
+          <ImportForm />
         </Card>
       </Reveal>
 
@@ -84,7 +101,7 @@ export default async function ScenariosPage() {
         {pending.length === 0 ? (
           <div className="mt-3">
             <EmptyState title="Nothing to review">
-              Draft some scenarios above, and they will appear here for you to approve or reject.
+              Draft or import scenarios above, and they will appear here for you to approve or reject.
             </EmptyState>
           </div>
         ) : (
@@ -101,14 +118,21 @@ export default async function ScenariosPage() {
                     {d.destructive && <Badge tone="critical">destructive</Badge>}
                     {d.fixture_only && <Badge tone="medium">test data only</Badge>}
                     {d.policies && <Badge tone="neutral">policy v{d.policies.version}</Badge>}
+                    {d.origin === "import" && d.import_provenance && (
+                      <Badge tone="neutral">imported from {SOURCE_LABELS[d.import_provenance.source_tool as SourceTool] ?? d.import_provenance.source_tool}</Badge>
+                    )}
                   </div>
 
-                  <figure className="mt-4 border-l-2 border-line-strong pl-3">
-                    <blockquote className="type-body text-ink-soft italic">{d.source_quote}</blockquote>
-                    <figcaption className="mt-1 text-xs text-ink-faint">
-                      the passage of your policy this tests
-                    </figcaption>
-                  </figure>
+                  {d.origin === "import" && d.import_provenance ? (
+                    <ImportedFrom provenance={d.import_provenance} />
+                  ) : (
+                    <figure className="mt-4 border-l-2 border-line-strong pl-3">
+                      <blockquote className="type-body text-ink-soft italic">{d.source_quote}</blockquote>
+                      <figcaption className="mt-1 text-xs text-ink-faint">
+                        the passage of your policy this tests
+                      </figcaption>
+                    </figure>
+                  )}
 
                   <dl className="mt-4 space-y-3">
                     <div>
@@ -132,6 +156,24 @@ export default async function ScenariosPage() {
                         </ul>
                       </dd>
                     </div>
+                    {d.scenario.checks && d.scenario.checks.length > 0 && (
+                      <div>
+                        <dt className="type-pill text-ink-faint">Rules that fail it outright</dt>
+                        <dd className="mt-1">
+                          <ul className="space-y-1 type-body">
+                            {d.scenario.checks.map((c, i) => (
+                              <li key={i} className="flex gap-2">
+                                <span aria-hidden className="text-ink-ghost">•</span>
+                                <span>{describeCheck(c)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          <p className="mt-1 text-xs text-ink-faint">
+                            A rule can fail this scenario but never pass it; the expectation above is still graded.
+                          </p>
+                        </dd>
+                      </div>
+                    )}
                     {d.scenario.effect && (
                       <div>
                         <dt className="type-pill text-ink-faint">What must actually change</dt>
@@ -149,9 +191,10 @@ export default async function ScenariosPage() {
                     )}
                   </dl>
 
-                  {d.model && (
+                  {(d.model || d.origin === "import") && (
                     <p className="mt-4 text-xs text-ink-faint">
-                      Drafted by {d.model}. Nothing has been run and nothing will be until you approve it.
+                      {d.model ? `Drafted by ${d.model}.` : "Converted by Novera, no model involved."} Nothing
+                      has been run and nothing will be until you approve it.
                     </p>
                   )}
 
@@ -220,5 +263,40 @@ export default async function ScenariosPage() {
         </Reveal>
       )}
     </main>
+  );
+}
+
+/**
+ * Where an imported draft came from, and every place Novera reads it differently.
+ * Shown in full before the decision, because approving is agreeing to exactly this.
+ */
+function ImportedFrom({ provenance: p }: { provenance: ImportProvenance & { imported_at: string } }) {
+  return (
+    <div className="mt-4 rounded-control border border-line bg-ground p-3 text-sm">
+      <p className="text-ink-soft">
+        From <span className="font-medium text-ink">{p.source_filename}</span>, item{" "}
+        <span className="type-mono">{p.source_id}</span>, imported{" "}
+        {p.imported_at.slice(0, 16).replace("T", " ")} UTC.
+      </p>
+      <p className="mt-1 text-xs text-ink-faint">
+        File SHA-256 <span className="type-mono break-all">{p.original_hash}</span>
+      </p>
+      {p.adjustments.length > 0 && (
+        <div className="mt-3">
+          <p className="type-pill text-ink-faint">Read differently from the original</p>
+          <ul className="mt-1 space-y-1 text-ink-soft">
+            {p.adjustments.map((a, i) => (
+              <li key={i} className="flex gap-2"><span aria-hidden className="text-ink-ghost">•</span><span>{a}</span></li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {p.dropped.length > 0 && (
+        <p className="mt-3 text-warning-text">
+          Not imported, no equivalent in Novera: {p.dropped.join(", ")}.
+        </p>
+      )}
+      <p className="mt-3 text-xs text-ink-faint">Sanitisation: {p.sanitisation}.</p>
+    </div>
   );
 }

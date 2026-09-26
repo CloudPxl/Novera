@@ -24,7 +24,8 @@
     "verify:models": "node --conditions=react-server --env-file=.env.local scripts/verify-models.mts",
     "verify:byok": "node --conditions=react-server --env-file=.env.local scripts/verify-byok.mts",
     "seed:docs": "node --conditions=react-server --env-file=.env.local scripts/seed-docs.mts",
-    "novera": "node --no-warnings bin/novera.mts"
+    "novera": "node --no-warnings bin/novera.mts",
+    "verify:imports": "node --conditions=react-server --env-file=.env.local scripts/verify-imports.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
@@ -34,7 +35,8 @@
     "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

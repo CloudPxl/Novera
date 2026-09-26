@@ -7,6 +7,7 @@ import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
 import { connectionsFromEnv } from "@/lib/providers/registry.ts";
 import { compileScenarios } from "@/lib/scenarios/compile.ts";
 import { buildPromotedSuite, coveredBehaviours } from "@/lib/scenarios/promote.ts";
+import { importDataset, SOURCE_LABELS } from "@/lib/imports/datasets.ts";
 import type { SuiteCase } from "@/lib/runner/types.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
 
@@ -94,6 +95,63 @@ export async function draftScenarios(_prev: FormState, form: FormData): Promise<
   };
 }
 
+const MAX_IMPORT_BYTES = 1_000_000;
+
+/**
+ * Imports another tool's test cases as drafts.
+ *
+ * Every item that converts lands as a `draft` with its provenance frozen on the row; an
+ * item that does not is reported with its reason and not stored. Nothing is graded,
+ * run or promoted here — the same approval as a drafted scenario decides what enters a
+ * suite, one scenario at a time.
+ */
+export async function importScenarioDrafts(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a file exported from Promptfoo, DeepEval, LangSmith or Langfuse." };
+  if (file.size > MAX_IMPORT_BYTES) {
+    return { error: `That file is ${Math.round(file.size / 1024)} KB; the limit is ${MAX_IMPORT_BYTES / 1000} KB.` };
+  }
+  const admin = await assertMembership(user.id, workspace.id);
+
+  // Every id already used by a draft, so an imported case never shares a name with one.
+  const { data: existing } = await admin.from("scenario_drafts").select("scenario").eq("workspace_id", workspace.id);
+  const usedIds = (existing ?? []).map((row) => (row.scenario as SuiteCase)?.id).filter(Boolean) as string[];
+
+  const result = importDataset(await file.text(), {
+    filename: file.name,
+    defaultObligation: String(form.get("obligation") ?? "").trim(),
+    defaultSeverity: String(form.get("severity") ?? "").trim(),
+    inputVar: String(form.get("inputVar") ?? "").trim() || undefined,
+    usedIds,
+  });
+  if (!result.ok) return { error: result.error };
+
+  const importedAt = new Date().toISOString();
+  if (result.drafts.length > 0) {
+    const { error } = await admin.from("scenario_drafts").insert(
+      result.drafts.map((d) => ({
+        workspace_id: workspace.id,
+        origin: "import",
+        scenario: d.scenario,
+        import_provenance: { ...d.provenance, imported_by: user.id, imported_at: importedAt },
+        duty_refs: [],
+        risk_level: d.scenario.severity === "critical" || d.scenario.severity === "high" ? "high" : d.scenario.severity === "low" ? "low" : "medium",
+        created_by: user.id,
+      })),
+    );
+    if (error) return { error: `The drafts could not be saved: ${error.message}` };
+  }
+
+  revalidatePath("/scenarios");
+  const refused = result.refused.length;
+  const shown = result.refused.slice(0, 4).map((r) => `${r.source_id}: ${r.reason}`).join(" ");
+  const summary = `${result.drafts.length} scenario(s) imported from ${SOURCE_LABELS[result.tool]} as drafts to review.`
+    + (refused ? ` ${refused} not imported — ${shown}${refused > 4 ? ` (and ${refused - 4} more)` : ""}` : "")
+    + (result.notes.length ? ` ${result.notes.join(" ")}` : "");
+  return result.drafts.length ? { notice: summary } : { error: summary };
+}
+
 /**
  * A person's decision on one draft.
  *
@@ -148,7 +206,7 @@ export async function promoteApprovedScenarios(_prev: FormState, form: FormData)
   if (!name) return { error: "The suite needs a name." };
 
   const { data: approved } = await admin
-    .from("scenario_drafts").select("id, scenario")
+    .from("scenario_drafts").select("id, scenario, origin, import_provenance")
     .eq("workspace_id", workspace.id).eq("status", "approved")
     .order("created_at");
 
@@ -183,11 +241,22 @@ export async function promoteApprovedScenarios(_prev: FormState, form: FormData)
     key, version, name,
     cases: promotion.suite.cases,
     // Where these scenarios came from is part of the evidence, not metadata: every
-    // case here was drafted from a policy version and approved by a named person.
+    // case here was approved by a named person, and was either drafted from a policy
+    // version or imported from another tool — said separately, because they are
+    // different claims about why a case is in the suite.
     provenance: {
-      source_tool: "novera-duty-compiler",
+      source_tool: approved.some((r) => r.origin === "import")
+        ? approved.some((r) => r.origin !== "import") ? "novera-duty-compiler+import" : "import"
+        : "novera-duty-compiler",
       transformation_version: 1,
-      drafted_from_policies: true,
+      drafted_from_policies: approved.some((r) => r.origin !== "import"),
+      from_policy: approved.filter((r) => r.origin !== "import").length,
+      imported: [...new Map(
+        approved.filter((r) => r.origin === "import").map((r) => {
+          const p = r.import_provenance as { source_tool: string; source_filename: string; original_hash: string };
+          return [p.original_hash, { source_tool: p.source_tool, source_filename: p.source_filename, original_hash: p.original_hash }];
+        }),
+      ).values()],
       approved_scenarios: promotion.draftIds.length,
       carried_from_suite: extendId || null,
       promoted_by: user.id,

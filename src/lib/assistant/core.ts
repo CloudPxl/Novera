@@ -88,7 +88,7 @@ export function pickDocs(question: string, docs: AssistantDoc[], count = 3): Ass
 
 export function allowedPaths(snapshot: AssistantSnapshot, docs: AssistantDoc[]): string[] {
   return [
-    "/dashboard", "/agents/new", "/settings", "/guide", "/docs", "/support",
+    "/dashboard", "/agents/new", "/scenarios", "/settings", "/guide", "/docs", "/support",
     ...snapshot.agents.map((a) => `/agents/${a.id}`),
     ...snapshot.runs.map((r) => `/runs/${r.id}`),
     ...docs.map((d) => `/docs/${d.slug}`),

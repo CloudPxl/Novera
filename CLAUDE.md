@@ -51,7 +51,7 @@ someone with the service role, not merely someone using the application.
 | A report was not edited after sealing, and chains to the previous report for that agent | SHA-256 content hash + `previous_report_hash` |
 | A policy version is immutable; editing creates a new one | 0001 + append-only trigger |
 | A diagnosis is a proposal: the model cannot quote policy text that is not in the policy, and a proposal whose target moved is refused rather than applied nearby | 0007 |
-| A drafted scenario cannot enter a suite without a named approval, and cannot be withdrawn once it has | 0022 |
+| A drafted or imported scenario cannot enter a suite without a named approval, and cannot be withdrawn once it has; an import carries its file and item hashes, a policy draft its quoted passage, each frozen | 0022 + 0030 |
 | A destructive or fixture-only scenario never runs against a production agent | `agents.is_production`, checked in the runner |
 | A support reply goes draft → approved → sent, forward only; editing writes a new draft | 0009 |
 | A public form cannot be made free | 0024, counted in Postgres |
@@ -136,6 +136,7 @@ src/lib/scenarios/    the duty-to-test compiler
 src/lib/support/      public forms, drafting, escalation, throttle, size limits
 src/lib/docs/         the documentation renderer — parsed, never markup
 src/lib/cli/ + bin/   the `novera` CLI: verify, status (CI exit codes), export, suite validate
+src/lib/imports/      Promptfoo / DeepEval / LangSmith / Langfuse datasets → drafts, differences recorded
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites + calibration labels
 data/docs/            the published documentation, seeded into the database
@@ -162,12 +163,13 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 399 unit tests | free |
+| `npm test` | 410 unit tests | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
 | `verify:effect` · `verify:channel` · `verify:compiler` | evidence rules, the metadata channel, the compiler's refusals | a few model calls |
 | `verify:throttle` | the public forms cannot be made free | free |
+| `verify:imports` | an imported case is a draft with frozen provenance, held to the same approval | free |
 | `verify:models` | every route candidate still answers | a few tokens |
 | `demo:run` (`DEMO_SUITE_VERSION=4`) | the whole loop, end to end, publishing a report | a full run |
 | `calibrate` (`CALIBRATE_SUITE=…`, `CALIBRATE_CASES=T37,…` for a subset, never stored) | judge quality and drift against ground-truth labels | **real quota — pace it** |

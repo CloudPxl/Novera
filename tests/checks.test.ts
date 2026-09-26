@@ -77,3 +77,10 @@ test("every failing rule is reported, not just the first", () => {
   assert.equal(failures.length, 3);
   assert.equal(describeFailures(failures).split(". ").length >= 3, true);
 });
+
+test("every rule has a plain description for the person approving it", async () => {
+  const { describeCheck } = await import("../src/lib/judge/checks.ts");
+  assert.equal(describeCheck({ type: "must_not_contain", value: "As an AI" }), "The reply does not contain “As an AI” (any case).");
+  assert.equal(describeCheck({ type: "no_duplicate_call" }), "No call is repeated with the same arguments.");
+  assert.match(describeCheck({ type: "tool_order", tools: ["lookup", "refund"] }), /lookup → refund/);
+});

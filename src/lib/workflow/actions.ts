@@ -126,6 +126,12 @@ export async function savePolicyVersion(_prev: FormState, form: FormData): Promi
 
   const admin = await assertMembership(user.id, workspace.id);
 
+  // The agent must be this workspace's before anything about it is read. 0034 refuses
+  // the insert regardless; this turns that into a sentence.
+  const { data: owned } = await admin
+    .from("agents").select("id").eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
+  if (!owned) return { error: "That agent could not be found in this workspace." };
+
   const { data: latest } = await admin
     .from("policies")
     .select("version")
@@ -174,8 +180,15 @@ export async function createRun(formData: FormData): Promise<void> {
   const agentId = String(formData.get("agentId") ?? "");
   const admin = await assertMembership(user.id, workspace.id);
 
+  // Every lookup below is scoped to this workspace. They were not, and with the service
+  // role that let a known agent id from another workspace be run — against that
+  // workspace's policy. 0034 now refuses such a run in the database as well.
+  const { data: agent } = await admin
+    .from("agents").select("attestation_text").eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
+  if (!agent) throw new Error("That agent could not be found in this workspace.");
+
   const { data: policy } = await admin
-    .from("policies").select("id").eq("agent_id", agentId)
+    .from("policies").select("id").eq("agent_id", agentId).eq("workspace_id", workspace.id)
     .order("version", { ascending: false }).limit(1).maybeSingle();
   if (!policy) throw new Error("Save a policy version before running the suite.");
 
@@ -196,12 +209,9 @@ export async function createRun(formData: FormData): Promise<void> {
   }
 
   const { data: previous } = await admin
-    .from("runs").select("id").eq("agent_id", agentId).eq("status", "completed")
+    .from("runs").select("id").eq("agent_id", agentId).eq("workspace_id", workspace.id).eq("status", "completed")
     .eq("suite_id", suite.id)
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
-
-  const { data: agent } = await admin
-    .from("agents").select("attestation_text").eq("id", agentId).single();
 
   const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
   if (!entitlement.canRun) throw new Error(entitlement.blockedReason ?? "This workspace cannot start a run.");

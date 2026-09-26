@@ -184,6 +184,31 @@ try {
     "eight concurrent first loads create exactly one workspace",
     `${ids.size} distinct id(s), ${bobOwns} owned${racers.find((r) => r.error)?.error?.message ? `, ${racers.find((r) => r.error)!.error!.message}` : ""}`,
   );
+  // References must stay inside one workspace (0034), checked with the service role,
+  // which row-level security does not restrict. createRun once looked an agent up by id
+  // alone, so another workspace's agent could be run — against that workspace's policy.
+  const bobWs = [...ids][0] as string;
+  const { data: bobAgent } = await admin.from("agents")
+    .insert({ workspace_id: bobWs, name: "Bob agent", kind: "http", config: {} }).select("id").single();
+  const { data: bobPolicy } = await admin.from("policies")
+    .insert({ workspace_id: bobWs, agent_id: bobAgent!.id, version: 1, body: "bob policy" }).select("id").single();
+  const { error: ownRunErr } = await admin.from("runs").insert({
+    workspace_id: bobWs, agent_id: bobAgent!.id, policy_id: bobPolicy!.id, suite_id: suite!.id, status: "queued",
+  });
+  check(!ownRunErr, "a run on one's own agent with a built-in suite is accepted (the control)", ownRunErr?.message.slice(0, 60));
+  const crossings: Array<[string, string, Record<string, unknown>]> = [
+    ["a run on another workspace's agent and policy", "runs", { workspace_id: bobWs, agent_id: agent!.id, policy_id: policy!.id, suite_id: suite!.id, status: "queued" }],
+    ["a run pairing one's own agent with another workspace's policy", "runs", { workspace_id: bobWs, agent_id: bobAgent!.id, policy_id: policy!.id, suite_id: suite!.id, status: "queued" }],
+    ["a policy version for another workspace's agent", "policies", { workspace_id: bobWs, agent_id: agent!.id, version: 9, body: "planted" }],
+    ["evidence filed under another workspace's run", "run_cases", { workspace_id: bobWs, run_id: run!.id, case_id: "T99", category: "c", obligation: "o", severity: "low", input: "i", expected: "e", assertions: [], status: "fail" }],
+    ["a scenario draft quoting another workspace's policy", "scenario_drafts", { workspace_id: bobWs, origin: "policy", policy_id: policy!.id, source_quote: "alice policy", scenario: { id: "P01" } }],
+    ["a probe of another workspace's agent", "probes", { workspace_id: bobWs, agent_id: agent!.id, request: {}, status_code: 200 }],
+  ];
+  for (const [label, table, row] of crossings) {
+    const { error } = await admin.from(table).insert(row);
+    check(!!error && /same workspace/.test(error.message), `refused, even for the service role: ${label}`, error?.message.slice(0, 70) ?? "ACCEPTED");
+  }
+
   const { error: anonRpcErr } = await createClient(url, anon, { auth: { persistSession: false } })
     .rpc("ensure_workspace", { p_name: "nobody" });
   check(!!anonRpcErr, "a signed-out caller cannot create a workspace", anonRpcErr?.message.slice(0, 60));

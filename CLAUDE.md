@@ -56,6 +56,7 @@ someone with the service role, not merely someone using the application.
 | A support reply goes draft → approved → sent, forward only; editing writes a new draft | 0009 |
 | A public form cannot be made free | 0024, counted in Postgres |
 | A person gets one workspace on first use, however many page loads race to create it | 0029, advisory lock per user |
+| A row can refer only to rows in its own workspace — agents, policies, runs, cases, failures, suites (built-ins shared) — even for the service role | 0034 `refuse_cross_workspace()`, `verify:tenancy` |
 | An API key is stored only as an HMAC, is read-only, cannot be altered, and once revoked stays revoked; a key reads only its own workspace | 0033 + `src/lib/api/`, `verify:api` |
 | A production failure is stored redacted — the original only as a hash — cannot be edited, and becomes a test only as a draft a person approves, linked to it for good | 0031 |
 | A workspace key grades only on models it was proved to reach, and one it cannot reach refuses the run rather than erroring every case | 0025 + 0026, route built from the key |
@@ -248,6 +249,9 @@ they drive the scripted fixture at `/api/test-agent`.
   environment line was one fixed sentence — "Customer-operated agent" — so a run against
   our own scripted fixture sealed a report describing a real customer. Derive what a
   report states from the run, never from a default.
+- **The service role bypasses RLS, so tenant isolation cannot rest on it.** `createRun` read
+  an agent by id alone, and another workspace's agent could be run against its own policy.
+  Every reference between tenant tables is now checked in the database (0034).
 - **A page must not render a sentence a stranger supplied.** `/sign-in?problem=` printed
   whatever arrived inside Novera's own alert box, on the page that asks for a password.
 

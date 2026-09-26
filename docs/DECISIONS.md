@@ -2234,3 +2234,22 @@ Proven with the **official MCP client** (SDK 1.30.1, pinned, dev-only): connects
 negotiates, lists seven read-only tools, is scoped to the key's workspace, refuses another
 workspace's run as a tool error, verifies a real sealed report's hash, has no tool that
 starts anything; plus the transport rules over raw HTTP (`verify:mcp`, 15 checks).
+
+## 2026-09-26 — A tenant-isolation hole, closed in the database (0034)
+
+Found while designing run-starting over the API: `createRun` read the agent and its
+latest policy by id with the service role and no workspace filter; `savePolicyVersion`
+read an agent's latest version the same way. Someone who knew another workspace's agent
+id could start a run against it from their own workspace — calling that agent's endpoint
+and grading it against the *other* workspace's policy text, shown back in their own run.
+Agent ids are random UUIDs, but they appear in URLs. RLS did not help: the service role
+bypasses it. Counted before fixing: 0 of the 21 cross-table references had ever crossed.
+
+Fixed twice. The code now scopes every lookup to the caller's workspace and says so
+plainly. And the guarantee moved into the database: `refuse_cross_workspace()` on twelve
+tables refuses any row that refers to another workspace's agent, policy, run, case,
+failure or suite (a built-in suite is the one shared thing) — for the service role too.
+0028 did this for reviews alone; a promise that holds only while every query is written
+carefully is not one this product makes. `verify:tenancy` now attempts six crossings with
+the service role (all refused) beside a control (accepted); every other free
+verification re-run green over the new triggers.

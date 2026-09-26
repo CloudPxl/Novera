@@ -11,7 +11,7 @@ import { TopBar } from "@/components/shell/top-bar.tsx";
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-full flex-col bg-ground">
+    <div className="theme-operator flex min-h-full flex-1 flex-col bg-ground text-ink">
       {/*
         The first stop for a keyboard user, on every operator page.
 

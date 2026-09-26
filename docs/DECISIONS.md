@@ -1889,3 +1889,19 @@ recorded it, and the session bug above meant it may have been measuring the sign
 Deliberately not built: an icon set and a density scale. The interface uses a handful of
 unicode arrows and two animation durations; a library would add a dependency to replace
 eleven characters.
+
+## 2026-09-26 — Phase 7.1: operator dark mode, and a menu item styled by a function's source
+
+Dark values for every token, scoped to `.theme-operator` on the signed-in shell and
+following the system setting. The client report, sign-in and public pages stay light —
+the report is printed and filed. Measured under emulated dark mode: axe clean and no
+overflow on six signed-in pages at 390 and 1440, the shell's background actually dark,
+and the report and home page actually white. Looked at in screenshots too: no leftover
+white panels, verdict colours still distinct.
+
+The dark screenshot showed "Connect an agent…" larger and unpadded. `menuItemClass`
+was exported from a `"use client"` module; a server component interpolated it into a
+template literal, which stringified the client reference — the class attribute held the
+source of a function that throws. Moved to `menu-item.ts`, and menu items gained a
+visible focus ring (the keyboard walk had never opened a menu). A new test fails if any
+client module exports a non-function constant; it fails against the old `menu.tsx`.

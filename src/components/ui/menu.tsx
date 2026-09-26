@@ -90,5 +90,3 @@ export function Menu({
   );
 }
 
-export const menuItemClass =
-  "block w-full rounded-control px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-sunken focus-visible:bg-sunken outline-none";

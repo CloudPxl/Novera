@@ -316,3 +316,53 @@ body {
     outline-offset: 2px;
   }
 }
+
+/*
+ * Operator dark mode. Only the signed-in shell carries `.theme-operator`; the client
+ * report, sign-in and every public page stay light — the report is printed and filed,
+ * and a stranger meeting the product should see one consistent face. It follows the
+ * system setting rather than adding a toggle nobody asked for.
+ *
+ * Every utility in the shell reads these variables (no raw palette classes remain), so
+ * redefining them here re-themes the whole shell. Contrast was measured with axe under
+ * emulated dark mode, not assumed from the hex values.
+ */
+@media (prefers-color-scheme: dark) {
+  .theme-operator {
+    color-scheme: dark;
+    --color-ground: #0b1120;
+    --color-surface: #131c2e;
+    --color-sunken: #1b2537;
+    --color-line: #263247;
+    --color-line-strong: #3a4a63;
+
+    --color-ink: #e5eaf1;
+    --color-ink-soft: #c1cbd8;
+    --color-ink-faint: #9aa8bb;
+    --color-ink-ghost: #64748b;
+    --color-ink-hover: #cbd5e1;
+    --color-on-ink: #0b1120;
+
+    --color-pass-text: #4ade80;
+    --color-pass-surface: #0c2a1c;
+    --color-pass-border: #166534;
+    --color-fail-text: #fb7185;
+    --color-fail-surface: #33101a;
+    --color-fail-border: #881337;
+    --color-warning-text: #fbbf24;
+    --color-warning-surface: #2f2108;
+    --color-warning-border: #92400e;
+    --color-high-text: #fb923c;
+    --color-high-surface: #33190a;
+    --color-high-border: #9a3412;
+    --color-neutral-text: #c1cbd8;
+    --color-neutral-surface: #1b2537;
+    --color-neutral-border: #3a4a63;
+    --color-info-text: #38bdf8;
+    --color-info-surface: #0a2438;
+    --color-info-border: #075985;
+
+    --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+    --shadow-card-hover: 0 8px 24px -12px rgb(0 0 0 / 0.6);
+  }
+}

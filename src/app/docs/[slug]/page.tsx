@@ -30,7 +30,7 @@ function Spans({ spans }: { spans: Span[] }) {
       {spans.map((span, i) => {
         if (span.kind === "code") {
           return (
-            <code key={i} className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[0.9em] text-ink">
+            <code key={i} className="rounded bg-sunken px-1 py-0.5 font-mono text-[0.9em] text-ink">
               {span.text}
             </code>
           );
@@ -59,8 +59,8 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
     : null;
 
   return (
-    <main className="mx-auto w-full max-w-2xl bg-white px-6 py-10 text-slate-900 sm:px-8">
-      <Link href="/docs" className="text-sm text-slate-500 underline-offset-2 hover:underline">
+    <main className="mx-auto w-full max-w-2xl bg-surface px-6 py-10 text-ink sm:px-8">
+      <Link href="/docs" className="text-sm text-ink-faint underline-offset-2 hover:underline">
         ← Documentation
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">{page.title as string}</h1>
@@ -93,7 +93,7 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
             return (
               <Tag
                 key={i}
-                className={`space-y-1 pl-5 text-[15px] leading-relaxed text-slate-700 ${
+                className={`space-y-1 pl-5 text-[15px] leading-relaxed text-ink-soft ${
                   block.ordered ? "list-decimal" : "list-disc"
                 }`}
               >
@@ -107,14 +107,14 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
           }
 
           return (
-            <p key={i} className="text-[15px] leading-relaxed text-slate-700">
+            <p key={i} className="text-[15px] leading-relaxed text-ink-soft">
               <Spans spans={block.spans} />
             </p>
           );
         })}
       </div>
 
-      <p className="mt-10 border-t border-slate-200 pt-4 text-sm text-slate-600">
+      <p className="mt-10 border-t border-line pt-4 text-sm text-ink-soft">
         Something missing?{" "}
         <Link href="/support" className="font-medium underline underline-offset-2">
           Ask us

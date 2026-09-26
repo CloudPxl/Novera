@@ -1905,3 +1905,21 @@ template literal, which stringified the client reference — the class attribute
 source of a function that throws. Moved to `menu-item.ts`, and menu items gained a
 visible focus ring (the keyboard walk had never opened a menu). A new test fails if any
 client module exports a non-function constant; it fails against the old `menu.tsx`.
+
+## 2026-09-26 — Visual direction, researched and applied (Phase 7)
+
+Five live sites inspected for the buyers Novera sells to (Vanta, Braintrust, LangSmith,
+Promptfoo, Credo AI), with computed styles measured rather than eyeballed; the result and
+the reasoning are in `docs/DESIGN.md`. Chosen: warm white and warm near-black ink, **no
+brand accent colour** (hue already means pass / fail / no result, and a coloured button
+would read as a verdict), glass only on the sticky top bar where content scrolls under
+it (none of the five uses a blurred nav; glass costs contrast), motion as feedback only,
+no gradients.
+
+Applied: the public pages and the client report moved onto tokens too (122 classes; the
+whole of `src` now has no raw palette step outside one historical comment); warm values
+for ground, lines, ink and shadows; progress bars are solid token fills instead of
+gradients; the landing headline's gradient text removed; buttons gain a hairline shadow,
+the control radius token and a specific-property 150ms ease-out transition. Measured:
+axe clean and no overflow on 13 pages in light and 5 in dark at 390 and 1440, sign-in
+measured signed out. Copy unchanged.

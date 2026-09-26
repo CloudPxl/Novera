@@ -69,16 +69,16 @@ export default async function GuidePage() {
   const signedIn = Boolean(await currentUser());
 
   return (
-    <main id="main" className="mx-auto w-full max-w-3xl bg-white px-6 py-10 text-slate-900 sm:px-8">
+    <main id="main" className="mx-auto w-full max-w-3xl bg-surface px-6 py-10 text-ink sm:px-8">
       <nav className="flex items-center justify-between text-sm">
-        <Link href="/" className="font-semibold uppercase tracking-[0.18em] text-slate-500">Novera</Link>
+        <Link href="/" className="font-semibold uppercase tracking-[0.18em] text-ink-faint">Novera</Link>
         <Link href={signedIn ? "/dashboard" : "/sign-in"} className="font-medium underline underline-offset-2">
           {signedIn ? "Open your dashboard" : "Sign in"}
         </Link>
       </nav>
 
       <h1 className="mt-10 text-3xl font-semibold tracking-tight">How to use Novera</h1>
-      <p className="mt-3 text-lg leading-relaxed text-slate-600">
+      <p className="mt-3 text-lg leading-relaxed text-ink-soft">
         Seven steps from a connected agent to a report you can hand to a client. The first run
         usually takes about ten minutes, most of it writing the policy.
       </p>
@@ -86,16 +86,16 @@ export default async function GuidePage() {
       <ol className="mt-10 space-y-6">
         {STEPS.map((step, i) => (
           <li key={step.title} className="flex gap-4">
-            <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
+            <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink text-sm font-semibold text-on-ink">
               {i + 1}
             </span>
             <div>
               <h2 className="text-lg font-semibold tracking-tight">{step.title}</h2>
-              <p className="mt-1 leading-relaxed text-slate-600">{step.body}</p>
-              <p className="mt-1.5 text-sm text-slate-500">
+              <p className="mt-1 leading-relaxed text-ink-soft">{step.body}</p>
+              <p className="mt-1.5 text-sm text-ink-faint">
                 Where:{" "}
                 {signedIn ? (
-                  <Link href={step.href} className="underline underline-offset-2 hover:text-slate-900">{step.where}</Link>
+                  <Link href={step.href} className="underline underline-offset-2 hover:text-ink">{step.where}</Link>
                 ) : (
                   step.where
                 )}
@@ -106,16 +106,16 @@ export default async function GuidePage() {
       </ol>
 
       <h2 className="mt-14 text-2xl font-semibold tracking-tight">Words you will see</h2>
-      <dl className="mt-5 divide-y divide-slate-200 border-y border-slate-200">
+      <dl className="mt-5 divide-y divide-line border-y border-line">
         {TERMS.map(([term, meaning]) => (
           <div key={term} className="grid gap-1 py-3 sm:grid-cols-[12rem_1fr] sm:gap-4">
             <dt className="font-medium">{term}</dt>
-            <dd className="leading-relaxed text-slate-600">{meaning}</dd>
+            <dd className="leading-relaxed text-ink-soft">{meaning}</dd>
           </div>
         ))}
       </dl>
 
-      <p className="mt-10 text-sm leading-relaxed text-slate-500">
+      <p className="mt-10 text-sm leading-relaxed text-ink-faint">
         More detail in the <Link href="/docs" className="underline underline-offset-2">documentation</Link>.
         Novera is evidence of testing, not a legal certification.
       </p>

@@ -9,9 +9,9 @@ import type { ComponentProps } from "react";
  */
 const VARIANTS = {
   primary:
-    "bg-ink text-on-ink hover:bg-ink-hover active:bg-ink-hover disabled:bg-ink-ghost",
+    "bg-ink text-on-ink shadow-button hover:bg-ink-hover active:bg-ink-hover disabled:bg-ink-ghost disabled:shadow-none",
   secondary:
-    "border border-line-strong bg-surface text-ink hover:border-ink-ghost hover:bg-ground active:bg-sunken disabled:text-ink-ghost",
+    "border border-line-strong bg-surface text-ink shadow-card hover:border-ink-ghost hover:bg-ground active:bg-sunken disabled:text-ink-ghost disabled:shadow-none",
   danger:
     "border border-fail-border bg-surface text-fail-text hover:border-fail-text hover:bg-fail-surface active:bg-fail-surface disabled:text-fail-border",
 } as const;
@@ -25,7 +25,7 @@ export type ButtonVariant = keyof typeof VARIANTS;
 export type ButtonSize = keyof typeof SIZES;
 
 export function buttonClass(variant: ButtonVariant = "primary", size: ButtonSize = "md", extra = ""): string {
-  return `inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100 ${VARIANTS[variant]} ${SIZES[size]} ${extra}`;
+  return `inline-flex items-center justify-center gap-2 rounded-control font-medium transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100 ${VARIANTS[variant]} ${SIZES[size]} ${extra}`;
 }
 
 /**

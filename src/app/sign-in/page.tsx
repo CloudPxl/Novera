@@ -17,19 +17,19 @@ export default async function SignInPage({
   const problem = problemMessage((await searchParams).problem);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center bg-white px-6 text-slate-900">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Novera</p>
+    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center bg-surface px-6 text-ink">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint">Novera</p>
       <h1 className="mt-3 text-2xl font-semibold tracking-tight">
         Evidence that your agent behaves as your policies require
       </h1>
-      <p className="mt-2 text-sm leading-relaxed text-slate-600">
+      <p className="mt-2 text-sm leading-relaxed text-ink-soft">
         Run a versioned scenario suite against an agent you operate, and produce a dated report
         you can hand to a client.
       </p>
       {problem && (
         <p
           role="alert"
-          className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-900"
+          className="mt-6 rounded-lg border border-warning-border bg-warning-surface px-3 py-2 text-sm leading-relaxed text-warning-text"
         >
           {problem}
         </p>

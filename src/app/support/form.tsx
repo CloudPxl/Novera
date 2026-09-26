@@ -45,7 +45,7 @@ export function InboundForm({
         ref={confirmation}
         role="status"
         tabIndex={-1}
-        className="mt-8 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm leading-relaxed text-emerald-900 outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+        className="mt-8 rounded-xl border border-pass-border bg-pass-surface px-5 py-4 text-sm leading-relaxed text-pass-text outline-none focus-visible:ring-2 focus-visible:ring-pass-text"
       >
         {state.notice}
       </div>
@@ -98,7 +98,7 @@ export function InboundForm({
       {remaining <= 400 && (
         <p
           aria-live="polite"
-          className={`-mt-3 text-xs ${remaining <= 0 ? "font-medium text-rose-700" : "text-ink-faint"}`}
+          className={`-mt-3 text-xs ${remaining <= 0 ? "font-medium text-fail-text" : "text-ink-faint"}`}
         >
           {remaining > 0
             ? `${remaining.toLocaleString("en-GB")} characters left.`
@@ -109,7 +109,7 @@ export function InboundForm({
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton pendingLabel="Sending…">{submitLabel}</SubmitButton>
         {state.error && (
-          <span role="alert" className="text-sm font-medium text-rose-700">
+          <span role="alert" className="text-sm font-medium text-fail-text">
             {state.error}
           </span>
         )}

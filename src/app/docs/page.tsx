@@ -14,12 +14,12 @@ export default async function DocsIndex() {
     .from("doc_pages").select("slug, title, body").eq("published", true).order("slug");
 
   return (
-    <main className="mx-auto w-full max-w-3xl bg-white px-6 py-10 text-slate-900 sm:px-8">
-      <Link href="/" className="text-sm text-slate-500 underline-offset-2 hover:underline">
+    <main className="mx-auto w-full max-w-3xl bg-surface px-6 py-10 text-ink sm:px-8">
+      <Link href="/" className="text-sm text-ink-faint underline-offset-2 hover:underline">
         ← Novera
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">Documentation</h1>
-      <p className="mt-2 text-sm leading-relaxed text-slate-600">
+      <p className="mt-2 text-sm leading-relaxed text-ink-soft">
         These pages are also the only material our support replies are allowed to draw on. If
         something here is wrong or missing, a support answer about it will say so rather than
         improvise.
@@ -37,7 +37,7 @@ export default async function DocsIndex() {
                   <p className="font-medium">{page.title as string}</p>
                   {/* The first paragraph, as text — a preview that starts "## What is
                       sent where" describes the syntax rather than the page. */}
-                  <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-slate-600">
+                  <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-soft">
                     {plainText(parseDocBody(page.body as string)[0])}
                   </p>
                 </Card>
@@ -47,7 +47,7 @@ export default async function DocsIndex() {
         ))}
       </ul>
 
-      <p className="mt-10 text-sm text-slate-600">
+      <p className="mt-10 text-sm text-ink-soft">
         Still stuck?{" "}
         <Link href="/support" className="font-medium underline underline-offset-2">
           Ask us

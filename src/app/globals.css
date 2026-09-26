@@ -13,24 +13,26 @@
 
 @theme {
   /* --- ground: the three depths a panel can sit at --------------------- */
-  --color-ground: #f8fafc;
+  /* Warm white, not blue-white: the product's centre is a document someone files.
+     See docs/DESIGN.md. */
+  --color-ground: #faf9f7;
   --color-surface: #ffffff;
-  --color-sunken: #f1f5f9;
-  --color-line: #e2e8f0;
-  --color-line-strong: #cbd5e1;
+  --color-sunken: #f3f1ed;
+  --color-line: #e7e4de;
+  --color-line-strong: #d3cec5;
 
   /* --- ink -------------------------------------------------------------- */
-  --color-ink: #0f172a;        /* 16.8:1 on surface */
-  --color-ink-soft: #475569;   /*  7.5:1 */
+  --color-ink: #1c1917;        /* 17.5:1 on surface */
+  --color-ink-soft: #524c46;   /*  8.2:1 */
   /* 4.76:1 — the lightest this may be and still carry text. It was #94a3b8 (2.6:1),
      which axe flagged 25 times on one page: labels, case ids and hints were all
      below the contrast floor. A token used for text has to pass as text. */
-  --color-ink-faint: #64748b;
+  --color-ink-faint: #6b645c;
   /* For rules, dots and icons only. Never put words in this. */
-  --color-ink-ghost: #94a3b8;
+  --color-ink-ghost: #a39d94;
   /* A filled control: its hover, and the text that sits on it. Separate tokens so a
      dark theme can invert ink without leaving white text on a light button. */
-  --color-ink-hover: #334155;
+  --color-ink-hover: #3a3531;
   --color-on-ink: #ffffff;
 
   /* --- semantic triads --------------------------------------------------
@@ -52,19 +54,21 @@
   --color-high-surface: #fff7ed;
   --color-high-border: #fed7aa;
 
-  --color-neutral-text: #475569;
-  --color-neutral-surface: #f1f5f9;
-  --color-neutral-border: #cbd5e1;
+  --color-neutral-text: #524c46;
+  --color-neutral-surface: #f3f1ed;
+  --color-neutral-border: #d3cec5;
 
   --color-info-text: #0369a1;
   --color-info-surface: #f0f9ff;
   --color-info-border: #bae6fd;
 
   /* --- elevation -------------------------------------------------------- */
-  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
-  --shadow-card-hover: 0 8px 24px -12px rgb(15 23 42 / 0.18);
-  --shadow-modal: 0 24px 64px -20px rgb(15 23 42 / 0.35);
-  --shadow-inset-terminal: inset 0 1px 3px 0 rgb(15 23 42 / 0.28);
+  --shadow-card: 0 1px 2px 0 rgb(28 25 23 / 0.04), 0 1px 3px 0 rgb(28 25 23 / 0.06);
+  --shadow-card-hover: 0 8px 24px -12px rgb(28 25 23 / 0.18);
+  --shadow-modal: 0 24px 64px -20px rgb(28 25 23 / 0.35);
+  /* A filled button: a hairline of lift, not a glow. */
+  --shadow-button: 0 1px 2px 0 rgb(28 25 23 / 0.14), inset 0 1px 0 0 rgb(255 255 255 / 0.08);
+  --shadow-inset-terminal: inset 0 1px 3px 0 rgb(28 25 23 / 0.28);
 
   /* --- radii ------------------------------------------------------------ */
   --radius-control: 0.5rem;

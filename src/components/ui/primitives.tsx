@@ -69,11 +69,13 @@ export function Badge({
   );
 }
 
+// Solid token fills: a gradient on a proportion adds shine, not information, and raw
+// palette steps did not follow the operator's dark theme.
 const BAR_FILLS = {
-  pass: "bg-linear-to-r from-emerald-500 to-emerald-400",
-  fail: "bg-linear-to-r from-rose-500 to-rose-400",
-  warning: "bg-linear-to-r from-amber-500 to-amber-400",
-  neutral: "bg-linear-to-r from-slate-700 to-slate-500",
+  pass: "bg-pass-text",
+  fail: "bg-fail-text",
+  warning: "bg-warning-text",
+  neutral: "bg-ink-soft",
 } as const;
 
 /**

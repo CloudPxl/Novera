@@ -22,10 +22,10 @@ export default async function ResetPasswordPage() {
   if (!user) redirect("/sign-in?problem=reset_expired");
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center bg-white px-6 text-slate-900">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Novera</p>
+    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center bg-surface px-6 text-ink">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint">Novera</p>
       <h1 className="mt-3 text-2xl font-semibold tracking-tight">Set a new password</h1>
-      <p className="mt-2 text-sm leading-relaxed text-slate-600">
+      <p className="mt-2 text-sm leading-relaxed text-ink-soft">
         For {user.email}. Choosing a new password signs out anywhere else this account is
         signed in.
       </p>

@@ -67,12 +67,12 @@ export function SignInForm() {
       )}
 
       {state.error && (
-        <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm leading-relaxed text-rose-800">
+        <p role="alert" className="rounded-lg border border-fail-border bg-fail-surface px-3 py-2 text-sm leading-relaxed text-fail-text">
           {state.error}
         </p>
       )}
       {state.notice && (
-        <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm leading-relaxed text-emerald-800">
+        <p role="status" className="rounded-lg border border-pass-border bg-pass-surface px-3 py-2 text-sm leading-relaxed text-pass-text">
           {state.notice}
         </p>
       )}
@@ -81,7 +81,7 @@ export function SignInForm() {
         {SUBMIT[mode]}
       </SubmitButton>
 
-      <div className="space-y-1 text-sm text-slate-600">
+      <div className="space-y-1 text-sm text-ink-soft">
         {mode === "reset" ? (
           <p>
             Remembered it?{" "}
@@ -115,4 +115,4 @@ export function SignInForm() {
   );
 }
 
-const linkClass = "font-medium text-ink underline underline-offset-2 hover:text-slate-600";
+const linkClass = "font-medium text-ink underline underline-offset-2 hover:text-ink-soft";

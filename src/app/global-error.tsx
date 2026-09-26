@@ -24,7 +24,7 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
                 <button
                   type="button"
                   onClick={() => retry()}
-                  className="rounded-control bg-ink px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                  className="rounded-control bg-ink px-4 py-2 text-sm font-medium text-on-ink hover:bg-ink-hover"
                 >
                   Try again
                 </button>

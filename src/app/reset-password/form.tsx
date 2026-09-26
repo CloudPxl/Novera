@@ -37,7 +37,7 @@ export function NewPasswordForm() {
       </Field>
 
       {state.error && (
-        <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm leading-relaxed text-rose-800">
+        <p role="alert" className="rounded-lg border border-fail-border bg-fail-surface px-3 py-2 text-sm leading-relaxed text-fail-text">
           {state.error}
         </p>
       )}

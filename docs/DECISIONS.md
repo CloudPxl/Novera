@@ -1934,3 +1934,15 @@ dashed because something is missing, never red because neither is a failure. The
 sentence beside it moves from soft grey to ink. The operator's scorecard ring matches.
 Measured on a sealed WITHHELD report (format 9) and its run: axe clean, no overflow at
 390 and 1440, in light and dark. No payload or copy changed — the words already existed.
+
+## 2026-09-26 — A fixture report says "Test data" above its title
+
+A report sealed from the scripted fixture was distinguishable only by one metadata line
+("Environment: Local development, scripted fixture") under a normal title — exactly the
+polish-makes-it-look-real case the product rules forbid. It now carries a dashed amber
+"Test data · <environment>" label above the title. Keyed on the environment the run
+already recorded, so no payload field and no new wording ("test data" is on the approved
+vocabulary list). Verified on a fixture report (shown) and a real-agent report (absent);
+axe clean at 390 and 1440. Limitation: a future fixture whose environment string does not
+say "fixture" would not be caught — a dedicated payload flag is the durable fix, and
+belongs with the next payload change so it ships with its absence branch.

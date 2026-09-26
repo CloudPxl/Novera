@@ -52,6 +52,14 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           </p>
           <ReportToolbar token={token} />
         </div>
+        {/* A report sealed from the scripted fixture says so at the same weight as the
+            title — a polished document must never let test data pass for a real agent.
+            Keyed on the environment the run recorded; no payload field is added. */}
+        {/fixture/i.test(subject.environment) && (
+          <p className="mt-4 inline-flex items-center rounded-control border-2 border-dashed border-warning-text bg-warning-surface px-3 py-1 text-sm font-bold uppercase tracking-wide text-warning-text">
+            Test data · {subject.environment}
+          </p>
+        )}
         <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{subject.client}</h1>
         <dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 text-sm sm:grid-cols-3">
           <Field label="Agent" value={subject.agent} />

@@ -15,10 +15,10 @@ import { applyPolicyChange } from "@/lib/diagnose/parse.ts";
 import { createRoutedChat } from "@/lib/router/execute.ts";
 import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
 import { connectionsFromEnv } from "@/lib/providers/registry.ts";
-import { plannedRoutes, workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
+import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
 import { explainKeyFailure } from "@/lib/providers/key-failure.ts";
 import { REVIEW_NOTE_MIN, REVIEW_NOTE_MAX } from "@/lib/evidence/reviews.ts";
-import { manifestForNewRun } from "../report/manifest.ts";
+import { startRun } from "./start-run.ts";
 import { httpVerificationConnector } from "../evidence/connectors/http.ts";
 import { connectionFor } from "@/lib/providers/workspace-connections.ts";
 import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
@@ -177,64 +177,16 @@ export async function reprobeAgent(_prev: FormState, form: FormData): Promise<Fo
 /** Creates a queued run; execution is started by the run page. */
 export async function createRun(formData: FormData): Promise<void> {
   const { user, workspace } = await requireWorkspace();
-  const agentId = String(formData.get("agentId") ?? "");
   const admin = await assertMembership(user.id, workspace.id);
 
-  // Every lookup below is scoped to this workspace. They were not, and with the service
-  // role that let a known agent id from another workspace be run — against that
-  // workspace's policy. 0034 now refuses such a run in the database as well.
-  const { data: agent } = await admin
-    .from("agents").select("attestation_text").eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
-  if (!agent) throw new Error("That agent could not be found in this workspace.");
-
-  const { data: policy } = await admin
-    .from("policies").select("id").eq("agent_id", agentId).eq("workspace_id", workspace.id)
-    .order("version", { ascending: false }).limit(1).maybeSingle();
-  if (!policy) throw new Error("Save a policy version before running the suite.");
-
-  // The suite comes from the form, but is re-checked here: a run must never name a
-  // suite the workspace is not entitled to read.
-  const requestedSuiteId = String(formData.get("suiteId") ?? "").trim();
-  const suiteQuery = admin.from("suites").select("id, workspace_id");
-  const { data: suite } = requestedSuiteId
-    ? await suiteQuery.eq("id", requestedSuiteId).maybeSingle()
-    // With no choice made, the newest built-in version: pinning `version 1` here
-    // quietly ran a 16-scenario suite for anyone who never opened the dropdown.
-    : await suiteQuery.is("workspace_id", null).eq("key", "eu-support")
-        .order("version", { ascending: false }).limit(1).maybeSingle();
-
-  if (!suite) throw new Error("That suite could not be found.");
-  if (suite.workspace_id !== null && suite.workspace_id !== workspace.id) {
-    throw new Error("That suite does not belong to this workspace.");
-  }
-
-  const { data: previous } = await admin
-    .from("runs").select("id").eq("agent_id", agentId).eq("workspace_id", workspace.id).eq("status", "completed")
-    .eq("suite_id", suite.id)
-    .order("created_at", { ascending: false }).limit(1).maybeSingle();
-
-  const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
-  if (!entitlement.canRun) throw new Error(entitlement.blockedReason ?? "This workspace cannot start a run.");
-
-  // Declared before anything runs, and frozen by the row (migration 0016).
-  const declared = await manifestForNewRun({
-    client: admin, agentId, policyId: policy.id, suiteId: suite.id,
-    judgeSource: entitlement.judgeSource, routes: plannedRoutes(entitlement),
+  // The same implementation the API uses (`start-run.ts`), so the two cannot drift.
+  const run = await startRun({
+    client: admin,
+    workspaceId: workspace.id,
+    userId: user.id,
+    agentId: String(formData.get("agentId") ?? ""),
+    suiteId: String(formData.get("suiteId") ?? "").trim() || null,
   });
-
-  const { data: run, error } = await admin
-    .from("runs")
-    .insert({
-      id: declared.id,
-      workspace_id: workspace.id, agent_id: agentId, policy_id: policy.id,
-      suite_id: suite.id, baseline_run_id: previous?.id ?? null, status: "queued",
-      judge_source: entitlement.judgeSource, attestation_text: agent?.attestation_text ?? null,
-      created_by: user.id,
-      manifest: declared.manifest, manifest_hash: declared.manifest_hash,
-    })
-    .select("id").single();
-
-  if (error) throw new Error(`Could not start the run: ${error.message}`);
 
   // A run counts against the trial from the moment it exists, and the top bar showing
   // the allowance lives in the shared layout, which a redirect alone does not re-render:
@@ -430,45 +382,20 @@ export async function rerunFrom(formData: FormData): Promise<void> {
   const admin = await assertMembership(user.id, workspace.id);
 
   const { data: baseline } = await admin
-    .from("runs")
-    .select("agent_id, suite_id, attestation_text")
-    .eq("id", baselineRunId)
-    .eq("workspace_id", workspace.id)
-    .single();
+    .from("runs").select("agent_id, suite_id").eq("id", baselineRunId).eq("workspace_id", workspace.id).maybeSingle();
   if (!baseline) throw new Error("That run could not be found.");
 
-  const { data: policy } = await admin
-    .from("policies").select("id").eq("agent_id", baseline.agent_id)
-    .order("version", { ascending: false }).limit(1).single();
-  if (!policy) throw new Error("There is no policy version to run against.");
-
-  const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
-  if (!entitlement.canRun) throw new Error(entitlement.blockedReason ?? "This workspace cannot start a run.");
-
-  const declared = await manifestForNewRun({
-    client: admin, agentId: baseline.agent_id as string, policyId: policy.id,
-    suiteId: baseline.suite_id as string, judgeSource: entitlement.judgeSource,
-    routes: plannedRoutes(entitlement),
+  // Through the one implementation, like the run button and the API. It used to be a
+  // third copy, which also carried the old run's attestation forward instead of the
+  // agent's current one.
+  const run = await startRun({
+    client: admin,
+    workspaceId: workspace.id,
+    userId: user.id,
+    agentId: baseline.agent_id as string,
+    suiteId: baseline.suite_id as string,
+    baselineRunId,
   });
-
-  const { data: run, error } = await admin
-    .from("runs")
-    .insert({
-      id: declared.id,
-      workspace_id: workspace.id,
-      agent_id: baseline.agent_id,
-      policy_id: policy.id,
-      suite_id: baseline.suite_id,
-      baseline_run_id: baselineRunId,
-      status: "queued",
-      judge_source: entitlement.judgeSource,
-      attestation_text: baseline.attestation_text,
-      created_by: user.id,
-      manifest: declared.manifest, manifest_hash: declared.manifest_hash,
-    })
-    .select("id").single();
-
-  if (error) throw new Error(`Could not start the rerun: ${error.message}`);
 
   // A run counts against the trial from the moment it exists, and the top bar showing
   // the allowance lives in the shared layout, which a redirect alone does not re-render:

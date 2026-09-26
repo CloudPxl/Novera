@@ -57,7 +57,7 @@ someone with the service role, not merely someone using the application.
 | A public form cannot be made free | 0024, counted in Postgres |
 | A person gets one workspace on first use, however many page loads race to create it | 0029, advisory lock per user |
 | A row can refer only to rows in its own workspace — agents, policies, runs, cases, failures, suites (built-ins shared) — even for the service role | 0034 `refuse_cross_workspace()`, `verify:tenancy` |
-| An API key is stored only as an HMAC, is read-only, cannot be altered, and once revoked stays revoked; a key reads only its own workspace | 0033 + `src/lib/api/`, `verify:api` |
+| An API key is stored only as an HMAC, reads by default and starts runs only if its creator chose that (never `run` without `read`), cannot be altered, and once revoked stays revoked; a key reads only its own workspace, and a run it starts names it | 0033 + 0035 + `src/lib/api/`, `verify:api` |
 | A production failure is stored redacted — the original only as a hash — cannot be edited, and becomes a test only as a draft a person approves, linked to it for good | 0031 |
 | A workspace key grades only on models it was proved to reach, and one it cannot reach refuses the run rather than erroring every case | 0025 + 0026, route built from the key |
 | A person's finding sits beside a verdict and never replaces it; it needs a reason, freezes the verdict it read, and cannot be filed against another workspace's case | 0028 |
@@ -90,6 +90,10 @@ human-written opening with a model playing the customer; its lines are labelled
 simulated with their model, it never sees the assertions, and a report that includes one
 says no real customer took part. A retest runs the suite's own case,
 with the run's read-back and production guard — never a reconstruction from the row.
+
+**There is one way to start a run.** The button, "rerun and compare" and the API all call
+`startRun`, and the run page and the API advance runs with `advanceRun`
+(`src/lib/workflow/start-run.ts`). A fourth copy is how the next divergence starts.
 
 **Evaluation order is cheapest-sufficient: rules → read-back → models.**
 A scenario's checks (contains, matches, tools allowed/forbidden/required/ordered,

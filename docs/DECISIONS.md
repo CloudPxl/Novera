@@ -2253,3 +2253,21 @@ failure or suite (a built-in suite is the one shared thing) — for the service 
 carefully is not one this product makes. `verify:tenancy` now attempts six crossings with
 the service role (all refused) beside a control (accepted); every other free
 verification re-run green over the new triggers.
+
+## 2026-09-26 — Phase 10.4: starting runs from a pipeline; one run path, not three
+
+A second API scope, `run` (0035), opt-in per key with its cost stated on the checkbox; a
+`run` key always also reads (the database refuses `run` alone). `POST /api/v1/runs` starts
+a run with the same checks as the button; `POST /api/v1/runs/<id>/execute` advances one
+~40 s slice under the same lease. A run started by a key names it (`runs.api_key_id`,
+same-workspace-checked) and holds the key's creator responsible. `novera run` drives it
+end to end and exits with the sealed report's CI code — closing the gap Phase 8 left.
+
+While wiring it: run creation existed three times — the button (`createRun`), "rerun and
+compare" (`rerunFrom`) and now the API — and the second carried the *old run's*
+attestation forward instead of the agent's current one, with an unscoped policy lookup.
+All three now go through `startRun`/`advanceRun` (`src/lib/workflow/start-run.ts`); the
+session execute route is a thin wrapper too. Measured: CLI against the local fixture —
+read-only key refused 403; run-scoped key started, drove and sealed a run; report
+verified, labelled test data, exit 1, JUnit well-formed; the row names its key and the
+key's creator. Button and rerun-and-compare re-walked in the browser. MCP stays read-only.

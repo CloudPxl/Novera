@@ -6,20 +6,22 @@
  *   novera report verify <link | token | export.json>
  *   novera report status <link | token | export.json> [--junit results.xml]
  *   novera report export <link | token> --format md|csv|json|junit [--out file]
+ *   novera run --agent <id> [--suite <id>] [--junit results.xml]   (NOVERA_API_KEY)
  *
  * Exit codes (docs: /docs/cli-and-ci):
  *   0 complete and every scenario passed   1 a scenario failed
  *   2 evidence incomplete, or not verified  3 configuration / authorisation
  *   4 infrastructure (network, server)
  *
- * It reads and verifies; it never starts a run, publishes, revokes or changes anything.
- * Starting a run needs a workspace API key, which is designed separately.
+ * `run` starts a run with a workspace API key that has the `run` scope, drives it to the
+ * end and exits with the sealed report's code. Nothing else here changes anything, and
+ * nothing here publishes, revokes or approves.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { validateSuite, suiteFromCsv } from "../src/lib/suites/validate.ts";
 import { ciOutcome, CI_EXIT } from "../src/lib/report/ci.ts";
-import { reportToJunit } from "../src/lib/report/export.ts";
+import { reportToJunit, withoutToken } from "../src/lib/report/export.ts";
 import {
   DEFAULT_BASE,
   EXPORT_FORMATS,
@@ -39,6 +41,10 @@ const USAGE = `novera — verify and read sealed Novera reports
   novera report verify <link | token | export.json> [--offline]
   novera report status <link | token | export.json> [--junit results.xml]
   novera report export <link | token> --format md|csv|json|junit [--out file]
+  novera run --agent <id> [--suite <id>] [--junit results.xml]
+
+run needs NOVERA_API_KEY: a workspace key with the "can also start runs" scope. It is
+read from the environment only — never pass a key as an argument.
 
 A saved export.json is checked twice: that it is intact, and that it is the report
 still served at its link. --offline skips the second check.
@@ -218,6 +224,62 @@ async function reportExport(args: string[]): Promise<number> {
   return 0;
 }
 
+async function api(base: string, path: string, init: RequestInit = {}): Promise<{ status: number; body: Record<string, unknown> }> {
+  const key = process.env.NOVERA_API_KEY;
+  if (!key) throw new Exit(CI_EXIT.configuration, "Set NOVERA_API_KEY to a workspace API key that can start runs.");
+  let response: Response;
+  try {
+    response = await fetch(`${base}${path}`, {
+      ...init,
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json", ...(init.headers ?? {}) },
+      redirect: "error",
+      signal: AbortSignal.timeout(90_000),
+    });
+  } catch (e) {
+    throw new Exit(CI_EXIT.infrastructure, `Could not reach ${base}: ${e instanceof Error ? e.message : e}`);
+  }
+  const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+  return { status: response.status, body };
+}
+
+async function runCommand(args: string[]): Promise<number> {
+  const { opts } = flags(args);
+  const base = (opts.base ?? process.env.NOVERA_URL ?? DEFAULT_BASE).replace(/\/+$/, "");
+  if (!opts.agent) throw new Exit(CI_EXIT.configuration, "Pass --agent <id>. GET /api/v1/agents lists them.");
+
+  const started = await api(base, "/api/v1/runs", {
+    method: "POST",
+    body: JSON.stringify({ agent_id: opts.agent, ...(opts.suite ? { suite_id: opts.suite } : {}) }),
+  });
+  if (started.status !== 201) {
+    throw new Exit(started.status >= 500 ? CI_EXIT.infrastructure : CI_EXIT.configuration,
+      `The run was not started (${started.status}): ${started.body.error ?? "no reason given"}`);
+  }
+  const runId = (started.body.run as { id: string }).id;
+  console.log(`Started run ${runId}.`);
+
+  // Slices of about forty seconds, until the run says it is done. A slice refused
+  // because another is still working is waited out, not repeated at once.
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const step = await api(base, `/api/v1/runs/${runId}/execute`, { method: "POST" });
+    if (step.status >= 500) throw new Exit(CI_EXIT.infrastructure, `The run stopped: ${step.body.error ?? step.status}`);
+    if (step.status !== 200) throw new Exit(CI_EXIT.configuration, `The run could not be advanced (${step.status}): ${step.body.error ?? ""}`);
+    if (step.body.done) break;
+    if (step.body.started) console.log(`  ${step.body.graded ?? 0} scenarios graded so far…`);
+    else await new Promise((r) => setTimeout(r, 5_000));
+  }
+
+  const detail = await api(base, `/api/v1/runs/${runId}`);
+  const run = detail.body.run as { status: string; report: { url: string } | null } | undefined;
+  if (!run || run.status !== "completed" || !run.report) {
+    // No sealed report means no complete evidence: never a pass.
+    console.error(`The run ended ${run?.status ?? "unknown"} without a sealed report.`);
+    return CI_EXIT.incomplete;
+  }
+  console.log(`Report: ${withoutToken(run.report.url)}`);
+  return reportStatus([run.report.url, ...(opts.junit ? ["--junit", opts.junit] : [])]);
+}
+
 async function main(argv: string[]): Promise<number> {
   const [group, command, ...rest] = argv;
   if (!group || group === "help" || group === "--help" || group === "-h") {
@@ -230,6 +292,7 @@ async function main(argv: string[]): Promise<number> {
     "report status": reportStatus,
     "report export": reportExport,
   };
+  if (group === "run") return runCommand([command, ...rest].filter((a): a is string => a !== undefined));
   const handler = handlers[`${group} ${command}`];
   if (!handler) {
     console.error(`Unknown command: ${[group, command].filter(Boolean).join(" ")}\n\n${USAGE}`);

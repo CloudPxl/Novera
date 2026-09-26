@@ -21,7 +21,14 @@ export function CreateApiKey() {
             <input id="api-key-name" name="name" required maxLength={80} placeholder="e.g. GitHub Actions" className={inputClass} />
           </Field>
         </div>
-        <SubmitButton size="sm" pendingLabel="Creating…">Create a read-only key</SubmitButton>
+        <SubmitButton size="sm" pendingLabel="Creating…">Create key</SubmitButton>
+        <label className="flex w-full items-start gap-2 text-sm text-ink-soft">
+          <input type="checkbox" name="canRun" className="mt-0.5 size-4 accent-ink" />
+          <span>
+            Can also start runs. Each run it starts uses one of your trial runs, or grades on your own
+            model key. Leave this off for a key that only reads.
+          </span>
+        </label>
       </form>
 
       {state.error && <p role="status" className="mt-3 text-sm text-fail-text">{state.error}</p>}

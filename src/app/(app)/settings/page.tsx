@@ -193,8 +193,9 @@ export default async function SettingsPage() {
             <h2 className="text-lg font-semibold tracking-tight">API keys</h2>
             <Help label="API keys">
               A key lets a script, a CI pipeline or an AI assistant read this workspace&apos;s runs and
-              reports without signing in. Keys are read-only: they cannot start runs, change anything or
-              publish anything. Create one per place you use it, so you can revoke it on its own.
+              reports without signing in. A key can also start runs only if you tick that when creating
+              it. No key can change a policy, approve anything, or publish or revoke a report. Create one
+              per place you use it, so you can revoke it on its own.
             </Help>
           </div>
           <Card className="mt-3 p-5">

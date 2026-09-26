@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth/session.ts";
@@ -18,7 +19,7 @@ export default async function SignInPage({
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center bg-surface px-6 text-ink">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint">Novera</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint"><Link href="/" className="rounded-control hover:text-ink">Novera</Link></p>
       <h1 className="mt-3 text-2xl font-semibold tracking-tight">
         Evidence that your agent behaves as your policies require
       </h1>

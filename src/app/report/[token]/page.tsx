@@ -18,10 +18,13 @@ const GRADE_STYLES: Record<string, string> = {
   B: "border-info-border bg-info-surface text-info-text",
   C: "border-warning-border bg-warning-surface text-warning-text",
   F: "border-fail-border bg-fail-surface text-fail-text",
-  INCOMPLETE: "border-line-strong bg-sunken text-ink-soft",
-  // A grade withheld over unusable evidence is not a failing grade, so it is not red
-  // either. The basis line beside it says which of the two happened and why.
-  WITHHELD: "border-line-strong bg-sunken text-ink-soft",
+  // Not red — neither is a failing grade — but not quiet either. Drawn at the same size
+  // and weight as a letter, amber like every other "no result", with a dashed edge that
+  // reads as "something is missing". A grey footnote is how a partial run passes for a
+  // clean one (docs/DESIGN.md).
+  INCOMPLETE: "border-dashed border-warning-text bg-warning-surface text-warning-text",
+  // The basis line beside it says which of the two happened and why.
+  WITHHELD: "border-dashed border-warning-text bg-warning-surface text-warning-text",
 };
 
 export const metadata: Metadata = {
@@ -66,17 +69,26 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             <div
               className={`flex size-24 shrink-0 flex-col items-center justify-center rounded-xl border-2 ${GRADE_STYLES[payload.grade.band]}`}
             >
-              <span className="text-[38px] font-bold leading-none tracking-tight">
-                {payload.grade.band === "INCOMPLETE" || payload.grade.band === "WITHHELD" ? "—" : payload.grade.band}
-              </span>
-              <span className="mt-1 text-xs font-semibold tabular-nums">
-                {payload.grade.score === null
-                  ? payload.grade.band === "WITHHELD" ? "withheld" : "incomplete"
-                  : `${payload.grade.score}%`}
-              </span>
+              {payload.grade.band === "INCOMPLETE" || payload.grade.band === "WITHHELD" ? (
+                // The word is the grade. It used to be a dash with the word in 12px beneath.
+                <span className="px-1 text-center text-[15px] font-bold uppercase leading-tight tracking-wide">
+                  {payload.grade.band === "WITHHELD" ? "Withheld" : "Incomplete"}
+                </span>
+              ) : (
+                <>
+                  <span className="text-[38px] font-bold leading-none tracking-tight">{payload.grade.band}</span>
+                  <span className="mt-1 text-xs font-semibold tabular-nums">
+                    {payload.grade.score === null ? "" : `${payload.grade.score}%`}
+                  </span>
+                </>
+              )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm leading-relaxed text-ink-soft">{payload.grade.basis}</p>
+              <p
+                className={`text-sm leading-relaxed ${payload.grade.band === "INCOMPLETE" || payload.grade.band === "WITHHELD" ? "font-medium text-ink" : "text-ink-soft"}`}
+              >
+                {payload.grade.basis}
+              </p>
               {payload.grade.meets_threshold !== null && (
                 <p className="mt-2 text-sm font-medium text-ink">
                   {payload.grade.meets_threshold

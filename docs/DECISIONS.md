@@ -1923,3 +1923,14 @@ gradients; the landing headline's gradient text removed; buttons gain a hairline
 the control radius token and a specific-property 150ms ease-out transition. Measured:
 axe clean and no overflow on 13 pages in light and 5 in dark at 390 and 1440, sign-in
 measured signed out. Copy unchanged.
+
+## 2026-09-26 — Phase 7.2, the report first: a withheld grade drawn as loudly as a letter
+
+On the client report `WITHHELD` and `INCOMPLETE` rendered as a dash in a grey tile with
+the word in 12px underneath — the quietest element on a page whose point is that missing
+evidence is a finding. Now the word *is* the grade, at display weight, in an amber tile
+with a dashed edge: amber because every other "no result" in the product is amber,
+dashed because something is missing, never red because neither is a failure. The basis
+sentence beside it moves from soft grey to ink. The operator's scorecard ring matches.
+Measured on a sealed WITHHELD report (format 9) and its run: axe clean, no overflow at
+390 and 1440, in light and dark. No payload or copy changed — the words already existed.

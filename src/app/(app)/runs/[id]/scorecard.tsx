@@ -12,9 +12,10 @@ const BAND_RING = {
   B: "border-pass-border bg-pass-surface text-pass-text",
   C: "border-warning-border bg-warning-surface text-warning-text",
   F: "border-fail-border bg-fail-surface text-fail-text",
-  INCOMPLETE: "border-line-strong bg-sunken text-ink-soft",
+  // Amber and dashed: as loud as a letter, never red. See the client report.
+  INCOMPLETE: "border-dashed border-warning-text bg-warning-surface text-warning-text",
   // Same treatment, different reason. Neither is a bad grade, so neither is red.
-  WITHHELD: "border-line-strong bg-sunken text-ink-soft",
+  WITHHELD: "border-dashed border-warning-text bg-warning-surface text-warning-text",
 } as const;
 
 export interface Corroboration {
@@ -85,7 +86,7 @@ export function Scorecard({
             className={`grid size-24 shrink-0 place-items-center rounded-full border-4 ${BAND_RING[grade.band]}`}
           >
             {ungraded ? (
-              <span className="type-pill text-center leading-tight">
+              <span className="text-center text-xs font-bold uppercase leading-tight tracking-wide">
                 {grade.band === "WITHHELD" ? <>Grade<br />withheld</> : <>Not<br />graded</>}
               </span>
             ) : (

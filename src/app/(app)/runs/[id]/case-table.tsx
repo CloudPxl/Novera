@@ -20,7 +20,7 @@ export interface CaseRow {
   failedAssertions: string[];
   responseText: string | null;
   /** Every turn of a conversation scenario, in order; null for a single message. */
-  transcript?: Array<{ role: "customer" | "agent"; content: string }> | null;
+  transcript?: Array<{ role: "customer" | "agent"; content: string; simulated?: boolean; model?: string }> | null;
   rationale: string | null;
   error: string | null;
   judgeModel: string | null;
@@ -321,6 +321,8 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
               <h3 className="type-pill text-ink-faint">The conversation, turn by turn</h3>
               <p className="mt-1 text-xs text-ink-soft">
                 Graded as a whole: a rule broken in any turn fails the scenario.
+                {row.transcript.some((t) => t.simulated) &&
+                  " Lines marked as a simulated customer were written by a model playing one — test data, not a real customer."}
               </p>
               <ol className="mt-1.5 space-y-2">
                 {row.transcript.map((t, i) => (
@@ -330,7 +332,9 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
                       t.role === "customer" ? "bg-sunken text-ink ring-line" : "bg-surface text-ink ring-line"
                     }`}
                   >
-                    <span className="type-pill text-ink-faint">{t.role === "customer" ? "Scenario" : "Agent"} · </span>
+                    <span className="type-pill text-ink-faint">
+                      {t.role === "agent" ? "Agent" : t.simulated ? `Simulated customer${t.model ? ` (${t.model})` : ""}` : "Scenario"} ·{" "}
+                    </span>
                     {t.content}
                   </li>
                 ))}

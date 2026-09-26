@@ -1,5 +1,6 @@
 import type { Suite, SuiteCase } from "../runner/types.ts";
 import { MAX_EARLIER_TURNS } from "../runner/conversation.ts";
+import { MAX_PERSONA_TURNS } from "../simulate/persona.ts";
 
 /**
  * Parses a list of deterministic checks, reporting every problem rather than the
@@ -290,6 +291,41 @@ export function validateSuite(value: unknown): ValidationResult {
       }
     }
 
+    // A simulated customer. Its opening is `input`, written by a person; the model
+    // only continues. Refused rather than dropped when malformed, for the same reason
+    // as earlier turns.
+    let persona: SuiteCase["persona"];
+    if (c.persona !== undefined) {
+      const raw = c.persona as Record<string, unknown> | null;
+      const goal = typeof raw?.goal === "string" ? raw.goal.trim() : "";
+      const maxTurns = raw?.max_turns;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        errors.push(`${label}: \`persona\` must be an object when present.`);
+      } else if (!goal) {
+        errors.push(`${label}: \`persona.goal\` must say what the customer wants.`);
+      } else if (typeof maxTurns !== "number" || !Number.isInteger(maxTurns) || maxTurns < 1 || maxTurns > MAX_PERSONA_TURNS) {
+        errors.push(`${label}: \`persona.max_turns\` must be a whole number from 1 to ${MAX_PERSONA_TURNS} — how many messages they send after the opening.`);
+      } else if (earlierTurns) {
+        errors.push(`${label}: a scenario has either \`earlier_turns\` or a \`persona\`, not both.`);
+      } else {
+        const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+        const facts = raw.facts;
+        const factsOk = facts === undefined || (facts !== null && typeof facts === "object" && !Array.isArray(facts)
+          && Object.values(facts as Record<string, unknown>).every((v) => typeof v === "string" && v.trim()));
+        if (!factsOk) {
+          errors.push(`${label}: \`persona.facts\` must be an object of non-empty strings when present.`);
+        } else {
+          persona = {
+            goal,
+            max_turns: maxTurns,
+            ...(text(raw.style) ? { style: text(raw.style) } : {}),
+            ...(text(raw.language) ? { language: text(raw.language) } : {}),
+            ...(facts ? { facts: facts as Record<string, string> } : {}),
+          };
+        }
+      }
+    }
+
     // An attack declaration is evidence, so a malformed one is refused. A report that
     // named the wrong channel would describe an attack the run never made.
     let attack: SuiteCase["attack"];
@@ -342,6 +378,7 @@ export function validateSuite(value: unknown): ValidationResult {
         ...(checks?.length ? { checks } : {}),
         ...(context ? { context } : {}),
         ...(earlierTurns ? { earlier_turns: earlierTurns } : {}),
+        ...(persona ? { persona } : {}),
         ...(attack ? { attack } : {}),
         ...(dutyRefs?.length ? { duty_refs: dutyRefs } : {}),
         ...(c.destructive === true ? { destructive: true } : {}),

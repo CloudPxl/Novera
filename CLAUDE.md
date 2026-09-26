@@ -83,7 +83,10 @@ gap** — the share of the suite that produced no verdict.
 **A conversation is graded whole.** A scenario with `earlier_turns` sends each turn with
 the conversation so far; rules apply to every turn and the judges read every reply. An
 agent with no `{{history}}` or `{{conversation_id}}` slot is not sent it — recorded as
-not run, never flattened into separate messages. A retest runs the suite's own case,
+not run, never flattened into separate messages. A `persona` scenario continues after a
+human-written opening with a model playing the customer; its lines are labelled
+simulated with their model, it never sees the assertions, and a report that includes one
+says no real customer took part. A retest runs the suite's own case,
 with the run's read-back and production guard — never a reconstruction from the row.
 
 **Evaluation order is cheapest-sufficient: rules → read-back → models.**
@@ -146,6 +149,7 @@ src/lib/cli/ + bin/   the `novera` CLI: verify, status (CI exit codes), export, 
 src/lib/imports/      Promptfoo / DeepEval / LangSmith / Langfuse datasets → drafts, differences recorded
 src/lib/redact/       pattern redaction (browser-safe) + storage record with hashes
 src/lib/regressions/  a production failure → regression scenario, and its derived lifecycle
+src/lib/simulate/     the simulated customer: persona prompt and reply parsing
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites + calibration labels
 data/docs/            the published documentation, seeded into the database
@@ -172,7 +176,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 430 unit tests | free |
+| `npm test` | 437 unit tests | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |

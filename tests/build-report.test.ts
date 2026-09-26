@@ -329,3 +329,24 @@ test("a run where nothing was read back carries no such claim", () => {
   assert.equal(p.coverage.effect_confirmed, 0);
   assert.doesNotMatch(p.limitations, /did not show that action/);
 });
+
+const limitationsOf = (payload: unknown) => (payload as { limitations: string }).limitations;
+
+test("a run with a model-played customer says so in the limitations, and only then", () => {
+  const simulated = caseRecord({
+    caseId: "P01",
+    transcript: [
+      { role: "customer", content: "opening" }, { role: "agent", content: "no" },
+      { role: "customer", content: "again", simulated: true, model: "groq/x" }, { role: "agent", content: "no" },
+    ],
+  });
+  const scripted = caseRecord({
+    caseId: "C01",
+    transcript: [{ role: "customer", content: "a" }, { role: "agent", content: "b" }],
+  });
+  const withSim = limitationsOf(buildReport(input({ cases: [simulated] })).payload);
+  assert.match(withSim, /a language model played the customer/);
+  assert.match(withSim, /no real customer took part/);
+  assert.doesNotMatch(limitationsOf(buildReport(input({ cases: [scripted] })).payload), /played the customer/);
+  assert.doesNotMatch(limitationsOf(buildReport(input()).payload), /played the customer/);
+});

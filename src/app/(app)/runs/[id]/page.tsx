@@ -327,7 +327,7 @@ export default async function RunPage({
     failedAssertions: resolveAssertions(asStrings(c.assertions), asStrings(c.failed_assertions)),
     responseText: (c.response_text as string | null) ?? null,
     // Null on every single-message scenario and on every row stored before 0032.
-    transcript: Array.isArray(c.transcript) ? (c.transcript as Array<{ role: "customer" | "agent"; content: string }>) : null,
+    transcript: Array.isArray(c.transcript) ? (c.transcript as Array<{ role: "customer" | "agent"; content: string; simulated?: boolean; model?: string }>) : null,
     rationale: (c.rationale as string | null) ?? null,
     error: (c.error as string | null) ?? null,
     judgeModel: (c.judge_model as string | null) ?? null,

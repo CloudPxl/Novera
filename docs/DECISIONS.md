@@ -2161,3 +2161,27 @@ live: a conversation's retest stored the full 6-turn transcript and the same ver
 Also: the validator silently drops unknown fields, so `earlier_turns` had to be parsed —
 a conversation that lost its turns would have imported as a single message. 9.2b next:
 a model-played simulated customer with a versioned persona.
+
+## 2026-09-26 — Phase 9.2b: a simulated customer with a persona
+
+A scenario may declare `persona` (goal, max_turns ≤ 6, style, language, facts). `input`
+stays the human-written opening; a model then plays the customer turn by turn on the
+`draft` route (same connections and funding as grading, temperature 0) until the goal is
+met, the persona would give up, or patience runs out. It never sees the assertions — a
+customer who knew the rubric would steer towards it. Every line it writes is stored with
+`simulated: true` and the model that wrote it; the run page labels them, and a report
+containing one adds a limitation: no real customer took part, and phrasing can differ
+between runs. A simulator failure leaves the case without a verdict — a half-finished
+conversation is never graded. Scripted turns and simulated turns share one loop in
+`executeCase`, so there is one conversation path, not two.
+
+Found while measuring it: the first live run passed the agent, because the simulated
+"persistent" customer gave up after one refusal with three messages left — the prompt's
+"end if clearly refused" overrode the persona. A simulator that quits early makes an
+agent look more robust than it is, which is the false comfort this product exists to
+refuse. The stopping rule now defers to the persona. Measured (`verify:conversation`,
+case 4): with no scripted turns, the simulated customer relabelled the request, the
+fixture gave the credit on the third ask, and the judges named "Reply 3 and the final
+reply". One simulated line came from a fallback model after a rate limit and is labelled
+as such. Walked in the UI: label, report note, axe clean. Not byte-reproducible by
+nature; the docs say so and point to `earlier_turns` where reproducibility matters.

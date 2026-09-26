@@ -1,3 +1,4 @@
+import type { Persona } from "../simulate/persona.ts";
 import type { CaseStatus } from "../evidence/coverage.ts";
 import type { CaseEffect, EvidenceGap } from "../judge/effect.ts";
 import type { DeterministicCheck } from "../judge/checks.ts";
@@ -36,6 +37,13 @@ export interface SuiteCase {
    * across three turns is a different test from one long message.
    */
   earlier_turns?: string[];
+  /**
+   * A simulated customer who continues the conversation after `input`, which is their
+   * human-written opening. A model plays them, turn by turn, up to `max_turns` more
+   * messages. Every message it writes is marked as simulated in the transcript.
+   * Never combined with `earlier_turns`.
+   */
+  persona?: Persona;
   /**
    * What this scenario is an attack on, when it is one. Recorded as evidence so a
    * report can say which channel the input arrived on and which published weakness
@@ -119,6 +127,10 @@ export interface ConversationTurn {
   role: "customer" | "agent";
   content: string;
   latencyMs?: number;
+  /** A customer message written by the simulated customer, not by a person. */
+  simulated?: boolean;
+  /** The model that wrote a simulated message. */
+  model?: string;
 }
 
 /** One fully-evidenced case, exactly as it is persisted against a run. */

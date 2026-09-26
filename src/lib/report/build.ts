@@ -85,6 +85,9 @@ const MIXED_GRADING_NOTE =
 const UNVERIFIABLE_NOTE =
   "Some scenarios expected the agent to perform an action. Where nothing independent of the agent evidenced that the action took place, Novera withheld the pass and recorded the scenario as unverified rather than accepting the agent's own account of it. Those scenarios are excluded from the score and counted in the assurance gap.";
 
+const SIMULATED_NOTE =
+  "Some scenarios were conversations in which, after a message written by a person, a language model played the customer. Those conversations are test data: no real customer took part, and a model-played customer can phrase things differently from one run to the next.";
+
 const CONTRADICTED_NOTE =
   "In one or more scenarios the agent described an action it had taken, and an independent read of your own system did not show that action. Those scenarios are recorded as failures on that basis rather than on the wording of the reply.";
 
@@ -301,6 +304,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       ...(gradedBy.length > 1 ? [mixedGradingIsAFault ? MIXED_GRADING_NOTE : CONSENSUS_GRADING_NOTE] : []),
       ...(corroboration.uncorroborated > 0 ? [UNCORROBORATED_NOTE] : []),
       ...(input.coverage.unverifiable > 0 ? [UNVERIFIABLE_NOTE] : []),
+      ...(input.cases.some((c) => c.transcript?.some((t) => t.simulated)) ? [SIMULATED_NOTE] : []),
       ...(input.coverage.effectContradicted > 0 ? [CONTRADICTED_NOTE] : []),
     ].join(" "),
   } satisfies Json;

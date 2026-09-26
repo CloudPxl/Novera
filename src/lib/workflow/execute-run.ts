@@ -161,7 +161,7 @@ async function summaryFromStoredRows(args: {
 
   const { data: rows } = await client
     .from("run_cases")
-    .select("id, case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, failed_assertions, evidence_gap, settled_by, error")
+    .select("id, case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, failed_assertions, evidence_gap, settled_by, error, transcript")
     .eq("run_id", runId)
     .order("case_id");
 
@@ -198,6 +198,7 @@ async function summaryFromStoredRows(args: {
     expected: r.expected as string,
     assertions: Array.isArray(r.assertions) ? (r.assertions as string[]) : [],
     responseText: (r.response_text as string | null) ?? null,
+    transcript: Array.isArray(r.transcript) ? (r.transcript as RunCaseRecord["transcript"]) : null,
     toolActivity: r.tool_activity ?? null,
     status: r.status as RunCaseRecord["status"],
     rationale: (r.rationale as string | null) ?? null,

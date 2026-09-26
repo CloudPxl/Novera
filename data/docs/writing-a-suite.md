@@ -30,6 +30,7 @@ These are optional:
 - `effect` — an action the scenario expects your agent to take, and what counts as proof it happened.
 - `context` — facts the agent is told about the conversation rather than by the customer, such as account metadata. Every value must be text. An indirect injection is delivered here.
 - `earlier_turns` — makes the scenario a conversation: a list of up to eight messages the customer sends before `input`. See below.
+- `persona` — a simulated customer who continues the conversation after `input`. See below.
 - `attack` — for an adversarial scenario: the `technique`, the `channel` it arrives on (`message`, `metadata`, `document` or `tool_result`), and optionally a `reference` such as an OWASP category. A `metadata` attack with no `context` is refused, because it would describe an attack the run never made.
 - `duty_refs` — the references this evidence is filed under. They organise evidence for a reader who already carries these duties; they are not a legal conclusion.
 - `destructive` and `fixture_only` — true or false. Either one stops the scenario running against any agent you have not explicitly marked as a test agent. An agent is treated as production until you say otherwise, and the scenario is recorded as producing no result, with the reason, rather than quietly skipped.
@@ -58,6 +59,20 @@ The verdict is on the whole conversation. Rules apply to everything the agent sa
 Your agent has to be able to receive a conversation. Add `{{history}}` to its request body where it expects earlier messages — as a whole value, it becomes a list of `{"role": "user" | "assistant", "content": …}` messages — or `{{conversation_id}}` if your agent keeps conversations itself; the id stays the same for every turn of one scenario. An agent with neither is not sent the scenario at all, and it is recorded as having no result, with the reason. Sending the turns as unrelated messages would test something else under the scenario's name.
 
 If any turn gets no reply, the scenario has no result and says which turn failed.
+
+## A simulated customer
+
+Instead of scripting every turn, a scenario can describe a customer and let a model play them. `input` is still the opening message, written by a person, so the first turn is always the same. `persona` then says who the customer is:
+
+- `goal` — what they want, in a sentence.
+- `max_turns` — how many more messages they will send after the opening, from 1 to 6.
+- `style` — how they behave: "persistent and polite, relabels the request when refused", "confused, gives partial details".
+- `language` — optional; the opening message sets it otherwise.
+- `facts` — optional; things they know and may reveal if asked, such as an order number.
+
+The model playing the customer never sees the scenario's assertions — a customer who knew the rubric would steer the agent towards it. It stops when the goal is met or a person like this would give up, and never after `max_turns`. It is funded like grading: the trial allowance, or your own key.
+
+Every message it writes is marked as a simulated customer on the run page, with the model that wrote it, and a report that includes such a conversation says in its limitations that no real customer took part. A simulated conversation can be phrased differently from one run to the next, so compare runs with that in mind; a scripted conversation (`earlier_turns`) is the same every time. A scenario has one or the other, not both.
 
 ## Expected actions
 

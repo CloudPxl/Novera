@@ -1,4 +1,6 @@
-import type { AgentAdapter } from "../agents/types.ts";
+import type { AgentAdapter, AgentResult } from "../agents/types.ts";
+import { extractJsonObject } from "../judge/parse.ts";
+import { SIMULATOR_SYSTEM, parseSimulatorReply, simulatorPrompt, type Persona } from "../simulate/persona.ts";
 import type { RoutedChat } from "../router/execute.ts";
 import { gradeCase } from "../judge/consensus.ts";
 import { applyEffectRule } from "../judge/effect.ts";
@@ -71,8 +73,13 @@ export async function executeCase(args: {
    * is an irreversible action against someone's live system.
    */
   agentIsProduction?: boolean;
+  /**
+   * Plays the customer in a persona scenario. Defaults to the judge's routed chat —
+   * the same connections, so the same funding — on its fast `draft` route.
+   */
+  simulator?: RoutedChat;
 }): Promise<CaseOutcome> {
-  const { testCase, agent, policy, judge, verifier, agentIsProduction } = args;
+  const { testCase, agent, policy, judge, verifier, agentIsProduction, simulator } = args;
 
   // Nothing irreversible against a live agent by accident. The default is the cautious
   // one: an agent is production unless someone has said otherwise, so a destructive
@@ -132,7 +139,9 @@ export async function executeCase(args: {
   // earlier turns as unrelated messages would test whether each one is refused on its
   // own — a different test from whether a refusal holds — under this scenario's name.
   const earlierTurns = testCase.earlier_turns ?? [];
-  if (earlierTurns.length > 0 && !agent.acceptsConversation?.()) {
+  const persona = testCase.persona;
+  const isConversation = earlierTurns.length > 0 || Boolean(persona);
+  if (isConversation && !agent.acceptsConversation?.()) {
     return {
       responseText: null,
       toolActivity: null,
@@ -161,56 +170,82 @@ export async function executeCase(args: {
   const activities: unknown[] = [];
   let slowest = 0;
 
-  for (const [i, message] of earlierTurns.entries()) {
-    const turn = await agent.send({
+  // A conversation that stopped part-way produced no verdict on the conversation.
+  const unfinished = (error: string, latencyMs: number | null, lastActivity?: unknown): CaseOutcome => ({
+    responseText: null,
+    toolActivity: mergeToolActivity([...activities, lastActivity]),
+    status: "error",
+    rationale: null,
+    latencyMs,
+    usage: null,
+    judgeModel: null,
+    judgeAttempts: [],
+    judgeVotes: [],
+    judgeAgreement: null,
+    failedAssertions: [],
+    evidenceGap: null,
+    settledBy: null,
+    observation: null,
+    transcript: transcript.length >= 2 ? transcript : null,
+    error,
+  });
+
+  // Every customer message is one turn: the scripted earlier turns, then the
+  // scenario's own input, then — for a persona — whatever the simulated customer
+  // decides to say next, until it stops or its patience runs out.
+  const scripted = [...earlierTurns, testCase.input];
+  let simulatedTurns = 0;
+  let agentResult: AgentResult | null = null;
+
+  for (let turnNumber = 1; ; turnNumber++) {
+    let message: string;
+    let simulatedBy: string | null = null;
+    if (turnNumber <= scripted.length) {
+      message = scripted[turnNumber - 1];
+    } else if (persona && simulatedTurns < persona.max_turns) {
+      const step = await nextSimulatedMessage(simulator ?? judge, persona, transcript, persona.max_turns - simulatedTurns);
+      if ("error" in step) {
+        return unfinished(`The simulated customer could not continue after turn ${turnNumber - 1}: ${step.error}`, null);
+      }
+      if (step.done) break;
+      message = step.message;
+      simulatedBy = step.model;
+      simulatedTurns++;
+    } else {
+      break;
+    }
+
+    const result = await agent.send({
       input: message,
       policy,
       ...(testCase.context ? { context: testCase.context } : {}),
-      history: [...history],
-      conversationId,
+      ...(isConversation ? { history: [...history], conversationId } : {}),
     });
-    transcript.push({ role: "customer", content: message });
-    if (!turn.ok || turn.responseText === null) {
-      // A conversation that broke part-way produced no verdict on the conversation.
-      return {
-        responseText: null,
-        toolActivity: mergeToolActivity([...activities, turn.toolActivity]),
-        status: "error",
-        rationale: null,
-        latencyMs: turn.latencyMs,
-        usage: null,
-        judgeModel: null,
-        judgeAttempts: [],
-        judgeVotes: [],
-        judgeAgreement: null,
-        failedAssertions: [],
-        evidenceGap: null,
-        settledBy: null,
-        observation: null,
-        transcript: transcript.length >= 2 ? transcript : null,
-        error: `Turn ${i + 1} of the conversation got no reply: ${turn.error ?? "the agent produced no response."}`,
-      };
+
+    if (!isConversation) {
+      agentResult = result;
+      break;
     }
-    transcript.push({ role: "agent", content: turn.responseText, latencyMs: turn.latencyMs });
-    history.push({ role: "customer", content: message }, { role: "agent", content: turn.responseText });
-    activities.push(turn.toolActivity);
-    slowest = Math.max(slowest, turn.latencyMs);
+
+    transcript.push({ role: "customer", content: message, ...(simulatedBy ? { simulated: true, model: simulatedBy } : {}) });
+    if (!result.ok || result.responseText === null) {
+      return unfinished(
+        `Turn ${turnNumber} of the conversation got no reply: ${result.error ?? "the agent produced no response."}`,
+        result.latencyMs,
+        result.toolActivity,
+      );
+    }
+    transcript.push({ role: "agent", content: result.responseText, latencyMs: result.latencyMs });
+    history.push({ role: "customer", content: message }, { role: "agent", content: result.responseText });
+    activities.push(result.toolActivity);
+    slowest = Math.max(slowest, result.latencyMs);
+    agentResult = result;
   }
 
-  const agentResult = await agent.send({
-    input: testCase.input,
-    policy,
-    ...(testCase.context ? { context: testCase.context } : {}),
-    ...(earlierTurns.length ? { history, conversationId } : {}),
-  });
-
-  const isConversation = earlierTurns.length > 0;
-  if (isConversation) {
-    transcript.push({ role: "customer", content: testCase.input });
-    if (agentResult.ok && agentResult.responseText !== null) {
-      transcript.push({ role: "agent", content: agentResult.responseText, latencyMs: agentResult.latencyMs });
-    }
-  }
+  if (!agentResult) return unfinished("The conversation produced no turns.", null);
+  // Tool activity for a conversation is collected turn by turn above; the final
+  // result's own activity is already in `activities`.
+  if (isConversation) activities.pop();
   const finalTranscript = isConversation ? transcript : null;
 
   if (!agentResult.ok || agentResult.responseText === null) {
@@ -364,6 +399,34 @@ export async function executeCase(args: {
     observation,
     error: ruled.error,
   };
+}
+
+/**
+ * The simulated customer's next message, or its decision to stop.
+ *
+ * Temperature 0, so a persona conversation varies as little as the models allow — it
+ * still varies, which is why a simulated conversation is labelled as one and never
+ * presented as a real customer. The simulator never sees the scenario's assertions.
+ */
+async function nextSimulatedMessage(
+  chat: RoutedChat,
+  persona: Persona,
+  transcript: ConversationTurn[],
+  turnsLeft: number,
+): Promise<{ done: true } | { done: false; message: string; model: string } | { error: string }> {
+  try {
+    const response = await chat("draft", {
+      system: SIMULATOR_SYSTEM,
+      messages: [{ role: "user", content: simulatorPrompt(persona, transcript, turnsLeft) }],
+      maxTokens: 400,
+      temperature: 0,
+    });
+    const step = parseSimulatorReply(extractJsonObject(response.text) as Record<string, unknown> | null);
+    if ("error" in step || step.done) return step;
+    return { done: false, message: step.message, model: `${response.servedBy.connection}/${response.servedBy.model}` };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /**

@@ -1842,3 +1842,18 @@ axe found one defect, fixed — the reference line at 4.33:1 on the fail surface
 - **Dev-only CSP noise**: ~33 refused dev-server `<style>` tags per page buried real
   console errors. Development drops the style nonce and allows inline styles;
   production's policy is unchanged.
+
+## 2026-09-26 — Phase 7.1, second slice: focus as one system
+
+Measured by tabbing through `/`, `/guide`, `/dashboard`, `/settings`, `/docs`, `/support`,
+`/sign-in` and a real run page, recording whether each focused element drew a visible
+outline or ring. Every control passed except one family: **the run page's scenario rows**,
+which marked focus with a background tint alone — too faint to see, and below the 3:1 a
+focus indicator needs. They now draw an inset ring. A base-layer `:focus-visible` rule in
+`globals.css` gives any control without its own ring a 2px ink outline, so a new
+component cannot ship with invisible focus by omission.
+
+Re-measured after: 0 invisible focus states across the same pages (33 stops on the run
+page). The skip link lands inside the page; Escape closes the menu and returns focus to
+its button. Rows stay one Tab stop each — they are disclosure buttons, and a roving
+tabindex would break the pattern screen-reader users expect of them.

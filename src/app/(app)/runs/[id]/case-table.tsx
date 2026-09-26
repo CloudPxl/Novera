@@ -263,7 +263,7 @@ export function CaseTable({
                   type="button"
                   aria-expanded={open}
                   onClick={() => setExpanded(open ? null : c.id)}
-                  className="w-full px-3 py-3 text-left transition-colors outline-none hover:bg-sunken focus-visible:bg-sunken md:grid md:grid-cols-[6rem_1fr_9rem_6rem_1.5rem] md:items-center md:gap-3"
+                  className="w-full px-3 py-3 text-left transition-colors outline-none hover:bg-sunken focus-visible:bg-sunken focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink md:grid md:grid-cols-[6rem_1fr_9rem_6rem_1.5rem] md:items-center md:gap-3"
                 >
                   <span className="flex items-center gap-2 md:block">
                     <Badge tone={STATUS_TONE[c.status]}>{STATUS_LABEL[c.status]}</Badge>

@@ -152,6 +152,7 @@ src/lib/redact/       pattern redaction (browser-safe) + storage record with has
 src/lib/regressions/  a production failure → regression scenario, and its derived lifecycle
 src/lib/simulate/     the simulated customer: persona prompt and reply parsing
 src/lib/api/          API keys (mint, hash, authenticate) and the shared read layer for REST and MCP
+src/lib/mcp/          the read-only MCP server: JSON-RPC protocol and the seven tools
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites + calibration labels
 data/docs/            the published documentation, seeded into the database
@@ -178,7 +179,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 442 unit tests | free |
+| `npm test` | 448 unit tests | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
@@ -186,6 +187,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 | `verify:throttle` | the public forms cannot be made free | free |
 | `verify:imports` | an imported case is a draft with frozen provenance, held to the same approval | free |
 | `verify:api` | API keys and `/api/v1`: tenant isolation, identical refusals, revocation, rate limit (needs `npm run dev`) | free |
+| `verify:mcp` | the MCP endpoint, driven by the official MCP client: isolation, read-only tools, transport rules (needs `npm run dev`) | free |
 | `verify:regressions` | a production failure is stored redacted, append-only, tenant-isolated, and reaches a suite only as a draft naming it | free |
 | `verify:models` | every route candidate still answers | a few tokens |
 | `demo:run` (`DEMO_SUITE_VERSION=4`) | the whole loop, end to end, publishing a report | a full run |

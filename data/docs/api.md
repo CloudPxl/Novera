@@ -28,3 +28,15 @@ All are `GET`, under `https://www.nover.space/api/v1`.
 A run in another workspace, and an id that is not a run at all, both answer `404`: as far as a key is concerned, neither exists.
 
 "No result" is never a pass. A report's own figures come from the sealed document; to check a report rather than a run, use its JSON download and the steps in **Reports in CI, and verifying a copy**.
+
+## For AI assistants (MCP)
+
+The same key opens a read-only MCP server at `https://www.nover.space/api/mcp`, so an assistant that speaks the Model Context Protocol — Claude, Cursor and others — can answer questions such as "what failed in the last run, and why?" from your stored evidence. In Claude Code:
+
+```
+claude mcp add --transport http novera https://www.nover.space/api/mcp --header "Authorization: Bearer nvk_…"
+```
+
+It offers seven tools, all read-only: `list_agents`, `list_suites`, `list_runs`, `get_run`, `get_evidence_gaps` (scenarios with no verdict, missing evidence or uncorroborated graders), `compare_runs` (fixed, still failing, newly broken, lost or regained a verdict) and `verify_report` (recomputes a sealed report's hash). There is no tool that starts a run, changes a policy, approves anything, or publishes or revokes a report.
+
+The server keeps no session: every request carries the key, and requests from a web page on another site are refused. It counts against the same 120 requests a minute as the rest of the API.

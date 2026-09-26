@@ -2212,3 +2212,25 @@ measuring two windows; now one burst, 11 of 125 refused (6 + 125 − 120, exact)
 malformed/unknown refusals differed, contradicting the code's own comment. Settings UI
 walked: key created in the browser answered 200, never shown again after reload, revoked
 through the two-step button, then 401. axe clean at 390 and 1440. MCP next.
+
+## 2026-09-26 — Phase 10.3: a read-only MCP server
+
+`/api/mcp`, Streamable HTTP per spec 2025-06-18 (fetched, not recalled): one JSON
+response per request, 202 for a notification, 405 for GET (no server stream), 400 for an
+unsupported `MCP-Protocol-Version`, no JSON-RPC batches (removed in that version), and the
+Origin check the spec makes mandatory — a web page on another site cannot drive it from a
+visitor's browser; non-browser clients send no Origin and are unaffected. Stateless: the
+workspace API key rides on every request, so there is no session to hijack or expire.
+Hand-written (`src/lib/mcp/protocol.ts`, ~130 lines) rather than the SDK's server, whose
+transport expects Node request objects, not a route handler's `Request`.
+
+Seven tools, all annotated read-only, over the same read layer as REST: list_agents,
+list_suites, list_runs, get_run, get_evidence_gaps, compare_runs (reusing
+`compareRuns`), verify_report. None starts, changes, approves, publishes or revokes. A
+tool's refusal reaches the model as a tool error; an internal failure says only that it
+failed — its message is never forwarded.
+
+Proven with the **official MCP client** (SDK 1.30.1, pinned, dev-only): connects,
+negotiates, lists seven read-only tools, is scoped to the key's workspace, refuses another
+workspace's run as a tool error, verifies a real sealed report's hash, has no tool that
+starts anything; plus the transport rules over raw HTTP (`verify:mcp`, 15 checks).

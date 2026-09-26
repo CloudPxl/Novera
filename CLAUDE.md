@@ -163,7 +163,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 410 unit tests | free |
+| `npm test` | 412 unit tests | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
@@ -225,6 +225,10 @@ they drive the scripted fixture at `/api/test-agent`.
 - **Rewriting a file replaces everything it did, not only what the new feature needs.**
   The Phase 6A CSP rewrite of `proxy.ts` dropped the Supabase session refresh; every user
   was signed out an hour after signing in for two days. Read the old file's job first.
+- **A constant in a sealed document is a claim about every run.** The report's
+  environment line was one fixed sentence — "Customer-operated agent" — so a run against
+  our own scripted fixture sealed a report describing a real customer. Derive what a
+  report states from the run, never from a default.
 - **A page must not render a sentence a stranger supplied.** `/sign-in?problem=` printed
   whatever arrived inside Novera's own alert box, on the page that asks for a password.
 

@@ -44,5 +44,7 @@ page where it took effort to learn what the product is.
 
 ## Tokens
 
-All of it lives in `src/app/globals.css`. Operator dark mode keeps its own values under
-`.theme-operator`; the client report is always light.
+All of it lives in `src/app/globals.css`. One light theme everywhere — white panels on a
+faint warm-white ground. An operator dark mode existed briefly and was removed at the
+user's request (2026-09-26): signed-in pages turning dark beside a white home page read
+as two different products.

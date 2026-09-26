@@ -1972,3 +1972,16 @@ and restructuring them would have been redesign for its own sake. End-to-end aft
 refactor: a full `eu-support v4` demo run completed with the same verdicts as before the
 redesign (8 passed, 33 failed), its report's hash verifies, and it renders and exports
 with the test-data label.
+
+## 2026-09-26 — One white theme, and the instructions on the dashboard (user requests)
+
+**Dark mode removed.** The user liked the home page's white and asked for it everywhere.
+The signed-in pages had followed the system dark setting while the home page stayed
+white, which read as two products. The dark block is gone; `color-scheme: light` keeps
+native controls light on a dark-set machine. Measured with the OS emulated dark: every
+page renders light, axe clean, no overflow at 390 and 1440.
+
+**The step-by-step guide is on the dashboard**, open until setup is complete and one
+click away after, each step linking to the exact place in that workspace (the agent's
+page, the latest run). Its text lives in `src/lib/guide/content.ts`, shared with `/guide`,
+so the two cannot drift.

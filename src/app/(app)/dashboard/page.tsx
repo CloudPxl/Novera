@@ -8,6 +8,7 @@ import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { buildAttention } from "./attention.ts";
 import { Help } from "@/components/ui/help.tsx";
+import { GuidePanel } from "./guide-panel.tsx";
 
 export const metadata: Metadata = { title: "Dashboard · Novera" };
 export const dynamic = "force-dynamic";
@@ -150,6 +151,12 @@ export default async function DashboardPage() {
           </ol>
         </section>
       )}
+
+      <GuidePanel
+        open={setupDone < setup.length}
+        firstAgentId={firstAgent}
+        latestRunId={(runs ?? [])[0]?.id as string | undefined}
+      />
 
       {attention.length > 0 && (
         <Reveal className="mt-8">

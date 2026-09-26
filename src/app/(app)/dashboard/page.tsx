@@ -133,7 +133,7 @@ export default async function DashboardPage() {
                 <li key={step.label} className="flex items-center gap-3 text-sm">
                   <span
                     aria-hidden="true"
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${step.done ? "bg-pass-surface text-pass-text" : next ? "bg-ink text-white" : "border border-line-strong text-ink-faint"}`}
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${step.done ? "bg-pass-surface text-pass-text" : next ? "bg-ink text-on-ink" : "border border-line-strong text-ink-faint"}`}
                   >
                     {step.done ? "✓" : i + 1}
                   </span>

@@ -47,7 +47,7 @@ export function RunLauncher({
   return (
     <Menu
       label="Run evaluation"
-      triggerClassName="bg-ink px-3.5 py-2 text-white hover:bg-slate-700 active:scale-[0.98]"
+      triggerClassName="bg-ink px-3.5 py-2 text-on-ink hover:bg-ink-hover active:scale-[0.98]"
       panelClassName="w-80 p-3"
     >
       {agents.length === 0 ? (

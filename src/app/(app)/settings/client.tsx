@@ -23,12 +23,12 @@ function Outcome({ state }: { state: FormState }) {
   return (
     <>
       {state.notice && (
-        <p role="status" className="text-xs font-medium leading-relaxed text-emerald-700">
+        <p role="status" className="text-xs font-medium leading-relaxed text-pass-text">
           {state.notice}
         </p>
       )}
       {state.error && (
-        <p role="alert" className="text-xs font-medium leading-relaxed text-rose-700">
+        <p role="alert" className="text-xs font-medium leading-relaxed text-fail-text">
           {state.error}
         </p>
       )}
@@ -126,7 +126,7 @@ export function JudgeKeyForm({
           {replacing ? "Replace the key" : "Connect this key"}
         </SubmitButton>
         {replacing && (
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-ink-faint">
             The key in use now is kept until the new one has answered.
           </span>
         )}
@@ -146,7 +146,7 @@ export function RemoveKeyButton({ consequence }: { consequence: string }) {
         <SubmitButton variant="danger" size="sm" pendingLabel="Removing…">
           Remove this key
         </SubmitButton>
-        <span className="text-xs leading-relaxed text-slate-500">{consequence}</span>
+        <span className="text-xs leading-relaxed text-ink-faint">{consequence}</span>
       </div>
       <Outcome state={state} />
     </form>

@@ -155,14 +155,14 @@ export function LiveRun({
       <Card className="mt-6 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            {running && <Spinner className="text-slate-500" />}
+            {running && <Spinner className="text-ink-faint" />}
             <Badge
               tone={status === "completed" ? "pass" : status === "aborted" ? "fail" : "live"}
               pulse={running}
             >
               {status === "queued" ? "starting" : status}
             </Badge>
-            <span className="text-sm text-slate-600">
+            <span className="text-sm text-ink-soft">
               {done} of {plannedCases} scenarios
             </span>
           </div>
@@ -173,9 +173,9 @@ export function LiveRun({
           )}
         </div>
 
-        <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-sunken">
           <div
-            className={`novera-bar h-full rounded-full ${running ? "novera-progress" : "bg-slate-900"}`}
+            className={`novera-bar h-full rounded-full ${running ? "novera-progress" : "bg-ink"}`}
             style={{ width: `${Math.max(percent, done > 0 ? 4 : 0)}%` }}
             role="progressbar"
             aria-valuenow={done}
@@ -194,20 +194,20 @@ export function LiveRun({
         )}
 
         {failure && (
-          <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+          <p role="alert" className="mt-4 rounded-lg border border-fail-border bg-fail-surface px-3 py-2 text-sm text-fail-text">
             {failure}
           </p>
         )}
 
         {token && (
-          <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
+          <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-4">
             <Link
               href={`/report/${token}`}
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-all duration-150 hover:bg-slate-700 active:scale-[0.98]"
+              className="inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2 text-sm font-medium text-on-ink transition-all duration-150 hover:bg-ink-hover active:scale-[0.98]"
             >
               Open the client report
             </Link>
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-ink-faint">
               {hasBaseline ? "Includes a comparison with the previous run." : "First run for this agent, so there is nothing to compare against yet."}
             </span>
           </div>
@@ -233,11 +233,11 @@ export function LiveRun({
                     <Badge tone={c.status === "pass" ? "pass" : c.status === "fail" ? "fail" : "error"}>
                       {c.status === "error" ? "no result" : c.status}
                     </Badge>
-                    <span className="font-mono text-xs text-slate-500">{c.case_id}</span>
+                    <span className="font-mono text-xs text-ink-faint">{c.case_id}</span>
                     <span className="text-sm font-medium">{obligationLabel(c.obligation)}</span>
                   </div>
                   {(c.rationale || c.error) && (
-                    <p className="mt-2 text-sm leading-relaxed text-slate-700">{c.rationale ?? c.error}</p>
+                    <p className="mt-2 text-sm leading-relaxed text-ink-soft">{c.rationale ?? c.error}</p>
                   )}
                   {c.judge_model && (
                     <p className="mt-1.5 font-mono text-[11px] text-ink-faint">

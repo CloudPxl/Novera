@@ -53,7 +53,7 @@ export function ConnectAgentForm() {
         </Field>
       </div>
 
-      <div className="rounded-xl border border-slate-200 p-4">
+      <div className="rounded-xl border border-line p-4">
         <button
           type="button"
           onClick={() => setShowAuth(!showAuth)}
@@ -61,7 +61,7 @@ export function ConnectAgentForm() {
           aria-expanded={showAuth}
         >
           Authentication
-          <span className={`text-slate-400 transition-transform duration-200 ${showAuth ? "rotate-90" : ""}`}>›</span>
+          <span className={`text-ink-ghost transition-transform duration-200 ${showAuth ? "rotate-90" : ""}`}>›</span>
         </button>
         {showAuth && (
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -75,12 +75,12 @@ export function ConnectAgentForm() {
         )}
       </div>
 
-      <label className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-sm leading-relaxed">
+      <label className="flex gap-3 rounded-xl border border-line bg-ground/60 p-4 text-sm leading-relaxed">
         <input type="checkbox" name="attested" className="mt-0.5 size-4 shrink-0 accent-slate-900" />
         <span>
           <span className="font-medium">I own this agent, or I am authorised to test it.</span>
           <br />
-          <span className="text-slate-600">
+          <span className="text-ink-soft">
             Recorded with your email and today&apos;s date, and attached to every run, so a report can
             always say on whose authority the testing happened.
           </span>
@@ -88,7 +88,7 @@ export function ConnectAgentForm() {
       </label>
 
       {state.error && (
-        <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="rounded-lg border border-fail-border bg-fail-surface px-3 py-2 text-sm text-fail-text">
           {state.error}
         </p>
       )}

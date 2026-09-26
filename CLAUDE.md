@@ -217,6 +217,9 @@ they drive the scripted fixture at `/api/test-agent`.
 - **A refusal has to be in the shape its caller reads.** A route handler that redirects
   an unauthenticated caller hands `fetch` a 200 and an HTML page; the run page read that
   as success and sat at "running" in silence.
+- **Rewriting a file replaces everything it did, not only what the new feature needs.**
+  The Phase 6A CSP rewrite of `proxy.ts` dropped the Supabase session refresh; every user
+  was signed out an hour after signing in for two days. Read the old file's job first.
 - **A page must not render a sentence a stranger supplied.** `/sign-in?problem=` printed
   whatever arrived inside Novera's own alert box, on the page that asks for a password.
 

@@ -9,11 +9,11 @@ import type { ComponentProps } from "react";
  */
 const VARIANTS = {
   primary:
-    "bg-slate-900 text-white hover:bg-slate-700 active:bg-slate-800 disabled:bg-slate-400",
+    "bg-ink text-on-ink hover:bg-ink-hover active:bg-ink-hover disabled:bg-ink-ghost",
   secondary:
-    "border border-slate-300 bg-white text-slate-900 hover:border-slate-400 hover:bg-slate-50 active:bg-slate-100 disabled:text-slate-400",
+    "border border-line-strong bg-surface text-ink hover:border-ink-ghost hover:bg-ground active:bg-sunken disabled:text-ink-ghost",
   danger:
-    "border border-rose-300 bg-white text-rose-700 hover:border-rose-400 hover:bg-rose-50 active:bg-rose-100 disabled:text-rose-300",
+    "border border-fail-border bg-surface text-fail-text hover:border-fail-text hover:bg-fail-surface active:bg-fail-surface disabled:text-fail-border",
 } as const;
 
 const SIZES = {

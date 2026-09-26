@@ -27,9 +27,9 @@ export function DiagnoseButton({ runCaseId, hasProposal }: { runCaseId: string; 
       <SubmitButton variant="secondary" size="sm" pendingLabel="Reading the policy…">
         {hasProposal ? "Propose another change" : "Why did this fail?"}
       </SubmitButton>
-      {state.notice && <span className="text-xs font-medium text-emerald-700">{state.notice}</span>}
+      {state.notice && <span className="text-xs font-medium text-pass-text">{state.notice}</span>}
       {state.error && (
-        <span role="alert" className="text-xs font-medium text-rose-700">
+        <span role="alert" className="text-xs font-medium text-fail-text">
           {state.error}
         </span>
       )}
@@ -55,25 +55,25 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
           {open ? "proposed change" : proposal.status}
         </Badge>
         {proposal.resultingPolicyVersion !== null && (
-          <span className="text-xs text-slate-500">became policy v{proposal.resultingPolicyVersion}</span>
+          <span className="text-xs text-ink-faint">became policy v{proposal.resultingPolicyVersion}</span>
         )}
         {proposal.decidedAt && (
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-ink-faint">
             {new Date(proposal.decidedAt).toISOString().slice(0, 16).replace("T", " ")}
           </span>
         )}
       </div>
 
-      <p className="mt-3 text-sm leading-relaxed text-slate-700">{proposal.analysis}</p>
+      <p className="mt-3 text-sm leading-relaxed text-ink-soft">{proposal.analysis}</p>
 
       <DiffView quotedOld={proposal.quotedOld} proposedNew={proposal.proposedNew} />
 
       {proposal.risks.length > 0 && (
         <div className="mt-4">
-          <p className="text-xs font-medium text-slate-900">What this could break</p>
+          <p className="text-xs font-medium text-ink">What this could break</p>
           <ul className="mt-1.5 space-y-1">
             {proposal.risks.map((risk, i) => (
-              <li key={i} className="text-sm leading-relaxed text-slate-600">
+              <li key={i} className="text-sm leading-relaxed text-ink-soft">
                 — {risk}
               </li>
             ))}
@@ -82,15 +82,15 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
       )}
 
       {open && (
-        <form action={submit} className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
+        <form action={submit} className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-4">
           <input type="hidden" name="diagnosisId" value={proposal.id} />
           <DecisionButtons />
           {state.error && (
-            <span role="alert" className="text-xs font-medium text-rose-700">
+            <span role="alert" className="text-xs font-medium text-fail-text">
               {state.error}
             </span>
           )}
-          {state.notice && <span className="text-xs font-medium text-emerald-700">{state.notice}</span>}
+          {state.notice && <span className="text-xs font-medium text-pass-text">{state.notice}</span>}
         </form>
       )}
     </Card>
@@ -115,7 +115,7 @@ function DecisionButtons() {
         name="decision"
         value="approved"
         disabled={pending}
-        className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white transition-all duration-150 hover:bg-slate-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:active:scale-100"
+        className="inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-on-ink transition-all duration-150 hover:bg-ink-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-ink-ghost disabled:active:scale-100"
       >
         {pending && <Spinner />}
         {pending ? "Working…" : "Approve and create a new version"}
@@ -125,7 +125,7 @@ function DecisionButtons() {
         name="decision"
         value="rejected"
         disabled={pending}
-        className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-150 hover:border-slate-400 hover:bg-slate-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:text-slate-400 disabled:active:scale-100"
+        className="inline-flex items-center justify-center rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-ink-soft transition-all duration-150 hover:border-ink-ghost hover:bg-ground active:scale-[0.98] disabled:cursor-not-allowed disabled:text-ink-ghost disabled:active:scale-100"
       >
         Reject
       </button>

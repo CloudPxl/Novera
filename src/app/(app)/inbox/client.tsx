@@ -16,9 +16,9 @@ import { inputClass } from "@/components/ui/primitives.tsx";
  */
 function Feedback({ state }: { state: InboundState }) {
   if (state.notice) {
-    return <span role="status" className="text-xs font-medium text-emerald-700">{state.notice}</span>;
+    return <span role="status" className="text-xs font-medium text-pass-text">{state.notice}</span>;
   }
-  if (state.error) return <span role="alert" className="text-xs font-medium text-rose-700">{state.error}</span>;
+  if (state.error) return <span role="alert" className="text-xs font-medium text-fail-text">{state.error}</span>;
   return null;
 }
 
@@ -72,7 +72,7 @@ export function DraftEditor({ requestId, seed }: { requestId: string; seed: stri
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-xs font-medium text-slate-600 underline underline-offset-2 hover:text-slate-900"
+        className="text-xs font-medium text-ink-soft underline underline-offset-2 hover:text-ink"
       >
         Write a different reply
       </button>
@@ -94,13 +94,13 @@ export function DraftEditor({ requestId, seed }: { requestId: string; seed: stri
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="text-xs text-slate-500 underline underline-offset-2 hover:text-slate-800"
+          className="text-xs text-ink-faint underline underline-offset-2 hover:text-ink"
         >
           Cancel
         </button>
         <Feedback state={state} />
       </div>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-faint">
         The existing draft is kept. Editing never overwrites what was drafted before.
       </p>
     </form>
@@ -119,7 +119,7 @@ export function EraseButton({ requestId }: { requestId: string }) {
   const [armed, setArmed] = useState(false);
 
   if (state.notice) {
-    return <span role="status" className="text-xs font-medium text-emerald-700">{state.notice}</span>;
+    return <span role="status" className="text-xs font-medium text-pass-text">{state.notice}</span>;
   }
 
   if (!armed) {
@@ -127,7 +127,7 @@ export function EraseButton({ requestId }: { requestId: string }) {
       <button
         type="button"
         onClick={() => setArmed(true)}
-        className="text-xs text-slate-500 underline underline-offset-2 hover:text-rose-700"
+        className="text-xs text-ink-faint underline underline-offset-2 hover:text-fail-text"
       >
         Erase this message
       </button>
@@ -144,11 +144,11 @@ export function EraseButton({ requestId }: { requestId: string }) {
       <button
         type="button"
         onClick={() => setArmed(false)}
-        className="text-xs text-slate-500 underline underline-offset-2 hover:text-slate-800"
+        className="text-xs text-ink-faint underline underline-offset-2 hover:text-ink"
       >
         Cancel
       </button>
-      <span className="text-xs text-slate-500">
+      <span className="text-xs text-ink-faint">
         Removes the message and every draft. Cannot be undone.
       </span>
       <Feedback state={state} />

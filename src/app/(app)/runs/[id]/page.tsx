@@ -480,7 +480,7 @@ export default async function RunPage({
             {report?.token && (
               <Link
                 href={`/report/${report.token}`}
-                className="inline-flex items-center gap-2 rounded-control bg-ink px-4 py-2 text-sm font-medium text-white transition-all duration-150 hover:bg-slate-700 active:scale-[0.98]"
+                className="inline-flex items-center gap-2 rounded-control bg-ink px-4 py-2 text-sm font-medium text-on-ink transition-all duration-150 hover:bg-ink-hover active:scale-[0.98]"
               >
                 Open the client report
               </Link>

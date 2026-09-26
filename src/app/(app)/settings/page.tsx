@@ -44,12 +44,12 @@ export default async function SettingsPage() {
 
   return (
     <main className="w-full max-w-3xl py-8 text-ink">
-      <Link href="/dashboard" className="text-sm text-slate-500 underline-offset-2 hover:underline">
+      <Link href="/dashboard" className="text-sm text-ink-faint underline-offset-2 hover:underline">
         ← Dashboard
       </Link>
 
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">Settings</h1>
-      <p className="mt-1 text-sm text-slate-600">{workspace.name}</p>
+      <p className="mt-1 text-sm text-ink-soft">{workspace.name}</p>
 
       <Reveal className="mt-8">
         <section>
@@ -66,7 +66,7 @@ export default async function SettingsPage() {
           {entitlement.ownKey && !entitlement.canRun && entitlement.blockedReason && (
             <p
               role="alert"
-              className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm leading-relaxed text-rose-900"
+              className="mt-3 rounded-lg border border-fail-border bg-fail-surface p-4 text-sm leading-relaxed text-fail-text"
             >
               {entitlement.blockedReason}
             </p>
@@ -75,7 +75,7 @@ export default async function SettingsPage() {
           <Card className="mt-3 p-5">
             {entitlement.ownKey ? (
               <>
-                <p className="text-sm leading-relaxed text-slate-700">
+                <p className="text-sm leading-relaxed text-ink-soft">
                   Runs in this workspace are graded on your own {entitlement.provider} key. There is
                   no cap on how many you run, and every report says the grading was funded by your
                   key rather than by our trial allowance.
@@ -83,13 +83,13 @@ export default async function SettingsPage() {
 
                 <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
                   <div>
-                    <dt className="text-xs uppercase tracking-wide text-slate-500">Grading with</dt>
+                    <dt className="text-xs uppercase tracking-wide text-ink-faint">Grading with</dt>
                     <dd className="mt-1 font-mono text-xs leading-relaxed text-ink">
                       {models.length ? models.join(", ") : "nothing — no model recorded"}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs uppercase tracking-wide text-slate-500">Each verdict is</dt>
+                    <dt className="text-xs uppercase tracking-wide text-ink-faint">Each verdict is</dt>
                     {/* A corroboration label over a key that cannot grade would describe
                         verdicts that can never be produced. */}
                     <dd className="mt-1 text-xs leading-relaxed text-ink">
@@ -97,34 +97,34 @@ export default async function SettingsPage() {
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs uppercase tracking-wide text-slate-500">Connected</dt>
+                    <dt className="text-xs uppercase tracking-wide text-ink-faint">Connected</dt>
                     <dd className="mt-1 text-xs leading-relaxed text-ink">{storedOn ?? "—"}</dd>
                   </div>
                 </dl>
 
-                <p className="mt-4 text-sm leading-relaxed text-slate-600">
+                <p className="mt-4 text-sm leading-relaxed text-ink-soft">
                   We never fall back to our own key when yours fails. If your provider rate-limits a
                   run, those scenarios are reported as having produced no result — which is the
                   truth — rather than quietly graded on someone else&apos;s credit.
                 </p>
 
                 {models.length === 1 && (
-                  <p className="mt-3 text-sm leading-relaxed text-slate-600">
+                  <p className="mt-3 text-sm leading-relaxed text-ink-soft">
                     One model means one opinion, so every verdict is reported as not corroborated.
                     Adding a second {entitlement.provider} model below makes each verdict a finding
                     of two — still within one vendor, which the report says plainly.
                   </p>
                 )}
 
-                <p className="mt-4 text-xs text-slate-500">
+                <p className="mt-4 text-xs text-ink-faint">
                   {entitlement.runsUsed} run{entitlement.runsUsed === 1 ? "" : "s"} so far.
                 </p>
 
-                <details className="mt-4 border-t border-slate-200 pt-4">
+                <details className="mt-4 border-t border-line pt-4">
                   <summary className="cursor-pointer text-sm font-medium text-ink">
                     Replace this key
                   </summary>
-                  <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                  <p className="mt-2 text-xs leading-relaxed text-ink-faint">
                     Rotating is one step, not two: the new key is proved before it is stored, the
                     old one is deleted only once that has happened, and a key that fails its test
                     changes nothing.
@@ -132,7 +132,7 @@ export default async function SettingsPage() {
                   <JudgeKeyForm providers={PROVIDERS} replacing />
                 </details>
 
-                <div className="mt-4 border-t border-slate-200 pt-4">
+                <div className="mt-4 border-t border-line pt-4">
                   <RemoveKeyButton
                     consequence={
                       trialLeft > 0
@@ -144,19 +144,19 @@ export default async function SettingsPage() {
               </>
             ) : (
               <>
-                <p className="text-sm leading-relaxed text-slate-700">
+                <p className="text-sm leading-relaxed text-ink-soft">
                   You have used <strong>{entitlement.runsUsed}</strong> of {TRIAL_RUN_LIMIT} trial
                   runs. The trial is graded on our free-tier key, by two models from different
                   vendors.
                 </p>
-                <p className="mt-3 text-sm leading-relaxed text-slate-600">
+                <p className="mt-3 text-sm leading-relaxed text-ink-soft">
                   Connect your own model key to lift the cap. There is nothing to pay us — the
                   grading simply runs on your key from then on, on your provider&apos;s free or paid
                   tier, and stays inside your own account.
                 </p>
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-sunken">
                   <div
-                    className="novera-bar h-full rounded-full bg-slate-900"
+                    className="novera-bar h-full rounded-full bg-ink"
                     style={{ width: `${Math.min(100, (entitlement.runsUsed / TRIAL_RUN_LIMIT) * 100)}%` }}
                     role="progressbar"
                     aria-valuenow={entitlement.runsUsed}
@@ -170,7 +170,7 @@ export default async function SettingsPage() {
             )}
           </Card>
 
-          <p className="mt-3 text-xs leading-relaxed text-slate-500">
+          <p className="mt-3 text-xs leading-relaxed text-ink-faint">
             The key is encrypted before it is stored, with the ciphertext bound to this workspace,
             and is only ever decrypted on the server. It is never sent to the browser, never written
             to a log, and never appears in a report. The model names are not secret and are shown

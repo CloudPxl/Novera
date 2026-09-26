@@ -26,7 +26,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       */}
       <a
         href="#main"
-        className="sr-only z-50 rounded-control bg-ink px-4 py-2 text-sm font-medium text-white focus:not-sr-only focus:absolute focus:left-4 focus:top-3"
+        className="sr-only z-50 rounded-control bg-ink px-4 py-2 text-sm font-medium text-on-ink focus:not-sr-only focus:absolute focus:left-4 focus:top-3"
       >
         Skip to the page
       </a>

@@ -1875,3 +1875,17 @@ again, and skipped when there is no session cookie (a report reader costs nothin
 Proved by forcing a real session's access token to expire: five loads in a row all 200,
 and the cookie came back with a new refresh token. **Lesson: when rewriting a file,
 read what it did before, not only what the new feature needs.**
+
+## 2026-09-26 — Phase 7.1: the signed-in pages on tokens only (dark mode, first half)
+
+159 raw Tailwind palette classes remained in `src/app/(app)` and `src/components`, against
+this project's own rule. One scripted mapping replaced 150 (plus one by hand); anything the
+map did not cover was reported, never guessed. Two tokens were added — `ink-hover` and
+`on-ink` — because a dark theme inverts ink, and white text hard-coded on a dark button
+would become white on light. None remain. Measured: axe clean and no overflow on eight
+pages at 390 and 1440, each page's final address recorded — the first sweep had not
+recorded it, and the session bug above meant it may have been measuring the sign-in page.
+
+Deliberately not built: an icon set and a density scale. The interface uses a handful of
+unicode arrows and two animation durations; a library would add a dependency to replace
+eleven characters.

@@ -153,7 +153,7 @@ export function Tooltip({ text, children }: { text: string; children: ReactNode 
       */}
       <span
         role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden w-56 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-control bg-ink px-2.5 py-1.5 text-xs leading-relaxed text-white shadow-modal group-hover/tip:block group-focus-within/tip:block"
+        className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden w-56 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-control bg-ink px-2.5 py-1.5 text-xs leading-relaxed text-on-ink shadow-modal group-hover/tip:block group-focus-within/tip:block"
       >
         {text}
       </span>

@@ -28,6 +28,10 @@
   --color-ink-faint: #64748b;
   /* For rules, dots and icons only. Never put words in this. */
   --color-ink-ghost: #94a3b8;
+  /* A filled control: its hover, and the text that sits on it. Separate tokens so a
+     dark theme can invert ink without leaving white text on a light button. */
+  --color-ink-hover: #334155;
+  --color-on-ink: #ffffff;
 
   /* --- semantic triads --------------------------------------------------
      text / surface / border for each verdict and severity. Named for what

@@ -45,14 +45,14 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
 
   return (
     <main className="w-full max-w-3xl py-8 text-ink">
-      <Link href="/dashboard" className="text-sm text-slate-500 underline-offset-2 hover:underline">
+      <Link href="/dashboard" className="text-sm text-ink-faint underline-offset-2 hover:underline">
         ← Dashboard
       </Link>
 
       <header className="mt-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{agent.name}</h1>
-          <p className="mt-1 break-all font-mono text-xs text-slate-500">{config.url}</p>
+          <p className="mt-1 break-all font-mono text-xs text-ink-faint">{config.url}</p>
         </div>
         {agent.attested_at ? (
           <Badge tone="pass">Authorisation recorded</Badge>
@@ -75,14 +75,14 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                 ) : (
                   <Badge tone="pass">Answered in {latestProbe.latency_ms}ms</Badge>
                 )}
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-ink-faint">
                   {new Date(latestProbe.created_at).toISOString().slice(0, 16).replace("T", " ")}
                 </span>
               </div>
-              <p className="mt-3 text-sm leading-relaxed text-slate-700">
+              <p className="mt-3 text-sm leading-relaxed text-ink-soft">
                 {latestProbe.error ?? latestProbe.response_body?.slice(0, 400)}
               </p>
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-2 text-xs text-ink-faint">
                 This is the saved receipt of one harmless request. Read it before trusting a full run.
               </p>
 
@@ -103,7 +103,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
               )}
             </Card>
           ) : (
-            <p className="mt-3 text-sm text-slate-600">No connection receipt yet.</p>
+            <p className="mt-3 text-sm text-ink-soft">No connection receipt yet.</p>
           )}
         </section>
       </Reveal>
@@ -111,7 +111,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
       <Reveal className="mt-10" delay={50}>
         <section>
           <h2 className="text-lg font-semibold tracking-tight">Verifying what the agent does<Help label="Read-back">Optional. A read-only address in your own system Novera can check to confirm an action the agent claims, such as a refund. Without it, such claims are reported as not verified — never as passed.</Help></h2>
-          <p className="mt-1 text-sm leading-relaxed text-slate-600">
+          <p className="mt-1 text-sm leading-relaxed text-ink-soft">
             A tool call is not an effect, and the agent saying it refunded an order is
             not a refund. This is where Novera goes to find out.
           </p>
@@ -125,7 +125,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
       <Reveal className="mt-10" delay={60}>
         <section>
           <h2 className="text-lg font-semibold tracking-tight">Policy<Help label="Policy">The rules this agent should follow. Every verdict is judged against this text. Saving creates a new version; earlier versions and the runs graded on them are kept.</Help></h2>
-          <p className="mt-1 text-sm leading-relaxed text-slate-600">
+          <p className="mt-1 text-sm leading-relaxed text-ink-soft">
             Every version is kept. Saving creates a new one — an existing version can never be
             edited, so a report always names exactly what the agent was tested against.
           </p>
@@ -149,7 +149,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                     name="suiteId"
                     aria-label="Suite to run"
                     defaultValue={(suites ?? []).find((s) => s.key === "eu-support")?.id}
-                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
+                    className="rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-ink focus:ring-1 focus:ring-ink"
                   >
                     {(suites ?? []).map((s) => (
                       <option key={s.id as string} value={s.id as string}>
@@ -168,7 +168,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
           {!entitlement.canRun && (
             <div
               role="status"
-              className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900"
+              className="mt-3 rounded-xl border border-warning-border bg-warning-surface px-4 py-3 text-sm leading-relaxed text-warning-text"
             >
               {entitlement.blockedReason}{" "}
               <Link href="/settings" className="font-medium underline underline-offset-2">
@@ -185,8 +185,8 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                   <Link href={`/runs/${r.id}`} className="block">
                     <Card interactive className="flex items-center justify-between px-4 py-3">
                       <div>
-                        <p className="font-mono text-xs text-slate-500">{r.id.slice(0, 8)}</p>
-                        <p className="mt-0.5 text-xs text-slate-500">
+                        <p className="font-mono text-xs text-ink-faint">{r.id.slice(0, 8)}</p>
+                        <p className="mt-0.5 text-xs text-ink-faint">
                           {(suites ?? []).find((s) => s.id === r.suite_id)?.name ?? "Suite"} ·{" "}
                           {new Date(r.created_at).toISOString().slice(0, 16).replace("T", " ")}
                         </p>

@@ -146,7 +146,7 @@ export function CaseTable({
               aria-selected={verdict === v.key}
               onClick={() => setVerdict(v.key)}
               className={`shrink-0 rounded-control px-2.5 py-1.5 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink ${
-                verdict === v.key ? "bg-ink text-white" : "text-ink-soft hover:bg-sunken"
+                verdict === v.key ? "bg-ink text-on-ink" : "text-ink-soft hover:bg-sunken"
               }`}
             >
               {v.label} <span className="tnum font-normal">{counts[v.key]}</span>
@@ -199,7 +199,7 @@ export function CaseTable({
               onClick={() => setLens(on ? null : l.key)}
               className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink disabled:cursor-not-allowed disabled:opacity-45 ${
                 on
-                  ? "bg-ink text-white ring-ink"
+                  ? "bg-ink text-on-ink ring-ink"
                   : "bg-surface text-ink-soft ring-line-strong hover:bg-sunken"
               }`}
             >
@@ -226,7 +226,7 @@ export function CaseTable({
               onClick={() => toggleSeverity(s)}
               className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink ${
                 on
-                  ? "bg-ink text-white ring-ink"
+                  ? "bg-ink text-on-ink ring-ink"
                   : "bg-surface text-ink-soft ring-line-strong hover:bg-sunken"
               }`}
             >
@@ -346,7 +346,7 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
                   <li key={i} className="flex gap-2 text-sm leading-relaxed">
                     <span
                       aria-hidden
-                      className={`mt-0.5 grid size-4 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white ${
+                      className={`mt-0.5 grid size-4 shrink-0 place-items-center rounded-full text-[10px] font-bold text-on-ink ${
                         unknown ? "bg-ink-faint" : unmet ? "bg-fail-text" : "bg-pass-text"
                       }`}
                     >

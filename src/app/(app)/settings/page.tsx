@@ -85,7 +85,11 @@ export default async function SettingsPage() {
                   <div>
                     <dt className="text-xs uppercase tracking-wide text-ink-faint">Grading with</dt>
                     <dd className="mt-1 font-mono text-xs leading-relaxed text-ink">
-                      {models.length ? models.join(", ") : "nothing — no model recorded"}
+                      {/* One per line, never split: "openai/gpt-" and "oss-120b" on two lines
+                          read as two models. */}
+                      {models.length
+                        ? models.map((m) => <span key={m} className="block whitespace-nowrap">{m}</span>)
+                        : "nothing — no model recorded"}
                     </dd>
                   </div>
                   <div>

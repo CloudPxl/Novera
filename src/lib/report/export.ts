@@ -1,4 +1,4 @@
-import { obligationLabel, type ReportPayload } from "./payload.ts";
+import { obligationLabel, scoreWithheldAs, type ReportPayload } from "./payload.ts";
 
 /**
  * A sealed report, rendered as text.
@@ -53,7 +53,8 @@ export function reportToCsv(payload: ReportPayload, contentHash: string): string
   rows.push([
     coverage.planned, coverage.graded, coverage.passed,
     coverage.failed, coverage.errored, coverage.not_run,
-    coverage.score ?? "no score",
+    // A bare number, as before, so a spreadsheet still reads it as one.
+    coverage.score === null ? "no score" : (scoreWithheldAs(payload) ?? coverage.score),
   ]);
   rows.push(["Basis", coverage.basis]);
   if (coverage.disputed !== undefined) rows.push(["Disputed (of which)", coverage.disputed]);
@@ -161,7 +162,7 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
   out.push("| ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
   out.push(
     `| ${coverage.planned} | ${coverage.graded} | ${coverage.passed} | ${coverage.failed} | ` +
-    `${coverage.errored} | ${coverage.not_run} | ${coverage.score === null ? "no score" : `${coverage.score}%`} |`,
+    `${coverage.errored} | ${coverage.not_run} | ${coverage.score === null ? "no score" : (scoreWithheldAs(payload) ?? `${coverage.score}%`)} |`,
   );
   out.push("");
   out.push(coverage.basis);

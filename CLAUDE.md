@@ -160,7 +160,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 374 unit tests | free |
+| `npm test` | 375 unit tests | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |

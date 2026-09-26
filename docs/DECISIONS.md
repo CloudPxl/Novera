@@ -1946,3 +1946,16 @@ vocabulary list). Verified on a fixture report (shown) and a real-agent report (
 axe clean at 390 and 1440. Limitation: a future fixture whose environment string does not
 say "fixture" would not be caught — a dedicated payload flag is the durable fix, and
 belongs with the next payload change so it ships with its absence branch.
+
+## 2026-09-26 — No percentage beside a withheld grade (approved by the user)
+
+A WITHHELD report printed "17.1%" in its Score tile next to "Withheld" — correct arithmetic
+over the scenarios that did produce a verdict, but beside a declined grade it reads as the
+grade. The user approved showing no percentage when the grade is WITHHELD or INCOMPLETE.
+Rendering only, in all three places a reader sees it: the page shows "—", Markdown and CSV
+print the band's word. The sealed payload and its hash are untouched; format 1 reports,
+which carry no grade, are unchanged; a score that was already null still reads "no score"
+(an existing test caught my first version changing that wording, and it was the code, not
+the test, that changed back); an ordinary report's CSV score stays a bare number so a
+spreadsheet still reads it. All 17 sealed reports render and export; the revoked one
+still refuses.

@@ -198,3 +198,18 @@ test("checked and nothing qualified reads as nothing, not as an empty claim", ()
   );
   assert.doesNotMatch(md, /unchanged policy/);
 });
+
+test("a withheld grade never has its percentage printed beside it", () => {
+  const withheld: ReportPayload = {
+    ...FORMAT_2,
+    grade: { band: "WITHHELD", score: null, threshold: 80, basis: "Every scenario ran; one could not be verified.", meets_threshold: null },
+    coverage: { ...FORMAT_2.coverage, score: 17.1 },
+  };
+  const md = reportToMarkdown(withheld, "a".repeat(64), "https://example.test/r");
+  const csv = reportToCsv(withheld, "a".repeat(64));
+  assert.doesNotMatch(md, /17\.1/);
+  assert.doesNotMatch(csv, /17\.1/);
+  assert.match(md, /withheld/);
+  // An ordinary report is unchanged: the CSV score stays a bare number.
+  assert.match(reportToCsv(FORMAT_2, "a".repeat(64)), /,87\.5(\r?\n|$)/m);
+});

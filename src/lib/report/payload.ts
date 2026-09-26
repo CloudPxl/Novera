@@ -219,3 +219,19 @@ export const OBLIGATION_LABELS: Record<string, string> = {
 export function obligationLabel(code: string): string {
   return OBLIGATION_LABELS[code] ?? code.replace(/_/g, " ");
 }
+
+/**
+ * Whether the score is shown as a band word rather than a percentage.
+ *
+ * When the grade is WITHHELD or INCOMPLETE the percentage over the scenarios that did
+ * produce a verdict is still stored, but printed beside "Withheld" it reads as the grade
+ * the report just declined to give. So every rendering — page, Markdown, CSV — shows the
+ * band's word instead. Rendering only: the sealed payload and its hash are untouched,
+ * and a payload with no grade (format 1) shows its score as before.
+ */
+export function scoreWithheldAs(payload: Pick<ReportPayload, "grade">): "withheld" | "incomplete" | null {
+  const band = payload.grade?.band;
+  if (band === "WITHHELD") return "withheld";
+  if (band === "INCOMPLETE") return "incomplete";
+  return null;
+}

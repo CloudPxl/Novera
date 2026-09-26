@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { obligationLabel, type ReportPayload } from "@/lib/report/payload.ts";
+import { scoreWithheldAs, obligationLabel, type ReportPayload } from "@/lib/report/payload.ts";
 import { categoryMeta } from "@/lib/evidence/categories.ts";
 import { loadReportByToken } from "@/lib/report/access.ts";
 import { ReportToolbar } from "./toolbar.tsx";
@@ -114,7 +114,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           <Stat label="Not run" value={coverage.not_run} tone="muted" />
           <Stat
             label="Score"
-            value={coverage.score === null ? "—" : `${coverage.score}%`}
+            value={coverage.score === null || scoreWithheldAs(payload) ? "—" : `${coverage.score}%`}
             tone="score"
           />
         </div>

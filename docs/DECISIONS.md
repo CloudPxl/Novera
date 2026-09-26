@@ -1959,3 +1959,16 @@ which carry no grade, are unchanged; a score that was already null still reads "
 the test, that changed back); an ordinary report's CSV score stays a bare number so a
 spreadsheet still reads it. All 17 sealed reports render and export; the revoked one
 still refuses.
+
+## 2026-09-26 — Phase 7.2 walked: what changed and what was left alone
+
+Every screen was looked at under the new direction, light and dark, rather than rebuilt
+on principle. Changed: the report's no-grade tile and test-data label (above), no
+percentage beside a withheld grade, and one real defect — a grading model's id split
+across two lines on settings. Left alone, on purpose: the agent page, the opened scenario
+(sent / replied / assertions / reasoning / grader, already the clearest evidence view in
+the product), the inbox, the docs column and the landing page at 390 all read cleanly,
+and restructuring them would have been redesign for its own sake. End-to-end after the
+refactor: a full `eu-support v4` demo run completed with the same verdicts as before the
+redesign (8 passed, 33 failed), its report's hash verifies, and it renders and exports
+with the test-data label.

@@ -56,6 +56,7 @@ someone with the service role, not merely someone using the application.
 | A support reply goes draft → approved → sent, forward only; editing writes a new draft | 0009 |
 | A public form cannot be made free | 0024, counted in Postgres |
 | A person gets one workspace on first use, however many page loads race to create it | 0029, advisory lock per user |
+| An API key is stored only as an HMAC, is read-only, cannot be altered, and once revoked stays revoked; a key reads only its own workspace | 0033 + `src/lib/api/`, `verify:api` |
 | A production failure is stored redacted — the original only as a hash — cannot be edited, and becomes a test only as a draft a person approves, linked to it for good | 0031 |
 | A workspace key grades only on models it was proved to reach, and one it cannot reach refuses the run rather than erroring every case | 0025 + 0026, route built from the key |
 | A person's finding sits beside a verdict and never replaces it; it needs a reason, freezes the verdict it read, and cannot be filed against another workspace's case | 0028 |
@@ -150,6 +151,7 @@ src/lib/imports/      Promptfoo / DeepEval / LangSmith / Langfuse datasets → d
 src/lib/redact/       pattern redaction (browser-safe) + storage record with hashes
 src/lib/regressions/  a production failure → regression scenario, and its derived lifecycle
 src/lib/simulate/     the simulated customer: persona prompt and reply parsing
+src/lib/api/          API keys (mint, hash, authenticate) and the shared read layer for REST and MCP
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites + calibration labels
 data/docs/            the published documentation, seeded into the database
@@ -176,13 +178,14 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 437 unit tests | free |
+| `npm test` | 442 unit tests | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
 | `verify:effect` · `verify:channel` · `verify:compiler` · `verify:conversation` | evidence rules, the metadata channel, the compiler's refusals, multi-turn scenarios | a few model calls |
 | `verify:throttle` | the public forms cannot be made free | free |
 | `verify:imports` | an imported case is a draft with frozen provenance, held to the same approval | free |
+| `verify:api` | API keys and `/api/v1`: tenant isolation, identical refusals, revocation, rate limit (needs `npm run dev`) | free |
 | `verify:regressions` | a production failure is stored redacted, append-only, tenant-isolated, and reaches a suite only as a draft naming it | free |
 | `verify:models` | every route candidate still answers | a few tokens |
 | `demo:run` (`DEMO_SUITE_VERSION=4`) | the whole loop, end to end, publishing a report | a full run |

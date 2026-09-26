@@ -27,7 +27,8 @@
     "novera": "node --no-warnings bin/novera.mts",
     "verify:imports": "node --conditions=react-server --env-file=.env.local scripts/verify-imports.mts",
     "verify:regressions": "node --conditions=react-server --env-file=.env.local scripts/verify-regressions.mts",
-    "verify:conversation": "node --conditions=react-server --env-file=.env.local scripts/verify-conversation.mts"
+    "verify:conversation": "node --conditions=react-server --env-file=.env.local scripts/verify-conversation.mts",
+    "verify:api": "node --conditions=react-server --env-file=.env.local scripts/verify-api.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

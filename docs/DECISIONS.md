@@ -2185,3 +2185,30 @@ fixture gave the credit on the third ask, and the judges named "Reply 3 and the 
 reply". One simulated line came from a fallback model after a rate limit and is labelled
 as such. Walked in the UI: label, report note, axe clean. Not byte-reproducible by
 nature; the docs say so and point to `earlier_turns` where reproducibility matters.
+
+## 2026-09-26 — Phase 10.1–10.2: workspace API keys and a read-only API
+
+The first way into a workspace that is not a person's session, built as a credential
+(0033): `nvk_` + 32 random bytes, shown once; only an HMAC under the server secret is
+stored (a copied table opens nothing); scopes are a closed list — `read` only until an
+endpoint needs more; revocation is the one permitted change and is permanent; members
+see keys but a column grant hides the hash from every browser; created and revoked only
+by the server after a membership check; erased with the workspace. 120 requests a minute
+per key, counted in Postgres.
+
+`GET /api/v1/{agents,suites,runs,runs/<id>}` read through one shared layer
+(`src/lib/api/read.ts`) that MCP will use too, so REST and MCP cannot disagree. Every
+query names the caller's workspace — these run with the service role, so RLS is not what
+separates tenants here; `verify:api` proves it does. Counts from stored cases; policy
+text never returned; the agent's words only with `?include=responses`. Refusals are JSON
+in every case; a sent key that is malformed, unknown or revoked gets one identical 401.
+
+Measured (`verify:api`, 21 live checks over HTTP): tenant isolation both ways, 404 alike
+for another workspace's run and a malformed id, hash unreadable from a session, browser
+cannot insert a key, key immutable, revocation effective on the next request and
+permanent, erasure. Two findings: the first rate-limit check passed nothing because
+sequential requests straddled a clock-minute window — the limiter was right, the test was
+measuring two windows; now one burst, 11 of 125 refused (6 + 125 − 120, exact). And the
+malformed/unknown refusals differed, contradicting the code's own comment. Settings UI
+walked: key created in the browser answered 200, never shown again after reload, revoked
+through the two-step button, then 401. axe clean at 390 and 1440. MCP next.

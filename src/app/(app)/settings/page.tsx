@@ -9,6 +9,7 @@ import { INDEPENDENCE_LABEL } from "@/lib/judge/independence.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge } from "@/components/ui/primitives.tsx";
 import { JudgeKeyForm, RemoveKeyButton, type ProviderChoice } from "./client.tsx";
+import { CreateApiKey, RevokeApiKey } from "./api-keys.tsx";
 
 export const metadata: Metadata = { title: "Settings · Novera" };
 export const dynamic = "force-dynamic";
@@ -31,6 +32,9 @@ export default async function SettingsPage() {
   const { user, workspace } = await requireWorkspace();
   const admin = await assertMembership(user.id, workspace.id);
   const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
+  const { data: apiKeys } = await admin.from("api_keys")
+    .select("id, name, prefix, scopes, created_at, revoked_at")
+    .eq("workspace_id", workspace.id).order("created_at", { ascending: false });
 
   const models = entitlement.judgeModels;
   const corroboration = models.length > 1 ? "single-vendor" : "single-model";
@@ -179,6 +183,51 @@ export default async function SettingsPage() {
             and is only ever decrypted on the server. It is never sent to the browser, never written
             to a log, and never appears in a report. The model names are not secret and are shown
             above; the key itself is never displayed again, not even in part.
+          </p>
+        </section>
+      </Reveal>
+
+      <Reveal className="mt-10">
+        <section>
+          <div className="flex items-center">
+            <h2 className="text-lg font-semibold tracking-tight">API keys</h2>
+            <Help label="API keys">
+              A key lets a script, a CI pipeline or an AI assistant read this workspace&apos;s runs and
+              reports without signing in. Keys are read-only: they cannot start runs, change anything or
+              publish anything. Create one per place you use it, so you can revoke it on its own.
+            </Help>
+          </div>
+          <Card className="mt-3 p-5">
+            {(apiKeys ?? []).length === 0 ? (
+              <p className="text-sm text-ink-soft">No keys yet.</p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {(apiKeys ?? []).map((k) => (
+                  <li key={k.id as string} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+                    <div className="min-w-0">
+                      <span className="font-medium text-ink">{k.name as string}</span>{" "}
+                      <span className="type-mono text-ink-faint">{k.prefix as string}…</span>
+                      <span className="block text-xs text-ink-faint">
+                        {(k.scopes as string[]).join(", ")} · created {(k.created_at as string).slice(0, 10)}
+                        {k.revoked_at ? ` · revoked ${(k.revoked_at as string).slice(0, 10)}` : ""}
+                      </span>
+                    </div>
+                    {k.revoked_at ? (
+                      <Badge tone="neutral">revoked</Badge>
+                    ) : (
+                      <RevokeApiKey keyId={k.id as string} name={k.name as string} />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <CreateApiKey />
+          </Card>
+          <p className="mt-3 text-xs leading-relaxed text-ink-faint">
+            A key is shown once. Novera keeps only a keyed fingerprint of it, so a copy of our database
+            cannot be used to call the API, and a lost key cannot be recovered — revoke it and create
+            another. Each key may make 120 requests a minute.{" "}
+            <Link href="/docs/api" className="underline underline-offset-2 hover:text-ink">How to use the API</Link>
           </p>
         </section>
       </Reveal>

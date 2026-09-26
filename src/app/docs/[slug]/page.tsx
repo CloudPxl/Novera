@@ -106,6 +106,20 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
             );
           }
 
+          if (block.kind === "codeblock") {
+            // Verbatim text in a text node — never markup. Focusable so a keyboard
+            // user can scroll a line wider than the column.
+            return (
+              <pre
+                key={i}
+                tabIndex={0}
+                className="overflow-x-auto rounded-control border border-line bg-sunken p-3 font-mono text-[13px] leading-relaxed text-ink"
+              >
+                <code>{block.text}</code>
+              </pre>
+            );
+          }
+
           return (
             <p key={i} className="text-[15px] leading-relaxed text-ink-soft">
               <Spans spans={block.spans} />

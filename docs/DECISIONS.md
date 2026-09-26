@@ -2008,3 +2008,34 @@ contradicting the panel's own promise. Key-shaped text is now refused in the bro
 (zero requests measured) and again on the server. Measured live on both funding paths
 (own Groq key; a fresh trial workspace), refusals included; axe clean with the panel
 open at 390 and 1440; Escape returns focus to the trigger.
+
+## 2026-09-26 — Phase 8.1: CI exit codes, JSON and JUnit exports, the `novera` CLI
+
+**Five exit codes, not two** (`src/lib/report/ci.ts`): 0 complete and all passed, 1 a
+scenario failed, 2 evidence incomplete (no result, not run, WITHHELD/INCOMPLETE, counts
+short of the plan, or a copy that does not verify), 3 configuration/authorisation (no
+such report, revoked, expired, bad input), 4 infrastructure. A failure outranks missing
+evidence. Read from sealed counts only; 3 and 4 are decided by the caller, never a payload.
+
+**JSON export** is the stored payload, its hash and how to recompute it, plus a `ci`
+block outside the hash. **JUnit** groups by obligation: failure → `<failure>`, no result
+→ `<error>`, not run → `<skipped>`. A sealed report names only failed and errored
+scenarios, so passes are one test case per obligation *stating a count* — inventing ids
+for them would be a backfilled result. JUnit carries the report link with the token cut
+to four characters: a CI artifact is often public, and the token is the access.
+
+**`bin/novera.mts`** (`npm run novera --`): `suite validate`, `report verify`, `report
+status [--junit]`, `report export`. Reuses the product's own hash, validator and CI rule
+(`src/lib/cli/core.ts`) rather than copies. A saved JSON file is checked twice — intact,
+and the same hash the link still serves — because a forger can hash their own payload;
+`--offline` skips the second check and says so. Not published as a package (outward-
+facing; needs the user's decision and a build to plain JS). Until then `/docs/cli-and-ci`
+leads with a curl + jq GitHub Actions step, run in bash against 4 cases → 0, 1, 3, 3.
+
+Measured: every one of the 18 stored reports (formats 1–11) re-hashes from its JSON
+export to its stored digest — the first independent recomputation of all of them; the
+revoked one exits 3; a tampered file and a re-hashed forgery both exit 2; unknown token 3;
+server down 4. Found while building: a strip-only TypeScript syntax error crashed the CLI
+with exit 1 — which a pipeline reads as "a scenario failed". A test now runs the binary.
+Docs gained fenced code blocks (still text nodes, never markup). Run triggering waits
+for a deliberately designed workspace API key (Phase 10's public API).

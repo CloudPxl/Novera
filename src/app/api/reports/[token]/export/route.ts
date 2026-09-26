@@ -1,5 +1,5 @@
 import { loadReportByToken } from "@/lib/report/access.ts";
-import { reportToCsv, reportToMarkdown } from "@/lib/report/export.ts";
+import { reportToCsv, reportToJson, reportToJunit, reportToMarkdown } from "@/lib/report/export.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,12 @@ export const dynamic = "force-dynamic";
 const TYPES = {
   md: { extension: "md", contentType: "text/markdown; charset=utf-8" },
   csv: { extension: "csv", contentType: "text/csv; charset=utf-8" },
+  // The sealed payload with its hash, for independent verification and the CLI.
+  json: { extension: "json", contentType: "application/json; charset=utf-8" },
+  junit: { extension: "xml", contentType: "application/xml; charset=utf-8" },
 } as const;
+
+type Format = keyof typeof TYPES;
 
 function slug(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "agent";
@@ -29,8 +34,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ token: stri
   const { token } = await ctx.params;
   const format = new URL(request.url).searchParams.get("format") ?? "md";
 
-  if (format !== "md" && format !== "csv") {
-    return new Response("Unsupported format. Use md or csv.", { status: 400 });
+  if (!Object.hasOwn(TYPES, format)) {
+    return new Response("Unsupported format. Use md, csv, json or junit.", { status: 400 });
   }
 
   const result = await loadReportByToken(token);
@@ -40,12 +45,16 @@ export async function GET(request: Request, ctx: { params: Promise<{ token: stri
 
   const { payload, content_hash } = result;
   const origin = new URL(request.url).origin;
-  const body =
-    format === "csv"
-      ? reportToCsv(payload, content_hash)
-      : reportToMarkdown(payload, content_hash, `${origin}/report/${token}`);
+  const url = `${origin}/report/${token}`;
+  const render: Record<Format, () => string> = {
+    md: () => reportToMarkdown(payload, content_hash, url),
+    csv: () => reportToCsv(payload, content_hash),
+    json: () => reportToJson(payload, content_hash, url),
+    junit: () => reportToJunit(payload, content_hash, url),
+  };
+  const body = render[format as Format]();
 
-  const { extension, contentType } = TYPES[format];
+  const { extension, contentType } = TYPES[format as Format];
   const name = `novera-report-${slug(payload.subject.agent)}-${payload.run.date.slice(0, 10)}.${extension}`;
 
   return new Response(body, {

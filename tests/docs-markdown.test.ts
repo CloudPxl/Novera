@@ -84,3 +84,10 @@ test("every published page in the corpus parses, and none renders its own syntax
     }
   }
 });
+
+test("a fenced block keeps its lines and blank lines, and its text stays text", () => {
+  const body = "Before.\n\n```yaml\nsteps:\n  - run: a\n\n  - run: <script>b</script>\n```\n\nAfter.";
+  const blocks = parseDocBody(body);
+  assert.deepEqual(blocks.map((b) => b.kind), ["paragraph", "codeblock", "paragraph"]);
+  assert.equal((blocks[1] as { text: string }).text, "steps:\n  - run: a\n\n  - run: <script>b</script>");
+});

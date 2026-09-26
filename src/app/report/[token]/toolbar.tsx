@@ -3,6 +3,9 @@
 /**
  * What a person can do with the document they are looking at.
  *
+ * JSON is the sealed payload with its hash — the copy an auditor can recompute the
+ * hash from without trusting anyone. JUnit is for pipelines and lives on the run page.
+ *
  * Markdown and CSV exports have existed since the report did, behind the same token
  * gate, and nothing on the page said so — a capability nobody can find is one that is
  * not there. Print is the third, because print-to-PDF is how this document gets
@@ -25,6 +28,9 @@ export function ReportToolbar({ token }: { token: string }) {
       </a>
       <a className={link} href={`/api/reports/${token}/export?format=csv`} download>
         CSV
+      </a>
+      <a className={link} href={`/api/reports/${token}/export?format=json`} download>
+        JSON
       </a>
       <button type="button" className={link} onClick={() => window.print()}>
         Print or save as PDF

@@ -135,6 +135,7 @@ src/lib/report/       payload, build, hash, export, language rule
 src/lib/scenarios/    the duty-to-test compiler
 src/lib/support/      public forms, drafting, escalation, throttle, size limits
 src/lib/docs/         the documentation renderer — parsed, never markup
+src/lib/cli/ + bin/   the `novera` CLI: verify, status (CI exit codes), export, suite validate
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites + calibration labels
 data/docs/            the published documentation, seeded into the database
@@ -161,7 +162,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 383 unit tests | free |
+| `npm test` | 399 unit tests | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
@@ -171,6 +172,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 | `demo:run` (`DEMO_SUITE_VERSION=4`) | the whole loop, end to end, publishing a report | a full run |
 | `calibrate` (`CALIBRATE_SUITE=…`, `CALIBRATE_CASES=T37,…` for a subset, never stored) | judge quality and drift against ground-truth labels | **real quota — pace it** |
 | `measure:stability` | verdict instability on identical responses | real quota |
+| `npm run novera -- report status <link>` | a sealed report's CI exit code (0 pass · 1 fail · 2 incomplete · 3 config · 4 infra), hash verified | free |
 
 `npm run dev` must be running for `verify:effect`, `verify:channel` and `calibrate`:
 they drive the scripted fixture at `/api/test-agent`.
@@ -194,7 +196,7 @@ they drive the scripted fixture at `/api/test-agent`.
 
 - **A report payload change breaks every document already in a client's hands.** An added
   field ships with its absence branch in the same commit. Two reports were returning 500
-  in production before this was caught. 16 sealed reports now span payload formats 1–11.
+  in production before this was caught. 18 sealed reports now span payload formats 1–11; `novera report verify` re-hashes all of them.
 - **A model's rendering of our data is not our data.** The judge echoed assertions back
   with the numbering the prompt added; storing that verbatim made every failed case render
   as fully passing.

@@ -1,4 +1,5 @@
 import { obligationLabel, scoreWithheldAs, type ReportPayload } from "./payload.ts";
+import { ciOutcome } from "./ci.ts";
 
 /**
  * A sealed report, rendered as text.
@@ -355,4 +356,141 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
   out.push("");
 
   return out.join("\n");
+}
+
+/**
+ * The sealed payload itself, for a machine: the exact object that was hashed, the
+ * hash, and how to recompute it — so a copy can be checked by someone who trusts
+ * neither Novera nor whoever forwarded the file. `ci` is a reading of the sealed
+ * counts, outside the payload, and is not part of what the hash covers.
+ */
+export const JSON_EXPORT_VERSION = 1;
+
+export function reportToJson(payload: ReportPayload, contentHash: string, url: string): string {
+  return JSON.stringify(
+    {
+      novera_export: JSON_EXPORT_VERSION,
+      url,
+      content_hash: contentHash,
+      hash: {
+        algorithm: "SHA-256",
+        over: "payload",
+        canonicalisation: "UTF-8 JSON, object keys sorted, no whitespace, array order kept",
+      },
+      ci: ciOutcome(payload),
+      payload,
+    },
+    null,
+    2,
+  ) + "\n";
+}
+
+function escapeXml(value: string | number): string {
+  return String(value)
+    // Characters XML 1.0 cannot carry at all; a model's rationale can contain them.
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * JUnit XML, for the test reporters every CI system already has.
+ *
+ * One `<testsuite>` per obligation, its counts copied from the payload. A sealed report
+ * names only the scenarios that failed or produced no result, so those are individual
+ * test cases; the passed scenarios are one case that says how many, because inventing
+ * ids for them would be exactly the backfilled result this product refuses to print.
+ * "No result" is a JUnit *error*, never a failure and never a pass; "not run" is
+ * *skipped*. The limitations and the hash travel as properties.
+ */
+/**
+ * A report link with its token cut to four characters. The token is the access to the
+ * report, and a JUnit file is a CI artifact — often uploaded, sometimes public. The
+ * content hash identifies the report without granting access to it.
+ */
+export function withoutToken(url: string): string {
+  return url.replace(/(\/report\/[A-Za-z0-9_-]{4})[A-Za-z0-9_-]+/, "$1…");
+}
+
+export function reportToJunit(payload: ReportPayload, contentHash: string, url: string): string {
+  const { subject, run, coverage, findings } = payload;
+  const ci = ciOutcome(payload);
+  const a = (name: string, value: string | number) => `${name}="${escapeXml(value)}"`;
+  const seconds = typeof run.duration_ms === "number" ? (run.duration_ms / 1000).toFixed(3) : "0";
+  const out: string[] = [];
+
+  out.push('<?xml version="1.0" encoding="UTF-8"?>');
+  out.push(
+    `<testsuites ${a("name", `Novera: ${subject.agent} — ${run.suite}`)} ${a("tests", coverage.planned)} ` +
+    `${a("failures", coverage.failed)} ${a("errors", coverage.errored)} ${a("skipped", coverage.not_run)} ` +
+    `${a("time", seconds)} ${a("timestamp", run.date)}>`,
+  );
+
+  const property = (name: string, value: string | number) => `      <property ${a("name", name)} ${a("value", value)}/>`;
+  const properties = [
+    property("novera.report", withoutToken(url)),
+    property("novera.content_hash", contentHash),
+    property("novera.policy_version", subject.policy_version),
+    property("novera.environment", subject.environment),
+    property("novera.grade", payload.grade?.band ?? "not graded"),
+    property("novera.ci_exit_code", ci.code),
+    property("novera.ci_reason", ci.reason),
+    property("novera.limitations", payload.limitations),
+  ];
+
+  const byObligation = new Map<string, typeof findings>();
+  for (const f of findings) byObligation.set(f.obligation, [...(byObligation.get(f.obligation) ?? []), f]);
+  const groups = payload.obligations.map((o) => ({
+    code: o.code, tests: o.planned, failures: o.failed, errors: o.errored, skipped: o.not_run, passed: o.passed,
+  }));
+  // A finding whose obligation the payload does not list still has to appear somewhere.
+  for (const code of byObligation.keys()) {
+    if (!groups.some((g) => g.code === code)) {
+      const list = byObligation.get(code)!;
+      const failures = list.filter((f) => f.outcome === "fail").length;
+      groups.push({ code, tests: list.length, failures, errors: list.length - failures, skipped: 0, passed: 0 });
+    }
+  }
+
+  groups.forEach((g, i) => {
+    const classname = `novera.${g.code}`;
+    out.push(
+      `  <testsuite ${a("name", obligationLabel(g.code))} ${a("tests", g.tests)} ${a("failures", g.failures)} ` +
+      `${a("errors", g.errors)} ${a("skipped", g.skipped)} ${a("timestamp", run.date)}>`,
+    );
+    if (i === 0) {
+      out.push("    <properties>");
+      out.push(...properties);
+      out.push("    </properties>");
+    }
+    for (const f of byObligation.get(g.code) ?? []) {
+      const tag = f.outcome === "fail" ? "failure" : "error";
+      const message = f.outcome === "fail" ? `Failed (${f.severity})` : `No result (${f.severity})`;
+      out.push(`    <testcase ${a("classname", classname)} ${a("name", f.case)}>`);
+      out.push(`      <${tag} ${a("message", message)} ${a("type", f.severity)}>${escapeXml(`Expected: ${f.expected}\nObserved: ${f.observed}`)}</${tag}>`);
+      out.push("    </testcase>");
+    }
+    if (g.passed > 0) {
+      out.push(`    <testcase ${a("classname", classname)} ${a("name", `${g.passed} scenario${g.passed === 1 ? "" : "s"} passed (listed by count in the sealed report)`)}/>`);
+    }
+    if (g.skipped > 0) {
+      out.push(`    <testcase ${a("classname", classname)} ${a("name", `${g.skipped} scenario${g.skipped === 1 ? "" : "s"} not run`)}>`);
+      out.push(`      <skipped ${a("message", "Not run: no verdict, and not counted as a pass.")}/>`);
+      out.push("    </testcase>");
+    }
+    out.push("  </testsuite>");
+  });
+
+  if (groups.length === 0) {
+    out.push(`  <testsuite ${a("name", "Novera report")} tests="0" failures="0" errors="0" skipped="0">`);
+    out.push("    <properties>");
+    out.push(...properties);
+    out.push("    </properties>");
+    out.push("  </testsuite>");
+  }
+  out.push("</testsuites>");
+  return out.join("\n") + "\n";
 }

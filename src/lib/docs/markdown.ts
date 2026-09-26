@@ -26,7 +26,9 @@ export type Span =
 export type Block =
   | { kind: "heading"; level: 2 | 3; spans: Span[] }
   | { kind: "paragraph"; spans: Span[] }
-  | { kind: "list"; ordered: boolean; items: Span[][] };
+  | { kind: "list"; ordered: boolean; items: Span[][] }
+  /** A fenced block, kept verbatim — line breaks and blank lines included. */
+  | { kind: "codeblock"; text: string };
 
 /** `**strong**`, `*em*` and `` `code` ``, in that precedence. */
 const INLINE = /(\*\*[^*]+\*\*|(?<!\*)\*[^*\n]+\*(?!\*)|`[^`\n]+`)/g;
@@ -54,9 +56,25 @@ const HEADING = /^(#{2,3})\s+(.*)$/;
 const BULLET = /^\s*[-*]\s+(.*)$/;
 const ORDERED = /^\s*\d+\.\s+(.*)$/;
 
+/**
+ * A fenced block is cut out before anything else, because it may contain blank lines
+ * (a workflow file does) and the prose below is split on exactly those.
+ */
+const FENCE = /^```[^\n]*\n([\s\S]*?)\n```[ \t]*$/gm;
+
 export function parseDocBody(body: string): Block[] {
   const blocks: Block[] = [];
+  let last = 0;
+  for (const match of body.matchAll(FENCE)) {
+    parseProse(body.slice(last, match.index), blocks);
+    blocks.push({ kind: "codeblock", text: match[1] });
+    last = match.index + match[0].length;
+  }
+  parseProse(body.slice(last), blocks);
+  return blocks;
+}
 
+function parseProse(body: string, blocks: Block[]): void {
   for (const raw of body.trim().split(/\n{2,}/)) {
     const chunk = raw.trim();
     if (!chunk) continue;
@@ -92,12 +110,11 @@ export function parseDocBody(body: string): Block[] {
     // turn every page into a column of fragments.
     blocks.push({ kind: "paragraph", spans: parseSpans(lines.join(" ")) });
   }
-
-  return blocks;
 }
 
 /** The text of a block, for a preview line or a search index. */
 export function plainText(block: Block): string {
   if (block.kind === "list") return block.items.map((i) => i.map((s) => s.text).join("")).join(" · ");
+  if (block.kind === "codeblock") return block.text;
   return block.spans.map((s) => s.text).join("");
 }

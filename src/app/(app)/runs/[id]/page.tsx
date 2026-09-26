@@ -502,6 +502,14 @@ export default async function RunPage({
                   <span className="block font-medium">CSV</span>
                   <span className="block text-xs text-ink-faint">Coverage, obligations and findings as a table.</span>
                 </a>
+                <a href={`/api/reports/${report.token}/export?format=json`} className={menuItemClass} download>
+                  <span className="block font-medium">JSON</span>
+                  <span className="block text-xs text-ink-faint">The sealed data and its hash, so anyone can verify a copy.</span>
+                </a>
+                <a href={`/api/reports/${report.token}/export?format=junit`} className={menuItemClass} download>
+                  <span className="block font-medium">JUnit XML</span>
+                  <span className="block text-xs text-ink-faint">For CI test reporters. Failed, no result and not run stay distinct.</span>
+                </a>
                 <a href={`/report/${report.token}?print=1`} target="_blank" rel="noreferrer" className={menuItemClass}>
                   <span className="block font-medium">PDF</span>
                   <span className="block text-xs text-ink-faint">Opens the report; print it to PDF from the browser.</span>

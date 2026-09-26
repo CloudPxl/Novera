@@ -1857,3 +1857,21 @@ Re-measured after: 0 invisible focus states across the same pages (33 stops on t
 page). The skip link lands inside the page; Escape closes the menu and returns focus to
 its button. Rows stay one Tab stop each — they are disclosure buttons, and a roving
 tabindex would break the pattern screen-reader users expect of them.
+
+## 2026-09-26 — Everyone was signed out an hour after signing in (regression, fixed)
+
+Found while measuring the token migration: `/dashboard` loaded four times in a row went
+200, sign-in, sign-in, 500. `proxy.ts` used to refresh the Supabase session and write the
+new cookies back; the Phase 6A rewrite for the CSP (2026-09-24) replaced the file and
+dropped that, while `server.ts` still said "token refresh is handled in proxy.ts". A
+server component that refreshed an expired access token could not save the result, so
+the browser kept sending a refresh token Supabase had already spent; Supabase treats
+reuse as theft and ends the session. In production that meant every user signed out
+roughly an hour after signing in, and sometimes a 500 on the way.
+
+Restored, alongside the CSP: refreshed first, written to the request *and* the response
+so the page rendering this request reads the new token instead of spending the old one
+again, and skipped when there is no session cookie (a report reader costs nothing).
+Proved by forcing a real session's access token to expire: five loads in a row all 200,
+and the cookie came back with a new refresh token. **Lesson: when rewriting a file,
+read what it did before, not only what the new feature needs.**

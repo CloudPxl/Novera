@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
 /**
  * The headers every page is served with.
@@ -26,7 +27,7 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "www.nover.space";
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const host = request.headers.get("host");
   if (process.env.VERCEL_ENV === "production" && host && host !== CANONICAL_HOST) {
     const target = new URL(request.nextUrl.pathname + request.nextUrl.search, `https://${CANONICAL_HOST}`);
@@ -68,11 +69,43 @@ export function proxy(request: NextRequest) {
     "upgrade-insecure-requests",
   ].join("; ");
 
+  // Keep the Supabase session fresh. Server components cannot write cookies, so a
+  // token refreshed during render was never saved: the browser kept presenting a
+  // refresh token Supabase had already spent, Supabase read that as reuse and ended
+  // the session — everyone was signed out about an hour after signing in. This lived
+  // here until the Phase 6A rewrite dropped it (2026-09-24).
+  //
+  // Refreshed first, and written onto the request as well as the response, so the
+  // page rendering *this* request reads the new token rather than spending the old
+  // one a second time. Skipped when there is no session cookie at all: a stranger
+  // reading a report should not cost an auth round trip.
+  const refreshed: Array<{ name: string; value: string; options: Parameters<NextResponse["cookies"]["set"]>[2] }> = [];
+  if (request.cookies.getAll().some((c) => c.name.startsWith("sb-"))) {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll: () => request.cookies.getAll(),
+          setAll: (toSet) => {
+            for (const cookie of toSet) {
+              request.cookies.set(cookie.name, cookie.value);
+              refreshed.push(cookie);
+            }
+          },
+        },
+      },
+    );
+    // getUser revalidates with Supabase; getSession would trust the cookie as sent.
+    await supabase.auth.getUser();
+  }
+
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
+  for (const { name, value, options } of refreshed) response.cookies.set(name, value, options);
 
   response.headers.set("Content-Security-Policy", csp);
   // Belt and braces with frame-ancestors, for anything that does not read CSP.

@@ -42,15 +42,14 @@ export async function requireWorkspace(): Promise<{ user: User; workspace: Works
 
   if (existing) return { user, workspace: existing as Workspace };
 
-  // The database trigger adds the owner as a member, so this one insert is enough.
-  const { data: created, error } = await client
-    .from("workspaces")
-    .insert({ name: defaultWorkspaceName(user), owner_id: user.id })
-    .select("id, name, plan")
+  // Check-and-create in one locked database call (0029). Reading "none" here and then
+  // inserting let two concurrent page loads create two workspaces for one person.
+  const { data: ensured, error } = await client
+    .rpc("ensure_workspace", { p_name: defaultWorkspaceName(user) })
     .single();
 
-  if (error) throw new Error(`Could not create your workspace: ${error.message}`);
-  return { user, workspace: created as Workspace };
+  if (error || !ensured) throw new Error(`Could not create your workspace: ${error?.message ?? "no row returned"}`);
+  return { user, workspace: ensured as Workspace };
 }
 
 function defaultWorkspaceName(user: User): string {

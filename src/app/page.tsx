@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { currentUser } from "@/lib/auth/session.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge } from "@/components/ui/primitives.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { SampleReport } from "./sample-report.tsx";
 
 export const metadata: Metadata = {
@@ -34,11 +34,9 @@ export default async function Home() {
           <Link href="/guide" className="font-medium text-slate-600 underline-offset-2 hover:underline">
             How it works
           </Link>
-          <Link href={signedIn ? "/dashboard" : "/sign-in"}>
-            <Button variant="secondary" size="sm">
-              {signedIn ? "Open your dashboard" : "Sign in"}
-            </Button>
-          </Link>
+          <ButtonLink href={signedIn ? "/dashboard" : "/sign-in"} variant="secondary" size="sm">
+            {signedIn ? "Open your dashboard" : "Sign in"}
+          </ButtonLink>
         </nav>
       </header>
 
@@ -64,9 +62,9 @@ export default async function Home() {
 
           <Reveal delay={80}>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link href={signedIn ? "/dashboard" : "/sign-in"}>
-                <Button>{signedIn ? "Open your dashboard" : "Start with three free runs"}</Button>
-              </Link>
+              <ButtonLink href={signedIn ? "/dashboard" : "/sign-in"}>
+                {signedIn ? "Open your dashboard" : "Start with three free runs"}
+              </ButtonLink>
               <Link href="/guide" className="text-sm font-medium text-slate-700 underline underline-offset-2">
                 See the steps first
               </Link>
@@ -246,9 +244,7 @@ export default async function Home() {
                 going — there is nothing to pay us.
               </p>
               <div className="mt-8 flex justify-center">
-                <Link href="/sign-in">
-                  <Button>Create an account</Button>
-                </Link>
+                <ButtonLink href="/sign-in">Create an account</ButtonLink>
               </div>
             </Reveal>
           </div>

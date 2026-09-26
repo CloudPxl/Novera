@@ -171,6 +171,23 @@ try {
     .insert({ workspace_id: aliceWs.id, user_id: bob.userId, role: "member" });
   check(!!stealErr, "a second account cannot add itself to another workspace", stealErr?.message.slice(0, 60));
 
+  // Two page loads arriving together used to create two workspaces for one person.
+  // Bob has none yet: eight concurrent first loads must converge on one.
+  const racers = await Promise.all(
+    Array.from({ length: 8 }, () => bob.client.rpc("ensure_workspace", { p_name: "Bob" }).single()),
+  );
+  const ids = new Set(racers.map((r) => (r.data as { id?: string } | null)?.id));
+  const { count: bobOwns } = await admin
+    .from("workspaces").select("*", { count: "exact", head: true }).eq("owner_id", bob.userId);
+  check(
+    racers.every((r) => !r.error) && ids.size === 1 && bobOwns === 1,
+    "eight concurrent first loads create exactly one workspace",
+    `${ids.size} distinct id(s), ${bobOwns} owned${racers.find((r) => r.error)?.error?.message ? `, ${racers.find((r) => r.error)!.error!.message}` : ""}`,
+  );
+  const { error: anonRpcErr } = await createClient(url, anon, { auth: { persistSession: false } })
+    .rpc("ensure_workspace", { p_name: "nobody" });
+  check(!!anonRpcErr, "a signed-out caller cannot create a workspace", anonRpcErr?.message.slice(0, 60));
+
   const { data: builtIn } = await bob.client.from("suites").select("id").is("workspace_id", null);
   check((builtIn ?? []).length > 0, "built-in suites remain readable by any signed-in user");
 

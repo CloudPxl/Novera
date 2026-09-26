@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { buildAttention } from "./attention.ts";
 import { Help } from "@/components/ui/help.tsx";
 
@@ -223,9 +223,7 @@ export default async function DashboardPage() {
               <EmptyState
                 title="No agents yet"
                 action={
-                  <Link href="/agents/new">
-                    <Button>Connect an agent</Button>
-                  </Link>
+                  <ButtonLink href="/agents/new">Connect an agent</ButtonLink>
                 }
               >
                 Connect an agent you own, or one you have permission to test. Novera makes one

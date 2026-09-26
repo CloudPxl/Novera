@@ -1817,3 +1817,28 @@ server log. Measured in a production build with a throwing route: the thrown det
 not reach the page, the digest did, the shell stayed. Loading measured with an 8-second
 route: the placeholder appeared under the shell and was replaced when content arrived.
 axe found one defect, fixed — the reference line at 4.33:1 on the fail surface.
+
+## 2026-09-26 — Every open bug from the last two slices, closed
+
+- **Two workspaces for one person** (seen on a real account, 2026-09-24): `requireWorkspace`
+  read "none" then inserted, so concurrent first loads each created one. Now one locked
+  call, `ensure_workspace()` (0029), under a per-user advisory lock — not a unique index,
+  which would forbid ever owning a second workspace. `verify:tenancy` fires eight
+  concurrent first loads and requires exactly one; a signed-out caller is refused. The
+  empty duplicate was confirmed empty table by table and erased through `erase_workspace`.
+- **`calibrate` dropped a scenario's `context`**, so T29 — the attack delivered through
+  account metadata — was measured against the fixture's harmless default reply. The
+  stored v3 results carry no false pass on T29 (the models failed the default reply for
+  unrelated reasons), so the route order stands; re-measured with the metadata, all four
+  route judges catch the attack.
+- **`global-error.tsx`** added: a root-layout failure now renders a styled, titled page
+  with a reference and the support address. Measured in a production build with the
+  layout forced to throw; the thrown detail did not reach the page.
+- **Measured what the last slice left unverified:** a client component that throws is
+  caught inside the shell; client-side navigation to a slow page shows the loading state.
+- **`<Link><Button>`** (a button inside an anchor — invalid, and two Tab stops) replaced
+  by `ButtonLink` in four places. Button styles now live in one server-safe module that
+  both components read.
+- **Dev-only CSP noise**: ~33 refused dev-server `<style>` tags per page buried real
+  console errors. Development drops the style nonce and allows inline styles;
+  production's policy is unchanged.

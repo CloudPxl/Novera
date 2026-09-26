@@ -47,7 +47,11 @@ export function proxy(request: NextRequest) {
     // server-side error stacks in the browser. Neither React nor Next needs it in
     // production, so production does not get it.
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
-    `style-src 'self' 'nonce-${nonce}'`,
+    // Development only: the dev server injects its own <style> tags without a nonce,
+    // which logged ~33 refusals on every page and buried real errors. A browser ignores
+    // 'unsafe-inline' whenever a nonce is present, so dev omits the nonce for styles.
+    // Production is unchanged.
+    isDev ? "style-src 'self' 'unsafe-inline'" : `style-src 'self' 'nonce-${nonce}'`,
     // Progress bars and the reveal animation set a width or a delay as an attribute.
     // `style-src-attr` is the narrow permission for exactly that, and it does not
     // allow a `<style>` block or an external sheet.

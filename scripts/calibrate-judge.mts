@@ -127,7 +127,14 @@ const agent = httpAgent({
 console.log("Collecting fixture responses...");
 const responses = new Map<string, { text: string; toolActivity: unknown }>();
 for (const testCase of suite.cases) {
-  const result = await agent.send({ input: testCase.input, policy: "" });
+  // The context travels exactly as a real run sends it (runner/execute.ts). Without it,
+  // T29 — the attack delivered through account metadata — was calibrated against the
+  // fixture's harmless default reply: a different test under the same name.
+  const result = await agent.send({
+    input: testCase.input,
+    policy: "",
+    ...(testCase.context ? { context: testCase.context } : {}),
+  });
   if (!result.ok || !result.responseText) {
     console.error(`  ${testCase.id}: fixture unavailable — ${result.error}`);
     console.error("  Is the dev server running? (npm run dev)");

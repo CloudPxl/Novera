@@ -1800,3 +1800,20 @@ passed: public pages 200, operator pages redirect to sign-in, the fixture refuse
 production, CSP / frame / referrer headers present, v4 copy and the reissued report live,
 and a crafted `?problem=` is not rendered (it appears only URL-encoded in Next's router
 state).
+
+## 2026-09-26 — Phase 7.1, first slice: loading and error defined once
+
+The app had no `loading.tsx` and no `error.tsx` anywhere: a slow page showed nothing and
+a thrown one showed Next's bare default. Added `LoadingState` and `ErrorState` beside
+`EmptyState` in `primitives.tsx`, and three boundaries — `(app)/loading.tsx`,
+`(app)/error.tsx` (inside the shell, "Try again" + back to the dashboard) and a public
+`error.tsx` (for the docs, forms and client reports, pointing at support).
+
+Next 16 names the recovery prop `retry` (re-fetches) rather than the `reset` older
+versions used; `reset` survives but only re-renders. Read from the bundled docs.
+
+An error state never prints `error.message`: it shows the digest, which matches the
+server log. Measured in a production build with a throwing route: the thrown detail did
+not reach the page, the digest did, the shell stayed. Loading measured with an 8-second
+route: the placeholder appeared under the shell and was replaced when content arrived.
+axe found one defect, fixed — the reference line at 4.33:1 on the fail surface.

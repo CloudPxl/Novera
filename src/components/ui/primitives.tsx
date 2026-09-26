@@ -235,3 +235,63 @@ const CONTROLS = new Set(["input", "textarea", "select"]);
 
 export const inputClass =
   "w-full rounded-control border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-ink focus:ring-1 focus:ring-ink";
+
+/**
+ * What a page shows while its data is on the way — one definition, not one per page.
+ *
+ * Announced once as a polite status, so a screen reader hears that something is loading
+ * rather than silence. The bars are placeholders for layout only; they carry no numbers,
+ * because a figure that is not yet loaded must never look like one that is zero.
+ */
+export function LoadingState({ label = "Loading" }: { label?: string }) {
+  return (
+    <div role="status" aria-live="polite" className="py-8">
+      <span className="sr-only">{label}…</span>
+      <div aria-hidden="true" className="space-y-3 motion-safe:animate-pulse">
+        <div className="h-3 w-24 rounded bg-sunken" />
+        <div className="h-7 w-2/3 max-w-sm rounded bg-sunken" />
+        <div className="h-4 w-full max-w-xl rounded bg-sunken" />
+        <div className="mt-6 h-24 w-full rounded-panel bg-sunken" />
+        <div className="h-24 w-full rounded-panel bg-sunken" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A page that failed — the sibling of `EmptyState`, for the case where there should
+ * have been something and the request broke.
+ *
+ * It never prints the error's message: in production a server error reaches the browser
+ * as a generic string plus a digest, and a client error's message can contain anything.
+ * The digest is shown instead, because it is what matches the server's log line.
+ */
+export function ErrorState({
+  title,
+  children,
+  reference,
+  action,
+  level = 2,
+}: {
+  title: string;
+  children: ReactNode;
+  reference?: string;
+  action?: ReactNode;
+  /** 1 when the error replaces the whole page and is therefore its only heading. */
+  level?: 1 | 2;
+}) {
+  const Heading = level === 1 ? "h1" : "h2";
+  return (
+    <div role="alert" className="rounded-panel border border-fail-border bg-fail-surface px-6 py-10 text-center">
+      <Heading className="text-base font-medium text-fail-text">{title}</Heading>
+      <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-ink-soft">{children}</p>
+      {reference && (
+        // ink-soft, not ink-faint: faint measured 4.33:1 on the fail surface.
+        <p className="mt-3 text-xs text-ink-soft">
+          Reference <span className="font-mono">{reference}</span>
+        </p>
+      )}
+      {action && <div className="mt-5 flex flex-wrap justify-center gap-3">{action}</div>}
+    </div>
+  );
+}

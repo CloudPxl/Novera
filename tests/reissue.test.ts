@@ -60,9 +60,9 @@ test("a reissue carries every original section unchanged and never touches the s
   assert.deepEqual(payload.coverage, ORIGINAL.coverage);
   assert.deepEqual(payload.findings, ORIGINAL.findings);
   assert.deepEqual(payload.subject, ORIGINAL.subject);
-  const { previous_report_hash: _p, ...runRest } = payload.run;
-  const { previous_report_hash: _o, ...originalRunRest } = ORIGINAL.run;
-  assert.deepEqual(runRest, originalRunRest);
+  // Everything in `run` is carried unchanged except the chain link, checked below.
+  const withoutChain = (run: typeof payload.run) => ({ ...run, previous_report_hash: undefined });
+  assert.deepEqual(withoutChain(payload.run), withoutChain(ORIGINAL.run));
   assert.equal(payload.run.previous_report_hash, "c".repeat(64));
   assert.equal(payload.novera.format, 11);
   assert.deepEqual(payload.reissue, { of: "b".repeat(64), reason: "human_review" });

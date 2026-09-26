@@ -11,6 +11,7 @@ import { supabaseRunStore } from "../store/supabase-run-store.ts";
 import { createRoutedChat } from "../router/execute.ts";
 import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
 import { publishReport } from "./run.ts";
+import { reportEnvironment } from "../agents/environment.ts";
 
 /**
  * Loads everything a queued run refers to and executes it, then publishes a report.
@@ -132,7 +133,7 @@ export async function startRunExecution(args: {
     agentName: agent.name,
     policyVersion: policy.version,
     policyBody: policy.body,
-    environment: "Customer-operated agent, tested with recorded authorisation",
+    environment: reportEnvironment(agent.config),
     attestation: run.attestation_text ?? null,
     suite: { key: suite.key, version: suite.version, name: suite.name },
     judgeSource: (run.judge_source as "trial_free" | "workspace_key" | null) ?? "trial_free",

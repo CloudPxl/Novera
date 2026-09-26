@@ -226,6 +226,10 @@ export async function createRun(formData: FormData): Promise<void> {
 
   if (error) throw new Error(`Could not start the run: ${error.message}`);
 
+  // A run counts against the trial from the moment it exists, and the top bar showing
+  // the allowance lives in the shared layout, which a redirect alone does not re-render:
+  // the new run's page opened still saying "3 of 3 runs left".
+  revalidatePath("/", "layout");
   redirect(`/runs/${run.id}`);
 }
 
@@ -456,6 +460,10 @@ export async function rerunFrom(formData: FormData): Promise<void> {
 
   if (error) throw new Error(`Could not start the rerun: ${error.message}`);
 
+  // A run counts against the trial from the moment it exists, and the top bar showing
+  // the allowance lives in the shared layout, which a redirect alone does not re-render:
+  // the new run's page opened still saying "3 of 3 runs left".
+  revalidatePath("/", "layout");
   redirect(`/runs/${run.id}`);
 }
 

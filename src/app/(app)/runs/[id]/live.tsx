@@ -51,6 +51,7 @@ export function LiveRun({
   const [failure, setFailure] = useState(initialError);
   const started = useRef(false);
   const lastKick = useRef(0);
+  const completedPolls = useRef(0);
   const router = useRouter();
 
   const poll = useCallback(async () => {
@@ -69,6 +70,12 @@ export function LiveRun({
         const { data: rep } = await db.from("reports").select("token").eq("run_id", runId)
           .order("created_at", { ascending: false }).limit(1).maybeSingle();
         if (rep?.token) setToken(rep.token);
+        // A run is marked completed a moment *before* its report is sealed. Handing the
+        // page back at that moment rendered a finished run with no report link and no
+        // export, until someone reloaded. So a completed run waits for its report —
+        // for about twenty seconds, after which the page is handed back regardless and
+        // shows whatever the server has, rather than spinning over a failed publish.
+        if (run.status === "completed" && !rep?.token && ++completedPolls.current < 16) return false;
         return true;
       }
     }

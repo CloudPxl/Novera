@@ -229,6 +229,7 @@ export default async function ScenariosPage() {
             <div className="mt-5 border-t border-line pt-5">
               <PromoteForm
                 suites={(suites ?? []) as Array<{ id: string; key: string; version: number; name: string }>}
+                origins={{ policy: approved.filter((d) => d.origin !== "import").length, imported: approved.filter((d) => d.origin === "import").length }}
               />
             </div>
           </Card>

@@ -187,9 +187,15 @@ export function DecideForm({ draftId }: { draftId: string }) {
 
 export function PromoteForm({
   suites,
+  origins,
 }: {
   suites: Array<{ id: string; key: string; version: number; name: string }>;
+  /** Where the approved scenarios came from, so the suggested name does not misstate it. */
+  origins: { policy: number; imported: number };
 }) {
+  const suggestedName = origins.imported === 0
+    ? "Scenarios from our policy"
+    : origins.policy === 0 ? "Our imported scenarios" : "Our own scenarios";
   const [state, submit] = useActionState<FormState, FormData>(promoteApprovedScenarios, {});
 
   return (
@@ -199,7 +205,7 @@ export function PromoteForm({
       </Field>
 
       <Field label="Suite name" htmlFor="name">
-        <input id="name" name="name" required defaultValue="Scenarios from our policy" className={inputClass} />
+        <input id="name" name="name" required defaultValue={suggestedName} className={inputClass} />
       </Field>
 
       <div className="sm:col-span-2">

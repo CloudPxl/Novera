@@ -27,8 +27,13 @@ export function PolicyEditor({
   history: Array<{ version: number; createdAt: string }>;
 }) {
   const [state, submit] = useActionState<FormState, FormData>(savePolicyVersion, {});
-  const [body, setBody] = useState(latest?.body ?? STARTER);
-  const changed = body.trim() !== (latest?.body ?? "").trim();
+  // The first version starts empty. It used to start filled with the example below as
+  // real text, so "Save version 1" pressed without reading saved someone else's rules
+  // as this agent's policy — and every verdict is judged against that text. The example
+  // is a placeholder, and becomes text only when asked for.
+  const [body, setBody] = useState(latest?.body ?? "");
+  const changed = body.trim() !== (latest?.body ?? "").trim() && body.trim() !== "";
+  const isExample = body.trim() === STARTER.trim();
 
   return (
     <form action={submit} className="mt-4">
@@ -45,12 +50,29 @@ export function PolicyEditor({
         rows={9}
         value={body}
         onChange={(e) => setBody(e.target.value)}
+        placeholder={latest ? undefined : `For example:\n\n${STARTER}`}
         aria-describedby="policy-body-hint"
         className={`${inputClass} leading-relaxed`}
       />
       <p id="policy-body-hint" className="sr-only">
         Saving creates a new immutable version. Existing versions are never edited.
       </p>
+
+      {!latest && body.trim() === "" && (
+        <button
+          type="button"
+          onClick={() => setBody(STARTER)}
+          className="mt-2 text-xs text-ink-soft underline underline-offset-2 hover:text-ink"
+        >
+          Start from the example, then edit it
+        </button>
+      )}
+      {isExample && (
+        <p className="mt-2 text-xs text-warning-text">
+          This is the example, word for word. Edit it to match the rules your agent is actually held to —
+          every verdict is judged against this text.
+        </p>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <SubmitButton size="sm" pendingLabel="Saving…" disabled={!changed}>

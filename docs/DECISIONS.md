@@ -2070,3 +2070,36 @@ deletion refused, erasure); UI walked with a throwaway account — 3-test Prompt
 (it used to claim `drafted_from_policies: true` unconditionally). axe clean at 390 and
 1440. JUnit *import* (results) and trace import are deferred to Phase 9, where a
 production failure becomes a draft.
+
+## 2026-09-26 — The full loop, walked; four defects it found
+
+Connect → policy → run → diagnose → approve → retest → rerun → compare → client report
+→ print, clicked through in the browser with two throwaway accounts (since erased), on
+eu-support v1 against the local fixture. Every step worked; the walk found four defects
+that no test covered:
+
+1. **A report sealed against Novera's own scripted fixture described a real customer's
+   agent.** `environment` was the constant "Customer-operated agent, tested with
+   recorded authorisation" on every run. It is now derived from the agent
+   (`src/lib/agents/environment.ts`): a run against `/api/test-agent` on our own host
+   says so, and the report page's existing rule labels it TEST DATA. Production refuses
+   the fixture (403), so no public report was affected; dev writes to the same
+   database. Measured: new report carries the label, on screen and in print.
+2. **A finished run showed no report link until reloaded.** The runner marks a run
+   completed a moment before `publishReport` seals it; the live view refreshed on
+   "completed". It now waits for the report (≈20 s cap, then hands back regardless).
+   Measured on a fresh run: link appeared live.
+3. **The trial allowance in the top bar was stale on a new run's page** ("3 of 3" with a
+   run already started): a redirect does not re-render the shared layout.
+   `revalidatePath("/", "layout")` before both run redirects. Measured: "1 of 3" on
+   arrival.
+4. **The first policy version was pre-filled with example rules as real text**, so
+   "Save version 1" pressed unread saved someone else's policy as the agent's. It now
+   starts empty, the example is a placeholder and a button, and an unedited example is
+   flagged. (Type-checked; not walked in the browser.)
+
+Also: the promote form suggests a name that matches where the approved scenarios came
+from; `tests/reissue.test.ts` lint warnings removed (eslint now reports 0 problems).
+Production re-verified with the CLI: 17 live reports verify, the withdrawn one exits 3,
+JUnit carries no token. Print preview of the warm palette: white page, toolbar hidden,
+test-data label kept.

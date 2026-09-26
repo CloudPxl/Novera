@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
 
 interface DraftRow {
   id: string;
-  origin: "policy" | "import";
+  origin: "policy" | "import" | "production";
+  production_failures: { occurred_on: string | null; created_at: string; agent_reply: string | null; redaction: { counts: Record<string, number>; original_hash: string } } | null;
   import_provenance: (ImportProvenance & { imported_at: string }) | null;
   source_quote: string | null;
   scenario: SuiteCase;
@@ -40,7 +41,7 @@ export default async function ScenariosPage() {
   const [{ data: drafts }, { data: agents }, { data: suites }] = await Promise.all([
     admin
       .from("scenario_drafts")
-      .select("id, origin, import_provenance, source_quote, scenario, duty_refs, risk_level, destructive, fixture_only, status, model, rejection_reason, approved_at, created_at, policies(version), suites!scenario_drafts_included_in_suite_id_fkey(key, version)")
+      .select("id, origin, import_provenance, production_failures(occurred_on, created_at, agent_reply, redaction), source_quote, scenario, duty_refs, risk_level, destructive, fixture_only, status, model, rejection_reason, approved_at, created_at, policies(version), suites!scenario_drafts_included_in_suite_id_fkey(key, version)")
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: false }),
     admin.from("agents").select("id, name, is_production").eq("workspace_id", workspace.id).order("created_at"),
@@ -118,12 +119,15 @@ export default async function ScenariosPage() {
                     {d.destructive && <Badge tone="critical">destructive</Badge>}
                     {d.fixture_only && <Badge tone="medium">test data only</Badge>}
                     {d.policies && <Badge tone="neutral">policy v{d.policies.version}</Badge>}
+                    {d.origin === "production" && <Badge tone="high">from a production failure</Badge>}
                     {d.origin === "import" && d.import_provenance && (
                       <Badge tone="neutral">imported from {SOURCE_LABELS[d.import_provenance.source_tool as SourceTool] ?? d.import_provenance.source_tool}</Badge>
                     )}
                   </div>
 
-                  {d.origin === "import" && d.import_provenance ? (
+                  {d.origin === "production" && d.production_failures ? (
+                    <FromProduction failure={d.production_failures} />
+                  ) : d.origin === "import" && d.import_provenance ? (
                     <ImportedFrom provenance={d.import_provenance} />
                   ) : (
                     <figure className="mt-4 border-l-2 border-line-strong pl-3">
@@ -191,9 +195,9 @@ export default async function ScenariosPage() {
                     )}
                   </dl>
 
-                  {(d.model || d.origin === "import") && (
+                  {(d.model || d.origin !== "policy") && (
                     <p className="mt-4 text-xs text-ink-faint">
-                      {d.model ? `Drafted by ${d.model}.` : "Converted by Novera, no model involved."} Nothing
+                      {d.model ? `Drafted by ${d.model}.` : d.origin === "production" ? "Built from what you recorded, no model involved." : "Converted by Novera, no model involved."} Nothing
                       has been run and nothing will be until you approve it.
                     </p>
                   )}
@@ -229,7 +233,11 @@ export default async function ScenariosPage() {
             <div className="mt-5 border-t border-line pt-5">
               <PromoteForm
                 suites={(suites ?? []) as Array<{ id: string; key: string; version: number; name: string }>}
-                origins={{ policy: approved.filter((d) => d.origin !== "import").length, imported: approved.filter((d) => d.origin === "import").length }}
+                origins={{
+                  policy: approved.filter((d) => d.origin === "policy").length,
+                  imported: approved.filter((d) => d.origin === "import").length,
+                  production: approved.filter((d) => d.origin === "production").length,
+                }}
               />
             </div>
           </Card>
@@ -298,6 +306,28 @@ function ImportedFrom({ provenance: p }: { provenance: ImportProvenance & { impo
         </p>
       )}
       <p className="mt-3 text-xs text-ink-faint">Sanitisation: {p.sanitisation}.</p>
+    </div>
+  );
+}
+
+/** A regression draft: the incident it came from, as stored — redacted, original hashed. */
+function FromProduction({ failure: f }: { failure: NonNullable<DraftRow["production_failures"]> }) {
+  const removed = Object.entries(f.redaction.counts ?? {});
+  return (
+    <div className="mt-4 rounded-control border border-line bg-ground p-3 text-sm">
+      <p className="text-ink-soft">
+        Recorded from a production failure{f.occurred_on ? ` that happened ${f.occurred_on}` : ""}.{" "}
+        <Link href="/regressions" className="underline underline-offset-2 hover:text-ink">See it with the others</Link>
+      </p>
+      {f.agent_reply && (
+        <p className="mt-2 whitespace-pre-wrap text-ink-soft">
+          <span className="type-pill text-ink-faint">The agent replied </span>{f.agent_reply}
+        </p>
+      )}
+      <p className="mt-2 text-xs text-ink-faint">
+        Stored redacted{removed.length ? ` (removed: ${removed.map(([k, n]) => `${n} ${k.toLowerCase()}`).join(", ")})` : ""};
+        the original text was not kept.
+      </p>
     </div>
   );
 }

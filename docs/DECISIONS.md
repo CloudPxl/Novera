@@ -2103,3 +2103,33 @@ from; `tests/reissue.test.ts` lint warnings removed (eslint now reports 0 proble
 Production re-verified with the CLI: 17 live reports verify, the withdrawn one exits 3,
 JUnit carries no token. Print preview of the warm palette: white page, toolbar hidden,
 test-data label kept.
+
+## 2026-09-26 — Phase 9.1: production failures become regression scenarios
+
+A failure seen with a real customer is recorded on **/regressions**, redacted before
+storage, and drafted as a scenario (R01…) that joins the same approval queue as every
+other draft. `production_failures` (0031) holds redacted text only — the original is
+represented by its SHA-256 — and is append-only with its erasure path; a draft with
+`origin = 'production'` must name its failure, and the link is frozen. No model writes
+the scenario: the input is the customer's (redacted) message and the expectation is the
+person's own sentence, because a regression test's expectation is the one thing that
+must not be invented.
+
+Redaction (`src/lib/redact/`) catches emails, phones, IBANs, Luhn-valid cards, IPv4 and
+credentials, with stable placeholders; order numbers, dates and prices survive. It does
+**not** detect names or street addresses — without a model it would be trusted exactly
+where it fails — so the form previews what will be stored, live, and says so.
+
+Where a failure is in its life is derived, never stored: drafted → approved → in a suite
+→ held / still failing / came back / no result, from the draft row, the suite versions
+that carry the same case id and input, and completed runs. Found while walking it: the
+first run of a new regression failed and the page said "came back" — untrue for a defect
+that was never fixed. "Came back" now requires an earlier pass; otherwise "still failing".
+
+Also found: the "?" help sat *inside* eleven headings, and Chrome stopped exposing them
+as headings at all — the agent page's four section headings were invisible to screen
+reader navigation. axe has no rule for it; the accessibility tree showed it. The help now
+sits beside each heading. Measured: `verify:regressions` (13 live checks incl. RLS through
+real sessions and erasure), full UI walk (record with an email, a card and a name → name
+removed by the person → approve → promote onto eu-support v1 → 17-case run → R01 "still
+failing"), axe clean at 390 and 1440. Persona simulation (9.2) is next.

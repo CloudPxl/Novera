@@ -25,7 +25,8 @@
     "verify:byok": "node --conditions=react-server --env-file=.env.local scripts/verify-byok.mts",
     "seed:docs": "node --conditions=react-server --env-file=.env.local scripts/seed-docs.mts",
     "novera": "node --no-warnings bin/novera.mts",
-    "verify:imports": "node --conditions=react-server --env-file=.env.local scripts/verify-imports.mts"
+    "verify:imports": "node --conditions=react-server --env-file=.env.local scripts/verify-imports.mts",
+    "verify:regressions": "node --conditions=react-server --env-file=.env.local scripts/verify-regressions.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

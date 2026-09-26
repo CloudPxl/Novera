@@ -1,0 +1,207 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
+import { Reveal } from "@/components/ui/reveal.tsx";
+import { Card, Badge, EmptyState, type BadgeTone } from "@/components/ui/primitives.tsx";
+import { Help } from "@/components/ui/help.tsx";
+import { regressionStage, type RegressionStage } from "@/lib/regressions/draft.ts";
+import type { SuiteCase } from "@/lib/runner/types.ts";
+import type { RedactionRecord } from "@/lib/redact/store.ts";
+import { FailureForm } from "./client.tsx";
+
+export const metadata: Metadata = { title: "Regressions · Novera" };
+export const dynamic = "force-dynamic";
+
+interface FailureRow {
+  id: string;
+  customer_message: string;
+  agent_reply: string | null;
+  expected_behavior: string;
+  what_went_wrong: string | null;
+  occurred_on: string | null;
+  redaction: RedactionRecord;
+  created_at: string;
+  agents: { name: string } | null;
+}
+
+interface DraftRow {
+  production_failure_id: string;
+  status: "draft" | "approved" | "rejected" | "included";
+  rejection_reason: string | null;
+  scenario: SuiteCase;
+  included_in_suite_id: string | null;
+}
+
+const STAGE: Record<RegressionStage["stage"], { label: string; tone: BadgeTone }> = {
+  drafted: { label: "waiting for your review", tone: "medium" },
+  rejected: { label: "rejected", tone: "neutral" },
+  approved: { label: "approved, not yet in a suite", tone: "live" },
+  in_suite: { label: "in a suite, not run yet", tone: "live" },
+  held: { label: "held — passed on the last run", tone: "pass" },
+  came_back: { label: "came back — passed before, failed on the last run", tone: "fail" },
+  still_failing: { label: "still failing — not passed on any run yet", tone: "fail" },
+  no_result: { label: "no result on the last run", tone: "error" },
+};
+
+export default async function RegressionsPage() {
+  const { user, workspace } = await requireWorkspace();
+  const admin = await assertMembership(user.id, workspace.id);
+
+  const [{ data: failures }, { data: drafts }, { data: suites }, { data: agents }] = await Promise.all([
+    admin.from("production_failures")
+      .select("id, customer_message, agent_reply, expected_behavior, what_went_wrong, occurred_on, redaction, created_at, agents(name)")
+      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }),
+    admin.from("scenario_drafts")
+      .select("production_failure_id, status, rejection_reason, scenario, included_in_suite_id")
+      .eq("workspace_id", workspace.id).eq("origin", "production"),
+    admin.from("suites").select("id, key, version, cases").eq("workspace_id", workspace.id),
+    admin.from("agents").select("id, name").eq("workspace_id", workspace.id).order("created_at"),
+  ]);
+
+  const draftByFailure = new Map(((drafts ?? []) as DraftRow[]).map((d) => [d.production_failure_id, d]));
+  const suiteList = (suites ?? []) as Array<{ id: string; key: string; version: number; cases: SuiteCase[] }>;
+
+  // A case is the same regression in any of this workspace's suites that carries the
+  // same id with the same input — a later version that extended the first one still
+  // guards against the same incident.
+  const suitesFor = (c: SuiteCase) =>
+    suiteList.filter((s) => (s.cases ?? []).some((x) => x.id === c.id && x.input === c.input)).map((s) => s.id);
+
+  const included = [...draftByFailure.values()].filter((d) => d.status === "included");
+  const caseIds = [...new Set(included.map((d) => d.scenario.id))];
+  const suiteIds = [...new Set(included.flatMap((d) => suitesFor(d.scenario)))];
+
+  // The newest verdict for each regression case, from completed runs only: a run still
+  // in progress has not finished saying anything.
+  const { data: results } = caseIds.length && suiteIds.length
+    ? await admin.from("run_cases")
+      .select("case_id, status, created_at, runs!inner(suite_id, status)")
+      .eq("workspace_id", workspace.id).in("case_id", caseIds)
+      .in("runs.suite_id", suiteIds).eq("runs.status", "completed")
+      .order("created_at", { ascending: false })
+    : { data: [] };
+
+  const historyFor = (d: DraftRow) => {
+    const ids = new Set(suitesFor(d.scenario));
+    const rows = ((results ?? []) as unknown as Array<{ case_id: string; status: "pass" | "fail" | "error"; created_at: string; runs: { suite_id: string } }>)
+      .filter((r) => r.case_id === d.scenario.id && ids.has(r.runs.suite_id));
+    const [newest, ...earlier] = rows;
+    return {
+      latest: newest ? { status: newest.status, at: newest.created_at } : null,
+      passedBefore: earlier.some((r) => r.status === "pass"),
+    };
+  };
+
+  const rows = ((failures ?? []) as unknown as FailureRow[]).map((f) => {
+    const draft = draftByFailure.get(f.id);
+    const suite = draft?.included_in_suite_id ? suiteList.find((s) => s.id === draft.included_in_suite_id) : null;
+    const stage = draft
+      ? regressionStage({
+          draftStatus: draft.status,
+          rejectionReason: draft.rejection_reason,
+          suite: suite ? `${suite.key} v${suite.version}` : null,
+          ...(draft.status === "included" ? historyFor(draft) : {}),
+        })
+      : null;
+    return { f, draft, stage };
+  });
+
+  return (
+    <main className="w-full max-w-4xl py-8 text-ink">
+      <Link href="/dashboard" className="text-sm text-ink-faint underline-offset-2 hover:underline">
+        ← Dashboard
+      </Link>
+
+      <div className="mt-4 flex items-center"><h1 className="type-h1">Regressions from production</h1><Help label="Regressions">
+          When your agent gets something wrong with a real customer, record it here. Novera removes
+          personal details, turns it into a test scenario, and — once you approve it and add it to a
+          suite — checks on every later run whether the same mistake came back.
+        </Help></div>
+      <p className="mt-2 max-w-2xl type-body text-ink-soft">
+        A mistake your agent made with a real customer is the best test case you have. Record it once,
+        and every later run shows whether it came back.
+      </p>
+
+      <Reveal className="mt-8">
+        <Card className="p-5">
+          <h2 className="type-h2">Record a failure</h2>
+          <FailureForm agents={(agents ?? []) as Array<{ id: string; name: string }>} />
+        </Card>
+      </Reveal>
+
+      <Reveal className="mt-10">
+        <h2 className="type-h2">Recorded failures</h2>
+        {rows.length === 0 ? (
+          <div className="mt-3">
+            <EmptyState title="Nothing recorded yet">
+              When a customer conversation goes wrong, record it above. It becomes a draft scenario on the
+              Scenarios page for you to approve.
+            </EmptyState>
+          </div>
+        ) : (
+          <ul className="mt-3 space-y-4">
+            {rows.map(({ f, draft, stage }) => (
+              <li key={f.id}>
+                <Card className="p-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {draft && <span className="type-mono text-ink-soft">{draft.scenario.id}</span>}
+                    {stage && <Badge tone={STAGE[stage.stage].tone}>{STAGE[stage.stage].label}</Badge>}
+                    {stage && "suite" in stage && <Badge tone="neutral">{stage.suite}</Badge>}
+                    {f.agents && <Badge tone="neutral">{f.agents.name}</Badge>}
+                    <span className="text-xs text-ink-faint">
+                      {f.occurred_on ? `happened ${f.occurred_on} · ` : ""}recorded {f.created_at.slice(0, 10)}
+                    </span>
+                  </div>
+
+                  <dl className="mt-4 space-y-3">
+                    <div>
+                      <dt className="type-pill text-ink-faint">The customer sent</dt>
+                      <dd className="mt-1 type-body whitespace-pre-wrap">{f.customer_message}</dd>
+                    </div>
+                    {f.agent_reply && (
+                      <div>
+                        <dt className="type-pill text-ink-faint">The agent replied</dt>
+                        <dd className="mt-1 type-body whitespace-pre-wrap text-ink-soft">{f.agent_reply}</dd>
+                      </div>
+                    )}
+                    <div>
+                      <dt className="type-pill text-ink-faint">What should have happened</dt>
+                      <dd className="mt-1 type-body">{f.expected_behavior}</dd>
+                    </div>
+                  </dl>
+
+                  {stage?.stage === "rejected" && stage.reason && (
+                    <p className="mt-3 text-sm text-ink-faint">Rejected because: {stage.reason}</p>
+                  )}
+                  {stage?.stage === "drafted" && (
+                    <p className="mt-3 text-sm">
+                      <Link href="/scenarios" className="font-medium underline underline-offset-2">
+                        Review the draft on the Scenarios page →
+                      </Link>
+                    </p>
+                  )}
+                  {stage?.stage === "approved" && (
+                    <p className="mt-3 text-sm">
+                      <Link href="/scenarios" className="font-medium underline underline-offset-2">
+                        Add it to a suite version on the Scenarios page →
+                      </Link>
+                    </p>
+                  )}
+
+                  <p className="mt-4 text-xs text-ink-faint">
+                    Stored redacted
+                    {Object.keys(f.redaction.counts ?? {}).length > 0
+                      ? ` (removed: ${Object.entries(f.redaction.counts).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(", ")})`
+                      : ""}
+                    . The original text was not kept; its SHA-256 is{" "}
+                    <span className="type-mono break-all">{f.redaction.original_hash}</span>.
+                  </p>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Reveal>
+    </main>
+  );
+}

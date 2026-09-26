@@ -196,13 +196,10 @@ export default async function DashboardPage() {
 
       <Reveal className="mt-10" delay={60}>
         <section>
-          <h2 className="type-h2">
-            Agents
-            <Help label="Agents">
+          <div className="flex items-center"><h2 className="type-h2">Agents</h2><Help label="Agents">
               The support agents you have connected. Open one to write its policy, check its
               connection and run the suite against it. Only test agents you own or are authorised to test.
-            </Help>
-          </h2>
+            </Help></div>
           {agents && agents.length > 0 ? (
             <ul className="mt-3 space-y-2">
               {agents.map((a) => (
@@ -243,13 +240,10 @@ export default async function DashboardPage() {
 
       <Reveal className="mt-10" delay={120}>
         <section>
-          <h2 className="type-h2">
-            Recent runs
-            <Help label="Runs">
+          <div className="flex items-center"><h2 className="type-h2">Recent runs</h2><Help label="Runs">
               A run sends every scenario in a suite to one agent and grades each answer against its
               policy. Open a run to see each verdict, fix failures and share the report.
-            </Help>
-          </h2>
+            </Help></div>
           {runs && runs.length > 0 ? (
             <ul className="mt-3 space-y-2">
               {runs.map((r) => (

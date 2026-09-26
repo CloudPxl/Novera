@@ -54,7 +54,7 @@ export default async function SettingsPage() {
       <Reveal className="mt-8">
         <section>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold tracking-tight">Grading<Help label="Grading">Which AI models grade your runs. The trial uses ours for three runs; after that, connect your own model key. It is encrypted, used only to grade your runs, and never shown again.</Help></h2>
+            <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Grading</h2><Help label="Grading">Which AI models grade your runs. The trial uses ours for three runs; after that, connect your own model key. It is encrypted, used only to grade your runs, and never shown again.</Help></div>
             <Badge tone={entitlement.ownKey ? (entitlement.canRun ? "pass" : "fail") : "neutral"}>
               {entitlement.ownKey ? `your ${entitlement.provider} key` : "trial allowance"}
             </Badge>

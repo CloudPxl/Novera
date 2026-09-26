@@ -64,7 +64,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
       <Reveal className="mt-8">
         <section>
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold tracking-tight">Connection<Help label="Connection">Where Novera sends each scenario, and the last time it checked your agent answered. Re-check it after changing the agent&rsquo;s address.</Help></h2>
+            <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Connection</h2><Help label="Connection">Where Novera sends each scenario, and the last time it checked your agent answered. Re-check it after changing the agent&rsquo;s address.</Help></div>
             <ReprobeButton agentId={agent.id} />
           </div>
           {latestProbe ? (
@@ -110,7 +110,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
 
       <Reveal className="mt-10" delay={50}>
         <section>
-          <h2 className="text-lg font-semibold tracking-tight">Verifying what the agent does<Help label="Read-back">Optional. A read-only address in your own system Novera can check to confirm an action the agent claims, such as a refund. Without it, such claims are reported as not verified — never as passed.</Help></h2>
+          <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Verifying what the agent does</h2><Help label="Read-back">Optional. A read-only address in your own system Novera can check to confirm an action the agent claims, such as a refund. Without it, such claims are reported as not verified — never as passed.</Help></div>
           <p className="mt-1 text-sm leading-relaxed text-ink-soft">
             A tool call is not an effect, and the agent saying it refunded an order is
             not a refund. This is where Novera goes to find out.
@@ -124,7 +124,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
 
       <Reveal className="mt-10" delay={60}>
         <section>
-          <h2 className="text-lg font-semibold tracking-tight">Policy<Help label="Policy">The rules this agent should follow. Every verdict is judged against this text. Saving creates a new version; earlier versions and the runs graded on them are kept.</Help></h2>
+          <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Policy</h2><Help label="Policy">The rules this agent should follow. Every verdict is judged against this text. Saving creates a new version; earlier versions and the runs graded on them are kept.</Help></div>
           <p className="mt-1 text-sm leading-relaxed text-ink-soft">
             Every version is kept. Saving creates a new one — an existing version can never be
             edited, so a report always names exactly what the agent was tested against.
@@ -140,7 +140,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
       <Reveal className="mt-10" delay={120}>
         <section>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold tracking-tight">Runs<Help label="Running the suite">Runs the chosen suite version against this agent with the current policy. The newest version is selected. Each run produces a dated report when it finishes.</Help></h2>
+            <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Runs</h2><Help label="Running the suite">Runs the chosen suite version against this agent with the current policy. The newest version is selected. Each run produces a dated report when it finishes.</Help></div>
             {latestPolicy && entitlement.canRun && (
               <form action={createRun} className="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="agentId" value={agent.id} />

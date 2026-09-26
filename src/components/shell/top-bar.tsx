@@ -15,6 +15,7 @@ import { ImportSuite } from "./import-suite.tsx";
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Overview" },
   { href: "/scenarios", label: "Scenarios" },
+  { href: "/regressions", label: "Regressions" },
 ];
 
 /** An endpoint's host, which is what identifies an agent to an operator in a hurry. */

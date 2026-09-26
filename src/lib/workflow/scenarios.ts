@@ -8,6 +8,9 @@ import { connectionsFromEnv } from "@/lib/providers/registry.ts";
 import { compileScenarios } from "@/lib/scenarios/compile.ts";
 import { buildPromotedSuite, coveredBehaviours } from "@/lib/scenarios/promote.ts";
 import { importDataset, SOURCE_LABELS } from "@/lib/imports/datasets.ts";
+import { redactForStorage } from "@/lib/redact/store.ts";
+import { regressionScenario } from "@/lib/regressions/draft.ts";
+import { SEVERITIES } from "@/lib/suites/validate.ts";
 import type { SuiteCase } from "@/lib/runner/types.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
 
@@ -97,6 +100,9 @@ export async function draftScenarios(_prev: FormState, form: FormData): Promise<
 
 const MAX_IMPORT_BYTES = 1_000_000;
 
+/** How each draft origin is named in a suite's provenance. */
+const ORIGIN_TOOL = { policy: "novera-duty-compiler", import: "import", production: "production-failure" } as const;
+
 /**
  * Imports another tool's test cases as drafts.
  *
@@ -150,6 +156,97 @@ export async function importScenarioDrafts(_prev: FormState, form: FormData): Pr
     + (refused ? ` ${refused} not imported — ${shown}${refused > 4 ? ` (and ${refused - 4} more)` : ""}` : "")
     + (result.notes.length ? ` ${result.notes.join(" ")}` : "");
   return result.drafts.length ? { notice: summary } : { error: summary };
+}
+
+const FAILURE_LIMITS = { customerMessage: 4000, agentReply: 8000, expectedBehavior: 1000, whatWentWrong: 1000 };
+
+/**
+ * A failure seen in production, recorded and drafted as a regression scenario.
+ *
+ * Redacted before anything is stored; the original is kept only as a hash. The draft is
+ * built from the person's own statement of what should have happened — no model is
+ * asked — and waits for the same named approval as every other draft.
+ */
+export async function submitProductionFailure(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const text = (name: string) => String(form.get(name) ?? "").trim();
+  const customerMessage = text("customerMessage");
+  const agentReply = text("agentReply");
+  const expectedBehavior = text("expectedBehavior");
+  const whatWentWrong = text("whatWentWrong");
+  const obligation = text("obligation");
+  const severity = text("severity");
+  const agentId = text("agentId");
+  const occurredOn = text("occurredOn");
+
+  if (!customerMessage) return { error: "Paste what the customer sent — that is what the scenario will send." };
+  if (!expectedBehavior) return { error: "Say what should have happened. A regression test holds the agent to your expectation, so it cannot be left to guesswork." };
+  for (const [name, limit] of Object.entries(FAILURE_LIMITS)) {
+    const value = { customerMessage, agentReply, expectedBehavior, whatWentWrong }[name as keyof typeof FAILURE_LIMITS];
+    if (value.length > limit) return { error: `Keep that field under ${limit} characters.` };
+  }
+  if (!/^[a-z][a-z0-9_]{2,60}$/.test(obligation)) return { error: "Choose which obligation this failure breaks." };
+  if (!SEVERITIES.includes(severity as (typeof SEVERITIES)[number])) return { error: "Choose a severity." };
+  if (occurredOn && !/^\d{4}-\d{2}-\d{2}$/.test(occurredOn)) return { error: "The date should look like 2026-09-26." };
+
+  const admin = await assertMembership(user.id, workspace.id);
+  if (agentId) {
+    const { data: agent } = await admin.from("agents").select("id").eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
+    if (!agent) return { error: "That agent could not be found in this workspace." };
+  }
+
+  // Everything the person typed is redacted, not only the customer's message: an
+  // expectation often quotes the details it is about.
+  const { fields, record } = redactForStorage({
+    customer_message: customerMessage,
+    agent_reply: agentReply,
+    expected_behavior: expectedBehavior,
+    what_went_wrong: whatWentWrong,
+  });
+
+  const { data: existing } = await admin.from("scenario_drafts").select("scenario").eq("workspace_id", workspace.id);
+  const usedIds = (existing ?? []).map((row) => (row.scenario as SuiteCase)?.id).filter(Boolean) as string[];
+  const built = regressionScenario({
+    customerMessage: fields.customer_message,
+    expectedBehavior: fields.expected_behavior,
+    whatWentWrong: fields.what_went_wrong || null,
+    obligation,
+    severity,
+  }, usedIds);
+  if (!built.ok) return { error: built.errors.join(" ") };
+
+  const { data: failure, error: failureError } = await admin.from("production_failures").insert({
+    workspace_id: workspace.id,
+    agent_id: agentId || null,
+    customer_message: fields.customer_message,
+    agent_reply: fields.agent_reply || null,
+    expected_behavior: fields.expected_behavior,
+    what_went_wrong: fields.what_went_wrong || null,
+    occurred_on: occurredOn || null,
+    redaction: record,
+    created_by: user.id,
+  }).select("id").single();
+  if (failureError || !failure) return { error: `The failure could not be recorded: ${failureError?.message ?? "no row returned"}` };
+
+  const { error: draftError } = await admin.from("scenario_drafts").insert({
+    workspace_id: workspace.id,
+    agent_id: agentId || null,
+    origin: "production",
+    production_failure_id: failure.id,
+    scenario: built.scenario,
+    duty_refs: [],
+    risk_level: severity === "critical" || severity === "high" ? "high" : severity === "low" ? "low" : "medium",
+    created_by: user.id,
+  });
+  if (draftError) return { error: `The failure was recorded, but its draft could not be saved: ${draftError.message}` };
+
+  revalidatePath("/scenarios");
+  const removed = Object.entries(record.counts).map(([kind, n]) => `${n} ${kind.toLowerCase()}`).join(", ");
+  return {
+    notice: `Recorded, and drafted as ${built.scenario.id} for your review. `
+      + (removed ? `Removed before storing: ${removed}. ` : "Nothing needed removing automatically. ")
+      + "The original text was not kept.",
+  };
 }
 
 /**
@@ -206,7 +303,7 @@ export async function promoteApprovedScenarios(_prev: FormState, form: FormData)
   if (!name) return { error: "The suite needs a name." };
 
   const { data: approved } = await admin
-    .from("scenario_drafts").select("id, scenario, origin, import_provenance")
+    .from("scenario_drafts").select("id, scenario, origin, import_provenance, production_failure_id")
     .eq("workspace_id", workspace.id).eq("status", "approved")
     .order("created_at");
 
@@ -245,18 +342,18 @@ export async function promoteApprovedScenarios(_prev: FormState, form: FormData)
     // version or imported from another tool — said separately, because they are
     // different claims about why a case is in the suite.
     provenance: {
-      source_tool: approved.some((r) => r.origin === "import")
-        ? approved.some((r) => r.origin !== "import") ? "novera-duty-compiler+import" : "import"
-        : "novera-duty-compiler",
+      source_tool: [...new Set(approved.map((r) => ORIGIN_TOOL[r.origin as keyof typeof ORIGIN_TOOL] ?? String(r.origin)))].sort().join("+"),
       transformation_version: 1,
-      drafted_from_policies: approved.some((r) => r.origin !== "import"),
-      from_policy: approved.filter((r) => r.origin !== "import").length,
+      drafted_from_policies: approved.some((r) => r.origin === "policy"),
+      from_policy: approved.filter((r) => r.origin === "policy").length,
       imported: [...new Map(
         approved.filter((r) => r.origin === "import").map((r) => {
           const p = r.import_provenance as { source_tool: string; source_filename: string; original_hash: string };
           return [p.original_hash, { source_tool: p.source_tool, source_filename: p.source_filename, original_hash: p.original_hash }];
         }),
       ).values()],
+      // Regression cases name the production failure each one guards against.
+      from_production_failures: approved.filter((r) => r.origin === "production").map((r) => r.production_failure_id),
       approved_scenarios: promotion.draftIds.length,
       carried_from_suite: extendId || null,
       promoted_by: user.id,

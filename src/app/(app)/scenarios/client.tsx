@@ -191,11 +191,14 @@ export function PromoteForm({
 }: {
   suites: Array<{ id: string; key: string; version: number; name: string }>;
   /** Where the approved scenarios came from, so the suggested name does not misstate it. */
-  origins: { policy: number; imported: number };
+  origins: { policy: number; imported: number; production: number };
 }) {
-  const suggestedName = origins.imported === 0
-    ? "Scenarios from our policy"
-    : origins.policy === 0 ? "Our imported scenarios" : "Our own scenarios";
+  const kinds = [origins.policy, origins.imported, origins.production].filter((n) => n > 0).length;
+  const suggestedName = kinds !== 1
+    ? "Our own scenarios"
+    : origins.policy ? "Scenarios from our policy"
+    : origins.imported ? "Our imported scenarios"
+    : "Regressions from production";
   const [state, submit] = useActionState<FormState, FormData>(promoteApprovedScenarios, {});
 
   return (

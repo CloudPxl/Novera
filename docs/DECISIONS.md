@@ -1985,3 +1985,26 @@ page renders light, axe clean, no overflow at 390 and 1440.
 click away after, each step linking to the exact place in that workspace (the agent's
 page, the latest run). Its text lives in `src/lib/guide/content.ts`, shared with `/guide`,
 so the two cannot drift.
+
+## 2026-09-26 — Ask Novera, an in-app assistant (user request)
+
+The user asked for an assistant that "can do anything for you if you are stuck", on the
+free keys or the workspace's own key. Built as far as the product's rules allow, and no
+further: it explains (grounded in the three most relevant docs pages — the whole corpus
+would spend most of Groq's 8k-token minute), reads a snapshot of the workspace through
+the person's own RLS session (names, hosts, policy versions, run counts — never keys or
+policy text), links anywhere in *this* workspace, and offers one costly action — start
+a run — as a button that submits the same `createRun` the agent page does. It cannot
+attest that an agent may be tested: that statement is what every report rests on.
+Funding follows the run's own resolution (`connectionsForWorkspace`): the workspace's key
+alone when it has one, otherwise the trial's free tiers; the reply says which. 40
+questions an hour per person, counted in Postgres.
+
+Everything the model returns is validated server-side: links outside a whitelist built
+from the workspace's own rows, foreign agent ids, a run when none may start, and
+invented citations are all dropped; the run button's label is ours, not the model's.
+Found while testing live: a key typed into the chat would have gone to the provider,
+contradicting the panel's own promise. Key-shaped text is now refused in the browser
+(zero requests measured) and again on the server. Measured live on both funding paths
+(own Groq key; a fresh trial workspace), refusals included; axe clean with the panel
+open at 390 and 1440; Escape returns focus to the trigger.

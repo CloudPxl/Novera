@@ -5,6 +5,19 @@ import { categoryMeta } from "@/lib/evidence/categories.ts";
 import { loadReportByToken } from "@/lib/report/access.ts";
 import { ReportToolbar } from "./toolbar.tsx";
 
+const FINGERPRINT_LABELS: Record<string, string> = {
+  agent_endpoint: "Agent endpoint",
+  request_configuration: "Request configuration (digest)",
+  agent_release: "Agent release",
+  knowledge_base_revision: "Knowledge-base revision",
+};
+
+const PROVENANCE_LABELS: Record<string, string> = {
+  recorded: "recorded by Novera",
+  declared: "declared by the customer, not verified by Novera",
+  not_supplied: "not supplied",
+};
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -60,7 +73,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             Test data · {subject.environment}
           </p>
         )}
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{subject.client}</h1>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight [overflow-wrap:anywhere] sm:text-4xl">{subject.client}</h1>
         <dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 text-sm sm:grid-cols-3">
           <Field label="Agent" value={subject.agent} />
           <Field label="Policy version" value={`v${subject.policy_version}`} />
@@ -482,6 +495,25 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             </p>
             <p className="mt-3 break-all font-mono text-xs text-ink-soft">{run.manifest_hash}</p>
           </>
+        )}
+        {/* Format 12 onwards, and only for runs whose manifest recorded it. Each item
+            says where it came from, because "tested against release X" is the
+            customer's statement, not something Novera could see. */}
+        {run.fingerprint && run.fingerprint.length > 0 && (
+          <div className="mt-4">
+            <p className="leading-relaxed">What was tested, and where each item comes from:</p>
+            <dl className="mt-2 space-y-2 text-xs sm:space-y-1">
+              {run.fingerprint.map((f) => (
+                <div key={f.field} className="sm:flex sm:gap-4">
+                  <dt className="text-ink-soft sm:w-56 sm:shrink-0">{FINGERPRINT_LABELS[f.field] ?? f.field}</dt>
+                  <dd className="min-w-0 break-words">
+                    {f.value ? <span className="break-all font-mono">{f.value}</span> : <span className="text-ink-soft">—</span>}{" "}
+                    <span className="text-ink-faint">({PROVENANCE_LABELS[f.provenance] ?? f.provenance})</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         )}
         {payload.reissue && (
           <p className="mt-4 leading-relaxed">

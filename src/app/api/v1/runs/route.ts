@@ -3,6 +3,7 @@ import { listRuns } from "@/lib/api/read.ts";
 import { apiJson, reportUrl } from "@/lib/api/respond.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { RunRefusal, startRun } from "@/lib/workflow/start-run.ts";
+import { cleanDeclared } from "@/lib/report/manifest.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,10 @@ export async function POST(request: Request) {
   if (!UUID.test(agentId)) return apiJson({ error: "`agent_id` must be an agent id. GET /api/v1/agents lists them." }, 400);
   if (suiteId !== null && !UUID.test(suiteId)) return apiJson({ error: "`suite_id` must be a suite id. GET /api/v1/suites lists them." }, 400);
 
+  // Optional: what the caller says it is testing. Stated on the report as declared.
+  const customerDeclared = cleanDeclared({ releaseId: body.release_id, knowledgeBaseRevision: body.knowledge_base_revision });
+  if ("error" in customerDeclared) return apiJson({ error: customerDeclared.error }, 400);
+
   const db = serviceClient();
   // The person responsible for a pipeline's run is whoever created the key it used.
   const { data: key } = await db.from("api_keys").select("created_by").eq("id", auth.caller.keyId).single();
@@ -59,6 +64,7 @@ export async function POST(request: Request) {
       agentId,
       suiteId,
       apiKeyId: auth.caller.keyId,
+      customerDeclared,
     });
     return apiJson({
       run: { id: run.id, status: "queued" },

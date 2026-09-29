@@ -195,7 +195,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 501 unit tests | free |
+| `npm test` | 505 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -240,7 +240,7 @@ they drive the scripted fixture at `/api/test-agent`.
 
 - **A report payload change breaks every document already in a client's hands.** An added
   field ships with its absence branch in the same commit. Two reports were returning 500
-  in production before this was caught. 18 sealed reports now span payload formats 1–11; `novera report verify` re-hashes all of them.
+  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 12); `novera report verify` re-hashes all of them.
 - **A model's rendering of our data is not our data.** The judge echoed assertions back
   with the numbering the prompt added; storing that verbatim made every failed case render
   as fully passing.

@@ -2710,3 +2710,28 @@ not only when comparing), in the comparison's warning, and in `GET /api/v1/runs/
 and MCP `get_run` as `stability.moved`. Never called "flaky". The sealed report's
 format does not change. Verified through the live API on planted history: `graders`
 and `agent` as planted.
+
+## 2026-09-29 — Phase 12.7: what was tested, and who said so (report format 12)
+
+The manifest, declared before a run and frozen, now also records a digest of how Novera
+talks to the agent (`agent.config_hash`: endpoint, method, request template, response
+paths, header *names*, auth header name, a digest of a model agent's system prompt —
+never a credential or a header value) and, when the person gives them, what they say
+they are testing (`declared.release_id`, `declared.knowledge_base_revision`, ≤ 100
+printable characters). Accepted from the run form (a collapsed "What are you testing?"),
+`POST /api/v1/runs`, `novera run --release --kb-revision` and MCP `start_run`.
+
+Format 12 adds `run.fingerprint` to the payload: each item with its provenance —
+`recorded` by Novera, `declared` by the customer ("not verified by Novera" on the page),
+or `not_supplied`. Only for runs whose manifest has the digest; an older run gets no
+fingerprint rather than a guessed one. A reissue keeps the higher of its original's
+format and 11. The payload's existing `environment` field (fixture or customer agent) is
+a different thing, so the new block is not called that.
+
+Verified: all 18 sealed reports (formats 1–11) re-hash and verify against the new code,
+the revoked one exits 3; every live one renders. A new format-12 report from a real run
+with a declared release verified and rendered the four items with their provenance.
+Its first measurement at 390 px showed 22 px of overflow — not from the new block but
+from the report heading, which could not wrap a long unbroken client name (the
+throwaway workspace's). The heading now wraps anywhere; 0 px, axe clean at both widths.
+Also: the run launcher lists suite versions newest first.

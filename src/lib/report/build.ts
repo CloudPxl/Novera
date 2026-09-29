@@ -7,6 +7,7 @@ import { gradeRun, meetsThreshold } from "../evidence/grade.ts";
 import { independenceOf } from "../judge/independence.ts";
 import type { RunCaseRecord } from "../runner/types.ts";
 import { redact } from "../redact/pii.ts";
+import type { ReportPayload } from "./payload.ts";
 
 /**
  * Builds the client-facing report payload.
@@ -44,6 +45,8 @@ export interface ReportInput {
   privateMaterial?: string[];
   /** Declared before the run and frozen on the row; null for runs that predate it. */
   manifestHash?: string | null;
+  /** What was tested and where each item came from (format 12); absent on older runs. */
+  fingerprint?: NonNullable<ReportPayload["run"]["fingerprint"]> | null;
   /** The previous report for this agent, so a series chains; null for the first. */
   previousReportHash?: string | null;
 }
@@ -216,10 +219,12 @@ export function buildReport(input: ReportInput): BuiltReport {
     // counts the verdicts a rule settled without a model; 9 says how many claimed
     // actions were confirmed or contradicted by the customer's own system; 10 names the
     // scenarios in a comparison whose verdict had already moved under one policy
-    // version, so a coin flip is not reported as a regression without saying so. Reports
+    // version, so a coin flip is not reported as a regression without saying so; 11 is
+    // a reissue carrying human review; 12 states what was tested, each item recorded by
+    // Novera or declared by the customer. Reports
     // sealed as any earlier format are still rendered from their own payload and must
     // keep verifying — every reader of this payload branches on absence.
-    novera: { format: 10 },
+    novera: { format: 12 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -241,6 +246,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       grading_funded_by: input.judge.source === "trial_free" ? "Novera trial allowance" : "customer-supplied model key",
       manifest_hash: input.manifestHash ?? null,
       previous_report_hash: input.previousReportHash ?? null,
+      ...(input.fingerprint ? { fingerprint: input.fingerprint } : {}),
     },
     grade: {
       band: grade.band,

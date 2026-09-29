@@ -2,6 +2,7 @@ import { DATA_POLICY_VERSION } from "../privacy/data-class.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash, randomUUID } from "node:crypto";
 import { contentHash, type Json } from "./hash.ts";
+import type { ReportPayload } from "./payload.ts";
 import { JUDGE_SYSTEM } from "../judge/index.ts";
 import { DEFAULT_ROUTES, type RouteTable } from "../router/routes.ts";
 
@@ -32,7 +33,24 @@ export interface RunManifest {
   novera_manifest: 1;
   run_id: string;
   created_at: string;
-  agent: { id: string; endpoint_host: string | null };
+  agent: {
+    id: string;
+    endpoint_host: string | null;
+    /**
+     * A digest of how Novera talks to the agent — endpoint, method, request template,
+     * response paths, the *names* of any fixed headers — never a credential or a header
+     * value. Two runs with the same digest sent the same shape of request to the same
+     * place. Absent on runs declared before 2026-09-29.
+     */
+    config_hash?: string;
+  };
+  /**
+   * What the customer said they were testing, as they said it: an agent release, a
+   * knowledge-base revision. Declared, not observed — Novera cannot see inside the
+   * customer's deployment, and the report labels these accordingly. Absent when nothing
+   * was declared.
+   */
+  declared?: { release_id?: string; knowledge_base_revision?: string };
   policy: { id: string; version: number };
   suite: { id: string; key: string; version: number; case_ids: string[] };
   /** The models this run intended to grade with, in the order it meant to ask them. */
@@ -69,6 +87,48 @@ export function endpointHost(url: string | null | undefined): string | null {
   }
 }
 
+/** The fields a customer may declare about what a run tests, bounded and trimmed. */
+export interface Declared { releaseId?: string; knowledgeBaseRevision?: string }
+
+export const DECLARED_MAX = 100;
+
+/** A declaration as stored, or a sentence saying why it cannot be. */
+export function cleanDeclared(raw: { releaseId?: unknown; knowledgeBaseRevision?: unknown }): Declared | { error: string } {
+  const out: Declared = {};
+  for (const [key, label] of [["releaseId", "release"], ["knowledgeBaseRevision", "knowledge-base revision"]] as const) {
+    const v = raw[key];
+    if (v === undefined || v === null || v === "") continue;
+    if (typeof v !== "string" || !v.trim()) return { error: `The ${label} must be text.` };
+    const t = v.trim();
+    // Printable and short: this is quoted on a document someone else will read.
+    if (t.length > DECLARED_MAX || /[\u0000-\u001f\u007f]/.test(t)) {
+      return { error: `The ${label} must be at most ${DECLARED_MAX} printable characters.` };
+    }
+    out[key] = t;
+  }
+  return out;
+}
+
+/** The request's shape, digested. Credentials and header values never enter it. */
+export function agentConfigHash(config: unknown): string | null {
+  const c = (config ?? null) as Record<string, unknown> | null;
+  if (!c || typeof c !== "object") return null;
+  const shape = {
+    kind: c.kind ?? null,
+    url: c.url ?? null,
+    method: c.method ?? "POST",
+    body_template: c.bodyTemplate ?? null,
+    response_path: c.responsePath ?? null,
+    tool_activity_path: c.toolActivityPath ?? null,
+    header_names: c.headers && typeof c.headers === "object" ? Object.keys(c.headers as object).sort() : [],
+    auth_header_name: c.authHeaderName ?? null,
+    model: c.model ?? null,
+    provider: c.provider ?? null,
+    system_prompt_sha256: typeof c.systemPrompt === "string" ? createHash("sha256").update(c.systemPrompt, "utf8").digest("hex") : null,
+  };
+  return contentHash(shape as unknown as Json);
+}
+
 export function buildRunManifest(args: {
   runId: string;
   createdAt?: string;
@@ -91,13 +151,27 @@ export function buildRunManifest(args: {
   routes?: RouteTable;
   passThreshold: number;
   runnerVersion: string;
+  agentConfig?: unknown;
+  declared?: Declared;
 }): { manifest: RunManifest; hash: string } {
   const routes = args.routes ?? DEFAULT_ROUTES;
   const manifest: RunManifest = {
     novera_manifest: 1,
     run_id: args.runId,
     created_at: args.createdAt ?? new Date().toISOString(),
-    agent: { id: args.agentId, endpoint_host: endpointHost(args.agentUrl) },
+    agent: {
+      id: args.agentId,
+      endpoint_host: endpointHost(args.agentUrl),
+      ...(() => { const h = args.agentConfig === undefined ? null : agentConfigHash(args.agentConfig); return h ? { config_hash: h } : {}; })(),
+    },
+    ...(args.declared && (args.declared.releaseId || args.declared.knowledgeBaseRevision)
+      ? {
+          declared: {
+            ...(args.declared.releaseId ? { release_id: args.declared.releaseId } : {}),
+            ...(args.declared.knowledgeBaseRevision ? { knowledge_base_revision: args.declared.knowledgeBaseRevision } : {}),
+          },
+        }
+      : {}),
     policy: { id: args.policyId, version: args.policyVersion },
     suite: {
       id: args.suiteId,
@@ -150,6 +224,7 @@ export async function manifestForNewRun(args: {
   routes?: RouteTable;
   passThreshold?: number;
   runnerVersion?: string;
+  declared?: Declared;
 }): Promise<{ id: string; manifest: RunManifest | null; manifest_hash: string | null }> {
   const id = randomUUID();
 
@@ -177,10 +252,30 @@ export async function manifestForNewRun(args: {
       routes: args.routes,
       passThreshold: args.passThreshold ?? 80,
       runnerVersion: args.runnerVersion ?? RUNNER_VERSION,
+      agentConfig: agent?.config ?? null,
+      declared: args.declared,
     });
 
     return { id, manifest, manifest_hash: hash };
   } catch {
     return { id, manifest: null, manifest_hash: null };
   }
+}
+
+/**
+ * What a report states about what was tested, from the manifest the run declared
+ * before it started. Null for a run with no manifest, or one whose manifest predates
+ * the configuration digest: a report does not guess what an older run would have said.
+ */
+export function fingerprintFromManifest(manifest: unknown): NonNullable<ReportPayload["run"]["fingerprint"]> | null {
+  const m = manifest as Partial<RunManifest> | null;
+  if (!m?.agent?.config_hash) return null;
+  const declared = (value: string | undefined) =>
+    value ? { value, provenance: "declared" as const } : { value: null, provenance: "not_supplied" as const };
+  return [
+    { field: "agent_endpoint", value: m.agent.endpoint_host ?? null, provenance: m.agent.endpoint_host ? "recorded" : "not_supplied" },
+    { field: "request_configuration", value: m.agent.config_hash, provenance: "recorded" },
+    { field: "agent_release", ...declared(m.declared?.release_id) },
+    { field: "knowledge_base_revision", ...declared(m.declared?.knowledge_base_revision) },
+  ];
 }

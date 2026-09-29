@@ -11,6 +11,7 @@ import type { VerdictReview } from "../evidence/reviews.ts";
 import { loadStability } from "../evidence/stability-history.ts";
 import { PROBE_INPUT } from "../agents/types.ts";
 import { discoverShape } from "../agents/discover.ts";
+import { fingerprintFromManifest } from "../report/manifest.ts";
 
 /**
  * The product's spine: probe, run, report.
@@ -92,7 +93,7 @@ export async function publishReport(args: {
   // otherwise have to remember, and a forgotten argument would silently publish a
   // report with no manifest rather than failing.
   const { data: runRow } = await client
-    .from("runs").select("manifest_hash, agent_id, suite_id, created_at").eq("id", runId).maybeSingle();
+    .from("runs").select("manifest, manifest_hash, agent_id, suite_id, created_at").eq("id", runId).maybeSingle();
 
   let previousReportHash: string | null = null;
   if (runRow?.agent_id) {
@@ -119,6 +120,7 @@ export async function publishReport(args: {
 
   const { payload, contentHash } = buildReport({
     manifestHash: (runRow?.manifest_hash as string | null) ?? null,
+    fingerprint: fingerprintFromManifest(runRow?.manifest ?? null),
     previousReportHash,
     client: args.clientName,
     agentName: args.agentName,

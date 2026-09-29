@@ -222,6 +222,8 @@ function runTools(db: SupabaseClient, caller: McpCaller, origin: string): Tool[]
         properties: {
           agent_id: { type: "string" },
           suite_id: { type: "string", description: "Optional. The newest built-in suite version otherwise." },
+          release_id: { type: "string", description: "Optional. The agent release being tested, as the person states it. The report labels it as declared." },
+          knowledge_base_revision: { type: "string", description: "Optional. The knowledge-base revision being tested, as the person states it." },
         },
         required: ["agent_id"],
         additionalProperties: false,
@@ -230,6 +232,9 @@ function runTools(db: SupabaseClient, caller: McpCaller, origin: string): Tool[]
       run: async (args) => {
         const agentId = uuid(args, "agent_id");
         const suiteId = args.suite_id === undefined ? null : uuid(args, "suite_id");
+        const { cleanDeclared } = await import("../report/manifest.ts");
+        const customerDeclared = cleanDeclared({ releaseId: args.release_id, knowledgeBaseRevision: args.knowledge_base_revision });
+        if ("error" in customerDeclared) throw new ToolRefusal(customerDeclared.error);
         const { startRun, RunRefusal } = await import("../workflow/start-run.ts");
         try {
           const run = await startRun({
@@ -239,6 +244,7 @@ function runTools(db: SupabaseClient, caller: McpCaller, origin: string): Tool[]
             agentId,
             suiteId,
             apiKeyId: caller.keyId,
+            customerDeclared,
           });
           return { run_id: run.id, status: "queued", next: "Call advance_run with this run_id until done is true.", url: `${origin}/runs/${run.id}` };
         } catch (e) {

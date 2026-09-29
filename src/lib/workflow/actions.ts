@@ -14,7 +14,8 @@ import { applyPolicyChange } from "@/lib/diagnose/parse.ts";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
 import { explainKeyFailure } from "@/lib/providers/key-failure.ts";
 import { REVIEW_NOTE_MIN, REVIEW_NOTE_MAX } from "@/lib/evidence/reviews.ts";
-import { startRun } from "./start-run.ts";
+import { RunRefusal, startRun } from "./start-run.ts";
+import { cleanDeclared } from "@/lib/report/manifest.ts";
 import { assertPublicUrl, PrivateAddressError } from "@/lib/net/public-url.ts";
 import { diagnoseRunCase } from "./propose.ts";
 import { httpVerificationConnector } from "../evidence/connectors/http.ts";
@@ -176,6 +177,13 @@ export async function createRun(formData: FormData): Promise<void> {
   const { user, workspace } = await requireWorkspace();
   const admin = await assertMembership(user.id, workspace.id);
 
+  // Optional, and stated on the report as declared by the person, never as observed.
+  const customerDeclared = cleanDeclared({
+    releaseId: String(formData.get("releaseId") ?? ""),
+    knowledgeBaseRevision: String(formData.get("knowledgeBaseRevision") ?? ""),
+  });
+  if ("error" in customerDeclared) throw new RunRefusal(customerDeclared.error);
+
   // The same implementation the API uses (`start-run.ts`), so the two cannot drift.
   const run = await startRun({
     client: admin,
@@ -183,6 +191,7 @@ export async function createRun(formData: FormData): Promise<void> {
     userId: user.id,
     agentId: String(formData.get("agentId") ?? ""),
     suiteId: String(formData.get("suiteId") ?? "").trim() || null,
+    customerDeclared,
   });
 
   // A run counts against the trial from the moment it exists, and the top bar showing

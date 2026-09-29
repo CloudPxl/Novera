@@ -33,12 +33,12 @@ A run in another workspace, and an id that is not a run at all, both answer `404
 
 With a key that can start runs:
 
-- `POST /api/v1/runs` with `{"agent_id": "…", "suite_id": "…"}` starts a run (the suite is optional; the newest built-in version is used otherwise). It answers `201` with the run's id. The same checks apply as on the agent's page: the agent needs a policy version, the workspace needs a run left or its own model key, and the authorisation you recorded for the agent is attached to the run. A refusal answers `409` with the reason.
+- `POST /api/v1/runs` with `{"agent_id": "…", "suite_id": "…"}` starts a run (the suite is optional; the newest built-in version is used otherwise). Add `"release_id"` and `"knowledge_base_revision"` to record what you are testing — up to 100 characters each; the report shows them as declared by you. It answers `201` with the run's id. The same checks apply as on the agent's page: the agent needs a policy version, the workspace needs a run left or its own model key, and the authorisation you recorded for the agent is attached to the run. A refusal answers `409` with the reason.
 - `POST /api/v1/runs/<id>/execute` advances the run by about forty seconds of grading and answers with `done`. Call it until `done` is true. A call made while another is still working answers `started: false` and does nothing, so calling too often is harmless.
 
 The run records which key started it, and the person who created that key as responsible for it.
 
-When the run is done, `GET /api/v1/runs/<id>` gives its report's link; the JSON and JUnit downloads of that report carry the CI exit code (see **Reports in CI, and verifying a copy**). The `novera` command line does all of this in one step — `novera run --agent <id>` — but it is not yet published as a package. Whatever you use, keep the key in an environment variable or your CI's secret store, never in a command's arguments: arguments are visible to other processes and often printed in CI logs.
+When the run is done, `GET /api/v1/runs/<id>` gives its report's link; the JSON and JUnit downloads of that report carry the CI exit code (see **Reports in CI, and verifying a copy**). The `novera` command line does all of this in one step — `novera run --agent <id>`, with `--release` and `--kb-revision` to record what you are testing — but it is not yet published as a package. Whatever you use, keep the key in an environment variable or your CI's secret store, never in a command's arguments: arguments are visible to other processes and often printed in CI logs.
 
 ## With n8n
 

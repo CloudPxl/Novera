@@ -67,7 +67,9 @@ export function reissueWithReview(args: {
 
   const payload: ReportPayload = {
     ...args.original,
-    novera: { format: 11 },
+    // At least 11, the reissue format, and never lower than what the original carries:
+    // a reissued format-12 report still states what was tested.
+    novera: { format: Math.max(args.original.novera.format, 11) },
     run: { ...args.original.run, previous_report_hash: args.previousReportHash },
     human_review: {
       reviewed_by: REVIEWED_BY,

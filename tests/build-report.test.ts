@@ -223,9 +223,19 @@ test("an uncorroborated verdict counts as neither independent nor single-vendor"
   assert.equal(run.corroboration.single_vendor, 0);
 });
 
-test("the payload is format 10", () => {
+test("the payload is format 12, and states what was tested only when the run recorded it", () => {
   const { payload } = buildReport(input());
-  assert.equal((payload as { novera: { format: number } }).novera.format, 10);
+  assert.equal((payload as { novera: { format: number } }).novera.format, 12);
+  assert.equal((payload as { run: Record<string, unknown> }).run.fingerprint, undefined, "no manifest, no claim");
+
+  const fingerprint = [
+    { field: "agent_endpoint" as const, value: "agent.example", provenance: "recorded" as const },
+    { field: "request_configuration" as const, value: "abc", provenance: "recorded" as const },
+    { field: "agent_release" as const, value: "2026.09.3", provenance: "declared" as const },
+    { field: "knowledge_base_revision" as const, value: null, provenance: "not_supplied" as const },
+  ];
+  const withIt = buildReport({ ...input(), fingerprint }).payload as { run: { fingerprint?: unknown } };
+  assert.deepEqual(withIt.run.fingerprint, fingerprint);
 });
 
 test("a tie settled by a third model is not reported as a provider outage", () => {

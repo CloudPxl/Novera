@@ -27,6 +27,11 @@ export async function startRun(args: {
   /** Set when a schedule started the run. */
   scheduleId?: string | null;
   /**
+   * What the person says they are testing — a release, a knowledge-base revision. Not
+   * `declared`: in this function that word already means the manifest.
+   */
+  customerDeclared?: { releaseId?: string; knowledgeBaseRevision?: string };
+  /**
    * The run to compare against. Set by "rerun and compare", so the comparison answers
    * the question asked — did the change I approved fix this? — rather than comparing
    * with whatever completed last. Must be this agent's, on this suite, in this workspace.
@@ -79,6 +84,7 @@ export async function startRun(args: {
   const declared = await manifestForNewRun({
     client, agentId, policyId: policy.id, suiteId: suite.id,
     judgeSource: entitlement.judgeSource, routes: plannedRoutes(entitlement),
+    declared: args.customerDeclared,
   });
 
   const { data: run, error } = await client

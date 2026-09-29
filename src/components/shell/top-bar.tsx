@@ -43,7 +43,7 @@ export async function TopBar() {
 
   const [{ data: agentRows }, { data: suiteRows }] = await Promise.all([
     db.from("agents").select("id, name, config").order("created_at"),
-    db.from("suites").select("id, key, name, version, cases").order("key"),
+    db.from("suites").select("id, key, name, version, cases").order("key").order("version", { ascending: false }),
   ]);
 
   const admin = await assertMembership(user.id, workspace.id);

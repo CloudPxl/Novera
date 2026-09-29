@@ -65,6 +65,8 @@ test("a reissue carries every original section unchanged and never touches the s
   assert.deepEqual(withoutChain(payload.run), withoutChain(ORIGINAL.run));
   assert.equal(payload.run.previous_report_hash, "c".repeat(64));
   assert.equal(payload.novera.format, 11);
+  const fromTwelve = build({ original: { ...ORIGINAL, novera: { format: 12 } } }).payload.novera.format;
+  assert.equal(fromTwelve, 12, "a reissued format-12 report keeps its format");
   assert.deepEqual(payload.reissue, { of: "b".repeat(64), reason: "human_review" });
 });
 

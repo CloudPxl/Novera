@@ -7,7 +7,7 @@ import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { createRun } from "@/lib/workflow/actions.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
-import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
+import { Card, Badge, EmptyState, inputClass } from "@/components/ui/primitives.tsx";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { PolicyEditor, ReprobeButton, VerificationEndpoint, ResponsePathPicker } from "./client.tsx";
 import { ScheduleCard, ScheduleForm, type ScheduleView } from "./schedules.tsx";
@@ -198,6 +198,22 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                 <SubmitButton pendingLabel="Starting…" size="sm">
                   Run the suite
                 </SubmitButton>
+                <details className="w-full text-sm">
+                  <summary className="cursor-pointer text-ink-soft hover:text-ink">What are you testing? (optional)</summary>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <label className="text-xs text-ink-soft">
+                      Agent release
+                      <input name="releaseId" maxLength={100} placeholder="e.g. 2026.09.3" className={`${inputClass} mt-1`} />
+                    </label>
+                    <label className="text-xs text-ink-soft">
+                      Knowledge-base revision
+                      <input name="knowledgeBaseRevision" maxLength={100} placeholder="e.g. help-centre@4f2c1a" className={`${inputClass} mt-1`} />
+                    </label>
+                  </div>
+                  <p className="mt-2 text-xs text-ink-faint">
+                    Recorded before the run starts and shown on the report as declared by you — Novera cannot see inside your deployment to confirm it.
+                  </p>
+                </details>
               </form>
             )}
           </div>

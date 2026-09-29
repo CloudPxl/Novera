@@ -62,6 +62,18 @@ export interface ReportPayload {
      * unrelated documents. Null for the first one.
      */
     previous_report_hash?: string | null;
+    /**
+     * Absent before format 12, and on runs started before their manifest recorded it.
+     * What was tested, each item with where it came from: `recorded` by Novera (where it
+     * sent requests, and a digest of how), `declared` by the customer (a release, a
+     * knowledge-base revision — Novera cannot see inside their deployment to confirm
+     * either), or `not_supplied`.
+     */
+    fingerprint?: Array<{
+      field: "agent_endpoint" | "request_configuration" | "agent_release" | "knowledge_base_revision";
+      value: string | null;
+      provenance: "recorded" | "declared" | "not_supplied";
+    }>;
   };
   /** Absent on format 1. */
   grade?: {

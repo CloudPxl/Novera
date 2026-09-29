@@ -48,3 +48,7 @@ next-env.d.ts
 
 # Local-only credentials file (never committed)
 .local-credentials.md
+
+# the CLI package's build output (npm run cli:build)
+/packages/cli/dist
+*.tgz

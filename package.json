@@ -34,7 +34,9 @@
     "verify:mcp": "node --conditions=react-server --env-file=.env.local scripts/verify-mcp.mts",
     "verify:retention": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/verify-retention.mts",
     "verify:schedules": "node --conditions=react-server --env-file=.env.local scripts/verify-schedules.mts",
-    "schedules:clock": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/schedules-clock.mts"
+    "schedules:clock": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/schedules-clock.mts",
+    "cli:build": "esbuild bin/novera.mts --bundle --platform=node --format=esm --target=node20 --outfile=packages/cli/dist/novera.mjs",
+    "cli:pack": "npm run cli:build && npm pack ./packages/cli --dry-run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
@@ -54,6 +56,7 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",

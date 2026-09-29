@@ -2505,3 +2505,20 @@ diagnosis stored with the key and its creator. First model attempt drafted from 
 policy with count 1 and was refused by the compiler's quote check — the guard working;
 the check now uses a realistic policy. `verify:api`, `tenancy`, `db`, `access`,
 `compiler` green; Settings and Scenarios axe-clean at 390 and 1440.
+
+## 2026-09-29 — Upgrade step 4: the CLI is a package, ready and not published
+
+`packages/cli/` — `novera-cli`, command `novera`: one 36 KB ES module bundled by esbuild
+from `bin/novera.mts` (nine of our modules, no server code, reads only `NOVERA_API_KEY`
+and `NOVERA_URL`), plus a README. Bundled because Node strips TypeScript types only
+outside `node_modules`, so the source as it stands cannot run from an installed package.
+
+Proved the way a stranger would get it: `npm pack`, installed into an empty directory,
+run on Node 24 against production — a live report VERIFIED (exit 0 for verify, 1 for
+status: that fixture report has failures), a revoked report 3, an unknown report 3,
+`run` with no key or an unknown key 3, `suite validate` on eu-support v4 valid.
+
+Not published, deliberately: the user said to keep it internal, and publishing is public
+and effectively permanent. The package is `"private": true` so an accidental
+`npm publish` refuses. The name `novera` is taken on npm by an unrelated product;
+`novera-cli` is free. `license` is `UNLICENSED` until the user chooses one.

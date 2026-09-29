@@ -158,6 +158,7 @@ src/lib/scenarios/    the duty-to-test compiler
 src/lib/support/      public forms, drafting, escalation, throttle, size limits
 src/lib/docs/         the documentation renderer — parsed, never markup
 src/lib/cli/ + bin/   the `novera` CLI: verify, status (CI exit codes), export, suite validate
+packages/cli/         its npm package, `novera-cli` (private until the user publishes it; `npm run cli:pack`)
 src/lib/imports/      Promptfoo / DeepEval / LangSmith / Langfuse datasets → drafts, differences recorded
 src/lib/redact/       pattern redaction (browser-safe) + storage record with hashes
 src/lib/privacy/      data classes and provider ceilings, enforced by the router on every model call

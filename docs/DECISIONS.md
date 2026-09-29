@@ -2573,3 +2573,30 @@ From the external review's P0 items plus three defects it did not see, all measu
   with the reason, graded cases kept, no report. None were stalled when it shipped.
 
 486 tests; verify effect, channel, conversation, api, byok, schedules, slices green.
+
+## 2026-09-29 — Phase 12.2: why a grader failed is stored, and a failing vendor is asked once
+
+The review proposed a `judge_attempts` table and a state machine. The attempts were
+already stored per case (`run_cases.judge_attempts`, append-only); what they lacked was a
+typed reason. Each failed attempt now records one — `rate_limited` (with Retry-After),
+`timed_out`, `provider_error`, `unauthorized`, `invalid_output`, `refused_data_class`,
+`no_credential`, `out_of_time`, `skipped_open_circuit` — derived from the provider's
+status, not its words. Rows from before read as unclassified. No table, no migration, no
+report payload change.
+
+What a person reads comes from those reasons: a case with no grader says "No grader could
+answer: groq/… was rate-limited, asked to wait 7 s; mistral/… did not answer in time"
+instead of a concatenation of raw errors; an unconfirmed verdict's note says why the
+second model was missing; an unsettled tie says why the third could not settle it.
+
+A circuit breaker per slice (`CircuitBreaker` in the router, one per `startRunExecution`):
+a vendor opens after two consecutive rate limits, timeouts or errors — or at once for a
+Retry-After — and later cases skip it with the reason, so a slice stops waiting on the
+same failing vendor case after case. It closes on its own; the next slice starts clean.
+The agent is never behind it and nothing is retried. The quota rule (two cases in a row
+with every vendor rate-limited → incomplete, not errored) reads the typed reason, and
+counts a vendor skipped for rate limits as limited.
+
+Found while verifying: `verify:conversation` failed once because the simulated customer's
+reply was unreadable — the router falls back on a failed call, not on an unreadable
+answer. It now asks one different model before giving up. 493 tests.

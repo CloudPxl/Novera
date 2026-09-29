@@ -1,5 +1,5 @@
 import type { ChatResponse } from "../providers/types.ts";
-import type { RoutedChat, RoutedAttempt } from "../router/execute.ts";
+import { describeFailures, type RoutedChat, type RoutedAttempt } from "../router/execute.ts";
 import type { Candidate, Task } from "../router/routes.ts";
 import { parseVerdict, resolveAssertions, type JudgeVerdict } from "./parse.ts";
 
@@ -106,19 +106,25 @@ export async function judgeCase(args: {
       ...empty,
       attempts,
       status: "error",
-      error: `Judge unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      error: attempts.length
+        ? `No grader could answer: ${describeFailures(attempts)}.`
+        : `Judge unavailable: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 
   const verdict: JudgeVerdict | null = parseVerdict(response.text);
 
   if (!verdict) {
+    // It answered, so it was reachable; what it said cannot be read as a verdict. The
+    // attempt says so, and a breaker does not hold it against the vendor's uptime.
+    const attempts = response.attempts.map((a, i) =>
+      i === response.attempts.length - 1 && a.ok ? { ...a, reason: "invalid_output" as const } : a);
     return {
       ...empty,
       status: "error",
       usage: response.usage,
       servedBy: response.servedBy,
-      attempts: response.attempts,
+      attempts,
       rawJudgeText: response.text,
       error: "Judge did not return a readable verdict.",
     };

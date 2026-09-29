@@ -8,7 +8,7 @@ import type { RunCaseRecord } from "../runner/types.ts";
 import { coverage, coverageByObligation, coverageByCategory } from "../evidence/coverage.ts";
 import type { Suite } from "../runner/types.ts";
 import { supabaseRunStore } from "../store/supabase-run-store.ts";
-import { createRoutedChat } from "../router/execute.ts";
+import { CircuitBreaker, createRoutedChat } from "../router/execute.ts";
 import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
 import { publishReport } from "./run.ts";
 import { reportEnvironment } from "../agents/environment.ts";
@@ -64,7 +64,9 @@ export async function startRunExecution(args: {
   // A workspace with its own key grades on that key alone. The run row already
   // recorded which of the two funded it, at the moment it was created.
   const { connections, routes } = await connectionsForWorkspace({ client, workspaceId });
-  const judge = createRoutedChat({ connections, routes });
+  // One breaker for the slice: a vendor that keeps failing is skipped by the next case
+  // instead of being waited on again. The next slice starts with a clean slate.
+  const judge = createRoutedChat({ connections, routes, breaker: new CircuitBreaker() });
 
   // What an earlier attempt already graded. Cases are never re-sent to the agent:
   // a second verdict over the same scenario would be new evidence replacing old.

@@ -452,19 +452,30 @@ async function nextSimulatedMessage(
   transcript: ConversationTurn[],
   turnsLeft: number,
 ): Promise<{ done: true } | { done: false; message: string; model: string } | { error: string }> {
-  try {
-    const response = await chat("draft", {
-      system: SIMULATOR_SYSTEM,
-      messages: [{ role: "user", content: simulatorPrompt(persona, transcript, turnsLeft) }],
-      maxTokens: 400,
-      temperature: 0,
-    }, { data: "redacted_customer" });
-    const step = parseSimulatorReply(extractJsonObject(response.text) as Record<string, unknown> | null);
-    if ("error" in step || step.done) return step;
-    return { done: false, message: step.message, model: `${response.servedBy.connection}/${response.servedBy.model}` };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
+  // A reply that cannot be read gets one more try from a different model: the router
+  // falls back on a failed call, not on a readable-but-wrong answer, and one garbled
+  // line should not cost the whole conversation. Measured once in verify:conversation.
+  const exclude: Array<{ connection: string; model: string }> = [];
+  let last: { error: string } = { error: "The simulated customer's reply was unreadable." };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await chat("draft", {
+        system: SIMULATOR_SYSTEM,
+        messages: [{ role: "user", content: simulatorPrompt(persona, transcript, turnsLeft) }],
+        maxTokens: 400,
+        temperature: 0,
+      }, { data: "redacted_customer", exclude });
+      const step = parseSimulatorReply(extractJsonObject(response.text) as Record<string, unknown> | null);
+      if (!("error" in step)) {
+        return step.done ? step : { done: false, message: step.message, model: `${response.servedBy.connection}/${response.servedBy.model}` };
+      }
+      last = step;
+      exclude.push(response.servedBy);
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
   }
+  return last;
 }
 
 /**
@@ -479,11 +490,15 @@ async function nextSimulatedMessage(
 function everyJudgeRateLimited(record: RunCaseRecord): boolean {
   if (record.status !== "error") return false;
   // A candidate not sent the request for privacy reasons was never rate-limited.
-  const attempts = (record.judgeAttempts as Array<{ ok?: boolean; error?: string; refused?: boolean }>)
-    ?.filter((a) => !a.refused);
+  const attempts = (record.judgeAttempts as Array<{ ok?: boolean; error?: string; refused?: boolean; reason?: string }>)
+    ?.filter((a) => !a.refused && a.reason !== "refused_data_class");
   if (!Array.isArray(attempts) || attempts.length === 0) return false;
+  // The typed reason when the attempt has one; the words for rows from before it did. A
+  // vendor skipped because it was rate-limited earlier in the slice counts as limited.
   return attempts.every(
-    (a) => a.ok === false && /rate.?limit|429|quota|too many requests/i.test(a.error ?? ""),
+    (a) => a.ok === false && (a.reason === "rate_limited"
+      || (a.reason === "skipped_open_circuit" && /rate-limited/.test(a.error ?? ""))
+      || (!a.reason && /rate.?limit|429|quota|too many requests/i.test(a.error ?? ""))),
   );
 }
 

@@ -13,7 +13,7 @@ import { independenceOf, vendorsOf } from "../../../../lib/judge/independence.ts
 export function gradingNote(
   model: string,
   agreement: string | null,
-  votes?: Array<{ model?: unknown; status?: unknown; redacted?: unknown }>,
+  votes?: Array<{ model?: unknown; status?: unknown; redacted?: unknown; rationale?: unknown }>,
 ): string {
   const base = baseNote(model, agreement, votes);
   // Said on the case it happened to, so the reader of a privacy scenario knows a
@@ -27,7 +27,7 @@ export function gradingNote(
 function baseNote(
   model: string,
   agreement: string | null,
-  votes?: Array<{ model?: unknown; status?: unknown }>,
+  votes?: Array<{ model?: unknown; status?: unknown; rationale?: unknown }>,
 ): string {
   const usable = (votes ?? []).filter(
     (v): v is { model: string; status: "pass" | "fail" | "error" } =>
@@ -49,8 +49,12 @@ function baseNote(
     case "majority":
       return `graded by ${model} after two models disagreed and a third settled it`
         + (vendors.length > 1 ? ` (${vendors.join(", ")})` : "");
-    case "unconfirmed":
-      return `graded by ${model} alone — no second model was reachable`;
+    case "unconfirmed": {
+      // Why, when the missing vote recorded it (0 for rows before 2026-09-29).
+      const missing = (votes ?? []).find((v) => v?.status === "error" && typeof v.rationale === "string");
+      const why = typeof missing?.rationale === "string" ? /^No grader could answer: (.+?)\.?$/.exec(missing.rationale)?.[1] : undefined;
+      return `graded by ${model} alone — no second model was reachable${why ? ` (${why})` : ""}`;
+    }
     case "unresolved":
       return "no verdict: the models disagreed and the tie could not be broken";
     default:

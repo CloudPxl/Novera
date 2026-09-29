@@ -108,3 +108,31 @@ test("the simulator's reply is reduced to a message or a stop", () => {
   assert.ok("error" in parseSimulatorReply(null));
   assert.ok("error" in parseSimulatorReply({ message: "", done: false }));
 });
+
+test("an unreadable simulator line is asked once more of a different model; a second one ends the conversation", async () => {
+  const { adapter, calls } = agent();
+  const excluded: unknown[] = [];
+  let draftCalls = 0;
+  const garbledOnce: RoutedChat = async (task, _request, options) => {
+    const common = { model: "stub", usage: {}, raw: {}, attempts: [] };
+    if (task === "draft") {
+      draftCalls++;
+      excluded.push(options?.exclude?.map((c) => c.model) ?? []);
+      if (draftCalls === 1) return { ...common, servedBy: { connection: "a", model: "garbled" }, text: "sure! here you go" };
+      return { ...common, servedBy: { connection: "b", model: "fine" }, text: JSON.stringify({ message: "", done: true }) };
+    }
+    return { ...common, servedBy: { connection: "j", model: "j" }, text: JSON.stringify({ verdict: "pass", rationale: "held." }) };
+  };
+  const outcome = await executeCase({ testCase: CASE, agent: adapter, policy: "", judge: garbledOnce });
+  assert.equal(outcome.status, "pass");
+  assert.equal(calls.length, 1);
+  assert.deepEqual(excluded, [[], ["garbled"]], "the retry excludes the model that garbled");
+
+  const alwaysGarbled: RoutedChat = async (task) => ({
+    model: "stub", usage: {}, raw: {}, attempts: [], servedBy: { connection: "a", model: "x" },
+    text: task === "draft" ? "no json here" : JSON.stringify({ verdict: "pass", rationale: "x" }),
+  });
+  const failed = await executeCase({ testCase: CASE, agent: agent().adapter, policy: "", judge: alwaysGarbled });
+  assert.equal(failed.status, "error");
+  assert.match(failed.error!, /could not continue after turn 1: The simulated customer's reply was unreadable/);
+});

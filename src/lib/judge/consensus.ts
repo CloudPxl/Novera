@@ -154,7 +154,8 @@ export async function gradeCase(args: {
       ...third,
       status: "error",
       rationale: null,
-      error: `Two models disagreed (${name(first.servedBy)} said ${first.status}, ${name(second.servedBy)} said ${second.status}) and a third could not settle it.`,
+      error: `Two models disagreed (${name(first.servedBy)} said ${first.status}, ${name(second.servedBy)} said ${second.status}) and a third could not settle it`
+        + (third.error?.startsWith("No grader could answer: ") ? ` — ${third.error.slice("No grader could answer: ".length).replace(/\.$/, "")}.` : "."),
       votes,
       agreement: "unresolved",
     };

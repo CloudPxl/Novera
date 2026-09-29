@@ -1,4 +1,4 @@
-import { PROVIDER_TIMEOUT_MS, type ChatRequest, type ChatResponse } from "../providers/types.ts";
+import { PROVIDER_TIMEOUT_MS, ProviderError, type ChatRequest, type ChatResponse } from "../providers/types.ts";
 import type { Connection } from "../providers/registry.ts";
 import type { Candidate, RouteTable, Task } from "./routes.ts";
 import { allows, ceilingFor, classify, describeClass, type DataClass } from "../privacy/data-class.ts";
@@ -10,12 +10,31 @@ import { allows, ceilingFor, classify, describeClass, type DataClass } from "../
  * quietly moved to a different model is not the same evidence as one that did not,
  * so the caller persists `servedBy` and `attempts` rather than just the answer.
  */
+/**
+ * Why a candidate did not give a usable answer. Stored with the attempt, so what a case
+ * says about its graders is read from the row, not inferred from an error message.
+ * Attempts recorded before 2026-09-29 have none, and read as "unclassified".
+ */
+export type AttemptReason =
+  | "rate_limited"
+  | "timed_out"
+  | "provider_error"
+  | "unauthorized"
+  | "invalid_output"
+  | "refused_data_class"
+  | "no_credential"
+  | "out_of_time"
+  | "skipped_open_circuit";
+
 export interface RoutedAttempt {
   connection: string;
   model: string;
   ok: boolean;
   error?: string;
   ms: number;
+  reason?: AttemptReason;
+  /** From a 429's Retry-After, when the provider sent one. */
+  retryAfterMs?: number;
   /** The provider was sent the request with detectable personal data replaced. */
   redacted?: true;
   /** Not sent at all: the request's data class exceeds what this provider may receive. */
@@ -27,12 +46,94 @@ export interface RoutedResponse extends ChatResponse {
   attempts: RoutedAttempt[];
 }
 
+/** What a thrown provider error means for routing. */
+export function reasonFor(error: unknown): AttemptReason {
+  if (error instanceof ProviderError) {
+    if (error.timedOut) return "timed_out";
+    if (error.status === 429) return "rate_limited";
+    if (error.status === 401 || error.status === 403) return "unauthorized";
+  }
+  return "provider_error";
+}
+
+const REASON_WORDS: Record<AttemptReason, string> = {
+  rate_limited: "was rate-limited",
+  timed_out: "did not answer in time",
+  provider_error: "returned an error",
+  unauthorized: "refused the key",
+  invalid_output: "answered without a readable verdict",
+  refused_data_class: "was not sent the reply, which its terms do not cover",
+  no_credential: "has no credential configured",
+  out_of_time: "was not asked: the run's time slice was ending",
+  skipped_open_circuit: "was skipped after failing repeatedly in this slice",
+};
+
+/** One attempt in words: "mistral/ministral-8b-latest did not answer in time". */
+export function describeAttempt(a: RoutedAttempt): string {
+  // An unclassified error keeps its own detail: "returned an error" alone would hide
+  // the one thing an operator needs to fix it.
+  const detail = (a.error ?? "no detail").slice(0, 120);
+  const words = !a.reason ? `failed (${detail})` : a.reason === "provider_error" ? `returned an error (${detail})` : REASON_WORDS[a.reason];
+  const wait = a.reason === "rate_limited" && a.retryAfterMs ? `, asked to wait ${Math.ceil(a.retryAfterMs / 1000)} s` : "";
+  return `${a.connection}/${a.model} ${words}${wait}`;
+}
+
+/** Every failed attempt, in order, as one sentence fragment. */
+export function describeFailures(attempts: RoutedAttempt[]): string {
+  const failed = attempts.filter((a) => !a.ok || a.reason === "invalid_output");
+  return failed.length ? failed.map(describeAttempt).join("; ") : "no candidate was configured";
+}
+
+/**
+ * Remembers, for one slice, which vendors are failing, so later cases do not wait on
+ * them again. A vendor opens after two consecutive rate limits, timeouts or errors — or
+ * at once for the length of a Retry-After it sent — and closes on its own after that.
+ * In memory on purpose: a slice is one function call, and the next slice asks afresh.
+ * The agent is never behind a breaker, and nothing here retries anything.
+ */
+export class CircuitBreaker {
+  private failures = new Map<string, number>();
+  private openUntil = new Map<string, { until: number; cause: AttemptReason }>();
+
+  private readonly options: { threshold?: number; openMs?: number; maxRetryAfterMs?: number };
+
+  constructor(options: { threshold?: number; openMs?: number; maxRetryAfterMs?: number } = {}) {
+    this.options = options;
+  }
+
+  isOpen(connection: string, now = Date.now()): AttemptReason | null {
+    const open = this.openUntil.get(connection);
+    if (!open) return null;
+    if (now >= open.until) {
+      this.openUntil.delete(connection);
+      this.failures.delete(connection);
+      return null;
+    }
+    return open.cause;
+  }
+
+  record(connection: string, attempt: Pick<RoutedAttempt, "ok" | "reason" | "retryAfterMs">, now = Date.now()): void {
+    if (attempt.ok && attempt.reason !== "invalid_output") {
+      this.failures.delete(connection);
+      return;
+    }
+    if (attempt.reason !== "rate_limited" && attempt.reason !== "timed_out" && attempt.reason !== "provider_error") return;
+    const count = (this.failures.get(connection) ?? 0) + 1;
+    this.failures.set(connection, count);
+    const maxWait = this.options.maxRetryAfterMs ?? 60_000;
+    if (attempt.reason === "rate_limited" && attempt.retryAfterMs) {
+      this.openUntil.set(connection, { until: now + Math.min(attempt.retryAfterMs, maxWait), cause: attempt.reason });
+    } else if (count >= (this.options.threshold ?? 2)) {
+      this.openUntil.set(connection, { until: now + (this.options.openMs ?? 30_000), cause: attempt.reason });
+    }
+  }
+}
+
 export class RouteExhaustedError extends Error {
   attempts: RoutedAttempt[];
 
   constructor(task: string, attempts: RoutedAttempt[]) {
-    const detail = attempts.map((a) => `${a.connection}/${a.model}: ${a.error}`).join("; ");
-    super(`Every candidate for "${task}" failed — ${detail || "no candidate was configured"}`);
+    super(`No model could answer "${task}": ${describeFailures(attempts)}`);
     this.name = "RouteExhaustedError";
     this.attempts = attempts;
   }
@@ -43,6 +144,8 @@ export interface RouterOptions {
   routes: RouteTable;
   /** Called for each failed attempt, so a degraded route is visible rather than silent. */
   onFallback?: (attempt: RoutedAttempt) => void;
+  /** Shared by every request of one slice, so a failing vendor is asked once, not per case. */
+  breaker?: CircuitBreaker;
 }
 
 export interface RouteRequestOptions {
@@ -89,7 +192,7 @@ export type RoutedChat = (
 ) => Promise<RoutedResponse>;
 
 export function createRoutedChat(options: RouterOptions): RoutedChat {
-  const { connections, routes, onFallback } = options;
+  const { connections, routes, onFallback, breaker } = options;
 
   return async function routedChat(task, request, options) {
     const attempts: RoutedAttempt[] = [];
@@ -125,6 +228,7 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
           ok: false,
           error: "no credential configured for this connection",
           ms: 0,
+          reason: "no_credential" as const,
         };
         attempts.push(attempt);
         onFallback?.(attempt);
@@ -142,6 +246,7 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
           model: candidate.model,
           ok: false,
           refused: true,
+          reason: "refused_data_class",
           error: `not sent: ${describeClass(classified.original)} data exceeds what this provider may receive (${describeClass(ceiling)})`,
           ms: 0,
         };
@@ -151,6 +256,23 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
       }
       const outgoing = redacted ? classified.redacted!.request : request;
       const marks = redacted ? { redacted: true as const } : {};
+
+      const openFor = breaker?.isOpen(candidate.connection);
+      if (openFor) {
+        const attempt: RoutedAttempt = {
+          connection: candidate.connection,
+          model: candidate.model,
+          ok: false,
+          // The cause is in the words, so a slice whose vendors are all rate-limited is
+          // still recognised as out of quota rather than as broken.
+          error: `not asked: ${candidate.connection} ${openFor === "rate_limited" ? "was rate-limited" : openFor === "timed_out" ? "timed out" : "failed"} repeatedly earlier in this slice`,
+          ms: 0,
+          reason: "skipped_open_circuit",
+        };
+        attempts.push(attempt);
+        onFallback?.(attempt);
+        continue;
+      }
 
       let timeoutMs = request.timeoutMs ?? PROVIDER_TIMEOUT_MS;
       if (options?.deadline !== undefined) {
@@ -162,6 +284,7 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
             ok: false,
             error: "not asked: this run's time slice was ending",
             ms: 0,
+            reason: "out_of_time",
           };
           attempts.push(attempt);
           onFallback?.(attempt);
@@ -177,17 +300,22 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
           connection.apiKey,
         );
         attempts.push({ connection: candidate.connection, model: candidate.model, ok: true, ms: Date.now() - started, ...marks });
+        breaker?.record(candidate.connection, { ok: true });
         return { ...response, servedBy: candidate, attempts };
       } catch (error) {
+        const retryAfter = error instanceof ProviderError ? error.retryAfterMs : undefined;
         const attempt: RoutedAttempt = {
           connection: candidate.connection,
           model: candidate.model,
           ok: false,
           error: error instanceof Error ? error.message : String(error),
           ms: Date.now() - started,
+          reason: reasonFor(error),
+          ...(retryAfter !== undefined ? { retryAfterMs: retryAfter } : {}),
           ...marks,
         };
         attempts.push(attempt);
+        breaker?.record(candidate.connection, attempt);
         onFallback?.(attempt);
       }
     }

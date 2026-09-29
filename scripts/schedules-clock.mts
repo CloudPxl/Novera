@@ -68,9 +68,11 @@ try {
         where next_run_at <= now() and paused_at is null and cancelled_at is null
       ) or exists (
         select 1 from public.runs where schedule_id is not null and status in ('queued', 'running')
+      ) or exists (
+        select 1 from public.webhook_deliveries where status = 'pending' and next_attempt_at <= now()
       )`;
     await client.query("select cron.schedule($1, '* * * * *', $2)", [JOB, body]);
-    console.log(`Installed ${JOB}: every minute, calling ${url} when a schedule is due or a scheduled run is in progress.`);
+    console.log(`Installed ${JOB}: every minute, calling ${url} when a schedule is due, a scheduled run is in progress, or a webhook delivery is waiting to be retried.`);
   } else if (command === "remove") {
     const { rows } = await client.query("select jobid from cron.job where jobname = $1", [JOB]);
     if (rows.length) await client.query("select cron.unschedule($1)", [JOB]);

@@ -2735,3 +2735,37 @@ Its first measurement at 390 px showed 22 px of overflow — not from the new bl
 from the report heading, which could not wrap a long unbroken client name (the
 throwaway workspace's). The heading now wraps anywhere; 0 px, axe clean at both widths.
 Also: the run launcher lists suite versions newest first.
+
+## 2026-09-29 — Phase 12.8: signed webhooks, and a release gate that runs as written
+
+0042: `webhook_endpoints` (revoke-only; the signing secret sealed on the row with the
+same AES-GCM as model keys, bound to the endpoint's id, never readable by a member) and
+`webhook_deliveries` (the body frozen at enqueue; only status, attempts and timing move;
+delivered or failed is final; one per endpoint, event and subject). Both in
+`erase_workspace()` in the same migration. Events: `run.completed`, `run.stopped`,
+`schedule.paused`. A delivery is attempted when the event happens and retried by the
+clock after 1, 5 and 30 minutes, then 2 and 6 hours; the pg_cron condition now also
+wakes the tick when a delivery is due. `Novera-Signature: t=…,v1=…` is an HMAC of
+`t.body`; the address guard runs on every attempt; redirects are reported, not followed.
+The body is built from stored rows — counts, an outcome (`incomplete` for a stopped run
+or one with no sealed report, never a pass), links — and nothing a customer's customer
+said. Settings: add (secret shown once), revoke, send a test event, last deliveries.
+
+`verify:webhooks` — a local receiver that fails the first delivery; a real run of two
+rule-settled scenarios through the API; 17 checks: announced once, retried, signed,
+nothing leaked, stop announced as incomplete, private address refused, rows frozen,
+secret unreadable to a member, erased. It found one defect: a delivery asked for by id
+was filtered by the app's clock against a timestamp from the database's, and skipped
+when the app ran milliseconds behind — named deliveries are now attempted at once.
+
+The CLI docs still said starting a run from a pipeline needed "an API key, which Novera
+does not offer yet" — false since Phase 10. Replaced with a release-gate example in
+curl and jq (the CLI is unpublished), where exit 2 fails the job like exit 1. It was run
+in bash, as written, against a throwaway workspace: two failed scenarios, exit 1. Its
+first draft had two bugs that only running it showed — a URL rewrite that kept its
+backslashes, and `done` as a variable name.
+
+Deferred, deliberately: the three n8n templates (pre-release gate, weekly assurance,
+incident → regression). A webhook-triggered template needs n8n's server running to
+receive, and the incident template needs a `POST /api/v1/production-failures` endpoint
+that does not exist yet; each is shipped only when proven in n8n.

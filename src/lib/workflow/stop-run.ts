@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
+import { notifyRunFinished } from "@/lib/webhooks/deliver.ts";
 
 /**
  * Stops a run that has not finished — one waiting for a grading slot, or one nobody
@@ -29,6 +30,7 @@ export async function stopRun(_prev: FormState, form: FormData): Promise<FormSta
   if (error) return { error: `The run could not be stopped: ${error.message}` };
   if (!data?.length) return { error: "This run has already finished." };
 
+  await notifyRunFinished(admin, workspace.id, runId, Date.now() + 8_000);
   revalidatePath(`/runs/${runId}`);
   return { notice: "Stopped." };
 }

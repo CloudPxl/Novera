@@ -48,6 +48,26 @@ A ready workflow for [n8n](https://n8n.io) does the same without any code: downl
 2. Open **Configure** and set `agent_id` and `suite_id` (from `GET /api/v1/agents` and `/suites`).
 3. Connect whatever should hear about it — Slack, email, a ticket — after the two final nodes. Each carries an `outcome` (`pass`, `fail` or `incomplete`) and a one-line `message` with the report's link.
 
+## Webhooks
+
+Instead of polling, Novera can tell another system when something happens. Add an endpoint in **Settings → Webhooks** — an https address on the public internet — and choose the events: `run.completed` (a run finished, with its counts, its outcome `pass`, `fail` or `incomplete`, and the report link), `run.stopped` (stopped by a person, or ended by an error — always `incomplete`, never a pass) and `schedule.paused` (with the reason). A delivery never carries your agent's replies, the scenarios' messages, your policy or any key. Each run is announced once.
+
+Every delivery is a `POST` with a JSON body and three headers: `Novera-Event`, `Novera-Delivery` (a unique id, for ignoring a repeat) and `Novera-Signature: t=<unix time>,v1=<hex>`, the HMAC-SHA256 of `<t>.<body>` under the endpoint's signing secret, which is shown once when you add the endpoint. Check it before trusting the body:
+
+```js
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+function fromNovera(secret, rawBody, header, now = Date.now()) {
+  const parts = Object.fromEntries(header.split(",").map((p) => p.split("=")));
+  if (Math.abs(now / 1000 - Number(parts.t)) > 300) return false; // older than five minutes
+  const expected = createHmac("sha256", secret).update(parts.t + "." + rawBody).digest();
+  const given = Buffer.from(parts.v1 ?? "", "hex");
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+```
+
+Answer with any `2xx` to acknowledge. Anything else, or no answer within five seconds, is retried after 1, 5 and 30 minutes, then 2 and 6 hours, and then given up; Settings shows each delivery's last answer. Redirects are not followed.
+
 ## For AI assistants (MCP)
 
 The same key opens an MCP server at `https://www.nover.space/api/mcp`, so an assistant that speaks the Model Context Protocol — Claude, Cursor and others — can answer questions such as "what failed in the last run, and why?" from your stored evidence. In Claude Code:

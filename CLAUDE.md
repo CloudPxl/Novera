@@ -64,6 +64,7 @@ someone with the service role, not merely someone using the application.
 | An agent's raw replies are kept only for the workspace's retention period (30–365 days, default 180); then the daily pass empties them and nothing else, leaving the verdict and a SHA-256 of the reply; a sealed report shows quoted personal data only as placeholders; a support conversation is erased 90 days after it last moved, and a probe receipt's reply emptied after 90 days | 0037 `expire_raw_evidence()`, 0038 `expire_inbound_and_probes()`, `verify:retention`; `buildReport` scrub |
 | Novera calls only public addresses — an agent or read-back URL resolving to a private, loopback or metadata address is refused when saved and on every call, and redirects are reported, not followed; every agent and model call has a deadline inside the slice, and a run idle for 24 hours is stopped, never sealed | `src/lib/net/public-url.ts`, 0040, `verify:slices` |
 | An aborted run is never sealed — stopped by a person (even mid-slice), idle for 24 hours, or ended by a failure; a stopped run sends its agent no further scenario; at most two slices grade on the shared trial keys at once, and a third waits rather than degrading everyone's verdicts | 0041 `claim_run_slice`, `src/lib/workflow/stop-run.ts`, `verify:slices` |
+| A webhook is signed (HMAC over timestamp and body), sent only to a public address, never follows a redirect, carries counts and links but no reply, input, policy or key, announces a run once, and cannot be edited after it is queued; an endpoint's secret is sealed and shown once | 0042, `src/lib/webhooks/`, `verify:webhooks` |
 | A production failure is stored redacted — the original only as a hash — cannot be edited, and becomes a test only as a draft a person approves, linked to it for good | 0031 |
 | A workspace key grades only on models it was proved to reach, and one it cannot reach refuses the run rather than erroring every case | 0025 + 0026, route built from the key |
 | A person's finding sits beside a verdict and never replaces it; it needs a reason, freezes the verdict it read, and cannot be filed against another workspace's case | 0028 |
@@ -169,6 +170,8 @@ src/lib/simulate/     the simulated customer: persona prompt and reply parsing
 src/lib/api/          API keys (mint, hash, authenticate) and the shared read layer for REST and MCP
 src/lib/mcp/          the MCP server: JSON-RPC protocol; seven read tools, run and write tools by key scope
 src/lib/schedules/    scheduled re-evaluations: UTC cadence, the clock's secret, the tick
+src/lib/webhooks/     outbound webhooks: signing, queueing, delivery with backoff
+src/lib/net/          the public-address guard every outbound request goes through
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites + calibration labels
 data/docs/            the published documentation, seeded into the database
@@ -195,7 +198,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 505 unit tests | free |
+| `npm test` | 507 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -208,6 +211,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 | `verify:retention` | raw evidence past its period is emptied and nothing else changes; the fingerprint still matches; expiry mode opens nothing else | free |
 | `verify:slices` | a run against a 10-second agent stays inside the 60 s function limit: several slices, every scenario recorded, none cut by our budget (needs `npm run dev`, network) | free |
 | `measure:throughput` (`THROUGHPUT_LEVELS=1,2,4`) | concurrent trial runs against the fixture: wall time, verdicts without a result, how each was corroborated, per-vendor calls, rate limits and breaker skips | **real quota — one sweep** |
+| `verify:webhooks` | a real run is announced once to a local receiver, a failed delivery retried, the signature checks, the body carries no reply or policy, private addresses refused, rows frozen, secret unreadable (needs `npm run dev`) | free |
 | `verify:schedules` | a due schedule starts one run however many ticks race; the clock drives it to the end; skip, pause, frozen fields, RLS, erasure (needs `npm run dev`) | free |
 | `schedules:clock -- install \| status \| remove` | installs the pg_cron job that calls `/api/cron/tick`, secret in Vault; `status` shows its last calls | free |
 | `verify:regressions` | a production failure is stored redacted, append-only, tenant-isolated, and reaches a suite only as a draft naming it | free |

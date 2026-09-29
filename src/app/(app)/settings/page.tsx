@@ -10,6 +10,7 @@ import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge } from "@/components/ui/primitives.tsx";
 import { JudgeKeyForm, RemoveKeyButton, type ProviderChoice } from "./client.tsx";
 import { CreateApiKey, RevokeApiKey } from "./api-keys.tsx";
+import { CreateWebhook, WebhookActions } from "./webhooks.tsx";
 import { RetentionForm } from "./retention.tsx";
 import { DEFAULT_RETENTION_DAYS } from "@/lib/privacy/retention.ts";
 
@@ -38,9 +39,17 @@ export default async function SettingsPage() {
     admin.from("workspaces").select("raw_evidence_days").eq("id", workspace.id).maybeSingle(),
     admin.from("workspace_members").select("role").eq("workspace_id", workspace.id).eq("user_id", user.id).maybeSingle(),
   ]);
-  const { data: apiKeys } = await admin.from("api_keys")
-    .select("id, name, prefix, scopes, created_at, revoked_at")
-    .eq("workspace_id", workspace.id).order("created_at", { ascending: false });
+  const [{ data: apiKeys }, { data: endpoints }, { data: deliveries }] = await Promise.all([
+    admin.from("api_keys")
+      .select("id, name, prefix, scopes, created_at, revoked_at")
+      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }),
+    admin.from("webhook_endpoints")
+      .select("id, url, events, secret_prefix, created_at, revoked_at")
+      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }),
+    admin.from("webhook_deliveries")
+      .select("id, endpoint_id, event, status, attempts, last_status, last_error, created_at")
+      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20),
+  ]);
 
   const models = entitlement.judgeModels;
   const corroboration = models.length > 1 ? "single-vendor" : "single-model";
@@ -235,6 +244,65 @@ export default async function SettingsPage() {
             cannot be used to call the API, and a lost key cannot be recovered — revoke it and create
             another. Each key may make 120 requests a minute.{" "}
             <Link href="/docs/api" className="underline underline-offset-2 hover:text-ink">How to use the API</Link>
+          </p>
+        </section>
+      </Reveal>
+
+      <Reveal className="mt-10">
+        <section>
+          <div className="flex items-center">
+            <h2 className="text-lg font-semibold tracking-tight">Webhooks</h2>
+            <Help label="Webhooks">
+              Novera tells another system when a run finishes, is stopped, or a schedule pauses — your CI,
+              a chat channel, a ticket queue — so nobody has to keep checking. Each delivery is signed, and
+              carries counts, the outcome and links, never your agent&apos;s replies or your policy.
+            </Help>
+          </div>
+          <Card className="mt-3 p-5">
+            {(endpoints ?? []).length === 0 ? (
+              <p className="text-sm text-ink-soft">No endpoints yet.</p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {(endpoints ?? []).map((e) => {
+                  const recent = (deliveries ?? []).filter((d) => d.endpoint_id === e.id).slice(0, 3);
+                  return (
+                    <li key={e.id as string} className="py-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="break-all font-medium text-ink">{e.url as string}</span>
+                          <span className="block text-xs text-ink-faint">
+                            {(e.events as string[]).join(", ")} · secret {e.secret_prefix as string}… · added {(e.created_at as string).slice(0, 10)}
+                            {e.revoked_at ? ` · revoked ${(e.revoked_at as string).slice(0, 10)}` : ""}
+                          </span>
+                        </div>
+                        {e.revoked_at ? <Badge tone="neutral">revoked</Badge> : <WebhookActions endpointId={e.id as string} url={e.url as string} />}
+                      </div>
+                      {recent.length > 0 && (
+                        <ul className="mt-2 space-y-0.5 text-xs text-ink-soft">
+                          {recent.map((d) => (
+                            <li key={d.id as string}>
+                              {(d.created_at as string).slice(0, 16).replace("T", " ")} UTC · {d.event as string} ·{" "}
+                              {d.status === "delivered"
+                                ? `delivered (${d.last_status})`
+                                : d.status === "failed"
+                                  ? `gave up after ${d.attempts} attempts: ${d.last_error ?? ""}`
+                                  : `waiting to retry after ${d.attempts} attempt(s)${d.last_error ? `: ${d.last_error}` : ""}`}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <CreateWebhook />
+          </Card>
+          <p className="mt-3 text-xs leading-relaxed text-ink-faint">
+            Every delivery carries a <span className="type-mono">Novera-Signature</span> header: an HMAC of the
+            timestamp and body under the endpoint&apos;s secret. A failed delivery is retried for about nine
+            hours, then given up and shown here.{" "}
+            <Link href="/docs/api" className="underline underline-offset-2 hover:text-ink">How to check a signature</Link>
           </p>
         </section>
       </Reveal>

@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { plannedRoutes, workspaceEntitlement } from "../auth/entitlement.ts";
 import { manifestForNewRun } from "../report/manifest.ts";
 import { startRunExecution } from "./execute-run.ts";
+import { notifyRunFinished } from "../webhooks/deliver.ts";
 
 /**
  * Starting a run, and advancing one — the single implementation behind the run button
@@ -187,6 +188,10 @@ export async function advanceRun(args: {
     const summary = await startRunExecution({ client, workspaceId, runId, budgetMs });
     // Handing back: the next slice may start now rather than when the lease runs out.
     await client.from("runs").update({ lease_until: null }).eq("id", runId).eq("workspace_id", workspaceId);
+    if (summary.status !== "incomplete") {
+      // Finished (or stopped): tell the workspace's webhooks, briefly, within this call.
+      await notifyRunFinished(client, workspaceId, runId, Date.now() + 8_000);
+    }
     return {
       status: summary.status,
       started: true,

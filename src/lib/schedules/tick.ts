@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { advanceRun, RunRefusal, startRun } from "../workflow/start-run.ts";
+import { deliverDue, notifySchedulePaused } from "../webhooks/deliver.ts";
 import { nextOccurrence, type ScheduleTiming } from "./cadence.ts";
 
 /**
@@ -23,6 +24,8 @@ export interface TickReport {
   failed: number;
   advanced: number;
   finished: number;
+  /** Webhook deliveries retried by this tick that arrived. */
+  delivered: number;
 }
 
 interface ScheduleRow {
@@ -45,7 +48,7 @@ export async function runScheduleTick(args: {
 }): Promise<TickReport> {
   const { client, deadline } = args;
   const now = args.now ?? new Date();
-  const report: TickReport = { due: 0, started: 0, skipped: 0, paused: 0, failed: 0, advanced: 0, finished: 0 };
+  const report: TickReport = { due: 0, started: 0, skipped: 0, paused: 0, failed: 0, advanced: 0, finished: 0, delivered: 0 };
 
   const { data: due } = await client
     .from("run_schedules")
@@ -71,6 +74,11 @@ export async function runScheduleTick(args: {
     const outcome = await startScheduled(client, s);
     report[outcome.kind] += 1;
     await client.from("run_schedules").update(outcome.update).eq("id", s.id).is("cancelled_at", null);
+    if (outcome.kind === "paused") {
+      await notifySchedulePaused(client, s.workspace_id, {
+        id: s.id, agentId: s.agent_id, reason: String(outcome.update.paused_reason ?? ""),
+      }, Math.min(deadline, Date.now() + 8_000));
+    }
   }
 
   // Oldest first, so a run that has waited longest is the one that moves.
@@ -87,6 +95,13 @@ export async function runScheduleTick(args: {
     });
     if (result?.started) report.advanced += 1;
     if (result?.started && result.done) report.finished += 1;
+  }
+
+  // Webhook deliveries that failed their first attempt, retried with whatever time is
+  // left. Their own backoff decides which are due.
+  if (deadline - Date.now() > 6_000) {
+    const retried = await deliverDue({ db: client, deadline: deadline - 1_000 });
+    report.delivered = retried.delivered;
   }
 
   return report;

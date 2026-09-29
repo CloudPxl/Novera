@@ -41,7 +41,36 @@ Store the token (the last part of the report link) as a repository secret named 
     exit "$(jq -r '.ci.code' novera.json)"
 ```
 
-Any test reporter that reads JUnit XML can display `novera-junit.xml`. Each report link is one sealed run: point the secret at a new link after each run. Starting a run from a pipeline needs a workspace API key, which Novera does not offer yet.
+Any test reporter that reads JUnit XML can display `novera-junit.xml`. Each report link is one sealed run: point the secret at a new link after each run.
+
+## A release gate: run the suite on every deploy
+
+With a workspace API key that can start runs (**Settings → API keys**, tick *Can also start runs*), a pipeline can run the suite itself and block the release on the result. Store the key as `NOVERA_API_KEY` and the agent's id as `NOVERA_AGENT_ID`:
+
+```yaml
+- name: Novera release gate
+  env:
+    NOVERA_API_KEY: ${{ secrets.NOVERA_API_KEY }}
+    NOVERA_AGENT_ID: ${{ vars.NOVERA_AGENT_ID }}
+  run: |
+    api="https://www.nover.space/api/v1"
+    auth="Authorization: Bearer $NOVERA_API_KEY"
+    body="{\"agent_id\":\"$NOVERA_AGENT_ID\",\"release_id\":\"$GITHUB_SHA\"}"
+    run=$(curl -fsS -X POST "$api/runs" -H "$auth" -H 'content-type: application/json' -d "$body" | jq -r .run.id) || exit 3
+    for i in $(seq 1 120); do
+      finished=$(curl -fsS -X POST "$api/runs/$run/execute" -H "$auth" | jq -r .done) || exit 4
+      [ "$finished" = "true" ] && break
+      sleep 5
+    done
+    url=$(curl -fsS "$api/runs/$run" -H "$auth" | jq -r '.run.report.url // empty') || exit 4
+    [ -n "$url" ] || { echo "No report was sealed: the evidence is incomplete."; exit 2; }
+    token="${url##*/report/}"
+    curl -fsS -o novera.json "https://www.nover.space/api/reports/$token/export?format=json" || exit 4
+    jq -r '.ci.reason' novera.json
+    exit "$(jq -r '.ci.code' novera.json)"
+```
+
+Exit code `2` — evidence incomplete — fails the job exactly as a failed scenario does: a release does not go out because nothing was found wrong in a run that did not finish. The commit is recorded on the report as the release you declared, labelled as declared by you. To be told about runs rather than waiting for them, add a webhook (**Settings → Webhooks**; see [the API](/docs/api)).
 
 ## Verifying a copy you were sent
 

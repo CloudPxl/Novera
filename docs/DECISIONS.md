@@ -2435,3 +2435,19 @@ switched off "Anonymous improvement data" in Mistral's console, so Mistral's cei
 raised to identifiable data (data policy 2). The redaction path stays, for any future
 provider approved only for redacted data; `Connection.ceiling` lets one be declared, and
 the tests exercise it through one. `verify:retention` 23 checks; `verify:db` green.
+
+## 2026-09-29 — Upgrade step 1: TypeScript 6 + 7, Node 24 types; ESLint 10 blocked upstream
+
+TypeScript 7 cannot replace the `typescript` package: 7.0.2 exports only its version and
+an `unstable/*` API, while Next's build and typescript-eslint (which declares
+`typescript <6.1.0`) call the classic compiler API. So: `typescript` 5.9.3 → 6.0.3, the
+bridge release, which flagged nothing in this code — nothing here relies on what 7
+removes; and TypeScript 7's native compiler installed beside it as `typescript-native`.
+`npm run typecheck` runs 7 (0.8 s), `npm run typecheck:6` runs 6. Both are called by path,
+because the two packages share the `tsc` binary name and which one `.bin/tsc` links to
+depends on install order. `@types/node` 20 → 24, matching the Node 24.x production runs.
+
+ESLint 10 was installed and run rather than judged from metadata: `eslint-plugin-react`
+(inside eslint-config-next) crashes on `context.getFilename`, which 10 removed, so no file
+lints. No release of the plugin — not even 7.8.0-rc.0 — declares support. Restored 9.39.5
+from the saved lockfile. Revisit when eslint-plugin-react, -import and -jsx-a11y do.

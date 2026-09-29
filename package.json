@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test \"tests/*.test.ts\"",
+    "typecheck": "node_modules/typescript-native/bin/tsc --noEmit",
+    "typecheck:6": "node node_modules/typescript/bin/tsc --noEmit",
     "verify:db": "node --conditions=react-server --env-file=.env.local scripts/verify-db.mts",
     "seed:suites": "node --conditions=react-server --env-file=.env.local scripts/seed-suites.mts",
     "migrate": "node --conditions=react-server --env-file=.env.local scripts/migrate.mts",
@@ -48,14 +50,15 @@
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.30.1",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "24.19.0",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "6.0.3",
+    "typescript-native": "npm:typescript@7.0.2"
   },
   "bin": {
     "novera": "bin/novera.mts"

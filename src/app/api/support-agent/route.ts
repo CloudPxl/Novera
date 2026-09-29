@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+import { MESSAGE_MAX } from "@/lib/support/limits.ts";
 import { NextResponse, type NextRequest } from "next/server";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { createRoutedChat } from "@/lib/router/execute.ts";
@@ -26,7 +28,11 @@ export async function POST(request: NextRequest) {
   if (!expected) {
     return NextResponse.json({ error: "This endpoint is not configured." }, { status: 503 });
   }
-  if (request.headers.get("x-novera-support-token") !== expected) {
+  // Constant time: `!==` stops at the first differing character, which is a timing
+  // signal about how much of a guess was right.
+  const given = Buffer.from(request.headers.get("x-novera-support-token") ?? "");
+  const wanted = Buffer.from(expected);
+  if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) {
     return NextResponse.json({ error: "Not authorised." }, { status: 401 });
   }
 
@@ -34,6 +40,10 @@ export async function POST(request: NextRequest) {
   const message = typeof body?.message === "string" ? body.message.trim() : "";
   if (!message) {
     return NextResponse.json({ error: "Send a message." }, { status: 400 });
+  }
+  // The same ceiling as the public form: every character is paid for in a model call.
+  if (message.length > MESSAGE_MAX) {
+    return NextResponse.json({ error: `Keep the message under ${MESSAGE_MAX} characters.` }, { status: 413 });
   }
 
   const escalation = checkEscalation(message);

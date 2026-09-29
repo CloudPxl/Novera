@@ -208,6 +208,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 | `demo:run` (`DEMO_SUITE_VERSION=4`) | the whole loop, end to end, publishing a report | a full run |
 | `calibrate` (`CALIBRATE_SUITE=…`, `CALIBRATE_CASES=T37,…` for a subset, never stored) | judge quality and drift against ground-truth labels | **real quota — pace it** |
 | `measure:stability` | verdict instability on identical responses | real quota |
+| `NOVERA_QUERY_LOG=1 npx next dev` | prints every Supabase request as `[q]`; the lines above a page's request line are its cost — an N+1 reads as one table repeated per row. Last measured: 11–24 per operator page, 1 per report | free |
 | `npm run novera -- report status <link>` | a sealed report's CI exit code (0 pass · 1 fail · 2 incomplete · 3 config · 4 infra), hash verified | free |
 
 `npm run dev` must be running for `verify:effect`, `verify:channel` and `calibrate`:

@@ -2367,3 +2367,31 @@ Measured: `verify:retention` 15 checks (including a verdict change smuggled into
 mode, and expiry mode reaching another table — both refused); verify:db, access, tenancy,
 regressions, imports re-run green. No real case is within reach of the clock before
 March 2027. Not yet on a clock: probe receipts and the support inbox.
+
+## 2026-09-29 — Phase 11.4: the sweep — queries, headers, metering, dependencies
+
+**Queries, measured** (`NOVERA_QUERY_LOG=1`, `src/instrumentation.ts`; a workspace seeded
+with three 41-scenario runs, retests, schedules and keys): dashboard 15 requests, agent 15,
+run 24, settings 11, scenarios 11, regressions 12; the client report and every export 1.
+Constant in the row count — no N+1 anywhere. Two of each page's requests are Supabase Auth:
+one is `proxy.ts` refreshing the session, which the SSR pattern requires, one the page's own
+check. I first read that as a layout/page duplicate and wrapped the session helpers in
+React `cache()`; re-measured, nothing changed, and it was reverted rather than kept with a
+comment claiming a saving it did not make. Known limit of the instrument: a route compiled
+after start can lose the hook, so measure on a fresh `next dev`, one page at a time.
+
+**Headers, measured on production:** pages carried the full set (nonce CSP, DENY, nosniff,
+referrer and permissions policy, HSTS) but every response also said `x-powered-by: Next.js`,
+and `/api/*` — which `proxy.ts` does not run for — carried HSTS only. Now `poweredByHeader:
+false`, and API responses get nosniff, DENY, no-referrer and `default-src 'none'`.
+
+**Metering:** every public route is metered or gated — the forms (6A throttle), `/api/v1`
+and MCP (per-key limit), the tick (derived secret), the support agent (token), both test
+fixtures (403 in production, re-checked). The support agent compared its token with `!==`
+and took any length of message into a model call: now `timingSafeEqual` and the form's
+4,000-character ceiling.
+
+**Dependencies:** `npm audit` 0 vulnerabilities, production and dev. Taken: next and
+eslint-config-next 16.3.5 → 16.3.6, supabase-js 2.116 → 2.117.2 (now pinned exactly, like
+next). Not taken: TypeScript 7, ESLint 10, @types/node 26 — majors, a project each.
+Every free verification re-run green on the new versions (11 scripts).

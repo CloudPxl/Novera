@@ -158,6 +158,12 @@ export async function advanceRun(args: {
     return { status, started: false, done: status === "completed" || status === "aborted" };
   }
 
+  // The run's start, written once and before the slice reads it: the report's duration
+  // is measured from here. Stamped inside the runner instead, the first slice read null
+  // and a run that finished in one slice sealed a report with no duration.
+  await client.from("runs").update({ started_at: now.toISOString() })
+    .eq("id", runId).eq("workspace_id", workspaceId).is("started_at", null);
+
   try {
     const summary = await startRunExecution({ client, workspaceId, runId, budgetMs });
     // Handing back: the next slice may start now rather than when the lease runs out.

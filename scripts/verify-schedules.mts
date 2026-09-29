@@ -11,6 +11,7 @@
  * Run: npm run verify:schedules
  */
 import { createClient } from "@supabase/supabase-js";
+import pg from "pg";
 import { tickSecret } from "../src/lib/schedules/secret.ts";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -32,6 +33,23 @@ if (real.length) {
   console.error(`${real.length} real schedule(s) are due within 10 minutes; a local tick would start them. Try later.`);
   process.exit(3);
 }
+
+// The production clock watches this same database. Left running, it would claim these
+// throwaway schedules too — racing the local ticks, and driving the runs from a server
+// that cannot reach this machine. It is paused for the duration and restored after.
+const pgc = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+await pgc.connect();
+const { rows: clock } = await pgc.query(
+  "select jobid from cron.job where jobname = 'novera-schedule-tick' and active",
+).catch(() => ({ rows: [] as Array<{ jobid: number }> }));
+if (clock.length) {
+  await pgc.query("select cron.alter_job($1, active := false)", [clock[0].jobid]);
+  console.log("  (the production clock is paused while this runs)");
+}
+const restoreClock = async () => {
+  if (clock.length) await pgc.query("select cron.alter_job($1, active := true)", [clock[0].jobid]);
+  await pgc.end();
+};
 
 const tick = (secret: string | null, method = "POST") =>
   fetch(`${base}/api/cron/tick`, { method, headers: secret ? { authorization: `Bearer ${secret}` } : {}, redirect: "manual" })
@@ -190,6 +208,8 @@ try {
     await db.rpc("erase_workspace", { target: w.ws });
     await db.auth.admin.deleteUser(w.user.id);
   }
+  await restoreClock();
+  if (clock.length) console.log("  (the production clock is running again)");
 }
 
 console.log(failures ? `\n${failures} check(s) failed.` : "\nAll schedule checks passed.");

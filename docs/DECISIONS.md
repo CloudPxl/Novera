@@ -2303,3 +2303,12 @@ three simultaneous ticks start exactly one run; the clock alone drives it to com
 each scenario graded once; busy skips, refusal pauses, fixed fields and attribution refuse
 rewrites, RLS and erasure hold. The form was walked in a browser: axe clean at 1440 and 390,
 no overflow; it lowercased "UTC" and then weekday names in its confirmation — fixed.
+Same day, after the clock went live: the production proof (a throwaway schedule, due, left
+to pg_cron alone) started and finished its run 14 s after it fell due — but against
+Novera's fixture, which is disabled in production, so no verdict. Sealing was then proved
+locally (two scenarios graded by models, report sealed, labelled test data), and reading
+that report exposed a regression from the lease change: the runner stamped `started_at`
+after `startRunExecution` had already read it, so a run finishing in its first slice
+sealed with no duration. `advanceRun` now stamps it before the slice; re-measured 3.8 s.
+No customer run completed in the ~20 minutes it was live. `verify:schedules` now pauses
+the production clock while it runs — left on, the clock claimed its throwaway schedules.

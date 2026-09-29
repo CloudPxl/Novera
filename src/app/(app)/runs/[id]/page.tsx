@@ -99,7 +99,7 @@ export default async function RunPage({
         await db
           .from("run_cases")
           .select(
-            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by, tool_activity, transcript",
+            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by, tool_activity, transcript, raw_expired_at, raw_sha256",
           )
           .eq("run_id", id)
           .order("case_id")
@@ -340,6 +340,8 @@ export default async function RunPage({
     // rows cannot be rewritten — they are resolved on the way out instead.
     failedAssertions: resolveAssertions(asStrings(c.assertions), asStrings(c.failed_assertions)),
     responseText: (c.response_text as string | null) ?? null,
+    rawExpiredAt: (c.raw_expired_at as string | null) ?? null,
+    rawSha256: (c.raw_sha256 as string | null) ?? null,
     // Null on every single-message scenario and on every row stored before 0032.
     transcript: Array.isArray(c.transcript) ? (c.transcript as Array<{ role: "customer" | "agent"; content: string; simulated?: boolean; model?: string }>) : null,
     rationale: (c.rationale as string | null) ?? null,
@@ -372,7 +374,15 @@ export default async function RunPage({
       <>
         {c.status !== "pass" && (
           <>
-            <DiagnoseButton runCaseId={c.id as string} hasProposal={forCase.length > 0} />
+            {c.raw_expired_at ? (
+              // Not a button that can only refuse: say why, and what works instead.
+              <p className="text-sm leading-relaxed text-ink-soft">
+                A diagnosis reads the agent&rsquo;s reply, which was removed under this workspace&rsquo;s retention
+                setting. Retest the scenario to get a fresh one.
+              </p>
+            ) : (
+              <DiagnoseButton runCaseId={c.id as string} hasProposal={forCase.length > 0} />
+            )}
             {forCase.map((p) => (
               <ProposalCard key={p.id} proposal={p} />
             ))}

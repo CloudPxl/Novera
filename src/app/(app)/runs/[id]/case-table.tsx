@@ -19,6 +19,9 @@ export interface CaseRow {
   assertions: string[];
   failedAssertions: string[];
   responseText: string | null;
+  /** Set once the raw reply was emptied under the workspace's retention period (0037). */
+  rawExpiredAt?: string | null;
+  rawSha256?: string | null;
   /** Every turn of a conversation scenario, in order; null for a single message. */
   transcript?: Array<{ role: "customer" | "agent"; content: string; simulated?: boolean; model?: string }> | null;
   rationale: string | null;
@@ -353,7 +356,20 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
           </p>
 
           <h3 className="mt-4 type-pill text-ink-faint">What the agent replied</h3>
-          {row.responseText ? (
+          {row.rawExpiredAt ? (
+            // Expired is not missing: the reply existed, was graded, and was removed on
+            // schedule. Said as that, with the fingerprint that still identifies it.
+            <p className="mt-1.5 rounded-control bg-sunken px-3 py-2 text-sm leading-relaxed text-ink-soft ring-1 ring-line">
+              Removed on {row.rawExpiredAt.slice(0, 10)} under this workspace&rsquo;s retention setting. The verdict
+              and its reasons are kept.
+              {row.rawSha256 && (
+                <>
+                  {" "}Fingerprint of the evidence as graded:{" "}
+                  <span className="break-all font-mono text-xs">{row.rawSha256}</span>
+                </>
+              )}
+            </p>
+          ) : row.responseText ? (
             <p className="mt-1.5 whitespace-pre-wrap rounded-control bg-surface px-3 py-2 text-sm leading-relaxed text-ink ring-1 ring-line">
               {row.responseText}
             </p>

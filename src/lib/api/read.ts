@@ -104,7 +104,7 @@ export async function getRun(db: Db, workspaceId: string, runId: string, options
     db.from("runs").select("id, agent_id, status, created_at, finished_at, error, manifest_hash, api_key_id, schedule_id, agents(name), suites(key, version), policies(version)")
       .eq("workspace_id", workspaceId).eq("id", runId).maybeSingle(),
     db.from("run_cases")
-      .select(`case_id, category, obligation, severity, status, rationale, settled_by, judge_agreement, judge_model, evidence_gap, error, failed_assertions${options.responses ? ", input, response_text, transcript" : ""}`)
+      .select(`case_id, category, obligation, severity, status, rationale, settled_by, judge_agreement, judge_model, evidence_gap, error, failed_assertions${options.responses ? ", input, response_text, transcript, raw_expired_at, raw_sha256" : ""}`)
       .eq("workspace_id", workspaceId).eq("run_id", runId).order("case_id"),
   ]);
   if (!run) return null;
@@ -142,7 +142,14 @@ export async function getRun(db: Db, workspaceId: string, runId: string, options
       evidence_gap: (c.evidence_gap as string | null) ?? null,
       failed_assertions: Array.isArray(c.failed_assertions) ? (c.failed_assertions as string[]) : [],
       ...(options.responses
-        ? { input: c.input as string, response: (c.response_text as string | null) ?? null, transcript: c.transcript ?? null }
+        ? {
+            input: c.input as string,
+            response: (c.response_text as string | null) ?? null,
+            transcript: c.transcript ?? null,
+            // Present only once the raw evidence has expired, so a null response is
+            // never ambiguous between "no reply" and "removed on schedule".
+            ...(c.raw_expired_at ? { raw_expired_at: c.raw_expired_at as string, raw_sha256: (c.raw_sha256 as string | null) ?? null } : {}),
+          }
         : {}),
     })),
   };

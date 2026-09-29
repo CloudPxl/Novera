@@ -34,6 +34,16 @@ What is never sent to a grading model: your model API keys, your agent's auth he
 
 Model API keys and agent auth headers are encrypted before storage using AES-256-GCM, with the ciphertext bound to the workspace it belongs to. They are decrypted only on the server, are never sent to a browser, never written to a log, and never appear in a report.
 
+## How long your agent's replies are kept
+
+A run keeps what your agent actually said — each reply, whole conversations and tool activity — so a person can check a verdict against it. That text is where personal data ends up if your agent leaks it, so it is not kept indefinitely. Under **Settings → Evidence retention** the workspace owner chooses 30, 90, 180 or 365 days; the default is 180.
+
+Once a day, replies older than the period are removed. What stays until you erase the workspace: the verdict, the reasons for it, the scenario, the checks, and a SHA-256 fingerprint of the reply taken when it was graded — so a copy you kept elsewhere can still be shown to be the one that was graded. Reports never contained your agent's replies, so no report changes. A removed reply cannot be diagnosed; retest the scenario to get a fresh one.
+
+Shortening the period removes older replies at the next daily pass, and that cannot be undone.
+
+Sealed reports also leave out anything shaped like personal data that a grading model quoted in its reasons: an email address in a finding is shown as a placeholder such as `[EMAIL_1]`, and the report says when that happened.
+
 A workspace can be erased completely. Erasure removes the agents, policies, runs, verdicts, probe receipts, diagnoses and reports, and leaves behind only a record that an erasure happened and what it removed — which contains no personal data.
 
 Erasure is all or nothing by design. Individual verdicts, policy versions and reports cannot be deleted, because a product whose evidence could be selectively removed would not be evidence.

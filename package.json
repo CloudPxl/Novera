@@ -30,6 +30,7 @@
     "verify:conversation": "node --conditions=react-server --env-file=.env.local scripts/verify-conversation.mts",
     "verify:api": "node --conditions=react-server --env-file=.env.local scripts/verify-api.mts",
     "verify:mcp": "node --conditions=react-server --env-file=.env.local scripts/verify-mcp.mts",
+    "verify:retention": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/verify-retention.mts",
     "verify:schedules": "node --conditions=react-server --env-file=.env.local scripts/verify-schedules.mts",
     "schedules:clock": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/schedules-clock.mts"
   },

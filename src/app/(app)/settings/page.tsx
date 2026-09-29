@@ -10,6 +10,8 @@ import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge } from "@/components/ui/primitives.tsx";
 import { JudgeKeyForm, RemoveKeyButton, type ProviderChoice } from "./client.tsx";
 import { CreateApiKey, RevokeApiKey } from "./api-keys.tsx";
+import { RetentionForm } from "./retention.tsx";
+import { DEFAULT_RETENTION_DAYS } from "@/lib/privacy/retention.ts";
 
 export const metadata: Metadata = { title: "Settings · Novera" };
 export const dynamic = "force-dynamic";
@@ -32,6 +34,10 @@ export default async function SettingsPage() {
   const { user, workspace } = await requireWorkspace();
   const admin = await assertMembership(user.id, workspace.id);
   const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
+  const [{ data: retention }, { data: membership }] = await Promise.all([
+    admin.from("workspaces").select("raw_evidence_days").eq("id", workspace.id).maybeSingle(),
+    admin.from("workspace_members").select("role").eq("workspace_id", workspace.id).eq("user_id", user.id).maybeSingle(),
+  ]);
   const { data: apiKeys } = await admin.from("api_keys")
     .select("id, name, prefix, scopes, created_at, revoked_at")
     .eq("workspace_id", workspace.id).order("created_at", { ascending: false });
@@ -229,6 +235,31 @@ export default async function SettingsPage() {
             cannot be used to call the API, and a lost key cannot be recovered — revoke it and create
             another. Each key may make 120 requests a minute.{" "}
             <Link href="/docs/api" className="underline underline-offset-2 hover:text-ink">How to use the API</Link>
+          </p>
+        </section>
+      </Reveal>
+
+      <Reveal className="mt-10">
+        <section>
+          <div className="flex items-center">
+            <h2 className="text-lg font-semibold tracking-tight">Evidence retention</h2>
+            <Help label="Evidence retention">
+              How long Novera keeps what your agent actually said in each run: its replies, whole
+              conversations and tool activity. That text is where personal data ends up if your agent
+              leaks it. After the period it is removed; the verdict, the reasons, a fingerprint of the
+              reply and every report are kept until you erase the workspace.
+            </Help>
+          </div>
+          <Card className="mt-3 p-5">
+            <RetentionForm
+              current={(retention?.raw_evidence_days as number | undefined) ?? DEFAULT_RETENTION_DAYS}
+              isOwner={membership?.role === "owner"}
+            />
+          </Card>
+          <p className="mt-3 text-xs leading-relaxed text-ink-faint">
+            Removed replies cannot be diagnosed; retest the scenario for a fresh one. Sealed reports never
+            contained replies, so none changes.{" "}
+            <Link href="/docs/data-and-privacy" className="underline underline-offset-2 hover:text-ink">Data and privacy</Link>
           </p>
         </section>
       </Reveal>

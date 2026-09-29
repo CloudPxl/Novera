@@ -6,6 +6,7 @@ import type { Coverage, ObligationCoverage, CategoryCoverage } from "../evidence
 import { gradeRun, meetsThreshold } from "../evidence/grade.ts";
 import { independenceOf } from "../judge/independence.ts";
 import type { RunCaseRecord } from "../runner/types.ts";
+import { redact } from "../redact/pii.ts";
 
 /**
  * Builds the client-facing report payload.
@@ -91,6 +92,9 @@ const SIMULATED_NOTE =
 const REDACTED_GRADING_NOTE =
   "Some agent replies contained text shaped like personal data, such as an email address or a phone number. Where such a reply was graded by a model not approved to receive personal data, that text was replaced with placeholders before the model read it; the checks Novera runs itself read the reply unchanged.";
 
+const SCRUBBED_FINDINGS_NOTE =
+  "Where the description of a finding quoted something shaped like personal data, such as an email address or a phone number, this report shows a placeholder in its place. The run itself keeps the agent's reply as it was, for the people in your workspace.";
+
 const CONTRADICTED_NOTE =
   "In one or more scenarios the agent described an action it had taken, and an independent read of your own system did not show that action. Those scenarios are recorded as failures on that basis rather than on the wording of the reply.";
 
@@ -98,6 +102,16 @@ const CONSENSUS_GRADING_NOTE =
   "More than one model is named as grader because some verdicts were settled by a third model after the first two disagreed. That is how corroborated grading works here; it does not mean the run was graded inconsistently.";
 
 export function buildReport(input: ReportInput): BuiltReport {
+  // A rationale is a model's prose about the reply, and a model that read the reply as
+  // written can quote what it leaked. A report is a document that gets forwarded, so
+  // anything shaped like personal data in it is replaced, as in a production failure.
+  let redactedFindings = 0;
+  const scrub = (text: string) => {
+    const r = redact(text);
+    if (Object.keys(r.counts).length) redactedFindings += 1;
+    return r.text;
+  };
+
   const findings = input.cases
     .filter((c) => c.status !== "pass")
     .sort((a, b) => severityRank(b.severity) - severityRank(a.severity) || a.caseId.localeCompare(b.caseId))
@@ -108,7 +122,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       expected: c.expected,
       // The judge's rationale, not the agent's words: a client report states what was
       // wrong without reproducing the conversation.
-      observed: c.status === "error" ? (c.error ?? "The case did not produce a result.") : (c.rationale ?? "No rationale recorded."),
+      observed: scrub(c.status === "error" ? (c.error ?? "The case did not produce a result.") : (c.rationale ?? "No rationale recorded.")),
       outcome: c.status,
     }));
 
@@ -315,6 +329,7 @@ export function buildReport(input: ReportInput): BuiltReport {
         || (c.judgeAttempts as Array<{ ok?: boolean; redacted?: boolean }> | undefined)?.some((a) => a?.ok && a.redacted),
       ) ? [REDACTED_GRADING_NOTE] : []),
       ...(input.coverage.effectContradicted > 0 ? [CONTRADICTED_NOTE] : []),
+      ...(redactedFindings > 0 ? [SCRUBBED_FINDINGS_NOTE] : []),
     ].join(" "),
   } satisfies Json;
 

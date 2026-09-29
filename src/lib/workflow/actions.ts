@@ -209,13 +209,18 @@ export async function requestDiagnosis(_prev: FormState, form: FormData): Promis
 
   const { data: runCase, error } = await admin
     .from("run_cases")
-    .select("id, run_id, case_id, obligation, severity, input, expected, assertions, response_text, rationale, status")
+    .select("id, run_id, case_id, obligation, severity, input, expected, assertions, response_text, rationale, status, raw_expired_at")
     .eq("id", runCaseId)
     .eq("workspace_id", workspace.id)
     .single();
 
   if (error || !runCase) return { error: "That scenario could not be found." };
   if (runCase.status === "pass") return { error: "That scenario passed; there is nothing to diagnose." };
+  // A diagnosis reads what the agent said. Without it, a proposal would be a guess
+  // from the rationale alone, presented as though it had read the reply.
+  if (runCase.raw_expired_at) {
+    return { error: "The agent's reply for this scenario was removed under this workspace's retention setting, so it cannot be diagnosed. Retest the scenario to get a fresh reply." };
+  }
 
   const { data: run } = await admin
     .from("runs").select("policy_id").eq("id", runCase.run_id).single();

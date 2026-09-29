@@ -2342,3 +2342,28 @@ payload field was added; reports sealed before today are unaffected. Known limit
 in the docs: names and street addresses are not detected, so a reply leaking only a name
 reaches Mistral unchanged. Raising Mistral's ceiling needs the training opt-out confirmed
 in its console, then one edit here.
+
+## 2026-09-29 — Phase 11.2–11.3: reports scrub quoted personal data; raw evidence has a retention clock
+
+A sealed report never carried the agent's replies, but it did carry each finding's
+rationale — a model's prose, which quotes what a leaking reply leaked when that model read
+it as written. Findings are now passed through the redactor before sealing, and the report
+says so only when something was replaced. The credential guard (`assertPublishable`) still
+fails the build for anything the builder forgets; its test moved to a field nothing scrubs.
+
+Raw evidence — replies, transcripts, tool activity on run_cases and case_retests — was kept
+as long as the workspace, because the column existed. 0037: each workspace keeps it 30, 90,
+180 or 365 days (default 180, the AI Act's minimum for a deployer's logs; the owner alone
+may change it, and a shorter choice is called irreversible before it is saved). A daily
+pg_cron pass (`expire_raw_evidence()`, 03:17 UTC) empties those fields and stamps
+`raw_expired_at`. Verdict, rationale, scenario, votes and reports stay; so does
+`raw_sha256`, computed by the database at insert (and backfilled), recomputable by anyone
+holding the reply. The append-only rule got its second narrow exception beside erasure:
+only in expiry mode, only on those two tables, only when the update empties the raw
+fields and changes nothing else — read through `to_jsonb`, because the same function
+guards tables without those columns. An expired case says so on the run page with its
+fingerprint, offers retest instead of a diagnosis it cannot do, and the API marks it.
+Measured: `verify:retention` 15 checks (including a verdict change smuggled into expiry
+mode, and expiry mode reaching another table — both refused); verify:db, access, tenancy,
+regressions, imports re-run green. No real case is within reach of the clock before
+March 2027. Not yet on a clock: probe receipts and the support inbox.

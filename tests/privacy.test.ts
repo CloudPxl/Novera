@@ -31,7 +31,9 @@ test("detection raises a class; redaction lowers only what detection raised", ()
 
 test("ceilings follow the provider's terms; a customer's own key is the customer's choice", () => {
   assert.equal(ceilingFor({ name: "groq" }), "identifiable_customer");
-  assert.equal(ceilingFor({ name: "mistral" }), "redacted_customer");
+  // Raised 2026-09-29 once the account owner switched off training in Mistral's console.
+  assert.equal(ceilingFor({ name: "mistral" }), "identifiable_customer");
+  assert.equal(ceilingFor({ name: "groq", ceiling: "redacted_customer" }), "redacted_customer");
   assert.equal(ceilingFor({ name: "google" }), "synthetic");
   assert.equal(ceilingFor({ name: "openrouter" }), "synthetic");
   assert.equal(ceilingFor({ name: "someone-new" }), "public");
@@ -41,9 +43,9 @@ test("ceilings follow the provider's terms; a customer's own key is the customer
   assert.equal(higher("synthetic", "identifiable_customer"), "identifiable_customer");
 });
 
-function recorder(name: string, seen: Map<string, string[]>, owner?: "customer"): Connection {
+function recorder(name: string, seen: Map<string, string[]>, owner?: "customer", ceiling?: "redacted_customer"): Connection {
   return {
-    name, apiKey: "k", ...(owner ? { owner } : {}),
+    name, apiKey: "k", ...(owner ? { owner } : {}), ...(ceiling ? { ceiling } : {}),
     provider: {
       id: "openai-compatible", label: name,
       async chat(request) {
@@ -57,7 +59,7 @@ function recorder(name: string, seen: Map<string, string[]>, owner?: "customer")
 const chain: RouteTable = {
   judge: [
     { connection: "google", model: "g" },
-    { connection: "mistral", model: "m" },
+    { connection: "cautious", model: "m" },
     { connection: "groq", model: "q" },
   ],
   judge_critical: [], diagnose: [], draft: [],
@@ -66,7 +68,7 @@ const chain: RouteTable = {
 test("a reply that leaks personal data skips a synthetic-only provider and reaches the next one redacted", async () => {
   const seen = new Map<string, string[]>();
   const chat = createRoutedChat({
-    connections: new Map(["google", "mistral", "groq"].map((n) => [n, recorder(n, seen)])),
+    connections: new Map(["google", "cautious", "groq"].map((n) => [n, recorder(n, seen, undefined, n === "cautious" ? "redacted_customer" : undefined)])),
     routes: chain,
   });
   const res = await chat("judge", {
@@ -74,9 +76,9 @@ test("a reply that leaks personal data skips a synthetic-only provider and reach
     messages: [{ role: "user", content: "Agent said: call Marta on +46 70 555 0134 or marta@northwind.example" }],
   }, { data: "redacted_customer" });
 
-  assert.equal(res.servedBy.connection, "mistral");
+  assert.equal(res.servedBy.connection, "cautious");
   assert.equal(seen.has("google"), false, "google must never receive it");
-  const sent = seen.get("mistral")!.join(" ");
+  const sent = seen.get("cautious")!.join(" ");
   assert.ok(!sent.includes("marta@northwind.example") && !sent.includes("555 0134"), sent);
   assert.match(sent, /\[EMAIL_1\]/);
   assert.equal(res.attempts[0].refused, true);
@@ -87,7 +89,7 @@ test("a reply that leaks personal data skips a synthetic-only provider and reach
 test("a support message goes only to a provider approved for identifiable data, unaltered", async () => {
   const seen = new Map<string, string[]>();
   const chat = createRoutedChat({
-    connections: new Map(["google", "mistral", "groq"].map((n) => [n, recorder(n, seen)])),
+    connections: new Map(["google", "cautious", "groq"].map((n) => [n, recorder(n, seen, undefined, n === "cautious" ? "redacted_customer" : undefined)])),
     routes: chain,
   });
   const message = "Hi, I'm Jan Novak, jan@example.com — please delete my account";
@@ -101,7 +103,7 @@ test("a support message goes only to a provider approved for identifiable data, 
 test("a call site that declares nothing is treated as sending identifiable data", async () => {
   const seen = new Map<string, string[]>();
   const chat = createRoutedChat({
-    connections: new Map(["google", "mistral", "groq"].map((n) => [n, recorder(n, seen)])),
+    connections: new Map(["google", "cautious", "groq"].map((n) => [n, recorder(n, seen, undefined, n === "cautious" ? "redacted_customer" : undefined)])),
     routes: chain,
   });
   const res = await chat("judge", { messages: [{ role: "user", content: "nothing personal here" }] });
@@ -134,4 +136,17 @@ test("the case says which grader read placeholders instead of the reply", () => 
   ]);
   assert.match(note, /mistral\/ministral-8b-latest read the reply with personal data replaced by placeholders$/);
   assert.doesNotMatch(gradingNote("m", "agreed", [{ model: "m", status: "pass" }]), /placeholders/);
+});
+
+test("with training switched off, Mistral receives identifiable data as written", async () => {
+  const seen = new Map<string, string[]>();
+  const chat = createRoutedChat({
+    connections: new Map(["google", "mistral"].map((n) => [n, recorder(n, seen)])),
+    routes: { judge: [{ connection: "google", model: "g" }, { connection: "mistral", model: "m" }], judge_critical: [], diagnose: [], draft: [] },
+  });
+  const message = "Hi, I'm Jan Novak, jan@example.com";
+  const res = await chat("judge", { messages: [{ role: "user", content: message }] }, { data: "identifiable_customer" });
+  assert.equal(res.servedBy.connection, "mistral");
+  assert.equal(seen.get("mistral")![1], message);
+  assert.equal(res.attempts[1].redacted, undefined);
 });

@@ -30,7 +30,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
   if (!agent) notFound();
 
   const [{ data: probes }, { data: policies }, { data: runs }, { data: suites }, { data: schedules }] = await Promise.all([
-    db.from("probes").select("id, status_code, response_body, response_shape, latency_ms, error, created_at")
+    db.from("probes").select("id, status_code, response_body, response_shape, latency_ms, error, created_at, content_expired_at")
       .eq("agent_id", id).order("created_at", { ascending: false }).limit(3),
     db.from("policies").select("id, version, body, created_at")
       .eq("agent_id", id).order("version", { ascending: false }),
@@ -115,7 +115,9 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                 </span>
               </div>
               <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-                {latestProbe.error ?? latestProbe.response_body?.slice(0, 400)}
+                {latestProbe.error ?? (latestProbe.content_expired_at
+                  ? "The reply in this receipt was cleared 90 days after it was taken. Re-check the connection for a fresh one."
+                  : latestProbe.response_body?.slice(0, 400))}
               </p>
               <p className="mt-2 text-xs text-ink-faint">
                 This is the saved receipt of one harmless request. Read it before trusting a full run.

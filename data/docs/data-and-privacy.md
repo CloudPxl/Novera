@@ -19,14 +19,10 @@ Every report names the models that graded each scenario, so the document itself 
 Each of our model providers is approved for a kind of data, based on its published terms for the plan we use. Every request is checked before it is sent, and a provider that is not approved for what a request contains is not sent it at all.
 
 - **Groq** processes API data as a data processor and does not retain it by default. It may receive personal data.
-- **Mistral**, on the plan we use, may use requests to improve its models. It receives your agent's replies only with detectable personal data — email addresses, phone numbers, IBANs, card numbers, IP addresses, credentials — replaced by placeholders such as `[EMAIL_1]`.
+- **Mistral**'s plan lets an account switch off the use of requests to improve its models; ours has it switched off. It may receive personal data.
 - **Google** and **OpenRouter** free models receive only material we wrote ourselves, never your data.
 
-A request is treated as containing personal data if anything in it looks like personal data, whatever it was meant to contain. So when your agent's reply leaks an email address, Groq reads the reply as written and Mistral reads it with the address replaced. Both can still see that an address was disclosed, which is what a privacy scenario grades. The run page says on each such scenario which model read placeholders, and the report says that this happened.
-
-Names and street addresses are not detected automatically. A reply that leaks only a name reaches Mistral unchanged.
-
-Messages sent through the support form are a real person's own words, so they go only to Groq, unaltered, and never to a provider approved only for redacted data.
+A request is treated as containing personal data if anything in it looks like personal data — an email address, a phone number, an IBAN, a card number, an IP address, a credential — whatever it was meant to contain. A provider approved only for redacted data would receive such a request with those replaced by placeholders such as `[EMAIL_1]`, and the run page and the report would say so; none of the providers we use today is limited that way. Names and street addresses are not detected automatically.
 
 On your own key, these limits do not apply: the provider is your choice, under your agreement with it, and it receives what your run sends.
 
@@ -41,6 +37,12 @@ A run keeps what your agent actually said — each reply, whole conversations an
 Once a day, replies older than the period are removed. What stays until you erase the workspace: the verdict, the reasons for it, the scenario, the checks, and a SHA-256 fingerprint of the reply taken when it was graded — so a copy you kept elsewhere can still be shown to be the one that was graded. Reports never contained your agent's replies, so no report changes. A removed reply cannot be diagnosed; retest the scenario to get a fresh one.
 
 Shortening the period removes older replies at the next daily pass, and that cannot be undone.
+
+## Support messages and connection checks
+
+A message sent through the support form or a trial application is erased 90 days after the last thing that happened in that conversation — the message, a drafted reply, its approval or its sending — together with every reply drafted for it. What remains is a record that an erasure happened, with no content and nothing that identifies the sender. You can ask for erasure sooner at any time.
+
+When Novera checks that your agent answers, it keeps a receipt of that one request. After 90 days the agent's reply in the receipt is emptied; when the check happened, the status code and how long it took are kept.
 
 Sealed reports also leave out anything shaped like personal data that a grading model quoted in its reasons: an email address in a finding is shown as a placeholder such as `[EMAIL_1]`, and the report says when that happened.
 

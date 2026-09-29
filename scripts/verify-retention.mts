@@ -112,6 +112,39 @@ try {
   const { rows: job } = await sql.query("select schedule, active from cron.job where jobname = 'novera-raw-evidence-expiry'");
   report(job.length === 1 && job[0].active, "the daily pass is scheduled", job[0] ? `${job[0].schedule}` : "missing");
 
+  // --- support messages and probe receipts: 90 days (0038) ---------------------------
+  const tag = `verify-retention-${Date.now()}`;
+  const { data: oldReq } = await db.from("inbound_requests").insert({ kind: "support", email: `${tag}-old@novera.invalid`, message: "old", created_at: days(100) }).select("id").single();
+  await db.from("reply_drafts").insert({ request_id: oldReq!.id, body: "old draft", created_at: days(99) });
+  const { data: liveReq } = await db.from("inbound_requests").insert({ kind: "support", email: `${tag}-live@novera.invalid`, message: "old but answered lately", created_at: days(100) }).select("id").single();
+  await db.from("reply_drafts").insert({ request_id: liveReq!.id, body: "recent draft", created_at: days(10) });
+  const { data: agentA } = await db.from("agents").select("id").eq("workspace_id", a.ws).single();
+  const { data: probes } = await db.from("probes").insert([
+    { workspace_id: a.ws, agent_id: agentA!.id, request: { message: "hi" }, status_code: 200, response_body: "old reply jan@example.com", response_shape: { paths: [] }, latency_ms: 120, created_at: days(95) },
+    { workspace_id: a.ws, agent_id: agentA!.id, request: { message: "hi" }, status_code: 200, response_body: "recent reply", latency_ms: 90, created_at: days(3) },
+  ]).select("id, created_at").order("created_at");
+
+  const { error: probeDirect } = await db.from("probes").update({ response_body: null }).eq("id", probes![0].id);
+  report(!!probeDirect, "a probe receipt cannot be emptied directly", probeDirect?.message.slice(0, 60) ?? "SUCCEEDED");
+
+  const { rows: [inbound] } = await sql.query("select expire_inbound_and_probes() as c");
+  report(inbound.c.requests >= 1 && inbound.c.probes >= 1, "the 90-day pass runs", JSON.stringify(inbound.c));
+  const { data: gone } = await db.from("inbound_requests").select("id").eq("id", oldReq!.id);
+  const { data: goneDrafts } = await db.from("reply_drafts").select("id").eq("request_id", oldReq!.id);
+  report((gone ?? []).length === 0 && (goneDrafts ?? []).length === 0, "a conversation idle for 90 days is erased with its drafts");
+  const { data: logRow } = await db.from("inbound_erasure_log").select("reason, drafts_removed").eq("request_id", oldReq!.id).single();
+  report(logRow?.reason === "retention" && logRow.drafts_removed === 1, "and the erasure is logged as retention, not as a request", JSON.stringify(logRow));
+  const { data: kept } = await db.from("inbound_requests").select("id").eq("id", liveReq!.id);
+  report((kept ?? []).length === 1, "an old request answered within 90 days is kept");
+  const { data: probesAfter } = await db.from("probes").select("id, response_body, response_shape, status_code, latency_ms, content_expired_at").in("id", probes!.map((x) => x.id)).order("created_at");
+  report(probesAfter![0].response_body === null && probesAfter![0].response_shape === null && !!probesAfter![0].content_expired_at
+    && probesAfter![0].status_code === 200 && probesAfter![0].latency_ms === 120,
+    "a 95-day-old probe loses its reply and keeps when, the status and the latency");
+  report(probesAfter![1].response_body === "recent reply" && !probesAfter![1].content_expired_at, "a recent probe is untouched");
+  const { rows: job2 } = await sql.query("select schedule, active from cron.job where jobname = 'novera-inbound-probe-expiry'");
+  report(job2.length === 1 && job2[0].active, "the 90-day pass is scheduled", job2[0]?.schedule ?? "missing");
+  await sql.query("select erase_inbound_request($1)", [liveReq!.id]);
+
   const { error: eraseErr } = await db.rpc("erase_workspace", { target: a.ws });
   const { count } = await db.from("run_cases").select("*", { count: "exact", head: true }).eq("workspace_id", a.ws);
   report(!eraseErr && count === 0, "erasure still removes everything, expired or not", eraseErr?.message ?? `${count} left`);

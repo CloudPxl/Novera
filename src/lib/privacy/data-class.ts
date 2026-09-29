@@ -11,7 +11,8 @@ import { redact } from "../redact/pii.ts";
  *   groq        processes API data as a processor under a DPA; no inference retention
  *               by default                                   → identifiable customer data
  *   mistral     free plan: inputs may be used for training unless opted out in the
- *               admin console, which we have not verified    → redacted customer data
+ *               admin console. Opted out by the account owner on 2026-09-29 ("Anonymous
+ *               improvement data" off); raised from redacted    → identifiable customer data
  *   google      free tier: "Do not submit sensitive, confidential, or personal
  *               information to the Unpaid Services"          → synthetic only
  *   openrouter  free endpoints may log or train on prompts, per upstream → synthetic only
@@ -40,7 +41,7 @@ export const DATA_CLASSES = [
 export type DataClass = (typeof DATA_CLASSES)[number];
 
 /** Bump when a ceiling or the classification rule changes. */
-export const DATA_POLICY_VERSION = 1;
+export const DATA_POLICY_VERSION = 2;
 
 const rank = (c: DataClass) => DATA_CLASSES.indexOf(c);
 export const higher = (a: DataClass, b: DataClass): DataClass => (rank(a) >= rank(b) ? a : b);
@@ -48,7 +49,7 @@ export const allows = (ceiling: DataClass, data: DataClass) => rank(data) <= ran
 
 export const CONNECTION_CEILINGS: Readonly<Record<string, DataClass>> = {
   groq: "identifiable_customer",
-  mistral: "redacted_customer",
+  mistral: "identifiable_customer",
   google: "synthetic",
   openrouter: "synthetic",
   openai: "identifiable_customer",
@@ -56,8 +57,9 @@ export const CONNECTION_CEILINGS: Readonly<Record<string, DataClass>> = {
 };
 
 /** The most sensitive class a connection may receive. An unknown one of ours: public only. */
-export function ceilingFor(connection: { name: string; owner?: "novera" | "customer" }): DataClass {
+export function ceilingFor(connection: { name: string; owner?: "novera" | "customer"; ceiling?: DataClass }): DataClass {
   if (connection.owner === "customer") return "special_category";
+  if (connection.ceiling) return connection.ceiling;
   return CONNECTION_CEILINGS[connection.name] ?? "public";
 }
 

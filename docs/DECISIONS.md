@@ -2419,3 +2419,19 @@ fixture label and 14.8 s; the dated workspace erased after. There is now one run
 
 The Playwright MCP opened a visible window per context on the user's screen and timed
 out on long walks; UI walks now run as a headless script against the installed Chrome.
+
+## 2026-09-29 — The user's retention and provider decisions, applied
+
+Three decisions by the user. (1) Raw evidence stays at 180 days by default — unchanged.
+(2) Support messages, trial applications and probe receipts: 90 days (0038). A
+conversation is erased through 0010's own path 90 days after its last activity — the
+message, a draft, an approval or a send, so a thread still being answered is never cut
+mid-way — and the erasure log now says `retention` rather than `request`. A probe receipt
+keeps when, the status and the latency; its body, headers and shape are emptied under the
+retention exception of 0037, extended to `probes` with the same rule. Daily at 03:27 UTC.
+Nothing real was in reach when it went live (inbox empty, oldest probe 10 days). The
+public forms now say it at the point of collection (GDPR Art. 13). (3) The account owner
+switched off "Anonymous improvement data" in Mistral's console, so Mistral's ceiling is
+raised to identifiable data (data policy 2). The redaction path stays, for any future
+provider approved only for redacted data; `Connection.ceiling` lets one be declared, and
+the tests exercise it through one. `verify:retention` 23 checks; `verify:db` green.

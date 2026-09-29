@@ -56,7 +56,7 @@ export function InboundForm({
 
   return (
     <form action={submit} className="mt-8 space-y-5">
-      <Field label="Email address" htmlFor="email" hint="So we can reply. Nothing else is done with it.">
+      <Field label="Email address" htmlFor="email" hint="So we can reply. Nothing else is done with it, and your message is erased 90 days after the conversation last moved.">
         <input
           id="email"
           name="email"

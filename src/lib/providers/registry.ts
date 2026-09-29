@@ -20,6 +20,9 @@ export interface Connection {
    * Absent means ours — the stricter reading.
    */
   owner?: "novera" | "customer";
+  /** Overrides the table in `data-class.ts` for this connection; for a provider added
+   *  under stricter terms than its name's entry, and for tests. */
+  ceiling?: import("../privacy/data-class.ts").DataClass;
 }
 
 /**

@@ -15,6 +15,7 @@ import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts
 import { explainKeyFailure } from "@/lib/providers/key-failure.ts";
 import { REVIEW_NOTE_MIN, REVIEW_NOTE_MAX } from "@/lib/evidence/reviews.ts";
 import { startRun } from "./start-run.ts";
+import { assertPublicUrl, PrivateAddressError } from "@/lib/net/public-url.ts";
 import { diagnoseRunCase } from "./propose.ts";
 import { httpVerificationConnector } from "../evidence/connectors/http.ts";
 import { connectionFor } from "@/lib/providers/workspace-connections.ts";
@@ -46,10 +47,9 @@ export async function connectAgent(_prev: FormState, form: FormData): Promise<Fo
   if (!name) return { error: "Give the agent a name." };
   if (!url) return { error: "Enter the agent's endpoint URL." };
   try {
-    const parsed = new URL(url);
-    if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
-  } catch {
-    return { error: "That endpoint URL is not valid." };
+    await assertPublicUrl(url);
+  } catch (e) {
+    return { error: e instanceof PrivateAddressError ? e.message : "That endpoint URL is not valid." };
   }
   if (!responsePath) return { error: "Tell us where the reply text sits in the response." };
   if (!attested) {
@@ -753,6 +753,11 @@ export async function saveVerificationEndpoint(_prev: FormState, form: FormData)
   }
   if (parsed.protocol !== "https:" && parsed.hostname !== "localhost") {
     return { error: "Use https. A read-back travels over the public internet and may carry a credential." };
+  }
+  try {
+    await assertPublicUrl(url);
+  } catch (e) {
+    return { error: e instanceof PrivateAddressError ? e.message : "That is not a valid URL." };
   }
   if (credential && !authHeaderName) {
     return { error: "Name the header the credential goes in." };

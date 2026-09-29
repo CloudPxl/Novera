@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { fillTemplate, readPath } from "../src/lib/agents/template.ts";
 import { httpAgent } from "../src/lib/agents/http.ts";
 import type { HttpAgentConfig } from "../src/lib/agents/types.ts";
+import { setResolverForTests } from "../src/lib/net/public-url.ts";
+
+// Reserved `.example` hosts never resolve; the address check sees them as a public host.
+setResolverForTests(async () => ["93.184.216.34"]);
 
 test("a policy containing quotes and newlines cannot break the request body", () => {
   const nasty = 'Refunds: say "no" unless\nthe account is verified. Path: C:\\data';

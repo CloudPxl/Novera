@@ -1,7 +1,8 @@
 import type { AgentAdapter, AgentResult } from "../agents/types.ts";
 import { extractJsonObject } from "../judge/parse.ts";
 import { SIMULATOR_SYSTEM, parseSimulatorReply, simulatorPrompt, type Persona } from "../simulate/persona.ts";
-import type { RoutedChat } from "../router/execute.ts";
+import { withDeadline, type RoutedChat } from "../router/execute.ts";
+import { AGENT_TIMEOUT_MAX_MS } from "../agents/http.ts";
 import { gradeCase } from "../judge/consensus.ts";
 import { applyEffectRule } from "../judge/effect.ts";
 import { runChecks, describeFailures } from "../judge/checks.ts";
@@ -60,6 +61,33 @@ export interface RunSummary {
  * There is nothing to grade, and asking a judge to grade an absence is how a broken
  * integration turns into a plausible-looking verdict.
  */
+/**
+ * Time kept back, after the agent's reply, for the read-back and the graders. Model
+ * calls are bounded by the case's hard stop; this makes sure some of it is left.
+ */
+export const GRADING_RESERVE_MS = 10_000;
+
+/**
+ * How long past the slice's deadline a case that started before it may still run. The
+ * deadline is 42 s into a 60 s function, so this leaves a few seconds to save the case
+ * and, on the last slice, seal the report.
+ */
+export const CASE_GRACE_MS = 13_000;
+
+/** Assumed for an agent whose pace this slice has not yet seen. */
+const UNSEEN_AGENT_MS = 6_000;
+
+/**
+ * Time a case needs before its hard stop to be worth starting: its turns at twice the
+ * slowest reply seen so far, plus grading. Starting a case that cannot finish would
+ * send the agent a message whose answer we then stop waiting for.
+ */
+export function caseNeedsMs(testCase: SuiteCase, slowestAgentMs: number): number {
+  const perTurn = Math.min(AGENT_TIMEOUT_MAX_MS, Math.max(UNSEEN_AGENT_MS, 2 * slowestAgentMs));
+  const turns = 1 + (testCase.earlier_turns?.length ?? 0) + (testCase.persona?.max_turns ?? 0);
+  return perTurn * turns + GRADING_RESERVE_MS;
+}
+
 export async function executeCase(args: {
   testCase: SuiteCase;
   agent: AgentAdapter;
@@ -78,8 +106,17 @@ export async function executeCase(args: {
    * the same connections, so the same funding — on its fast `draft` route.
    */
   simulator?: RoutedChat;
+  /**
+   * The moment (epoch ms) by which this case must be finished — a little before the
+   * platform kills the function. The agent must have answered `GRADING_RESERVE_MS`
+   * before it, and every model call is bounded by it. Undefined outside a sliced run.
+   */
+  hardStop?: number;
 }): Promise<CaseOutcome> {
-  const { testCase, agent, policy, judge, verifier, agentIsProduction, simulator } = args;
+  const { testCase, agent, policy, verifier, agentIsProduction, hardStop } = args;
+  const judge = hardStop === undefined ? args.judge : withDeadline(args.judge, hardStop);
+  const simulator = args.simulator && hardStop !== undefined ? withDeadline(args.simulator, hardStop) : args.simulator;
+  const agentDeadline = hardStop === undefined ? undefined : hardStop - GRADING_RESERVE_MS;
 
   // Nothing irreversible against a live agent by accident. The default is the cautious
   // one: an agent is production unless someone has said otherwise, so a destructive
@@ -218,6 +255,7 @@ export async function executeCase(args: {
     const result = await agent.send({
       input: message,
       policy,
+      ...(agentDeadline !== undefined ? { deadline: agentDeadline } : {}),
       ...(testCase.context ? { context: testCase.context } : {}),
       ...(isConversation ? { history: [...history], conversationId } : {}),
     });
@@ -486,6 +524,14 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   let consecutiveQuotaFailures = 0;
   let quotaExhausted = false;
 
+  // The last moment a case may still be running, and what this slice has learned about
+  // how long the agent takes. A slice always starts at least one case, so a run whose
+  // single case needs more than a slice still moves; after that, a case starts only if
+  // it can finish.
+  const hardStop = deadline === undefined ? undefined : deadline + CASE_GRACE_MS;
+  let slowestAgentMs = 0;
+  let startedThisSlice = 0;
+
   async function worker(): Promise<void> {
     while (true) {
       const index = cursor++;
@@ -506,6 +552,12 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         return;
       }
 
+      if (hardStop !== undefined && startedThisSlice > 0 && hardStop - Date.now() < caseNeedsMs(testCase, slowestAgentMs)) {
+        ranOutOfTime = true;
+        return;
+      }
+      startedThisSlice++;
+
       records[index] = {
         runId,
         caseId: testCase.id,
@@ -519,8 +571,10 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
           testCase, agent, policy, judge,
           verifier: args.verifier,
           agentIsProduction: args.agentIsProduction,
+          hardStop,
         })),
       };
+      slowestAgentMs = Math.max(slowestAgentMs, records[index].latencyMs ?? 0);
       await store.saveCase(records[index]);
 
       if (everyJudgeRateLimited(records[index])) {

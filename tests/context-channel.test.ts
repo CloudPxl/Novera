@@ -6,6 +6,10 @@ import { executeCase } from "../src/lib/runner/execute.ts";
 import type { HttpAgentConfig } from "../src/lib/agents/types.ts";
 import type { RoutedChat } from "../src/lib/router/execute.ts";
 import type { SuiteCase } from "../src/lib/runner/types.ts";
+import { setResolverForTests } from "../src/lib/net/public-url.ts";
+
+// Reserved `.example` hosts never resolve; the address check sees them as a public host.
+setResolverForTests(async () => ["93.184.216.34"]);
 
 /**
  * The metadata channel.

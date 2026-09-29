@@ -1,5 +1,6 @@
 import { runChecks, describeFailures, type DeterministicCheck } from "../../judge/checks.ts";
 import { redactCredentials } from "../../providers/types.ts";
+import { assertPublicUrl } from "../../net/public-url.ts";
 import type {
   ConnectorMode, ValidationResult, VerificationConnector, VerificationInput, VerificationObservation,
 } from "./types.ts";
@@ -52,11 +53,23 @@ export function httpVerificationConnector(
     const headers: Record<string, string> = { accept: "application/json, text/plain;q=0.9", ...config.headers };
     if (secret && config.authHeaderName) headers[config.authHeaderName] = secret;
 
+    try {
+      await assertPublicUrl(url.toString());
+    } catch (error) {
+      return { ok: false, why: `Not called: ${error instanceof Error ? error.message : String(error)}` };
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), config.timeoutMs ?? 10_000);
     try {
-      const response = await fetch(url, { method: "GET", headers, signal: controller.signal });
+      // Never followed: a redirect would carry the read-back — and its credential —
+      // outside the endpoint the customer configured, which this connector promises not
+      // to leave.
+      const response = await fetch(url, { method: "GET", headers, signal: controller.signal, redirect: "manual" });
       const text = await response.text();
+      if (response.status >= 300 && response.status < 400) {
+        return { ok: false, why: `The verification endpoint answered ${response.status} (a redirect), and redirects are not followed.` };
+      }
       if (!response.ok) {
         return { ok: false, why: `The verification endpoint answered ${response.status}.` };
       }

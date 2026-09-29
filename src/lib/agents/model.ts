@@ -1,6 +1,7 @@
 import type { AgentAdapter, AgentInvocation, AgentResult, ModelAgentConfig } from "./types.ts";
 import { PROBE_INPUT } from "./types.ts";
-import type { Provider } from "../providers/types.ts";
+import { ProviderError, type Provider } from "../providers/types.ts";
+import { AGENT_TIMEOUT_MAX_MS } from "./http.ts";
 
 /**
  * Runs a system prompt directly against a model, for customers whose "agent" is a
@@ -17,8 +18,17 @@ export function modelAgent(
     policy: string,
     context?: Record<string, string>,
     history?: AgentInvocation["history"],
+    deadline?: number,
   ): Promise<AgentResult> {
     const started = Date.now();
+    // The same bound an HTTP agent has: its own 30 s at most, and never past the slice.
+    const wait = deadline === undefined ? AGENT_TIMEOUT_MAX_MS : Math.min(AGENT_TIMEOUT_MAX_MS, deadline - started);
+    if (wait < 2_000) {
+      return {
+        ok: false, responseText: null, toolActivity: null, latencyMs: 0, timedOut: true, cutByNovera: true,
+        error: "Not sent: this run's time slice was ending. This says nothing about the agent; retest the scenario.",
+      };
+    }
     const base = policy
       ? `${config.systemPrompt}\n\n## Approved policy\n${policy}`
       : config.systemPrompt;
@@ -43,6 +53,7 @@ export function modelAgent(
             { role: "user" as const, content: input },
           ],
           maxTokens: 2000,
+          timeoutMs: wait,
         },
         apiKey,
       );
@@ -65,10 +76,16 @@ export function modelAgent(
         raw: response.raw,
       };
     } catch (error) {
+      const timedOut = error instanceof ProviderError && error.timedOut;
+      const cut = timedOut && wait < AGENT_TIMEOUT_MAX_MS;
       return {
         ok: false, responseText: null, toolActivity: null,
         latencyMs: Date.now() - started,
-        error: error instanceof Error ? error.message : String(error),
+        ...(timedOut ? { timedOut: true } : {}),
+        ...(cut ? { cutByNovera: true } : {}),
+        error: cut
+          ? `Novera stopped waiting after ${Math.round(wait / 1000)} s because this run's time slice was ending. This says nothing about the agent; retest the scenario.`
+          : error instanceof Error ? error.message : String(error),
       };
     }
   }
@@ -76,7 +93,7 @@ export function modelAgent(
   return {
     probe: () => call(PROBE_INPUT, ""),
     send: (invocation: AgentInvocation) =>
-      call(invocation.input, invocation.policy, invocation.context, invocation.history),
+      call(invocation.input, invocation.policy, invocation.context, invocation.history, invocation.deadline),
     acceptsContext: () => true,
     // A prompt-based agent is called with the whole conversation every time.
     acceptsConversation: () => true,

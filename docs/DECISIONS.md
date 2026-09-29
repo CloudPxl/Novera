@@ -2541,3 +2541,35 @@ Added: `verify:models` now says when a vendor has a key but no model in any rout
 prints the calibration command. Next, when the user adds a funded key: verify:models →
 calibrate eu-support-v3 on one or two of its models → place by false passes → re-run
 calibrate on the new order.
+
+## 2026-09-29 — Phase 12.1: deadlines everywhere, and only public addresses
+
+From the external review's P0 items plus three defects it did not see, all measured:
+
+- **Provider calls had no timeout.** A hung grader could carry a slice past Vercel's 60 s
+  and lose the case. Every provider now aborts at 20 s, or at what is left of the case's
+  hard stop, and says it timed out (`ProviderError.timedOut`, Retry-After kept for 12.2).
+  The router takes a `deadline`, gives each candidate at most what is left, and asks
+  none once under 1.5 s remain — recorded as "not asked: this run's time slice was
+  ending", so a case says its graders ran out of time rather than that they failed.
+- **The agent's default timeout was 60 s**, longer than the 42 s slice. It is now 30 s at
+  most, and a case starts only if the slice can still finish it: its turns at twice the
+  slowest reply seen in this slice, plus 10 s of grading, before a hard stop 13 s past
+  the slice deadline. A slice always starts one case, so a run always moves. A wait cut
+  by our budget is labelled as ours ("this says nothing about the agent") — never as
+  the agent's timeout. Measured by the new `verify:slices`: a 10-second agent, 12
+  scenarios, two slices of 33.4 s and 12.2 s, every scenario recorded, none cut.
+- **No private-address guard (SSRF).** An agent or read-back URL could point at loopback,
+  a private range or the cloud metadata address, and the probe stores what answered.
+  `src/lib/net/public-url.ts` resolves the host and refuses any non-public address
+  (IPv4, IPv6, and v4 embedded in v6), when the URL is saved and again on every call,
+  since DNS can change. Loopback is allowed outside production only. Real DNS:
+  `localtest.me` (a public name for 127.0.0.1) refused; nover.space, httpbin allowed.
+- **The read-back followed redirects**, which broke its own promise not to leave the
+  configured origin. Agent and read-back requests now use `redirect: "manual"`; a 3xx is
+  reported, not followed.
+- **A run could resume days later** and seal a report mixing replies from different days.
+  0040 `abort_stalled_runs()`, daily at 03:37 UTC: no scenario graded for 24 h → aborted
+  with the reason, graded cases kept, no report. None were stalled when it shipped.
+
+486 tests; verify effect, channel, conversation, api, byok, schedules, slices green.

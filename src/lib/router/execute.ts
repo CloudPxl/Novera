@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatResponse } from "../providers/types.ts";
+import { PROVIDER_TIMEOUT_MS, type ChatRequest, type ChatResponse } from "../providers/types.ts";
 import type { Connection } from "../providers/registry.ts";
 import type { Candidate, RouteTable, Task } from "./routes.ts";
 import { allows, ceilingFor, classify, describeClass, type DataClass } from "../privacy/data-class.ts";
@@ -65,6 +65,21 @@ export interface RouteRequestOptions {
    * said what it sends is treated as sending the most a provider of ours may receive.
    */
   data?: DataClass;
+  /**
+   * The moment (epoch ms) past which no answer can be used: the end of a run's time
+   * slice. Each candidate is given at most what is left, and none is asked once too
+   * little is — recorded as such, so the case says its graders ran out of time rather
+   * than that they failed.
+   */
+  deadline?: number;
+}
+
+/** A model call is not started with less time than this left before the deadline. */
+const MIN_CALL_MS = 1_500;
+
+/** The same routed chat, with every request bounded by one deadline unless it sets its own. */
+export function withDeadline(chat: RoutedChat, deadline: number): RoutedChat {
+  return (task, request, options) => chat(task, request, { ...options, deadline: options?.deadline ?? deadline });
 }
 
 export type RoutedChat = (
@@ -137,10 +152,28 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
       const outgoing = redacted ? classified.redacted!.request : request;
       const marks = redacted ? { redacted: true as const } : {};
 
+      let timeoutMs = request.timeoutMs ?? PROVIDER_TIMEOUT_MS;
+      if (options?.deadline !== undefined) {
+        const left = options.deadline - Date.now();
+        if (left < MIN_CALL_MS) {
+          const attempt: RoutedAttempt = {
+            connection: candidate.connection,
+            model: candidate.model,
+            ok: false,
+            error: "not asked: this run's time slice was ending",
+            ms: 0,
+          };
+          attempts.push(attempt);
+          onFallback?.(attempt);
+          break;
+        }
+        timeoutMs = Math.min(timeoutMs, left);
+      }
+
       const started = Date.now();
       try {
         const response = await connection.provider.chat(
-          { ...outgoing, model: candidate.model },
+          { ...outgoing, model: candidate.model, timeoutMs },
           connection.apiKey,
         );
         attempts.push({ connection: candidate.connection, model: candidate.model, ok: true, ms: Date.now() - started, ...marks });

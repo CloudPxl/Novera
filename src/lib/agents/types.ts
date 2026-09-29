@@ -16,6 +16,11 @@ export interface AgentInvocation {
   history?: Array<{ role: "customer" | "agent"; content: string }>;
   /** Stable across one conversation's turns, for an agent that keeps its own state. */
   conversationId?: string;
+  /**
+   * The moment (epoch ms) by which the reply must have arrived for this case to still be
+   * graded inside the current slice. The agent's own timeout applies when it is sooner.
+   */
+  deadline?: number;
 }
 
 export interface AgentResult {
@@ -29,6 +34,13 @@ export interface AgentResult {
   /** Persisted as evidence. Never rendered into a client report. */
   raw?: unknown;
   error?: string;
+  /** No reply arrived in time. */
+  timedOut?: boolean;
+  /**
+   * The wait was cut short by the run's own time budget, not by the agent's timeout —
+   * a statement about Novera's slice, never a finding about the agent.
+   */
+  cutByNovera?: boolean;
 }
 
 export interface AgentAdapter {

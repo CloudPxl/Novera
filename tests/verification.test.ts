@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { httpVerificationConnector } from "../src/lib/evidence/connectors/http.ts";
 import { applyEffectRule } from "../src/lib/judge/effect.ts";
 import type { VerificationObservation } from "../src/lib/evidence/connectors/types.ts";
+import { setResolverForTests } from "../src/lib/net/public-url.ts";
+
+// Reserved `.example` hosts never resolve; the address check sees them as a public host.
+setResolverForTests(async () => ["93.184.216.34"]);
 
 const config = { kind: "http_read" as const, url: "https://shop.example.com/api/" };
 const expect_ = [{ type: "must_contain" as const, value: "refunded" }];

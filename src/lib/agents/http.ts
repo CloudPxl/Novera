@@ -2,6 +2,7 @@ import type { AgentAdapter, AgentInvocation, AgentResult, HttpAgentConfig } from
 import { PROBE_INPUT } from "./types.ts";
 import { fillTemplate, readPath } from "./template.ts";
 import { suggestPathHint } from "./discover.ts";
+import { assertPublicUrl } from "../net/public-url.ts";
 
 /**
  * Calls a customer's deployed agent over HTTP.
@@ -30,6 +31,20 @@ function chatHistory(history: AgentInvocation["history"]): Array<{ role: "user" 
   return (history ?? []).map((t) => ({ role: t.role === "customer" ? "user" : "assistant", content: t.content }));
 }
 
+/**
+ * How long an agent has to answer one message: its configured timeout, never more than
+ * 30 s. A run executes in slices inside a 60 s function, so a longer wait is not a
+ * patient setting — it is a case the platform kills halfway through.
+ */
+export const AGENT_TIMEOUT_MAX_MS = 30_000;
+/** Below this, a message is not sent at all: the answer could not be waited for. */
+const MIN_AGENT_WAIT_MS = 2_000;
+
+export function agentTimeoutMs(config: { timeoutMs?: number }): number {
+  const own = config.timeoutMs && config.timeoutMs > 0 ? config.timeoutMs : AGENT_TIMEOUT_MAX_MS;
+  return Math.min(own, AGENT_TIMEOUT_MAX_MS);
+}
+
 export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAdapter {
   async function call(
     input: string,
@@ -37,6 +52,7 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
     context?: Record<string, string>,
     history?: AgentInvocation["history"],
     conversationId?: string,
+    deadline?: number,
   ): Promise<AgentResult> {
     const started = Date.now();
     const headers: Record<string, string> = { "content-type": "application/json", ...config.headers };
@@ -55,15 +71,48 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
       conversation_id: conversationId ?? crypto.randomUUID(),
     }, { history: messages });
 
+    // Checked on every call, not only when the agent was connected: what a hostname
+    // resolves to can change afterwards.
+    try {
+      await assertPublicUrl(config.url);
+    } catch (error) {
+      return {
+        ok: false, responseText: null, toolActivity: null, latencyMs: 0,
+        error: `Not sent: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+
+    const own = agentTimeoutMs(config);
+    const wait = deadline === undefined ? own : Math.min(own, deadline - Date.now());
+    if (wait < MIN_AGENT_WAIT_MS) {
+      return {
+        ok: false, responseText: null, toolActivity: null, latencyMs: 0, timedOut: true, cutByNovera: true,
+        error: "Not sent: this run's time slice was ending. This says nothing about the agent; retest the scenario.",
+      };
+    }
+
     let response: Response;
     try {
       response = await fetch(config.url, {
         method: config.method ?? "POST",
         headers,
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(config.timeoutMs ?? 60_000),
+        // A redirect is answered, never followed: following it could carry the request
+        // to an address the check above never saw.
+        redirect: "manual",
+        signal: AbortSignal.timeout(wait),
       });
     } catch (error) {
+      if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+        const cut = wait < own;
+        return {
+          ok: false, responseText: null, toolActivity: null, latencyMs: Date.now() - started, timedOut: true,
+          ...(cut ? { cutByNovera: true } : {}),
+          error: cut
+            ? `Novera stopped waiting after ${Math.round(wait / 1000)} s because this run's time slice was ending. This says nothing about the agent; retest the scenario.`
+            : `The agent did not answer within ${Math.round(own / 1000)} s.`,
+        };
+      }
       return {
         ok: false,
         responseText: null,
@@ -128,7 +177,7 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
   return {
     probe: () => call(PROBE_INPUT, ""),
     send: (invocation: AgentInvocation) =>
-      call(invocation.input, invocation.policy, invocation.context, invocation.history, invocation.conversationId),
+      call(invocation.input, invocation.policy, invocation.context, invocation.history, invocation.conversationId, invocation.deadline),
     acceptsContext: () => templateCarries(config.bodyTemplate, "{{context}}"),
     acceptsConversation: () =>
       templateCarries(config.bodyTemplate, "{{history}}") || templateCarries(config.bodyTemplate, "{{conversation_id}}"),

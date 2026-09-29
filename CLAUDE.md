@@ -62,6 +62,7 @@ someone with the service role, not merely someone using the application.
 | A schedule starts a due run once however many ticks race, runs a pinned suite at a fixed UTC time, pauses with its reason when a run cannot start, and is never deleted — the runs it started name it; who started any run cannot be rewritten | 0036, `src/lib/schedules/`, `verify:schedules` |
 | A model provider receives only the data class its published terms allow: support messages only where identifiable data is allowed, customer content redacted where only that is, nothing of the customer's to free tiers that train on it; where a grader read placeholders, the vote, the case and the report say so | `src/lib/privacy/data-class.ts` in the router, `tests/privacy.test.ts` |
 | An agent's raw replies are kept only for the workspace's retention period (30–365 days, default 180); then the daily pass empties them and nothing else, leaving the verdict and a SHA-256 of the reply; a sealed report shows quoted personal data only as placeholders; a support conversation is erased 90 days after it last moved, and a probe receipt's reply emptied after 90 days | 0037 `expire_raw_evidence()`, 0038 `expire_inbound_and_probes()`, `verify:retention`; `buildReport` scrub |
+| Novera calls only public addresses — an agent or read-back URL resolving to a private, loopback or metadata address is refused when saved and on every call, and redirects are reported, not followed; every agent and model call has a deadline inside the slice, and a run idle for 24 hours is stopped, never sealed | `src/lib/net/public-url.ts`, 0040, `verify:slices` |
 | A production failure is stored redacted — the original only as a hash — cannot be edited, and becomes a test only as a draft a person approves, linked to it for good | 0031 |
 | A workspace key grades only on models it was proved to reach, and one it cannot reach refuses the run rather than erroring every case | 0025 + 0026, route built from the key |
 | A person's finding sits beside a verdict and never replaces it; it needs a reason, freezes the verdict it read, and cannot be filed against another workspace's case | 0028 |
@@ -193,7 +194,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 474 unit tests | free |
+| `npm test` | 486 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -204,6 +205,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 | `verify:api` | API keys and `/api/v1`: tenant isolation, identical refusals, revocation, rate limit (needs `npm run dev`) | free |
 | `verify:mcp` | the MCP endpoint, driven by the official MCP client: isolation, tools per scope, refusals before any model call, frozen attribution, transport rules (needs `npm run dev`; `VERIFY_MCP_MODEL=1` also drafts and diagnoses for real) | free · two model calls |
 | `verify:retention` | raw evidence past its period is emptied and nothing else changes; the fingerprint still matches; expiry mode opens nothing else | free |
+| `verify:slices` | a run against a 10-second agent stays inside the 60 s function limit: several slices, every scenario recorded, none cut by our budget (needs `npm run dev`, network) | free |
 | `verify:schedules` | a due schedule starts one run however many ticks race; the clock drives it to the end; skip, pause, frozen fields, RLS, erasure (needs `npm run dev`) | free |
 | `schedules:clock -- install \| status \| remove` | installs the pg_cron job that calls `/api/cron/tick`, secret in Vault; `status` shows its last calls | free |
 | `verify:regressions` | a production failure is stored redacted, append-only, tenant-isolated, and reaches a suite only as a draft naming it | free |

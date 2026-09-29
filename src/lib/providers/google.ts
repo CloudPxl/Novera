@@ -1,4 +1,4 @@
-import { ProviderError, redactCredentials, type ChatRequest, type ChatResponse, type Provider } from "./types.ts";
+import { isTimeout, PROVIDER_TIMEOUT_MS, ProviderError, redactCredentials, retryAfterMs, type ChatRequest, type ChatResponse, type Provider } from "./types.ts";
 
 /**
  * Google Generative Language REST API.
@@ -42,8 +42,12 @@ export const googleProvider: Provider = {
         method: "POST",
         headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(request.timeoutMs ?? PROVIDER_TIMEOUT_MS),
       });
     } catch (error) {
+      if (isTimeout(error)) {
+        throw new ProviderError("google", `no answer within ${Math.round((request.timeoutMs ?? PROVIDER_TIMEOUT_MS) / 1000)} s`, undefined, { timedOut: true });
+      }
       throw new ProviderError("google", error instanceof Error ? error.message : String(error));
     }
 
@@ -52,7 +56,7 @@ export const googleProvider: Provider = {
     if (!response.ok) {
       const detail =
         (payload?.error as { message?: string } | undefined)?.message ?? response.statusText;
-      throw new ProviderError("google", redactCredentials(detail, apiKey), response.status);
+      throw new ProviderError("google", redactCredentials(detail, apiKey), response.status, { retryAfterMs: retryAfterMs(response.headers.get("retry-after")) });
     }
 
     const candidates = (payload?.candidates ?? []) as Array<{

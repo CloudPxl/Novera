@@ -1,4 +1,4 @@
-import { ProviderError, redactCredentials, type ChatRequest, type ChatResponse } from "./types.ts";
+import { isTimeout, PROVIDER_TIMEOUT_MS, ProviderError, redactCredentials, retryAfterMs, type ChatRequest, type ChatResponse } from "./types.ts";
 
 /**
  * Any /v1/chat/completions endpoint. One adapter covers OpenAI itself and the
@@ -65,8 +65,12 @@ export function openAiCompatibleProvider(baseUrl: string): {
             max_tokens: request.maxTokens ?? 4000,
             ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
           }),
+          signal: AbortSignal.timeout(request.timeoutMs ?? PROVIDER_TIMEOUT_MS),
         });
       } catch (error) {
+        if (isTimeout(error)) {
+          throw new ProviderError("openai-compatible", `no answer within ${Math.round((request.timeoutMs ?? PROVIDER_TIMEOUT_MS) / 1000)} s`, undefined, { timedOut: true });
+        }
         throw new ProviderError("openai-compatible", error instanceof Error ? error.message : String(error));
       }
 
@@ -77,6 +81,7 @@ export function openAiCompatibleProvider(baseUrl: string): {
           "openai-compatible",
           redactCredentials(describeError(payload, response.statusText), apiKey),
           response.status,
+          { retryAfterMs: retryAfterMs(response.headers.get("retry-after")) },
         );
       }
 

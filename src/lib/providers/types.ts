@@ -26,6 +26,21 @@ export interface ChatRequest {
    * expose the control act on it; the rest ignore it.
    */
   reasoning?: "off";
+  /**
+   * How long to wait for the answer. The router lowers it to what is left of a run's
+   * time slice; without it, `PROVIDER_TIMEOUT_MS`. A provider that hangs must not
+   * take the function past the platform's hard limit with it.
+   */
+  timeoutMs?: number;
+}
+
+/** No single model call is waited on longer than this. */
+export const PROVIDER_TIMEOUT_MS = 20_000;
+
+/** Whether an error thrown by fetch (or an SDK built on it) is our own timeout firing. */
+export function isTimeout(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === "TimeoutError" || error.name === "AbortError" || /timed? ?out/i.test(error.message);
 }
 
 export interface ChatResponse {
@@ -68,11 +83,26 @@ export function redactCredentials(text: string, apiKey?: string): string {
 export class ProviderError extends Error {
   provider: string;
   status?: number;
+  /** The call was abandoned because no answer came in time. */
+  timedOut: boolean;
+  /** From a 429's Retry-After header, when the provider sent one. */
+  retryAfterMs?: number;
 
-  constructor(provider: string, message: string, status?: number) {
+  constructor(provider: string, message: string, status?: number, extra: { timedOut?: boolean; retryAfterMs?: number } = {}) {
     super(`${provider}: ${message}`);
     this.name = "ProviderError";
     this.provider = provider;
     this.status = status;
+    this.timedOut = extra.timedOut ?? false;
+    if (extra.retryAfterMs !== undefined) this.retryAfterMs = extra.retryAfterMs;
   }
+}
+
+/** Retry-After as milliseconds: seconds or an HTTP date. Undefined when absent or unreadable. */
+export function retryAfterMs(header: string | null | undefined, now = Date.now()): number | undefined {
+  if (!header) return undefined;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
+  const at = Date.parse(header);
+  return Number.isNaN(at) ? undefined : Math.max(0, at - now);
 }

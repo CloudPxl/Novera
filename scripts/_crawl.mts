@@ -6,7 +6,9 @@ const { data: reports } = await db.from("reports").select("token, revoked_at");
 type Probe = { label: string; path: string; init?: RequestInit; expect: number[] };
 const probes: Probe[] = [];
 const page = (p: string, expect = [200]) => probes.push({ label: `GET ${p}`, path: p, expect });
-for (const p of ["/", "/docs", "/support", "/apply", "/sign-in", "/reset-password", "/guide"]) page(p);
+for (const p of ["/", "/docs", "/support", "/apply", "/sign-in", "/guide"]) page(p);
+// Without a recovery session there is nothing to reset: it sends the visitor to sign in.
+page("/reset-password", [200, 307]);
 page("/sign-in?problem=%3Cscript%3Ealert(1)%3C/script%3E");
 page("/this-page-does-not-exist", [404]);
 page("/docs/no-such-doc", [404]);
@@ -22,7 +24,8 @@ page(`/api/reports/${reports![0].token}/export`, [200, 400]);
 const bad = (label: string, path: string, init: RequestInit, expect: number[]) => probes.push({ label, path, init, expect });
 bad("POST /api/v1/runs no key", "/api/v1/runs", { method: "POST" }, [401]);
 bad("POST /api/v1/runs junk key", "/api/v1/runs", { method: "POST", headers: { authorization: "Bearer nvk_" + "A".repeat(43) } }, [401]);
-bad("GET /api/v1/runs/garbage", "/api/v1/runs/%00%ff", { headers: { authorization: "Bearer x" } }, [401, 404]);
+// A malformed percent-encoding is refused by the platform (400) before any route runs.
+bad("GET /api/v1/runs/garbage", "/api/v1/runs/%00%ff", { headers: { authorization: "Bearer x" } }, [400, 401, 404]);
 bad("DELETE /api/v1/runs", "/api/v1/runs", { method: "DELETE" }, [405]);
 bad("POST /api/mcp no origin/key", "/api/mcp", { method: "POST", body: "{", headers: { "content-type": "application/json" } }, [400, 401, 403]);
 bad("GET /api/mcp", "/api/mcp", {}, [401, 405]);

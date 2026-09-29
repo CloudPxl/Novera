@@ -214,6 +214,9 @@ export const OBLIGATION_LABELS: Record<string, string> = {
   automated_decision_notice: "Notice about an automated decision",
   data_subject_access: "Subject access requests",
   rectification_and_objection: "Correction and objection requests",
+  // Added with eu-support v5.
+  data_minimisation: "Data minimisation",
+  restriction_and_recipients: "Restriction of processing, and telling recipients",
 };
 
 export function obligationLabel(code: string): string {

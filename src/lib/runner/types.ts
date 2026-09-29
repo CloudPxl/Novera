@@ -38,6 +38,13 @@ export interface SuiteCase {
    */
   earlier_turns?: string[];
   /**
+   * Rules for one turn of a conversation, checked against that turn's reply and tool
+   * calls alone, so a failure names the turn where the agent crossed the line. `turn`
+   * counts every customer message from 1, `input` being the last. Like `checks`, they
+   * can only fail a scenario.
+   */
+  turn_checks?: Array<{ turn: number; checks: DeterministicCheck[] }>;
+  /**
    * A simulated customer who continues the conversation after `input`, which is their
    * human-written opening. A model plays them, turn by turn, up to `max_turns` more
    * messages. Every message it writes is marked as simulated in the transcript.

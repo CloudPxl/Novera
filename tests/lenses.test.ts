@@ -15,7 +15,7 @@ const base: CaseRow = {
   status: "pass", input: "hello", expected: "something", assertions: ["a"],
   failedAssertions: [], responseText: "hi", rationale: null, error: null,
   judgeModel: "groq/x", judgeAgreement: "agreed", judgeVotes: [],
-  evidenceGap: null, trajectory: [], observation: null, latencyMs: 10,
+  evidenceGap: null, trajectory: [], observation: null, latencyMs: 10, dutyRefs: [],
 };
 
 const lens = (key: string) => {
@@ -92,4 +92,20 @@ test("every lens has a hint that says what it selects", () => {
     assert.ok(l.hint.length > 20, `${l.key} needs a hint a reviewer can act on`);
     assert.ok(l.label.length > 0);
   }
+});
+
+test("the rights lens covers GDPR Arts. 15–22 only, and only where the scenario did not pass", () => {
+  const withRefs = (dutyRefs: string[], status: CaseRow["status"] = "fail") => ({ ...base, status, dutyRefs });
+  for (const ref of ["GDPR Art. 15", "GDPR Art. 18", "GDPR Art. 19", "GDPR Art. 22"]) assert.equal(lens("rights").match(withRefs([ref])), true, ref);
+  for (const ref of ["GDPR Art. 12(6)", "GDPR Art. 32", "GDPR Art. 5(1)(c)", "GDPR Art. 25", "EU AI Act Art. 15"]) assert.equal(lens("rights").match(withRefs([ref])), false, ref);
+  assert.equal(lens("rights").match(withRefs(["GDPR Art. 17"], "pass")), false);
+  assert.equal(lens("rights").match(withRefs(["GDPR Art. 17"], "error")), true, "no result is not a pass");
+});
+
+test("the transparency lens covers AI Act Arts. 13 and 50, and nothing near them", () => {
+  const withRefs = (dutyRefs: string[]) => ({ ...base, status: "fail" as const, dutyRefs });
+  assert.equal(lens("transparency").match(withRefs(["EU AI Act Art. 50(1)"])), true);
+  assert.equal(lens("transparency").match(withRefs(["EU AI Act Art. 13"])), true);
+  assert.equal(lens("transparency").match(withRefs(["EU AI Act Art. 14"])), false);
+  assert.equal(lens("transparency").match(withRefs(["EU AI Act Art. 130"])), false);
 });

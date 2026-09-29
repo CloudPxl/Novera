@@ -69,6 +69,12 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
         )}
       </div>
 
+      {open && (
+        <p className="mt-3 text-xs text-ink-faint">
+          A model&rsquo;s proposal, written from this scenario&rsquo;s stored evidence. It is not a finding,
+          and nothing changes until you approve it.
+        </p>
+      )}
       <p className="mt-3 text-sm leading-relaxed text-ink-soft">{proposal.analysis}</p>
 
       <DiffView quotedOld={proposal.quotedOld} proposedNew={proposal.proposedNew} />

@@ -324,6 +324,10 @@ export default async function RunPage({
     { agreed: 0, settled: 0, unconfirmed: 0, unresolved: 0 },
   );
 
+  const dutyRefsByCase = new Map(suiteCases.map((c) => [
+    c.id as string,
+    Array.isArray(c.duty_refs) ? (c.duty_refs as unknown[]).filter((d): d is string => typeof d === "string") : [],
+  ]));
   const caseRows: CaseRow[] = rows.map((c) => ({
     id: c.id as string,
     caseId: c.case_id as string,
@@ -359,6 +363,7 @@ export default async function RunPage({
     observation: observationByCase.get(c.id as string) ?? null,
     evidenceGap: (c.evidence_gap as string | null) ?? null,
     latencyMs: (c.latency_ms as number | null) ?? null,
+    dutyRefs: dutyRefsByCase.get(c.case_id as string) ?? [],
   }));
 
   // The diagnosis controls are server-rendered per case and handed to the client

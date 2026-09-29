@@ -66,6 +66,13 @@ function validateChecks(
               else parsed.push({ type: "tool_arguments_exclude", value });
               break;
             }
+            case "tool_arguments_include": {
+              const tool = text("tool");
+              const value = text("value");
+              if (!tool || !value) errors.push(`${at}: \`tool\` and \`value\` must both be non-empty strings.`);
+              else parsed.push({ type: "tool_arguments_include", tool, value });
+              break;
+            }
             case "no_retry_after_failure":
               parsed.push({ type: "no_retry_after_failure" });
               break;
@@ -291,6 +298,35 @@ export function validateSuite(value: unknown): ValidationResult {
       }
     }
 
+    // Rules for one turn of a conversation, checked against that turn's reply and tool
+    // calls alone. Turn numbers count every customer message, `input` being the last.
+    let turnChecks: SuiteCase["turn_checks"];
+    if (c.turn_checks !== undefined) {
+      const list = Array.isArray(c.turn_checks) ? c.turn_checks as Array<Record<string, unknown>> : null;
+      const turns = (earlierTurns?.length ?? 0) + 1;
+      if (!earlierTurns) {
+        errors.push(`${label}: \`turn_checks\` needs \`earlier_turns\` — a single message has one turn, so use \`checks\`.`);
+      } else if (!list || list.length === 0) {
+        errors.push(`${label}: \`turn_checks\` must be a list of { turn, checks }, or left out.`);
+      } else {
+        const parsedTurns: NonNullable<SuiteCase["turn_checks"]> = [];
+        list.forEach((entry, i) => {
+          const turn = entry?.turn;
+          if (typeof turn !== "number" || !Number.isInteger(turn) || turn < 1 || turn > turns) {
+            errors.push(`${label}: turn_checks ${i + 1}: \`turn\` must be a whole number from 1 to ${turns}.`);
+            return;
+          }
+          if (!Array.isArray(entry.checks) || entry.checks.length === 0) {
+            errors.push(`${label}: turn_checks ${i + 1}: \`checks\` must be a non-empty list.`);
+            return;
+          }
+          const checksForTurn = validateChecks(entry.checks, `${label}: turn ${turn}`, errors);
+          if (checksForTurn) parsedTurns.push({ turn, checks: checksForTurn });
+        });
+        if (parsedTurns.length === list.length) turnChecks = parsedTurns;
+      }
+    }
+
     // A simulated customer. Its opening is `input`, written by a person; the model
     // only continues. Refused rather than dropped when malformed, for the same reason
     // as earlier turns.
@@ -378,6 +414,7 @@ export function validateSuite(value: unknown): ValidationResult {
         ...(checks?.length ? { checks } : {}),
         ...(context ? { context } : {}),
         ...(earlierTurns ? { earlier_turns: earlierTurns } : {}),
+        ...(turnChecks ? { turn_checks: turnChecks } : {}),
         ...(persona ? { persona } : {}),
         ...(attack ? { attack } : {}),
         ...(dutyRefs?.length ? { duty_refs: dutyRefs } : {}),

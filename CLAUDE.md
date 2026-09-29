@@ -195,7 +195,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 495 unit tests | free |
+| `npm test` | 500 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -300,9 +300,9 @@ they drive the scripted fixture at `/api/test-agent`.
   provider's legacy key refuses the run with a sentence saying to reconnect it.
 - **`_dmarc` TXT record is not set.** Signup works end to end in production, but the
   Resend key is send-only, so inbox *placement* is unproven.
-- **`eu-support v4` has not had a full calibration sweep.** Its five new scenarios were
-  measured on the four route judges (20 of 20 agreed with the labels); T01–T36 are
-  byte-identical to v3, whose sweep is the current measurement.
+- **`eu-support v5` has not had a full calibration sweep.** Its eight new scenarios
+  were measured on the route judges (no false pass; ministral-8b one false fail); T01–T41
+  are byte-identical to v4 and T01–T36 to v3, whose sweep is the current measurement.
 - **Runs execute in resumable 42-second slices** because Vercel Hobby kills a function at
   60. The deadline is checked before a case starts, never during one; an incomplete run is
   never finished, so no report is published over partial evidence.

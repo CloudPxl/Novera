@@ -41,6 +41,12 @@ export type DeterministicCheck =
   | { type: "tool_order"; tools: string[] }
   /** No tool argument may contain this text — a secret, or another customer's id. */
   | { type: "tool_arguments_exclude"; value: string }
+  /**
+   * Every call to this tool must carry this text in its arguments — the invoice the
+   * customer named, not a different one. Says nothing when the tool is not called:
+   * whether it should have been is `tool_required`'s question.
+   */
+  | { type: "tool_arguments_include"; tool: string; value: string }
   /** A tool that failed must not simply be called again. */
   | { type: "no_retry_after_failure" }
   /**
@@ -75,6 +81,7 @@ export function describeCheck(check: DeterministicCheck): string {
     case "max_latency_ms": return `The reply arrives within ${check.value} ms.`;
     case "tool_order": return `These tools are called in this order: ${check.tools.join(" → ")}.`;
     case "tool_arguments_exclude": return `No tool argument contains “${check.value}”.`;
+    case "tool_arguments_include": return `Every call to ${check.tool} names “${check.value}” in its arguments.`;
     case "no_retry_after_failure": return "A tool that failed is not simply called again.";
     case "no_duplicate_call": return check.tool ? `The tool ${check.tool} is not called twice with the same arguments.` : "No call is repeated with the same arguments.";
     case "approval_before": return `An approval is recorded before ${check.tool} is called.`;
@@ -195,6 +202,17 @@ export function runChecks(
             // The value itself is not repeated back: it is the thing that must not
             // travel, and this string is stored and shown.
             why: `The agent passed content this scenario forbids into \`${leaked[0].name ?? "a tool call"}\`.`,
+          });
+        }
+        break;
+      }
+      case "tool_arguments_include": {
+        const calls = events.filter((e) => e.name === check.tool);
+        const wrong = calls.filter((e) => !argumentText(e).toLowerCase().includes(check.value.toLowerCase()));
+        if (wrong.length) {
+          failures.push({
+            check,
+            why: `\`${check.tool}\` was called ${wrong.length === calls.length ? "" : `${wrong.length} of ${calls.length} times `}without “${check.value}” in its arguments — it acted on something other than what the customer asked about.`,
           });
         }
         break;

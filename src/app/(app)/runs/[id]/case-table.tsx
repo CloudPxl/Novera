@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Badge, ProgressBar, inputClass } from "@/components/ui/primitives.tsx";
 import { gradingNote } from "./grading-note.ts";
 import type { AgentEvent } from "@/lib/agents/trajectory.ts";
@@ -45,6 +46,8 @@ export interface CaseRow {
     latencyMs: number | null;
   } | null;
   latencyMs: number | null;
+  /** The duties the scenario maps to, from the suite — e.g. "GDPR Art. 18". */
+  dutyRefs: string[];
 }
 
 const VERDICTS = [
@@ -87,7 +90,19 @@ export function CaseTable({
   const [verdict, setVerdict] = useState<Verdict>("all");
   const [category, setCategory] = useState("all");
   const [severities, setSeverities] = useState<string[]>([]);
-  const [lens, setLens] = useState<Lens | null>(null);
+  // The lens lives in the address, so a filtered view can be bookmarked, shared with a
+  // colleague, or linked from the review queue. Anything unknown there is ignored.
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const fromUrl = params.get("lens");
+  const [lens, setLensState] = useState<Lens | null>(LENSES.some((l) => l.key === fromUrl) ? (fromUrl as Lens) : null);
+  const setLens = (next: Lens | null) => {
+    setLensState(next);
+    const q = new URLSearchParams(params.toString());
+    if (next) q.set("lens", next); else q.delete("lens");
+    router.replace(q.size ? `${pathname}?${q}` : pathname, { scroll: false });
+  };
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const categories = useMemo(() => {

@@ -330,6 +330,18 @@ export async function executeCase(args: {
     latencyMs: isConversation ? Math.max(slowest, agentResult.latencyMs) : agentResult.latencyMs,
   });
 
+  // Per-turn rules, each against its own turn's reply and tool calls. Listed before the
+  // whole-conversation failures, because "crossed at turn 2" is the first thing a
+  // reader of this case needs to know.
+  const replies = transcript.filter((t) => t.role === "agent");
+  for (const { turn, checks } of (isConversation ? testCase.turn_checks ?? [] : [])) {
+    const reply = replies[turn - 1];
+    if (!reply) continue;
+    const activity = turn - 1 < activities.length ? activities[turn - 1] : agentResult.toolActivity;
+    const found = runChecks(checks, { responseText: reply.content, toolActivity: activity, latencyMs: reply.latencyMs ?? null });
+    checkFailures.unshift(...found.map((f) => ({ ...f, why: `Turn ${turn} of ${replies.length}: ${f.why}` })));
+  }
+
   if (checkFailures.length > 0) {
     return {
       responseText: agentResult.responseText,

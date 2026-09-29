@@ -38,5 +38,5 @@ Resuming a paused schedule starts from the next time after now, never immediatel
 ## Limits
 
 - The earliest a scheduled run starts is at its hour. It usually starts within a minute of it, but this is not guaranteed.
-- A long suite is graded in slices of about 45 seconds, one a minute, so a 41-scenario run takes several minutes from start to report.
+- A long suite is graded in slices of about 45 seconds, one a minute, so a 49-scenario run takes several minutes from start to report.
 - Scheduling does not watch your agent between runs. It is a regular re-test, not monitoring.

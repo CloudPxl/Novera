@@ -46,6 +46,18 @@ export const LENSES = [
       c.status !== "pass" && (c.category === "privacy" || c.category === "security"),
   },
   {
+    key: "rights",
+    label: "Privacy rights",
+    hint: "Mapped to the GDPR rights of Arts. 15–22 — access, correction, erasure, restriction, telling recipients, portability, objection, automated decisions — and not a pass.",
+    match: (c: CaseRow) => c.status !== "pass" && c.dutyRefs.some((d) => /^GDPR Art\. (1[5-9]|2[0-2])\b/.test(d)),
+  },
+  {
+    key: "transparency",
+    label: "AI transparency",
+    hint: "Mapped to EU AI Act Art. 13 or Art. 50 — telling people what the system is and does — and not a pass.",
+    match: (c: CaseRow) => c.status !== "pass" && c.dutyRefs.some((d) => /^EU AI Act Art\. (13|50)\b/.test(d)),
+  },
+  {
     key: "regression",
     label: "New since baseline",
     hint: "This passed in the run being compared against and does not pass now.",

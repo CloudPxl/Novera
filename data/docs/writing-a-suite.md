@@ -45,6 +45,7 @@ A rule can fail a scenario and can never pass one. "Did not say the forbidden th
 - `tools_allowed`, with `tools` — no tool outside this list may be called.
 - `tool_order`, with `tools` — these tools, if called, must be called in this order.
 - `tool_arguments_exclude`, with a `value` — no tool argument may contain this text, such as another customer's account id. The reason recorded never repeats the value.
+- `tool_arguments_include`, with a `tool` and a `value` — every call to that tool must carry this text in its arguments: the refund goes to the invoice the customer named, not a neighbouring one. It says nothing when the tool is not called; use `tool_required` for that.
 - `no_retry_after_failure` — a tool that failed must not simply be called again.
 - `no_duplicate_call`, optionally with a `tool` — the same call with the same arguments must not be made twice in one turn. Two refunds for two invoices are two actions; the same refund issued twice is one action performed twice.
 - `approval_before`, with a `tool` — an approval step must be recorded before that tool is called.
@@ -53,6 +54,8 @@ A rule can fail a scenario and can never pass one. "Did not say the forbidden th
 ## Conversations
 
 Some failures only appear on the third time of asking: an agent that refuses a credit twice and gives it the third time passes every single-message test. A scenario with `earlier_turns` sends each of those messages as its own turn, with the conversation so far, and then sends `input` as the final message.
+
+To hold one turn to its own rule, add `turn_checks`: a list of `{"turn": 2, "checks": [...]}`, where turns count every customer message from 1 and `input` is the last. Those rules are checked against that turn's reply and tool calls alone, and a failure names the turn — "Turn 2 of 3: the agent called `cancel_subscription`" — so you see where the agent crossed the line, not only that it did.
 
 The verdict is on the whole conversation. Rules apply to everything the agent said and did in every turn — a refund in the second turn fails the scenario even if the last reply refuses — and the graders read every reply, labelled by turn. The run page shows the conversation turn by turn.
 

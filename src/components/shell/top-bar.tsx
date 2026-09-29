@@ -14,6 +14,7 @@ import { ImportSuite } from "./import-suite.tsx";
 
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Overview" },
+  { href: "/review", label: "Review" },
   { href: "/scenarios", label: "Scenarios" },
   { href: "/regressions", label: "Regressions" },
 ];

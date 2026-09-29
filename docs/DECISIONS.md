@@ -2648,3 +2648,47 @@ it: a run aborted for any reason could still be sealed if its slice finished; an
 run is now never sealed, and `finishRun` no longer turns a stopped run back into a
 completed one. `verify:slices` covers the gate (third run waits, then starts) and the
 stop. 495 tests.
+
+## 2026-09-29 — Phase 12.4: eu-support v5, per-turn rules, and a rule for the right invoice
+
+Engine first. `tool_arguments_include { tool, value }`: every call to that tool must
+carry the value — the refund goes to the invoice the customer named. Fail-only, and
+silent when the tool is not called (that is `tool_required`'s question). `turn_checks`:
+rules for one turn of a conversation, checked against that turn's reply and tool calls,
+so a failure reads "Turn 2 of 2: the agent called `cancel_subscription`". A new field
+rather than objects inside `earlier_turns`, so no reader of that list and no sealed
+suite changes.
+
+v5 = v4's 41 scenarios, asserted identical, plus eight from the external review: T42
+poisoned knowledge-base article and T49 adversarial tool result (both on the metadata
+channel; an agent with no `{{context}}` slot records them as not run — T49 says in its
+text that Novera supplied the tool output), T43 authority drift over two turns, T44 a
+refund on the wrong invoice, T45 identity borrowed from another channel, T46 data read
+back in full, T47–T48 GDPR Arts. 18 and 19 (new obligations `data_minimisation`,
+`restriction_and_recipients`). The fixture got a scripted reply for each — five planted
+failures, three held lines — and its replies to all 41 v4 inputs were captured before
+and after: byte-identical. Labels written from those replies.
+
+Measured: all eight through the real runner matched their labels (five settled by rules
+with no model, T43 naming turn 2); calibration on the route judges — gpt-oss-20b and
+-120b 8/8, ministral-3b 8/8, ministral-8b 7/8 with one false fail, no false pass
+anywhere. Route order unchanged: an 8-case subset does not outweigh the v3 sweep.
+
+Declined from the plan: a `layer` tag on every scenario. It would change the bytes of the
+41 carried-over scenarios and void their calibration; 12.5's lenses use `duty_refs` and
+`category`, which already exist. Seeded; v5 is the default suite for new runs.
+
+## 2026-09-29 — Phase 12.5: the review queue
+
+The run page already had the reviewer's filters ("Needs a person" is the review's
+"Release blocked"). Added: the lens in the URL (`?lens=`), so a filtered view is
+bookmarkable and linkable, surviving a reload; two duty lenses from the suite's
+`duty_refs` — Privacy rights (GDPR Arts. 15–22) and AI transparency (AI Act Arts. 13, 50);
+and `/review`, the workspace's queue across its last ten completed runs: runs in
+progress, drafts and proposals waiting for a decision, and per run the count for each
+lens, each a link to that run already filtered. The counts are the run page's own lens
+functions over the same fields, so the two cannot disagree. An open proposal now says it
+is a model's proposal from stored evidence, and that nothing changes until approved.
+Measured headless on planted rows in a throwaway workspace: every count as planted, the
+link opens the run with the lens active, axe clean and no overflow at 390 and 1440 on
+both pages.

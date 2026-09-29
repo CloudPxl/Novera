@@ -37,6 +37,14 @@ for (const task of tasks) {
 console.log(`Connections configured: ${[...connections.keys()].sort().join(", ") || "(none)"}`);
 console.log(`Route candidates to check: ${wanted.size}\n`);
 
+// A vendor whose key is here but whose models are in no route grades nothing. Adding
+// one is a calibration, not an edit: the route order is measured false passes.
+const routed = new Set([...wanted.values()].map((c) => c.connection));
+for (const name of [...connections.keys()].filter((n) => !routed.has(n)).sort()) {
+  console.log(`  note ${name} has a key but no model in any route. Measure one before routing it:`);
+  console.log(`       CALIBRATE_SUITE=eu-support-v3 CALIBRATE_MODELS="${name}/<model>" npm run calibrate\n`);
+}
+
 type Result = "ok" | "unreachable" | "no credential";
 const results = new Map<string, { result: Result; detail: string; ms: number }>();
 

@@ -2522,3 +2522,22 @@ Not published, deliberately: the user said to keep it internal, and publishing i
 and effectively permanent. The package is `"private": true` so an accidental
 `npm publish` refuses. The name `novera` is taken on npm by an unrelated product;
 `novera-cli` is free. `license` is `UNLICENSED` until the user chooses one.
+
+## 2026-09-29 — Upgrade step 5: the third grading vendor waits on a funded key, and nothing else
+
+Measured, not assumed: `verify:models` shows the connections configured here are google,
+groq, mistral and openrouter — `OPENAI_API_KEY` is not in `.env.local` at all (the key
+from 2026-09-22 authenticated with no credits and was never kept). Grading is groq +
+mistral, both reachable.
+
+Everything else is already in place: `openai` and `anthropic` are connections in
+`src/lib/providers/registry.ts` (one env line each), `CALIBRATE_MODELS="openai/<model>"`
+measures a model that is in no route, and the router skips a candidate whose key is
+absent. What is deliberately **not** done is putting an unmeasured model into the judge
+routes ahead of its calibration: the route order is measured false passes, and the first
+two candidates of different vendors grade almost every case.
+
+Added: `verify:models` now says when a vendor has a key but no model in any route, and
+prints the calibration command. Next, when the user adds a funded key: verify:models →
+calibrate eu-support-v3 on one or two of its models → place by false passes → re-run
+calibrate on the new order.

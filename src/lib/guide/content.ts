@@ -32,7 +32,7 @@ export const GUIDE_STEPS: Array<{ title: string; body: string; where: string; ta
   },
   {
     title: "Fix, then rerun and compare",
-    body: "On a failed scenario you can ask for a diagnosis: Novera proposes a change to your policy, quoting the exact passage. You approve or reject it — nothing changes on its own. Then rerun: the new run is compared with the old one, scenario by scenario, and flags any scenario that flips between runs on its own.",
+    body: "On a failed scenario you can ask for a diagnosis: Novera proposes a change to your policy, quoting the exact passage. You approve or reject it — nothing changes on its own. Then rerun: the new run is compared with the old one, scenario by scenario, and flags any scenario that flips between runs on its own. To rerun on a calendar instead, add a schedule on the agent's page.",
     where: "The run page → a failed scenario",
     target: "run",
   },

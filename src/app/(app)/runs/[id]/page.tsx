@@ -1,3 +1,4 @@
+import { describeTiming } from "@/lib/schedules/cadence.ts";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -57,13 +58,13 @@ export default async function RunPage({
   const { data: run } = await db
     .from("runs")
     .select(
-      "id, status, agent_id, policy_id, suite_id, baseline_run_id, error, created_at, started_at, finished_at, pass_threshold, judge_model",
+      "id, status, agent_id, policy_id, suite_id, baseline_run_id, error, created_at, started_at, finished_at, pass_threshold, judge_model, schedule_id, api_key_id",
     )
     .eq("id", id)
     .maybeSingle();
   if (!run) notFound();
 
-  const [{ data: agent }, { data: policy }, { data: suite }, { data: reportRows }] = await Promise.all([
+  const [{ data: agent }, { data: policy }, { data: suite }, { data: reportRows }, { data: schedule }, { data: apiKey }] = await Promise.all([
     db.from("agents").select("name").eq("id", run.agent_id).maybeSingle(),
     db.from("policies").select("version").eq("id", run.policy_id).maybeSingle(),
     db.from("suites").select("name, version, cases").eq("id", run.suite_id).maybeSingle(),
@@ -71,7 +72,20 @@ export default async function RunPage({
     // single-row read of more than one report returns nothing at all.
     db.from("reports").select("token, created_at, revoked_at, disclosed:payload->human_review->>as_of").eq("run_id", id)
       .order("created_at", { ascending: false }),
+    run.schedule_id
+      ? db.from("run_schedules").select("cadence, hour_utc, weekday").eq("id", run.schedule_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    run.api_key_id
+      ? db.from("api_keys").select("name").eq("id", run.api_key_id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
+  const startedBy = schedule
+    ? `started by the schedule “${describeTiming({
+        cadence: schedule.cadence as "daily" | "weekly", hourUtc: schedule.hour_utc as number, weekday: schedule.weekday as number | null,
+      })}”`
+    : apiKey
+      ? `started by the API key “${apiKey.name as string}”`
+      : null;
 
   const suiteCases = Array.isArray(suite?.cases) ? (suite.cases as Array<Record<string, unknown>>) : [];
   const plannedCases = suiteCases.length;
@@ -413,6 +427,7 @@ export default async function RunPage({
               judgeModel={(run.judge_model as string | null) ?? null}
               status={run.status as string}
               runError={(run.error as string | null) ?? null}
+              startedBy={startedBy}
             />
           </div>
 

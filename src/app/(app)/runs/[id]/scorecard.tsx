@@ -58,6 +58,7 @@ export function Scorecard({
   judgeModel,
   status,
   runError,
+  startedBy = null,
 }: {
   grade: Grade;
   coverage: Coverage;
@@ -71,6 +72,8 @@ export function Scorecard({
   judgeModel: string | null;
   status: string;
   runError: string | null;
+  /** Set when a schedule or an API key started the run; a person pressing the button is the default. */
+  startedBy?: string | null;
 }) {
   const took = duration(startedAt, finishedAt);
   // Two reasons for no letter: the run did not finish, or it finished and the evidence
@@ -116,6 +119,7 @@ export function Scorecard({
               {new Date(createdAt).toISOString().slice(0, 16).replace("T", " ")} UTC
             </time>
             {took && <> · ran in <span className="tnum">{took}</span></>}
+            {startedBy && <> · {startedBy}</>}
           </p>
 
           {/* The basis line is not optional decoration. A number with no stated

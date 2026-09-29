@@ -18,12 +18,14 @@ export class RunRefusal extends Error {}
 export async function startRun(args: {
   client: SupabaseClient;
   workspaceId: string;
-  /** The person responsible: who pressed the button, or who created the key. */
+  /** The person responsible: who pressed the button, created the key or set the schedule. */
   userId: string | null;
   agentId: string;
   suiteId?: string | null;
   /** Set when a pipeline started the run with a workspace API key. */
   apiKeyId?: string | null;
+  /** Set when a schedule started the run. */
+  scheduleId?: string | null;
   /**
    * The run to compare against. Set by "rerun and compare", so the comparison answers
    * the question asked — did the change I approved fix this? — rather than comparing
@@ -88,6 +90,7 @@ export async function startRun(args: {
       judge_source: entitlement.judgeSource, attestation_text: agent.attestation_text ?? null,
       created_by: args.userId,
       api_key_id: args.apiKeyId ?? null,
+      schedule_id: args.scheduleId ?? null,
       manifest: declared.manifest, manifest_hash: declared.manifest_hash,
     })
     .select("id").single();
@@ -103,9 +106,9 @@ export async function startRun(args: {
 export const SLICE_BUDGET_MS = 42_000;
 
 /**
- * How long before a run that says "running" is assumed dead. A killed function records
- * nothing, so past this another call may take the run over — which can only add
- * evidence, because stored cases are skipped.
+ * How long a slice holds a run. A killed function records nothing, so past this another
+ * call may take the run over — which can only add evidence, because stored cases are
+ * skipped. A slice that hands back releases it at once (0036).
  */
 const LEASE_MS = 70_000;
 
@@ -121,25 +124,44 @@ export interface AdvanceResult {
   error?: string;
 }
 
-/** One slice of a run. `null` when the run is not in this workspace. */
-export async function advanceRun(args: { client: SupabaseClient; workspaceId: string; runId: string }): Promise<AdvanceResult | null> {
+/**
+ * One slice of a run. `null` when the run is not in this workspace.
+ *
+ * `budgetMs` lets a caller with less than a full slice left — the scheduler, driving
+ * several runs in one invocation — hand back in time. Never more than a slice.
+ */
+export async function advanceRun(args: {
+  client: SupabaseClient;
+  workspaceId: string;
+  runId: string;
+  budgetMs?: number;
+}): Promise<AdvanceResult | null> {
   const { client, workspaceId, runId } = args;
+  const budgetMs = Math.min(args.budgetMs ?? SLICE_BUDGET_MS, SLICE_BUDGET_MS);
   const { data: run } = await client
-    .from("runs").select("id, status, started_at").eq("id", runId).eq("workspace_id", workspaceId).maybeSingle();
+    .from("runs").select("id, status").eq("id", runId).eq("workspace_id", workspaceId).maybeSingle();
   if (!run) return null;
 
   if (run.status === "completed" || run.status === "aborted") return { status: run.status as string, started: false, done: true };
-  if (run.status === "running") {
-    const age = run.started_at ? Date.now() - new Date(run.started_at as string).getTime() : Infinity;
-    if (age < LEASE_MS) return { status: "running", started: false, done: false };
+
+  // Take the lease in one statement, so of two callers at the same moment exactly one
+  // gets the row back. Reading the lease and then writing it let both through.
+  const now = new Date();
+  const { data: leased } = await client.from("runs")
+    .update({ status: "running", lease_until: new Date(now.getTime() + LEASE_MS).toISOString() })
+    .eq("id", runId).eq("workspace_id", workspaceId).in("status", ["queued", "running"])
+    .or(`lease_until.is.null,lease_until.lt.${now.toISOString()}`)
+    .select("id");
+  if (!leased?.length) {
+    const { data: after } = await client.from("runs").select("status").eq("id", runId).eq("workspace_id", workspaceId).maybeSingle();
+    const status = (after?.status as string | undefined) ?? "running";
+    return { status, started: false, done: status === "completed" || status === "aborted" };
   }
 
-  // Take the lease before doing any work, so a second caller a moment later sees it.
-  await client.from("runs").update({ status: "running", started_at: new Date().toISOString() })
-    .eq("id", runId).eq("workspace_id", workspaceId);
-
   try {
-    const summary = await startRunExecution({ client, workspaceId, runId, budgetMs: SLICE_BUDGET_MS });
+    const summary = await startRunExecution({ client, workspaceId, runId, budgetMs });
+    // Handing back: the next slice may start now rather than when the lease runs out.
+    await client.from("runs").update({ lease_until: null }).eq("id", runId).eq("workspace_id", workspaceId);
     return {
       status: summary.status,
       started: true,
@@ -151,7 +173,7 @@ export async function advanceRun(args: { client: SupabaseClient; workspaceId: st
     };
   } catch (thrown) {
     const message = thrown instanceof Error ? thrown.message : String(thrown);
-    await client.from("runs").update({ status: "aborted", error: message, finished_at: new Date().toISOString() })
+    await client.from("runs").update({ status: "aborted", error: message, finished_at: new Date().toISOString(), lease_until: null })
       .eq("id", runId).eq("workspace_id", workspaceId);
     return { status: "aborted", started: true, done: true, error: message };
   }

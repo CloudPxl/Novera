@@ -13,10 +13,19 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
     async markRunning(runId) {
       const { error } = await client
         .from("runs")
-        .update({ status: "running", started_at: new Date().toISOString() })
+        .update({ status: "running" })
         .eq("id", runId)
         .eq("workspace_id", workspaceId);
       if (error) throw new Error(`Could not start run: ${error.message}`);
+      // Written once. Every slice used to overwrite it, so a resumed run's report
+      // measured its duration from the last slice rather than from the start.
+      const { error: stamp } = await client
+        .from("runs")
+        .update({ started_at: new Date().toISOString() })
+        .eq("id", runId)
+        .eq("workspace_id", workspaceId)
+        .is("started_at", null);
+      if (stamp) throw new Error(`Could not start run: ${stamp.message}`);
     },
 
     async saveCase(record: RunCaseRecord) {

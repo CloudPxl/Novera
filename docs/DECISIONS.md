@@ -2271,3 +2271,35 @@ session execute route is a thin wrapper too. Measured: CLI against the local fix
 read-only key refused 403; run-scoped key started, drove and sealed a run; report
 verified, labelled test data, exit 1, JUnit well-formed; the row names its key and the
 key's creator. Button and rerun-and-compare re-walked in the browser. MCP stays read-only.
+
+## 2026-09-29 — Phase 10.5: scheduled re-evaluations; the slice lease gets its own column
+
+A schedule (0036, `run_schedules`) reruns a pinned suite version against an agent daily or
+weekly at a whole UTC hour — UTC because a local-time schedule moves twice a year in the
+EU. Agent, suite, timing and creator are fixed by trigger; pause, resume and a permanent
+cancel are the permitted changes; never deleted, because runs name it
+(`runs.schedule_id`, same-workspace-checked). The clock is pg_cron → pg_net →
+`/api/cron/tick`, and the job's SQL only makes the request when a schedule is due or a
+scheduled run is in flight, so an idle database costs no invocation. The bearer secret is
+an HMAC of `NOVERA_ENCRYPTION_KEY`, stored in Supabase Vault by `npm run schedules:clock --
+install`: no new deployment variable, nothing in the job's text. A tick claims a due
+schedule by a conditional update on `next_run_at`, so overlapping ticks start it once;
+starts through `startRun` and advances through `advanceRun` — a different caller, not a
+different run. A refusal (no runs left, no policy) pauses with its reason instead of
+failing daily; a still-running previous run skips the occurrence; missed occurrences are
+not caught up. Rejected: Vercel Cron (Hobby is once a day) and a per-schedule pg_cron job
+(the schedule table would stop being the source of truth).
+
+Found while designing it: the slice lease *was* `started_at`, rewritten by every slice.
+So (1) a report's `duration_ms` measured the last slice, not the run — sealed reports of
+multi-slice runs before today understate their duration, and stay as sealed; (2) a slice
+that finished held the run for the rest of its 70 s, so every slice was followed by ~25 s
+of nothing; (3) the lease was read then written, so two callers could both take it. Now
+`runs.lease_until` is taken in one conditional update and released when a slice hands
+back, and `started_at` is written once. Also: who started a run (`created_by`,
+`api_key_id`, `schedule_id`) is now frozen by trigger — nothing stopped a rewrite before.
+Measured by `verify:schedules` (29 checks, free: the agent is a reserved `.example` host):
+three simultaneous ticks start exactly one run; the clock alone drives it to completion,
+each scenario graded once; busy skips, refusal pauses, fixed fields and attribution refuse
+rewrites, RLS and erasure hold. The form was walked in a browser: axe clean at 1440 and 390,
+no overflow; it lowercased "UTC" and then weekday names in its confirmation — fixed.

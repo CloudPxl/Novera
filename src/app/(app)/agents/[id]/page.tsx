@@ -10,6 +10,8 @@ import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { PolicyEditor, ReprobeButton, VerificationEndpoint, ResponsePathPicker } from "./client.tsx";
+import { ScheduleCard, ScheduleForm, type ScheduleView } from "./schedules.tsx";
+import { scheduleState } from "@/lib/schedules/cadence.ts";
 
 export const metadata: Metadata = { title: "Agent · Novera" };
 export const dynamic = "force-dynamic";
@@ -27,17 +29,50 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
     .from("agents").select("id, name, kind, config, verification, attestation_text, attested_at").eq("id", id).maybeSingle();
   if (!agent) notFound();
 
-  const [{ data: probes }, { data: policies }, { data: runs }, { data: suites }] = await Promise.all([
+  const [{ data: probes }, { data: policies }, { data: runs }, { data: suites }, { data: schedules }] = await Promise.all([
     db.from("probes").select("id, status_code, response_body, response_shape, latency_ms, error, created_at")
       .eq("agent_id", id).order("created_at", { ascending: false }).limit(3),
     db.from("policies").select("id, version, body, created_at")
       .eq("agent_id", id).order("version", { ascending: false }),
-    db.from("runs").select("id, status, created_at, suite_id").eq("agent_id", id)
+    db.from("runs").select("id, status, created_at, suite_id, schedule_id, api_key_id").eq("agent_id", id)
       .order("created_at", { ascending: false }).limit(8),
     // Newest version first within a key, so the default below is the current suite
     // rather than whichever row Postgres happened to return first.
     db.from("suites").select("id, key, version, name").order("key").order("version", { ascending: false }),
+    // Cancelled schedules stay in the table for the runs that name them, not on this page.
+    db.from("run_schedules")
+      .select("id, suite_id, cadence, hour_utc, weekday, next_run_at, paused_at, paused_reason, cancelled_at, last_attempt_at, last_outcome")
+      .eq("agent_id", id).is("cancelled_at", null).order("created_at"),
   ]);
+
+  const scheduleIds = (schedules ?? []).map((s) => s.id as string);
+  const { data: scheduledRuns } = scheduleIds.length
+    ? await db.from("runs").select("id, status, schedule_id").in("schedule_id", scheduleIds)
+        .order("created_at", { ascending: false }).limit(40)
+    : { data: [] };
+  const suiteLabel = (suiteId: string) => {
+    const s = (suites ?? []).find((x) => x.id === suiteId);
+    return s ? `${s.name as string} v${s.version as number}` : "Suite";
+  };
+  const scheduleViews: ScheduleView[] = (schedules ?? []).map((s) => {
+    const last = (scheduledRuns ?? []).find((r) => r.schedule_id === s.id);
+    return {
+      id: s.id as string,
+      cadence: s.cadence as ScheduleView["cadence"],
+      hourUtc: s.hour_utc as number,
+      weekday: s.weekday as number | null,
+      suiteLabel: suiteLabel(s.suite_id as string),
+      state: scheduleState({ paused_at: s.paused_at as string | null, cancelled_at: s.cancelled_at as string | null }),
+      nextRunAt: s.next_run_at as string,
+      pausedReason: s.paused_reason as string | null,
+      lastOutcome: s.last_outcome as string | null,
+      lastAttemptAt: s.last_attempt_at as string | null,
+      lastRun: last ? { id: last.id as string, status: last.status as string } : null,
+    };
+  });
+  const costNote = entitlement.ownKey
+    ? "Each run grades on your own model key."
+    : `Each run uses one of your trial runs (${entitlement.runsUsed} of ${entitlement.runsAllowed ?? "?"} used). When none are left, the schedule pauses and says why.`;
 
   const latestProbe = probes?.[0];
   const latestPolicy = policies?.[0];
@@ -189,6 +224,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                         <p className="mt-0.5 text-xs text-ink-faint">
                           {(suites ?? []).find((s) => s.id === r.suite_id)?.name ?? "Suite"} ·{" "}
                           {new Date(r.created_at).toISOString().slice(0, 16).replace("T", " ")}
+                          {r.schedule_id ? " · scheduled" : r.api_key_id ? " · started by API key" : ""}
                         </p>
                       </div>
                       <Badge
@@ -210,6 +246,30 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                   : "Save a policy version first — a run has to name what it tested against."}
               </EmptyState>
             </div>
+          )}
+        </section>
+      </Reveal>
+
+      <Reveal className="mt-10" delay={140}>
+        <section>
+          <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Schedule</h2><Help label="Scheduled runs">Runs the suite again on a calendar, so a change in the agent — a new model, an edited prompt — shows up in a comparison without anyone remembering to press the button. Each scheduled run is an ordinary run with its own sealed report, and says it was scheduled.</Help></div>
+          <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+            Re-run the suite on a calendar. Each run compares with this agent&rsquo;s previous run on the same suite.
+          </p>
+          {scheduleViews.length > 0 && (
+            <ul className="mt-3 space-y-2">
+              {scheduleViews.map((s) => <li key={s.id}><ScheduleCard schedule={s} /></li>)}
+            </ul>
+          )}
+          {latestPolicy ? (
+            <ScheduleForm
+              agentId={agent.id}
+              suites={(suites ?? []).map((s) => ({ id: s.id as string, label: suiteLabel(s.id as string) }))}
+              defaultSuiteId={(suites ?? []).find((s) => s.key === "eu-support")?.id as string | undefined}
+              costNote={costNote}
+            />
+          ) : (
+            <p className="mt-3 text-sm text-ink-soft">Save a policy version first — every scheduled run is graded against it.</p>
           )}
         </section>
       </Reveal>

@@ -59,10 +59,15 @@ export async function listSuites(db: Db, workspaceId: string) {
   }));
 }
 
+/** Who started a run: a person with the button, a pipeline with an API key, or a schedule. */
+function startedBy(r: { api_key_id?: unknown; schedule_id?: unknown }): "person" | "api_key" | "schedule" {
+  return r.schedule_id ? "schedule" : r.api_key_id ? "api_key" : "person";
+}
+
 export async function listRuns(db: Db, workspaceId: string, options: { agentId?: string; limit?: number } = {}) {
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
   let query = db.from("runs")
-    .select("id, agent_id, status, created_at, finished_at, agents(name), suites(key, version), policies(version)")
+    .select("id, agent_id, status, created_at, finished_at, api_key_id, schedule_id, agents(name), suites(key, version), policies(version)")
     .eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(limit);
   if (options.agentId) query = query.eq("agent_id", options.agentId);
   const { data: runs } = await query;
@@ -84,6 +89,7 @@ export async function listRuns(db: Db, workspaceId: string, options: { agentId?:
       suite: suite ? `${suite.key} v${suite.version}` : null,
       policy_version: policy?.version ?? null,
       status: r.status as string,
+      started_by: startedBy(r),
       created_at: r.created_at as string,
       finished_at: (r.finished_at as string | null) ?? null,
       counts: tally((cases ?? []) as Array<{ run_id: unknown; status: unknown }>, r.id as string),
@@ -95,7 +101,7 @@ export async function listRuns(db: Db, workspaceId: string, options: { agentId?:
 /** One run and every scenario in it. `null` when it does not exist in this workspace. */
 export async function getRun(db: Db, workspaceId: string, runId: string, options: { responses?: boolean } = {}) {
   const [{ data: run }, { data: cases }] = await Promise.all([
-    db.from("runs").select("id, agent_id, status, created_at, finished_at, error, manifest_hash, agents(name), suites(key, version), policies(version)")
+    db.from("runs").select("id, agent_id, status, created_at, finished_at, error, manifest_hash, api_key_id, schedule_id, agents(name), suites(key, version), policies(version)")
       .eq("workspace_id", workspaceId).eq("id", runId).maybeSingle(),
     db.from("run_cases")
       .select(`case_id, category, obligation, severity, status, rationale, settled_by, judge_agreement, judge_model, evidence_gap, error, failed_assertions${options.responses ? ", input, response_text, transcript" : ""}`)
@@ -115,6 +121,7 @@ export async function getRun(db: Db, workspaceId: string, runId: string, options
     suite: suite ? `${suite.key} v${suite.version}` : null,
     policy_version: policy?.version ?? null,
     status: run.status as string,
+    started_by: startedBy(run),
     error: (run.error as string | null) ?? null,
     created_at: run.created_at as string,
     finished_at: (run.finished_at as string | null) ?? null,

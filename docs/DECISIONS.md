@@ -2395,3 +2395,27 @@ and took any length of message into a model call: now `timingSafeEqual` and the 
 eslint-config-next 16.3.5 → 16.3.6, supabase-js 2.116 → 2.117.2 (now pinned exactly, like
 next). Not taken: TypeScript 7, ESLint 10, @types/node 26 — majors, a project each.
 Every free verification re-run green on the new versions (11 scripts).
+
+## 2026-09-29 — App-wide debug
+
+Static: tsc, eslint over the whole repository, 468 tests and the production build — no
+error, warning or deprecation. Production: 119 requests over every public page, every
+published doc, all 18 reports in every export format, and deliberately malformed API calls
+(bad keys, wrong methods, broken JSON, junk ids) — 0 server errors; the only surprises were
+the reset page redirecting without a reset link (intended) and Vercel's edge rejecting an
+invalid percent-encoding before our code runs (not ours to shape). UI: a headless walk of
+19 signed-in pages seeded with every state (completed, running, aborted and missing runs,
+a sealed report, reviews, retests, proposals, paused schedules, revoked keys, a production
+failure, the staff inbox) and 13 signed-out ones, at 1440 and 390 — console, uncaught
+errors, failed requests, axe, overflow.
+
+Found and fixed: (1) a run in progress rendered no `<h1>` — the settled view's heading
+lives in the scorecard; (2) `src/lib/workflow/run.ts` still exported a second `startRun`,
+used by `demo:run`, which skipped the trial meter (the demo workspace had 7 runs on a
+3-run trial), sealed a fixed environment sentence and no duration. The demo now uses
+`startRun`/`advanceRun`; a demo workspace out of trial runs is left intact and the demo
+continues in a new dated one. Measured: 16 scenarios, report sealed with the derived
+fixture label and 14.8 s; the dated workspace erased after. There is now one run path.
+
+The Playwright MCP opened a visible window per context on the user's screen and timed
+out on long walks; UI walks now run as a headless script against the installed Chrome.

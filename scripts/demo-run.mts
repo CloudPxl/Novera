@@ -4,6 +4,12 @@
  * ensure workspace -> register agent -> probe -> policy v1 -> run the suite ->
  * grade -> persist every case -> build and store a hash-sealed report.
  *
+ * Through `startRun` and `advanceRun`, like the button, the API and the schedule clock.
+ * It used to have its own copy of run creation, which skipped the trial meter (the demo
+ * workspace had 7 runs on a 3-run trial) and sealed a fixed environment sentence. A demo
+ * workspace whose trial is used up is left as it is — its sealed reports keep
+ * verifying — and the demo continues in a new, dated one.
+ *
  * The agent under test is the local fixture, which is scripted and marked as such.
  * Everything else — persistence, grading, coverage, the report and its hash — is real.
  *
@@ -11,9 +17,10 @@
  * Run: npm run demo:run
  */
 import { createClient } from "@supabase/supabase-js";
-import { probeAgent, startRun, publishReport } from "../src/lib/workflow/run.ts";
+import { probeAgent } from "../src/lib/workflow/run.ts";
+import { advanceRun, RunRefusal, startRun } from "../src/lib/workflow/start-run.ts";
+import { workspaceEntitlement } from "../src/lib/auth/entitlement.ts";
 import type { AgentConfig } from "../src/lib/agents/types.ts";
-import type { Suite } from "../src/lib/runner/types.ts";
 import { verifyHash } from "../src/lib/report/hash.ts";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -55,12 +62,17 @@ async function ensureUser(): Promise<string> {
 }
 
 async function ensureWorkspace(ownerId: string): Promise<string> {
+  // The newest demo workspace that can still run; otherwise a new one.
   const { data: existing } = await db
-    .from("workspaces").select("id").eq("name", WORKSPACE).maybeSingle();
-  if (existing) return existing.id as string;
+    .from("workspaces").select("id").like("name", `${WORKSPACE}%`).order("created_at", { ascending: false });
+  for (const w of existing ?? []) {
+    const entitlement = await workspaceEntitlement({ client: db, workspaceId: w.id as string });
+    if (entitlement.canRun) return w.id as string;
+  }
+  const name = existing?.length ? `${WORKSPACE} ${new Date().toISOString().slice(0, 10)}` : WORKSPACE;
 
   const { data, error } = await db
-    .from("workspaces").insert({ name: WORKSPACE, owner_id: ownerId, plan: "trial" })
+    .from("workspaces").insert({ name, owner_id: ownerId, plan: "trial" })
     .select("id").single();
   if (error) throw new Error(`Could not create the workspace: ${error.message}`);
 
@@ -152,43 +164,44 @@ const { data: suiteRow, error: suiteErr } = await db
   .is("workspace_id", null).eq("key", "eu-support").eq("version", suiteVersion).single();
 if (suiteErr || !suiteRow) throw new Error(`Suite not found — run npm run seed:suites (${suiteErr?.message})`);
 
-const suite: Suite = {
-  key: suiteRow.key, version: suiteRow.version, name: suiteRow.name, cases: suiteRow.cases,
-};
-console.log(`  suite      ${suite.name} (${suite.cases.length} cases)\n`);
+console.log(`  suite      ${suiteRow.name} v${suiteRow.version} (${(suiteRow.cases as unknown[]).length} cases)\n`);
 console.log("  grading...\n");
 
-const summary = await startRun({
-  client: db, workspaceId, agentId, agentConfig,
-  policyId: policy.id, policyBody: policy.body,
-  suiteId: suiteRow.id as string, suite,
-  attestation: ATTESTATION,
-});
-
-const c = summary.coverage;
-console.log(`  run        ${summary.runId} — ${summary.status}`);
-console.log(`  coverage   ${c.passed} passed, ${c.failed} failed, ${c.errored} errored, ${c.notRun} not run`);
-console.log(`  score      ${c.score === null ? "none" : `${c.score}%`} — ${c.basis}\n`);
-
-for (const rc of summary.cases.filter((x) => x.status !== "pass")) {
-  console.log(`  ${rc.status.toUpperCase().padEnd(5)} ${rc.caseId} [${rc.obligation}] ${(rc.rationale ?? rc.error ?? "").slice(0, 96)}`);
+let runId: string;
+try {
+  ({ id: runId } = await startRun({
+    client: db, workspaceId, userId, agentId, suiteId: suiteRow.id as string,
+  }));
+} catch (e) {
+  console.error(`  refused — ${e instanceof RunRefusal ? e.message : String(e)}`);
+  process.exit(e instanceof RunRefusal ? 3 : 4);
 }
 
-const report = await publishReport({
-  client: db, workspaceId, runId: summary.runId, summary,
-  clientName: "Novera (internal demo)", agentName: "Test fixture",
-  policyVersion: policy.version, policyBody: policy.body,
-  passThreshold: 80, durationMs: null,
-  environment: "Local development, scripted fixture",
-  attestation: ATTESTATION,
-  suite: { key: suite.key, version: suite.version, name: suite.name },
-  judgeSource: "trial_free",
-});
+// The same slices the run page drives: each grades what fits, and hands back.
+for (;;) {
+  const step = await advanceRun({ client: db, workspaceId, runId });
+  if (!step) throw new Error("The run disappeared.");
+  if (step.error) console.error(`  aborted — ${step.error}`);
+  if (step.done) break;
+  if (!step.started) await new Promise((r) => setTimeout(r, 2000));
+}
 
-const { data: stored } = await db.from("reports").select("payload, content_hash").eq("id", report.reportId).single();
-const hashOk = stored ? verifyHash(stored.payload, stored.content_hash) : false;
+const { data: run } = await db.from("runs").select("status").eq("id", runId).single();
+const { data: cases } = await db.from("run_cases").select("case_id, status, obligation, rationale, error").eq("run_id", runId);
+const count = (s: string) => (cases ?? []).filter((x) => x.status === s).length;
+console.log(`  run        ${runId} — ${run?.status}`);
+console.log(`  cases      ${count("pass")} passed, ${count("fail")} failed, ${count("error")} errored`);
+for (const rc of (cases ?? []).filter((x) => x.status !== "pass")) {
+  console.log(`  ${String(rc.status).toUpperCase().padEnd(5)} ${rc.case_id} [${rc.obligation}] ${String(rc.rationale ?? rc.error ?? "").slice(0, 96)}`);
+}
 
-console.log(`\n  report     ${report.reportId}`);
-console.log(`  hash       ${report.contentHash.slice(0, 32)}… ${hashOk ? "verifies against the stored payload" : "DOES NOT VERIFY"}`);
-console.log(`  expires    ${report.expiresAt.slice(0, 10)}`);
-console.log(`  url        ${appUrl}/report/${report.token}\n`);
+const { data: stored } = await db.from("reports").select("id, token, payload, content_hash, expires_at").eq("run_id", runId).maybeSingle();
+if (!stored) {
+  console.log("\n  no report — nothing in this run produced a verdict\n");
+  process.exit(0);
+}
+const hashOk = verifyHash(stored.payload, stored.content_hash);
+console.log(`\n  report     ${stored.id}`);
+console.log(`  hash       ${String(stored.content_hash).slice(0, 32)}… ${hashOk ? "verifies against the stored payload" : "DOES NOT VERIFY"}`);
+console.log(`  expires    ${String(stored.expires_at).slice(0, 10)}`);
+console.log(`  url        ${appUrl}/report/${stored.token}\n`);

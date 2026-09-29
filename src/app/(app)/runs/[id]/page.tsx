@@ -411,6 +411,10 @@ export default async function RunPage({
 
       {!settled ? (
         <div className="mt-4">
+          {/* The settled view's heading lives in the scorecard; this one had none, so a
+              screen reader landing on a run in progress had nothing to orient by. */}
+          <h1 className="type-h1 min-w-0 break-words">{agent?.name ?? "Agent"}</h1>
+          <p className="mt-1 type-body text-ink-soft">{suite ? `${suite.name} v${suite.version}` : "Suite"}</p>
           <LiveRun
             runId={run.id}
             initialStatus={run.status}

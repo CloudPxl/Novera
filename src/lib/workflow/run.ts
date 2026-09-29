@@ -1,15 +1,9 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { manifestForNewRun } from "../report/manifest.ts";
 import type { AgentConfig } from "../agents/types.ts";
 import { buildAgentAdapter } from "../agents/factory.ts";
-import { buildVerifier } from "../evidence/connectors/index.ts";
-import { executeRun, type RunSummary } from "../runner/execute.ts";
-import type { Suite } from "../runner/types.ts";
-import { supabaseRunStore } from "../store/supabase-run-store.ts";
-import { createRoutedChat } from "../router/execute.ts";
-import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
+import type { RunSummary } from "../runner/execute.ts";
 import { buildReport } from "../report/build.ts";
 import { reissueWithReview, NothingToDisclose } from "../report/reissue.ts";
 import type { ReportPayload } from "../report/payload.ts";
@@ -57,85 +51,6 @@ export async function probeAgent(args: {
 
   if (error) throw new Error(`Could not save the probe receipt: ${error.message}`);
   return { ok: result.ok, probeId: data.id as string, error: result.error ?? null };
-}
-
-export async function startRun(args: {
-  client: SupabaseClient;
-  workspaceId: string;
-  agentId: string;
-  agentConfig: AgentConfig;
-  policyId: string;
-  policyBody: string;
-  suiteId: string;
-  suite: Suite;
-  attestation: string | null;
-  baselineRunId?: string | null;
-  createdBy?: string | null;
-}): Promise<RunSummary> {
-  const { client, workspaceId, agentId, agentConfig, policyId, policyBody, suiteId, suite } = args;
-
-  // Who funds the grading is resolved here, from the same call that picks the
-  // credential, rather than passed in. This path took it as an argument and then
-  // graded on `connectionsFromEnv()` regardless — so a workspace on its own key had
-  // runs stamped `workspace_key` that our free tier had actually paid for. The other
-  // run path resolved it properly, which is the seventh time a capability has landed
-  // on one of the two and left the other looking like the same product.
-  const { connections, routes, source: judgeSource } = await connectionsForWorkspace({
-    client, workspaceId,
-  });
-
-  const declared = await manifestForNewRun({
-    client, agentId, policyId, suiteId, judgeSource, routes,
-  });
-
-  const { data: run, error } = await client
-    .from("runs")
-    .insert({
-      id: declared.id,
-      manifest: declared.manifest,
-      manifest_hash: declared.manifest_hash,
-      workspace_id: workspaceId,
-      agent_id: agentId,
-      policy_id: policyId,
-      suite_id: suiteId,
-      baseline_run_id: args.baselineRunId ?? null,
-      status: "queued",
-      judge_source: judgeSource,
-      attestation_text: args.attestation,
-      created_by: args.createdBy ?? null,
-    })
-    .select("id")
-    .single();
-
-  if (error) throw new Error(`Could not create the run: ${error.message}`);
-
-  const adapter = await buildAgentAdapter({ client, workspaceId, agentId, config: agentConfig });
-  const judge = createRoutedChat({
-    connections,
-    routes,
-    onFallback: (attempt) =>
-      console.warn(`  judge fallback: ${attempt.connection}/${attempt.model} — ${attempt.error}`),
-  });
-
-  // The read-back, on this path too. `startRunExecution` has built one since Phase 3;
-  // this path did not, which meant a run started here reported every claimed action as
-  // unverified even for an agent whose read-back endpoint was configured and working.
-  // Two entry points to one product cannot disagree about what counts as evidence.
-  const { data: agentRow } = await client
-    .from("agents").select("verification, is_production").eq("id", agentId).maybeSingle();
-
-  return executeRun({
-    runId: run.id as string,
-    suite,
-    agent: adapter,
-    policy: policyBody,
-    judge,
-    store: supabaseRunStore(client, workspaceId),
-    verifier: await buildVerifier({
-      client, workspaceId, agentId, verification: agentRow?.verification ?? null,
-    }),
-    agentIsProduction: agentRow?.is_production !== false,
-  });
 }
 
 export interface PublishedReport {

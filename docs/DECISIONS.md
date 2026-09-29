@@ -2769,3 +2769,14 @@ Deferred, deliberately: the three n8n templates (pre-release gate, weekly assura
 incident → regression). A webhook-triggered template needs n8n's server running to
 receive, and the incident template needs a `POST /api/v1/production-failures` endpoint
 that does not exist yet; each is shipped only when proven in n8n.
+
+## 2026-09-29 — Phase 12.9: the clock takes turns
+
+The tick read due schedules and in-flight scheduled runs oldest-first, capped at 20 and
+10, so one workspace with many schedules or long runs could take every slot a tick has.
+It now reads up to 60 candidates and takes them one workspace at a time (`roundRobin`),
+oldest-first within each. Only the clock is affected: runs started from the page, the
+API, the CLI or MCP are driven by their callers, and the shared trial grading is already
+metered by 0041. Unit-tested; `verify:schedules` green. Extending `verify:schedules` with
+two workspaces, as planned, would have needed more than 20 due schedules to show
+starvation at the current caps, so the rule is proved by its unit test instead.

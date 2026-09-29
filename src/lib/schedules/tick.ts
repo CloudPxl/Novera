@@ -16,6 +16,31 @@ const MIN_SLICE_MS = 12_000;
 const MAX_DUE_PER_TICK = 20;
 const MAX_ADVANCED_PER_TICK = 10;
 
+/**
+ * Takes items in order, but one workspace at a time: the first of each workspace, then
+ * the second of each, and so on, up to `limit`. Oldest-first alone let one workspace with
+ * many schedules or long runs take every slot a tick has.
+ */
+export function roundRobin<T>(items: T[], workspaceOf: (item: T) => string, limit: number): T[] {
+  const queues = new Map<string, T[]>();
+  for (const item of items) {
+    const key = workspaceOf(item);
+    queues.set(key, [...(queues.get(key) ?? []), item]);
+  }
+  const out: T[] = [];
+  for (let round = 0; out.length < limit; round++) {
+    let took = false;
+    for (const queue of queues.values()) {
+      if (round < queue.length && out.length < limit) { out.push(queue[round]); took = true; }
+    }
+    if (!took) break;
+  }
+  return out;
+}
+
+/** How many candidates a tick reads before choosing fairly among them. */
+const CANDIDATES = 60;
+
 export interface TickReport {
   due: number;
   started: number;
@@ -55,9 +80,9 @@ export async function runScheduleTick(args: {
     .select("id, workspace_id, agent_id, suite_id, cadence, hour_utc, weekday, next_run_at, created_by")
     .lte("next_run_at", now.toISOString())
     .is("paused_at", null).is("cancelled_at", null)
-    .order("next_run_at").limit(MAX_DUE_PER_TICK);
+    .order("next_run_at").limit(CANDIDATES);
 
-  for (const s of (due ?? []) as ScheduleRow[]) {
+  for (const s of roundRobin((due ?? []) as ScheduleRow[], (x) => x.workspace_id, MAX_DUE_PER_TICK)) {
     report.due += 1;
     const next = nextOccurrence({ cadence: s.cadence, hourUtc: s.hour_utc, weekday: s.weekday }, now);
 
@@ -81,13 +106,13 @@ export async function runScheduleTick(args: {
     }
   }
 
-  // Oldest first, so a run that has waited longest is the one that moves.
+  // Oldest first within a workspace, one workspace at a time across them.
   const { data: inFlight } = await client
     .from("runs").select("id, workspace_id")
     .not("schedule_id", "is", null).in("status", ["queued", "running"])
-    .order("created_at").limit(MAX_ADVANCED_PER_TICK);
+    .order("created_at").limit(CANDIDATES);
 
-  for (const r of inFlight ?? []) {
+  for (const r of roundRobin(inFlight ?? [], (x) => x.workspace_id as string, MAX_ADVANCED_PER_TICK)) {
     const left = deadline - Date.now();
     if (left < MIN_SLICE_MS) break;
     const result = await advanceRun({

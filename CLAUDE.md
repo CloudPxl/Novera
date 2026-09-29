@@ -278,9 +278,10 @@ they drive the scripted fixture at `/api/test-agent`.
 
 - **Price is undecided.** `docs/COMPETITION.md` holds the anchors and the argument for
   pricing a verified run rather than model calls. Nothing is published.
-- **Two grading vendors, not three.** The OpenAI key authenticates but has no credits, so
-  it is in no route. Independence currently means groq + mistral; a funded key is the
-  cheapest way back to three.
+- **Two grading vendors, not three.** No OpenAI or Anthropic key is configured (the
+  2026-09-22 OpenAI key had no credits). Independence currently means groq + mistral. A
+  funded key is one env line; `verify:models` then prints the calibration command, and the
+  model enters a route only where its measured false passes place it.
 - **Free-tier ceilings:** Groq 8,000 **tokens** per minute (not requests), Mistral about
   one request per second, Google's daily quota exhausted by a couple of calibration runs.
   Consensus doubles judge calls, so throughput is the thing to measure before promising

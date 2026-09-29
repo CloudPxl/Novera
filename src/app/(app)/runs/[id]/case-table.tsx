@@ -48,6 +48,8 @@ export interface CaseRow {
   latencyMs: number | null;
   /** The duties the scenario maps to, from the suite — e.g. "GDPR Art. 18". */
   dutyRefs: string[];
+  /** Set when this scenario's verdict has moved before under an unchanged policy. */
+  instability: { passes: number; fails: number; runs: number; cause?: "graders" | "agent" } | null;
 }
 
 const VERDICTS = [
@@ -545,6 +547,17 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
           {row.judgeModel && (
             <p className="mt-2 type-mono text-xs text-ink-faint">
               {gradingNote(row.judgeModel, row.judgeAgreement, row.judgeVotes)}
+            </p>
+          )}
+          {row.instability && (
+            <p className="mt-2 text-xs text-warning-text">
+              Its verdict has moved before with the policy unchanged: passed {row.instability.passes} and failed{" "}
+              {row.instability.fails} of {row.instability.runs} runs.{" "}
+              {row.instability.cause === "graders"
+                ? "The agent's reply was identical in runs graded differently, so the graders moved, not the agent."
+                : row.instability.cause === "agent"
+                  ? "The agent's reply differed between those runs."
+                  : ""}
             </p>
           )}
         </section>

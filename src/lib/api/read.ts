@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadStability } from "../evidence/stability-history.ts";
 
 /**
  * What a workspace API key can read. Shared by the REST routes and the MCP server, so the
@@ -101,13 +102,19 @@ export async function listRuns(db: Db, workspaceId: string, options: { agentId?:
 /** One run and every scenario in it. `null` when it does not exist in this workspace. */
 export async function getRun(db: Db, workspaceId: string, runId: string, options: { responses?: boolean } = {}) {
   const [{ data: run }, { data: cases }] = await Promise.all([
-    db.from("runs").select("id, agent_id, status, created_at, finished_at, error, manifest_hash, api_key_id, schedule_id, agents(name), suites(key, version), policies(version)")
+    db.from("runs").select("id, agent_id, suite_id, status, created_at, finished_at, error, manifest_hash, api_key_id, schedule_id, agents(name), suites(key, version), policies(version)")
       .eq("workspace_id", workspaceId).eq("id", runId).maybeSingle(),
     db.from("run_cases")
       .select(`case_id, category, obligation, severity, status, rationale, settled_by, judge_agreement, judge_model, evidence_gap, error, failed_assertions${options.responses ? ", input, response_text, transcript, raw_expired_at, raw_sha256" : ""}`)
       .eq("workspace_id", workspaceId).eq("run_id", runId).order("case_id"),
   ]);
   if (!run) return null;
+  // The same history the run page reads, up to this run: a scenario whose verdict has
+  // moved under an unchanged policy says so, and says what moved when it can.
+  const stability = await loadStability({
+    client: db as unknown as Parameters<typeof loadStability>[0]["client"],
+    agentId: run.agent_id as string, suiteId: run.suite_id as string, asOf: run.created_at as string,
+  });
   const { data: report } = await db.from("reports").select("token, content_hash, revoked_at, created_at")
     .eq("workspace_id", workspaceId).eq("run_id", runId).is("revoked_at", null)
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
@@ -141,6 +148,11 @@ export async function getRun(db: Db, workspaceId: string, runId: string, options
       graded_by: (c.judge_model as string | null) ?? null,
       evidence_gap: (c.evidence_gap as string | null) ?? null,
       failed_assertions: Array.isArray(c.failed_assertions) ? (c.failed_assertions as string[]) : [],
+      // Null unless its verdict has moved before under this policy version.
+      stability: (() => {
+        const s = stability.get(c.case_id as string);
+        return s ? { passes: s.passes, fails: s.fails, runs: s.runs, moved: s.cause ?? "unknown" } : null;
+      })(),
       ...(options.responses
         ? {
             input: c.input as string,

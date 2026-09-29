@@ -15,7 +15,7 @@ const base: CaseRow = {
   status: "pass", input: "hello", expected: "something", assertions: ["a"],
   failedAssertions: [], responseText: "hi", rationale: null, error: null,
   judgeModel: "groq/x", judgeAgreement: "agreed", judgeVotes: [],
-  evidenceGap: null, trajectory: [], observation: null, latencyMs: 10, dutyRefs: [],
+  evidenceGap: null, trajectory: [], observation: null, latencyMs: 10, dutyRefs: [], instability: null,
 };
 
 const lens = (key: string) => {

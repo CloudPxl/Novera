@@ -114,7 +114,7 @@ export function buildTools(db: SupabaseClient, caller: McpCaller, origin: string
     {
       name: "get_run",
       title: "Get a run",
-      description: "One run and every scenario's verdict (pass, fail or no_result), the reason, how it was settled and whether the graders agreed. Set include_responses to also get what each scenario sent and the agent's replies.",
+      description: "One run and every scenario's verdict (pass, fail or no_result), the reason, how it was settled and whether the graders agreed. A scenario whose verdict has moved before under the same policy version carries `stability`, saying whether the graders or the agent moved. Set include_responses to also get what each scenario sent and the agent's replies.",
       inputSchema: {
         type: "object",
         properties: { run_id: { type: "string" }, include_responses: { type: "boolean", default: false } },

@@ -245,12 +245,12 @@ export default async function RunPage({
   // Which of the moved scenarios have moved before with nothing changed. Only asked
   // when there is a comparison to annotate, and only from runs up to this one, so the
   // answer on this page matches what a report sealed from this run would say.
-  const stability = comparison
-    ? await loadStability({
-        client: db, agentId: run.agent_id as string, suiteId: run.suite_id as string,
-        asOf: run.created_at as string,
-      })
-    : new Map();
+  // Loaded for every run, not only a comparison: a scenario whose verdict moves on its
+  // own says so in its own detail too.
+  const stability = await loadStability({
+    client: db, agentId: run.agent_id as string, suiteId: run.suite_id as string,
+    asOf: run.created_at as string,
+  });
   const unstableMoved = comparison ? unstableInComparison(comparison, stability) : [];
 
   // What an independent read of the customer's system showed, per case. Its own
@@ -364,6 +364,7 @@ export default async function RunPage({
     evidenceGap: (c.evidence_gap as string | null) ?? null,
     latencyMs: (c.latency_ms as number | null) ?? null,
     dutyRefs: dutyRefsByCase.get(c.case_id as string) ?? [],
+    instability: stability.get(c.case_id as string) ?? null,
   }));
 
   // The diagnosis controls are server-rendered per case and handed to the client
@@ -693,8 +694,9 @@ export default async function RunPage({
                             return (
                               <li key={id}>
                                 <span className="type-mono">{id}</span> — passed {s.passes} and failed {s.fails} of{" "}
-                                {s.runs} earlier runs under one policy version. Rerun before treating its
-                                movement as caused by this change.
+                                {s.runs} earlier runs under one policy version
+                                {s.cause === "graders" ? ", on an identical reply — the graders moved, not the agent" : s.cause === "agent" ? ", with the agent's reply differing" : ""}.
+                                Rerun before treating its movement as caused by this change.
                               </li>
                             );
                           })}

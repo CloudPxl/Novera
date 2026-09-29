@@ -36,14 +36,16 @@ export async function loadStability(args: {
 
   const { data: cases } = await args.client
     .from("run_cases")
-    .select("run_id, case_id, status")
+    .select("run_id, case_id, status, raw_sha256")
     .in("run_id", runs.map((r) => r.id as string));
 
   const byRun = new Map<string, HistoricalRun>(
     runs.map((r) => [r.id as string, { runId: r.id as string, policyId: r.policy_id as string, cases: [] }]),
   );
   for (const c of cases ?? []) {
-    byRun.get(c.run_id as string)?.cases.push({ caseId: c.case_id as string, status: c.status as CaseStatus });
+    byRun.get(c.run_id as string)?.cases.push({
+      caseId: c.case_id as string, status: c.status as CaseStatus, replySha: (c.raw_sha256 as string | null) ?? null,
+    });
   }
 
   return unstableCases([...byRun.values()]);

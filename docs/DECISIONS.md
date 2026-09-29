@@ -2692,3 +2692,21 @@ is a model's proposal from stored evidence, and that nothing changes until appro
 Measured headless on planted rows in a throwaway workspace: every count as planted, the
 link opens the run with the lens active, axe clean and no overflow at 390 and 1440 on
 both pages.
+
+## 2026-09-29 — Phase 12.6: what moved when a verdict moved
+
+Planned as a new stability feature; it already existed. `unstableCases` (format 10)
+flags a scenario whose verdict flipped under one policy version, and the comparison and
+sealed report annotate it — I overwrote that file while writing a parallel version, saw
+the tool report "updated", and restored it from git before anything else ran. So 12.6
+became an extension of the existing mechanism rather than a second one.
+
+What it lacked was the review's point: whether the graders or the agent moved. History
+now carries each reply's fingerprint (`raw_sha256`, 0037 — kept after the reply expires),
+and a flip records `cause`: `graders` when an identical reply was graded both ways,
+`agent` when every differently graded reply differed, nothing when a fingerprint is
+missing. Shown in the case detail for every flipped scenario (loaded for every run now,
+not only when comparing), in the comparison's warning, and in `GET /api/v1/runs/<id>`
+and MCP `get_run` as `stability.moved`. Never called "flaky". The sealed report's
+format does not change. Verified through the live API on planted history: `graders`
+and `agent` as planted.

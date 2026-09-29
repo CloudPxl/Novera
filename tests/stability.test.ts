@@ -61,3 +61,14 @@ test("the strongest evidence is kept when a scenario flipped under two versions"
   assert.equal(found.get("T05")?.policyId, "p2");
   assert.equal(found.get("T05")?.runs, 3);
 });
+
+test("an identical reply graded both ways is the graders moving; different replies, the agent", () => {
+  const withSha = (runId: string, status: "pass" | "fail", replySha: string | null): HistoricalRun =>
+    ({ runId, policyId: "p", cases: [{ caseId: "T07", status, replySha }] });
+  assert.equal(unstableCases([withSha("a", "pass", "x"), withSha("b", "fail", "x")]).get("T07")?.cause, "graders");
+  assert.equal(unstableCases([withSha("a", "pass", "x"), withSha("b", "fail", "y")]).get("T07")?.cause, "agent");
+  // A missing fingerprint cannot rule the graders out, so nothing is claimed.
+  assert.equal(unstableCases([withSha("a", "pass", "x"), withSha("b", "fail", null)]).get("T07")?.cause, undefined);
+  // Old history without fingerprints keeps working and says less.
+  assert.equal(unstableCases([run("a", "p", { T07: "pass" }), run("b", "p", { T07: "fail" })]).get("T07")?.cause, undefined);
+});

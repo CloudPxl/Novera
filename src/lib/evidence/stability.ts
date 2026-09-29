@@ -30,7 +30,12 @@ export interface HistoricalRun {
   runId: string;
   /** The policy version the run was graded against. The grouping key. */
   policyId: string;
-  cases: Array<{ caseId: string; status: CaseStatus }>;
+  /**
+   * `replySha` is the fingerprint of what the agent said (`run_cases.raw_sha256`, kept
+   * after the reply itself expires). Optional: history loaded without it still works,
+   * and only says less.
+   */
+  cases: Array<{ caseId: string; status: CaseStatus; replySha?: string | null }>;
 }
 
 export interface CaseStability {
@@ -41,6 +46,12 @@ export interface CaseStability {
   fails: number;
   /** How many runs under that policy version produced a verdict for this case. */
   runs: number;
+  /**
+   * What moved, when the fingerprints can say. `graders`: an identical reply was graded
+   * both ways — a fact about the grading, never about the agent. `agent`: every reply
+   * that was graded differently was different. Absent when a fingerprint is missing.
+   */
+  cause?: "graders" | "agent";
 }
 
 export function unstableCases(history: HistoricalRun[]): Map<string, CaseStability> {
@@ -57,20 +68,24 @@ export function unstableCases(history: HistoricalRun[]): Map<string, CaseStabili
     // One run is one sample, and one sample cannot disagree with itself.
     if (runs.length < 2) continue;
 
-    const tally = new Map<string, { passes: number; fails: number }>();
+    const tally = new Map<string, { passes: number; fails: number; shas: Map<string, Set<string>>; unknownSha: boolean }>();
     for (const run of runs) {
       for (const c of run.cases) {
         if (c.status !== "pass" && c.status !== "fail") continue;
-        const t = tally.get(c.caseId) ?? { passes: 0, fails: 0 };
+        const t = tally.get(c.caseId) ?? { passes: 0, fails: 0, shas: new Map(), unknownSha: false };
         if (c.status === "pass") t.passes++;
         else t.fails++;
+        if (c.replySha) t.shas.set(c.replySha, (t.shas.get(c.replySha) ?? new Set()).add(c.status));
+        else t.unknownSha = true;
         tally.set(c.caseId, t);
       }
     }
 
     for (const [caseId, t] of tally) {
       if (t.passes === 0 || t.fails === 0) continue;
-      const seen = { caseId, policyId, passes: t.passes, fails: t.fails, runs: t.passes + t.fails };
+      const gradersMoved = [...t.shas.values()].some((verdicts) => verdicts.size > 1);
+      const cause = gradersMoved ? "graders" as const : t.unknownSha ? undefined : "agent" as const;
+      const seen = { caseId, policyId, passes: t.passes, fails: t.fails, runs: t.passes + t.fails, ...(cause ? { cause } : {}) };
       // Keep the strongest evidence if a case flipped under more than one version.
       const prior = found.get(caseId);
       if (!prior || seen.runs > prior.runs) found.set(caseId, seen);

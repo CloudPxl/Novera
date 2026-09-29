@@ -58,6 +58,7 @@ someone with the service role, not merely someone using the application.
 | A person gets one workspace on first use, however many page loads race to create it | 0029, advisory lock per user |
 | A row can refer only to rows in its own workspace — agents, policies, runs, cases, failures, suites (built-ins shared) — even for the service role | 0034 `refuse_cross_workspace()`, `verify:tenancy` |
 | An API key is stored only as an HMAC, reads by default and starts runs only if its creator chose that (never `run` without `read`), cannot be altered, and once revoked stays revoked; a key reads only its own workspace, and a run it starts names it | 0033 + 0035 + `src/lib/api/`, `verify:api` |
+| An assistant on MCP is offered only its key's scopes; with `write` it can ask for scenario drafts and diagnoses, which land as drafts and proposals naming the key — no scope approves, publishes, revokes, changes a policy or sends | 0039, `src/lib/mcp/tools.ts`, `src/lib/workflow/propose.ts`, `verify:mcp` |
 | A schedule starts a due run once however many ticks race, runs a pinned suite at a fixed UTC time, pauses with its reason when a run cannot start, and is never deleted — the runs it started name it; who started any run cannot be rewritten | 0036, `src/lib/schedules/`, `verify:schedules` |
 | A model provider receives only the data class its published terms allow: support messages only where identifiable data is allowed, customer content redacted where only that is, nothing of the customer's to free tiers that train on it; where a grader read placeholders, the vote, the case and the report say so | `src/lib/privacy/data-class.ts` in the router, `tests/privacy.test.ts` |
 | An agent's raw replies are kept only for the workspace's retention period (30–365 days, default 180); then the daily pass empties them and nothing else, leaving the verdict and a SHA-256 of the reply; a sealed report shows quoted personal data only as placeholders; a support conversation is erased 90 days after it last moved, and a probe receipt's reply emptied after 90 days | 0037 `expire_raw_evidence()`, 0038 `expire_inbound_and_probes()`, `verify:retention`; `buildReport` scrub |
@@ -163,7 +164,7 @@ src/lib/privacy/      data classes and provider ceilings, enforced by the router
 src/lib/regressions/  a production failure → regression scenario, and its derived lifecycle
 src/lib/simulate/     the simulated customer: persona prompt and reply parsing
 src/lib/api/          API keys (mint, hash, authenticate) and the shared read layer for REST and MCP
-src/lib/mcp/          the read-only MCP server: JSON-RPC protocol and the seven tools
+src/lib/mcp/          the MCP server: JSON-RPC protocol; seven read tools, run and write tools by key scope
 src/lib/schedules/    scheduled re-evaluations: UTC cadence, the clock's secret, the tick
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites + calibration labels
@@ -191,7 +192,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 469 unit tests | free |
+| `npm test` | 474 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -200,7 +201,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 | `verify:throttle` | the public forms cannot be made free | free |
 | `verify:imports` | an imported case is a draft with frozen provenance, held to the same approval | free |
 | `verify:api` | API keys and `/api/v1`: tenant isolation, identical refusals, revocation, rate limit (needs `npm run dev`) | free |
-| `verify:mcp` | the MCP endpoint, driven by the official MCP client: isolation, read-only tools, transport rules (needs `npm run dev`) | free |
+| `verify:mcp` | the MCP endpoint, driven by the official MCP client: isolation, tools per scope, refusals before any model call, frozen attribution, transport rules (needs `npm run dev`; `VERIFY_MCP_MODEL=1` also drafts and diagnoses for real) | free · two model calls |
 | `verify:retention` | raw evidence past its period is emptied and nothing else changes; the fingerprint still matches; expiry mode opens nothing else | free |
 | `verify:schedules` | a due schedule starts one run however many ticks race; the clock drives it to the end; skip, pause, frozen fields, RLS, erasure (needs `npm run dev`) | free |
 | `schedules:clock -- install \| status \| remove` | installs the pg_cron job that calls `/api/cron/tick`, secret in Vault; `status` shows its last calls | free |

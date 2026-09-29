@@ -15,6 +15,8 @@ export interface Proposal {
   status: "proposed" | "approved" | "rejected";
   decidedAt: string | null;
   resultingPolicyVersion: number | null;
+  /** The API key an assistant used to ask for it, by name; null when a person asked. */
+  askedVia: string | null;
 }
 
 /** Asks for a proposal on one failed scenario. */
@@ -56,6 +58,9 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
         </Badge>
         {proposal.resultingPolicyVersion !== null && (
           <span className="text-xs text-ink-faint">became policy v{proposal.resultingPolicyVersion}</span>
+        )}
+        {proposal.askedVia && (
+          <span className="text-xs text-ink-faint">asked for by an assistant, key “{proposal.askedVia}”</span>
         )}
         {proposal.decidedAt && (
           <span className="text-xs text-ink-faint">

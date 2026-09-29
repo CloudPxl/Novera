@@ -2,17 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
-import { createRoutedChat } from "@/lib/router/execute.ts";
-import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
-import { connectionsFromEnv } from "@/lib/providers/registry.ts";
-import { compileScenarios } from "@/lib/scenarios/compile.ts";
-import { buildPromotedSuite, coveredBehaviours } from "@/lib/scenarios/promote.ts";
+import { buildPromotedSuite } from "@/lib/scenarios/promote.ts";
 import { importDataset, SOURCE_LABELS } from "@/lib/imports/datasets.ts";
 import { redactForStorage } from "@/lib/redact/store.ts";
 import { regressionScenario } from "@/lib/regressions/draft.ts";
 import { SEVERITIES } from "@/lib/suites/validate.ts";
 import type { SuiteCase } from "@/lib/runner/types.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
+import { draftScenariosFromPolicy } from "@/lib/workflow/propose.ts";
 
 /**
  * The duty-to-test compiler, from the operator's side.
@@ -36,64 +33,14 @@ export async function draftScenarios(_prev: FormState, form: FormData): Promise<
   const wanted = Number(form.get("count") ?? 6);
   const admin = await assertMembership(user.id, workspace.id);
 
-  const { data: agent } = await admin
-    .from("agents").select("id, name").eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
-  if (!agent) return { error: "That agent could not be found in this workspace." };
-
-  // The latest policy version, because that is the document the agent is held to now.
-  const { data: policy } = await admin
-    .from("policies").select("id, version, body")
-    .eq("agent_id", agentId).eq("workspace_id", workspace.id)
-    .order("version", { ascending: false }).limit(1).maybeSingle();
-
-  if (!policy) {
-    return { error: "This agent has no policy version yet. A scenario needs a written duty to test." };
-  }
-
-  // Everything already drafted for this workspace: ids so a new draft never reuses
-  // one, expectations so the model extends the coverage rather than restating it.
-  const { data: existing } = await admin
-    .from("scenario_drafts").select("scenario").eq("workspace_id", workspace.id);
-
-  const existingCases = (existing ?? [])
-    .map((row) => row.scenario as SuiteCase)
-    .filter((c): c is SuiteCase => Boolean(c?.id));
-
-  const outcome = await compileScenarios({
-    chat: createRoutedChat({ connections: connectionsFromEnv(), routes: DEFAULT_ROUTES }),
-    policyBody: policy.body as string,
-    existing: coveredBehaviours(existingCases),
-    wanted,
-    usedIds: existingCases.map((c) => c.id),
-  });
-
-  if (!outcome.ok || !outcome.parsed) {
-    return { error: outcome.error ?? "No usable scenarios came back." };
-  }
-
-  const rows = outcome.parsed.drafts.map((d) => ({
-    workspace_id: workspace.id,
-    agent_id: agentId,
-    policy_id: policy.id,
-    source_quote: d.quote,
-    scenario: d.scenario,
-    duty_refs: d.dutyRefs,
-    risk_level: d.riskLevel,
-    destructive: d.destructive,
-    fixture_only: d.fixtureOnly,
-    model: outcome.servedBy ? `${outcome.servedBy.connection}/${outcome.servedBy.model}` : null,
-    created_by: user.id,
-  }));
-
-  const { error } = await admin.from("scenario_drafts").insert(rows);
-  if (error) return { error: `Could not save the drafts: ${error.message}` };
+  const drafted = await draftScenariosFromPolicy({ db: admin, workspaceId: workspace.id, agentId, wanted, by: { userId: user.id } });
+  if (!drafted.ok) return { error: drafted.error };
 
   revalidatePath("/scenarios");
 
-  const refused = outcome.parsed.refused.length;
+  const { drafts, refused, policyVersion, servedBy } = drafted.value;
   return {
-    notice: `${rows.length} scenario(s) drafted from policy v${policy.version} by `
-      + `${outcome.servedBy?.connection}/${outcome.servedBy?.model}.`
+    notice: `${drafts.length} scenario(s) drafted from policy v${policyVersion} by ${servedBy}.`
       + (refused ? ` ${refused} were discarded before storage: they did not hold up.` : ""),
   };
 }

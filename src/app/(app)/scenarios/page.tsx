@@ -29,6 +29,7 @@ interface DraftRow {
   created_at: string;
   policies: { version: number } | null;
   suites: { key: string; version: number } | null;
+  api_keys: { name: string } | null;
 }
 
 // The tone set already names the severities; risk uses the same words on purpose.
@@ -41,7 +42,7 @@ export default async function ScenariosPage() {
   const [{ data: drafts }, { data: agents }, { data: suites }] = await Promise.all([
     admin
       .from("scenario_drafts")
-      .select("id, origin, import_provenance, production_failures(occurred_on, created_at, agent_reply, redaction), source_quote, scenario, duty_refs, risk_level, destructive, fixture_only, status, model, rejection_reason, approved_at, created_at, policies(version), suites!scenario_drafts_included_in_suite_id_fkey(key, version)")
+      .select("id, origin, import_provenance, production_failures(occurred_on, created_at, agent_reply, redaction), source_quote, scenario, duty_refs, risk_level, destructive, fixture_only, status, model, rejection_reason, approved_at, created_at, api_keys(name), policies(version), suites!scenario_drafts_included_in_suite_id_fkey(key, version)")
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: false }),
     admin.from("agents").select("id, name, is_production").eq("workspace_id", workspace.id).order("created_at"),
@@ -197,7 +198,7 @@ export default async function ScenariosPage() {
 
                   {(d.model || d.origin !== "policy") && (
                     <p className="mt-4 text-xs text-ink-faint">
-                      {d.model ? `Drafted by ${d.model}.` : d.origin === "production" ? "Built from what you recorded, no model involved." : "Converted by Novera, no model involved."} Nothing
+                      {d.model ? `Drafted by ${d.model}${d.api_keys ? `, asked for by an assistant with the key “${d.api_keys.name}”` : ""}.` : d.origin === "production" ? "Built from what you recorded, no model involved." : "Converted by Novera, no model involved."} Nothing
                       has been run and nothing will be until you approve it.
                     </p>
                   )}

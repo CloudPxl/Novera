@@ -1,5 +1,5 @@
 /**
- * A read-only MCP server, as plain JSON-RPC over the Streamable HTTP transport
+ * An MCP server, as plain JSON-RPC over the Streamable HTTP transport
  * (specification 2025-06-18): one JSON response per request, 202 for a notification, no
  * event stream, no session. Stateless on purpose — every request carries its API key, so
  * there is no session to hijack and nothing to expire.
@@ -12,13 +12,30 @@ export const SERVER_INFO = { name: "novera", title: "Novera", version: "1.0.0" }
 export const SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"] as const;
 export const DEFAULT_VERSION = "2025-06-18";
 
+export interface ToolAnnotations {
+  readOnlyHint: boolean;
+  destructiveHint: boolean;
+  idempotentHint: boolean;
+  openWorldHint: boolean;
+}
+
+/** Most tools read what is stored and nothing else. */
+export const READ_ONLY: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+
 export interface Tool {
   name: string;
   title: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  /** What a client shows before calling it. Absent means read-only. */
+  annotations?: ToolAnnotations;
   run(args: Record<string, unknown>): Promise<unknown>;
 }
+
+export const READ_ONLY_INSTRUCTIONS =
+  "Novera is read-only here. Every verdict and count comes from stored runs; a scenario "
+  + "with no result is never a pass. Nothing you call can start a run, change a policy, "
+  + "approve anything, or publish or revoke a report.";
 
 /** A refusal a tool raises on purpose, reported to the model as a tool error, not a crash. */
 export class ToolRefusal extends Error {}
@@ -49,7 +66,11 @@ export function negotiateVersion(requested: unknown): string {
     : DEFAULT_VERSION;
 }
 
-export async function handleMessage(message: unknown, tools: Tool[]): Promise<McpReply> {
+export async function handleMessage(
+  message: unknown,
+  tools: Tool[],
+  instructions: string = READ_ONLY_INSTRUCTIONS,
+): Promise<McpReply> {
   // Batches were removed from the protocol in 2025-06-18; one message per request.
   if (!message || typeof message !== "object" || Array.isArray(message)) {
     return { kind: "invalid", body: error(null, -32600, "Send one JSON-RPC message per request.") };
@@ -73,10 +94,7 @@ export async function handleMessage(message: unknown, tools: Tool[]): Promise<Mc
         protocolVersion: negotiateVersion(params.protocolVersion),
         capabilities: { tools: { listChanged: false } },
         serverInfo: SERVER_INFO,
-        instructions:
-          "Novera is read-only here. Every verdict and count comes from stored runs; a scenario "
-          + "with no result is never a pass. Nothing you call can start a run, change a policy, "
-          + "approve anything, or publish or revoke a report.",
+        instructions,
       });
     case "ping":
       return ok({});
@@ -87,7 +105,7 @@ export async function handleMessage(message: unknown, tools: Tool[]): Promise<Mc
           title: t.title,
           description: t.description,
           inputSchema: t.inputSchema,
-          annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+          annotations: t.annotations ?? READ_ONLY,
         })),
       });
     case "tools/call": {

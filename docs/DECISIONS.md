@@ -2471,3 +2471,37 @@ sealed report — no result is not a pass here either.
 One defect found by running it: a completed run with nothing graded said "the run did
 not finish". It now says no scenario produced a verdict, so there was nothing to seal,
 and a genuinely unfinished run names its status.
+
+## 2026-09-29 — Upgrade step 3: MCP tools that act, and the one thing none of them can do
+
+A key's scopes now decide what an assistant is offered on `/api/mcp` (`tools/list` lists
+nothing a key cannot call): every key the seven read tools; `run` adds `start_run` and
+`advance_run` (the same `startRun`/`advanceRun` as the button, REST and the clock); a new
+`write` scope (0039, never without `read`) adds `draft_scenarios` and `request_diagnosis`.
+Non-read tools declare `readOnlyHint: false, destructiveHint: false`, so a client asks the
+person before calling them; the server's instructions are written per key.
+
+**Approving stays with a person — no `approve_draft`, deliberately.** The plan said write
+tools "only with explicit confirmation". A confirmation token returned to the calling
+model is not a confirmation: the model can pass it straight back. What actually guarantees
+a person decided is the decision itself — a draft's approval and a diagnosis's approval
+each record a named user (0022, 0007) — so the boundary sits there. The tools return the
+link where the person decides, and a draft or proposal an assistant asked for says so on
+screen ("asked for by an assistant, key …").
+
+Drafting and diagnosis each had one implementation inside a server action; both now live
+in `src/lib/workflow/propose.ts`, called by the buttons and the tools alike (the "fifth
+copy" rule). Who asked is recorded and frozen: `scenario_drafts.api_key_id`,
+`diagnoses.requested_by` + `api_key_id` — a person's diagnosis request had recorded no one
+until now. Model-calling tools are capped at 20 an hour per workspace (our quota is shared).
+
+`npm test` now runs under `--conditions=react-server`, like every script, so a test can
+import a server-only module; the MCP tool modules load the runner and rate limiter lazily,
+which also keeps them off a read-only key's request path. 474 tests.
+
+Measured: `verify:mcp` 29 free checks (scopes, refusals before any model call, frozen and
+same-workspace attribution) plus, with `VERIFY_MCP_MODEL=1`, a real draft and a real
+diagnosis stored with the key and its creator. First model attempt drafted from a one-line
+policy with count 1 and was refused by the compiler's quote check — the guard working;
+the check now uses a realistic policy. `verify:api`, `tenancy`, `db`, `access`,
+`compiler` green; Settings and Scenarios axe-clean at 390 and 1440.

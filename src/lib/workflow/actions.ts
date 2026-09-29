@@ -10,15 +10,12 @@ import { NothingToDisclose } from "@/lib/report/reissue.ts";
 import { LeakError } from "@/lib/report/redact.ts";
 import { retestCase } from "@/lib/workflow/retest.ts";
 import { validateSuite, suiteFromCsv } from "@/lib/suites/validate.ts";
-import { diagnoseFailure } from "@/lib/diagnose/index.ts";
 import { applyPolicyChange } from "@/lib/diagnose/parse.ts";
-import { createRoutedChat } from "@/lib/router/execute.ts";
-import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
-import { connectionsFromEnv } from "@/lib/providers/registry.ts";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
 import { explainKeyFailure } from "@/lib/providers/key-failure.ts";
 import { REVIEW_NOTE_MIN, REVIEW_NOTE_MAX } from "@/lib/evidence/reviews.ts";
 import { startRun } from "./start-run.ts";
+import { diagnoseRunCase } from "./propose.ts";
 import { httpVerificationConnector } from "../evidence/connectors/http.ts";
 import { connectionFor } from "@/lib/providers/workspace-connections.ts";
 import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
@@ -207,64 +204,11 @@ export async function requestDiagnosis(_prev: FormState, form: FormData): Promis
   const runCaseId = String(form.get("runCaseId") ?? "");
   const admin = await assertMembership(user.id, workspace.id);
 
-  const { data: runCase, error } = await admin
-    .from("run_cases")
-    .select("id, run_id, case_id, obligation, severity, input, expected, assertions, response_text, rationale, status, raw_expired_at")
-    .eq("id", runCaseId)
-    .eq("workspace_id", workspace.id)
-    .single();
+  const proposed = await diagnoseRunCase({ db: admin, workspaceId: workspace.id, runCaseId, by: { userId: user.id } });
+  if (!proposed.ok) return { error: proposed.error };
 
-  if (error || !runCase) return { error: "That scenario could not be found." };
-  if (runCase.status === "pass") return { error: "That scenario passed; there is nothing to diagnose." };
-  // A diagnosis reads what the agent said. Without it, a proposal would be a guess
-  // from the rationale alone, presented as though it had read the reply.
-  if (runCase.raw_expired_at) {
-    return { error: "The agent's reply for this scenario was removed under this workspace's retention setting, so it cannot be diagnosed. Retest the scenario to get a fresh reply." };
-  }
-
-  const { data: run } = await admin
-    .from("runs").select("policy_id").eq("id", runCase.run_id).single();
-  const { data: policy } = run
-    ? await admin.from("policies").select("id, body").eq("id", run.policy_id).single()
-    : { data: null };
-
-  if (!policy) return { error: "The policy this run used could not be loaded." };
-
-  const outcome = await diagnoseFailure({
-    chat: createRoutedChat({ connections: connectionsFromEnv(), routes: DEFAULT_ROUTES }),
-    policyBody: policy.body as string,
-    failure: {
-      caseId: runCase.case_id as string,
-      obligation: runCase.obligation as string,
-      severity: runCase.severity as string,
-      input: runCase.input as string,
-      expected: runCase.expected as string,
-      assertions: Array.isArray(runCase.assertions) ? (runCase.assertions as string[]) : [],
-      responseText: (runCase.response_text as string | null) ?? null,
-      rationale: (runCase.rationale as string | null) ?? null,
-    },
-  });
-
-  if (!outcome.ok || !outcome.change) {
-    // Deliberately not stored. A failed attempt to propose is not a proposal, and a
-    // row saying "the model could not help" would only clutter the decision list.
-    return { error: outcome.error ?? "No usable proposal came back." };
-  }
-
-  const { error: insertError } = await admin.from("diagnoses").insert({
-    workspace_id: workspace.id,
-    run_case_id: runCase.id,
-    analysis: outcome.change.analysis,
-    quoted_old: outcome.change.quotedOld,
-    proposed_new: outcome.change.proposedNew,
-    risks: outcome.change.risks,
-    status: "proposed",
-  });
-
-  if (insertError) return { error: `Could not save the proposal: ${insertError.message}` };
-
-  revalidatePath(`/runs/${runCase.run_id}`);
-  return { notice: `Proposal ready, drafted by ${outcome.servedBy?.connection}/${outcome.servedBy?.model}.` };
+  revalidatePath(`/runs/${proposed.value.runId}`);
+  return { notice: `Proposal ready, drafted by ${proposed.value.servedBy}.` };
 }
 
 /**

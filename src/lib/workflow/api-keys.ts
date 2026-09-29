@@ -15,8 +15,9 @@ const MAX_ACTIVE_KEYS = 10;
 
 /**
  * Creates a key for this workspace — read-only unless the person ticked "can also start
- * runs", which spends a trial run or grading on their own model key each time. The key
- * is in the reply and nowhere else.
+ * runs", which spends a trial run or grading on their own model key each time, or "can
+ * also ask for drafts and diagnoses", which spends model calls and stores proposals a
+ * person then decides. The key is in the reply and nowhere else.
  */
 export async function createApiKey(_prev: KeyFormState, form: FormData): Promise<KeyFormState> {
   const { user, workspace } = await requireWorkspace();
@@ -43,7 +44,7 @@ export async function createApiKey(_prev: KeyFormState, form: FormData): Promise
     name,
     prefix: minted.prefix,
     key_hash: minted.hash,
-    scopes: form.get("canRun") === "on" ? ["read", "run"] : ["read"],
+    scopes: ["read", ...(form.get("canRun") === "on" ? ["run"] : []), ...(form.get("canWrite") === "on" ? ["write"] : [])],
     created_by: user.id,
   });
   if (error) return { error: `The key could not be created: ${error.message}` };

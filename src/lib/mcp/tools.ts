@@ -1,26 +1,72 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getRun, listAgents, listRuns, listSuites } from "../api/read.ts";
+import type { Scope } from "../api/keys.ts";
 import { compareRuns } from "../evidence/compare.ts";
 import { loadReportByToken } from "../report/access.ts";
 import { contentHash, type Json } from "../report/hash.ts";
-import { ToolRefusal, type Tool } from "./protocol.ts";
+// start-run, propose and the rate limiter are loaded when a tool that needs them is called: a read-only
+// key never pays for the runner, and the tool list can be built without it.
+import { READ_ONLY_INSTRUCTIONS, ToolRefusal, type Tool, type ToolAnnotations } from "./protocol.ts";
 
 /**
- * The tools an assistant can call, scoped to the workspace that owns the API key. Every
- * one reads; none starts, changes, approves, publishes or revokes anything. They go
- * through the same read layer as the REST API, so the two cannot disagree.
+ * The tools an assistant can call, scoped to the workspace that owns the API key and
+ * limited to what the key's scopes allow — a tool the key cannot use is not listed.
+ *
+ *   read   the seven read tools, through the same read layer as the REST API
+ *   run    start_run and advance_run: the same startRun/advanceRun as the button
+ *   write  draft_scenarios and request_diagnosis: a model proposes, stored as a draft
+ *          or a proposal, the same functions as the buttons
+ *
+ * No scope approves, publishes, revokes, changes a policy or sends anything. Those are
+ * a person's decisions in the app, and the write tools answer with the link to make them.
  */
+
+export interface McpCaller {
+  workspaceId: string;
+  keyId: string;
+  scopes: Scope[];
+}
+
+/**
+ * Drafting and diagnosing call a model on Novera's grading quota, which every workspace
+ * shares; this bounds what one workspace's assistants can spend. Counted in Postgres.
+ */
+export const MODEL_TOOL_LIMIT = { max: 20, windowSeconds: 3600 };
+
+const STARTS_WORK: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
+const PROPOSES: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
+
+export function instructionsFor(scopes: Scope[]): string {
+  if (!scopes.includes("run") && !scopes.includes("write")) return READ_ONLY_INSTRUCTIONS;
+  return [
+    "Every verdict and count comes from stored runs; a scenario with no result is never a pass.",
+    scopes.includes("run")
+      ? "This key can start a run (start_run), which spends a trial run or grading on the workspace's own model key, and then advance it (advance_run) until done — say so before you start one."
+      : null,
+    scopes.includes("write")
+      ? "This key can ask for scenario drafts and failure diagnoses. They are proposals: nothing you call can approve one, change a policy, publish or revoke a report, or send anything. Give the person the link each tool returns; they decide in Novera."
+      : null,
+  ].filter(Boolean).join(" ");
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const ID_SOURCE: Record<string, string> = {
+  run_id: "a run id (a UUID). list_runs gives them",
+  baseline_run_id: "a run id (a UUID). list_runs gives them",
+  agent_id: "an agent id (a UUID). list_agents gives them",
+  suite_id: "a suite id (a UUID). list_suites gives them",
+};
+
 function uuid(args: Record<string, unknown>, name: string): string {
   const v = args[name];
-  if (typeof v !== "string" || !UUID.test(v)) throw new ToolRefusal(`\`${name}\` must be a run id (a UUID). list_runs gives them.`);
+  if (typeof v !== "string" || !UUID.test(v)) throw new ToolRefusal(`\`${name}\` must be ${ID_SOURCE[name] ?? "a UUID"}.`);
   return v;
 }
 
-export function buildTools(db: SupabaseClient, workspaceId: string, origin: string): Tool[] {
+export function buildTools(db: SupabaseClient, caller: McpCaller, origin: string): Tool[] {
+  const { workspaceId } = caller;
   const reportLink = (r: { token: string; content_hash: string } | null) =>
     r ? { content_hash: r.content_hash, url: `${origin}/report/${r.token}` } : null;
 
@@ -30,7 +76,7 @@ export function buildTools(db: SupabaseClient, workspaceId: string, origin: stri
     return found;
   };
 
-  return [
+  const tools: Tool[] = [
     {
       name: "list_agents",
       title: "List agents",
@@ -149,6 +195,163 @@ export function buildTools(db: SupabaseClient, workspaceId: string, origin: stri
           recomputed,
           agent: found.payload.subject.agent,
           run_date: found.payload.run.date,
+        };
+      },
+    },
+  ];
+
+  if (caller.scopes.includes("run")) tools.push(...runTools(db, caller, origin));
+  if (caller.scopes.includes("write")) tools.push(...writeTools(db, caller, origin));
+  return tools;
+}
+
+/** The person responsible for what a key does is whoever created it (0035, 0039). */
+async function keyCreator(db: SupabaseClient, keyId: string): Promise<string | null> {
+  const { data } = await db.from("api_keys").select("created_by").eq("id", keyId).single();
+  return (data?.created_by as string | null) ?? null;
+}
+
+function runTools(db: SupabaseClient, caller: McpCaller, origin: string): Tool[] {
+  return [
+    {
+      name: "start_run",
+      title: "Start a run",
+      description: "Starts a run of a suite against one of this workspace's agents, with the same checks as the run button: the trial allowance or the workspace's own model key, the production guard, a policy version. It spends a run — confirm with the person first. The run is queued; call advance_run until it says done.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          agent_id: { type: "string" },
+          suite_id: { type: "string", description: "Optional. The newest built-in suite version otherwise." },
+        },
+        required: ["agent_id"],
+        additionalProperties: false,
+      },
+      annotations: STARTS_WORK,
+      run: async (args) => {
+        const agentId = uuid(args, "agent_id");
+        const suiteId = args.suite_id === undefined ? null : uuid(args, "suite_id");
+        const { startRun, RunRefusal } = await import("../workflow/start-run.ts");
+        try {
+          const run = await startRun({
+            client: db,
+            workspaceId: caller.workspaceId,
+            userId: await keyCreator(db, caller.keyId),
+            agentId,
+            suiteId,
+            apiKeyId: caller.keyId,
+          });
+          return { run_id: run.id, status: "queued", next: "Call advance_run with this run_id until done is true.", url: `${origin}/runs/${run.id}` };
+        } catch (e) {
+          if (e instanceof RunRefusal) throw new ToolRefusal(e.message);
+          throw e;
+        }
+      },
+    },
+    {
+      name: "advance_run",
+      title: "Advance a run",
+      description: "Grades the next slice of a run — about 40 seconds of work — and says whether it is done, with the counts so far. Call again until done is true. A call while another is working is refused politely (started: false), never duplicated.",
+      inputSchema: { type: "object", properties: { run_id: { type: "string" } }, required: ["run_id"], additionalProperties: false },
+      annotations: STARTS_WORK,
+      run: async (args) => {
+        const { advanceRun } = await import("../workflow/start-run.ts");
+        const result = await advanceRun({ client: db, workspaceId: caller.workspaceId, runId: uuid(args, "run_id") });
+        if (!result) throw new ToolRefusal("No such run in this workspace.");
+        if (result.error) throw new ToolRefusal("The run stopped with an error. get_run shows what happened.");
+        return { ...result };
+      },
+    },
+  ];
+}
+
+function writeTools(db: SupabaseClient, caller: McpCaller, origin: string): Tool[] {
+  const spend = async () => {
+    const { rateLimit } = await import("../support/rate-limit.ts");
+    const limit = await rateLimit(`mcp-model:${caller.workspaceId}`, MODEL_TOOL_LIMIT);
+    if (!limit.allowed) {
+      throw new ToolRefusal(`This workspace has asked for ${MODEL_TOOL_LIMIT.max} drafts or diagnoses in the last hour. Try again in ${limit.retryAfterMinutes} minute(s), or use the buttons in Novera.`);
+    }
+  };
+
+  return [
+    {
+      name: "draft_scenarios",
+      title: "Draft scenarios from the policy",
+      description: "Asks a model to draft test scenarios from an agent's latest policy version, each quoting the passage it tests. They are stored as drafts: a draft cannot run, and only a person can approve one, in Novera at the returned review_url. Nothing here changes a suite.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          agent_id: { type: "string" },
+          count: { type: "integer", minimum: 1, maximum: 6, default: 5 },
+        },
+        required: ["agent_id"],
+        additionalProperties: false,
+      },
+      annotations: PROPOSES,
+      run: async (args) => {
+        const agentId = uuid(args, "agent_id");
+        const count = args.count === undefined ? 5 : Number(args.count);
+        if (!Number.isInteger(count) || count < 1 || count > 6) throw new ToolRefusal("`count` must be a whole number from 1 to 6.");
+        await spend();
+        const { draftScenariosFromPolicy } = await import("../workflow/propose.ts");
+        const drafted = await draftScenariosFromPolicy({
+          db, workspaceId: caller.workspaceId, agentId, wanted: count,
+          by: { userId: await keyCreator(db, caller.keyId), apiKeyId: caller.keyId },
+        });
+        if (!drafted.ok) throw new ToolRefusal(drafted.error);
+        const v = drafted.value;
+        return {
+          status: "draft",
+          policy_version: v.policyVersion,
+          drafted_by: v.servedBy,
+          drafts: v.drafts.map((d) => ({ draft_id: d.id, scenario_id: d.scenarioId, input: d.input, tests_passage: d.quote, risk: d.riskLevel })),
+          discarded: v.refused,
+          review_url: `${origin}/scenarios`,
+          note: "Drafts are not tests yet. A person approves or rejects each one in Novera; only approved drafts can enter a suite version.",
+        };
+      },
+    },
+    {
+      name: "request_diagnosis",
+      title: "Diagnose a failed scenario",
+      description: "Asks a model why one scenario in a run failed and what change to the policy version that run used would have prevented it. Stored as a proposal: nothing changes until a person approves it in Novera at the returned review_url, which then creates a new policy version.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          run_id: { type: "string" },
+          scenario_id: { type: "string", description: "The scenario's id in that run, e.g. T07 (get_run lists them)." },
+        },
+        required: ["run_id", "scenario_id"],
+        additionalProperties: false,
+      },
+      annotations: PROPOSES,
+      run: async (args) => {
+        const runId = uuid(args, "run_id");
+        const scenarioId = typeof args.scenario_id === "string" ? args.scenario_id.trim() : "";
+        if (!scenarioId || scenarioId.length > 64) throw new ToolRefusal("`scenario_id` must be a scenario id from get_run, e.g. T07.");
+        const { data: row } = await db.from("run_cases").select("id")
+          .eq("run_id", runId).eq("case_id", scenarioId).eq("workspace_id", caller.workspaceId).maybeSingle();
+        if (!row) throw new ToolRefusal("No such scenario in that run in this workspace.");
+        await spend();
+        const { diagnoseRunCase } = await import("../workflow/propose.ts");
+        const proposed = await diagnoseRunCase({
+          db, workspaceId: caller.workspaceId, runCaseId: row.id as string,
+          by: { userId: await keyCreator(db, caller.keyId), apiKeyId: caller.keyId },
+        });
+        if (!proposed.ok) throw new ToolRefusal(proposed.error);
+        const v = proposed.value;
+        return {
+          status: "proposed",
+          diagnosis_id: v.id,
+          run_id: v.runId,
+          scenario_id: v.scenarioId,
+          analysis: v.analysis,
+          replace: v.quotedOld,
+          with: v.proposedNew,
+          risks: v.risks,
+          drafted_by: v.servedBy,
+          review_url: `${origin}/runs/${v.runId}`,
+          note: "A proposal changes nothing. A person approves or rejects it in Novera; approving creates a new policy version.",
         };
       },
     },

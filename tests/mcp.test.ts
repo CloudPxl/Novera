@@ -56,3 +56,18 @@ test("unknown tools and methods are JSON-RPC errors", async () => {
   assert.equal(((await body({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "start_run" } })).error as { code: number }).code, -32602);
   assert.equal(((await body({ jsonrpc: "2.0", id: 7, method: "resources/list" })).error as { code: number }).code, -32601);
 });
+
+test("a tool that is not read-only says so, and the instructions can be the key's own", async () => {
+  const writes: Tool = {
+    name: "draft", title: "D", description: "d", inputSchema: { type: "object" },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    run: async () => ({}),
+  };
+  const list = await handleMessage({ jsonrpc: "2.0", id: 1, method: "tools/list" }, [writes]);
+  const tools = ((list as unknown as { body: { result: { tools: Array<{ annotations: Record<string, boolean> }> } } }).body.result.tools);
+  assert.equal(tools[0].annotations.readOnlyHint, false);
+  assert.equal(tools[0].annotations.destructiveHint, false);
+
+  const init = await handleMessage({ jsonrpc: "2.0", id: 2, method: "initialize", params: {} }, [writes], "custom words");
+  assert.equal((init as unknown as { body: { result: { instructions: string } } }).body.result.instructions, "custom words");
+});

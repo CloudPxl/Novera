@@ -29,6 +29,14 @@ export function CreateApiKey() {
             model key. Leave this off for a key that only reads.
           </span>
         </label>
+        <label className="flex w-full items-start gap-2 text-sm text-ink-soft">
+          <input type="checkbox" name="canWrite" className="mt-0.5 size-4 accent-ink" />
+          <span>
+            Can also ask for scenario drafts and failure diagnoses, from an AI assistant through MCP.
+            They arrive as drafts and proposals for you to approve or reject here; no key can approve,
+            publish or change anything.
+          </span>
+        </label>
       </form>
 
       {state.error && <p role="status" className="mt-3 text-sm text-fail-text">{state.error}</p>}

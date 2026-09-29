@@ -109,7 +109,7 @@ export default async function RunPage({
   const { data: proposals } = settled && rows.length
     ? await db
         .from("diagnoses")
-        .select("id, run_case_id, analysis, quoted_old, proposed_new, risks, status, decided_at, resulting_policy_id")
+        .select("id, run_case_id, analysis, quoted_old, proposed_new, risks, status, decided_at, resulting_policy_id, api_keys(name)")
         .in("run_case_id", rows.map((c) => c.id))
         .order("created_at")
     : { data: null };
@@ -183,6 +183,7 @@ export default async function RunPage({
       resultingPolicyVersion: p.resulting_policy_id
         ? versionOf.get(p.resulting_policy_id as string) ?? null
         : null,
+      askedVia: (p.api_keys as { name?: string } | null)?.name ?? null,
     });
     proposalsByCase.set(p.run_case_id as string, list);
   }

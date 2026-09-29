@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test \"tests/*.test.ts\"",
+    "test": "node --conditions=react-server --test \"tests/*.test.ts\"",
     "typecheck": "node_modules/typescript-native/bin/tsc --noEmit",
     "typecheck:6": "node node_modules/typescript/bin/tsc --noEmit",
     "verify:db": "node --conditions=react-server --env-file=.env.local scripts/verify-db.mts",

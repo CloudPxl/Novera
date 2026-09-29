@@ -50,12 +50,17 @@ A ready workflow for [n8n](https://n8n.io) does the same without any code: downl
 
 ## For AI assistants (MCP)
 
-The same key opens a read-only MCP server at `https://www.nover.space/api/mcp`, so an assistant that speaks the Model Context Protocol — Claude, Cursor and others — can answer questions such as "what failed in the last run, and why?" from your stored evidence. In Claude Code:
+The same key opens an MCP server at `https://www.nover.space/api/mcp`, so an assistant that speaks the Model Context Protocol — Claude, Cursor and others — can answer questions such as "what failed in the last run, and why?" from your stored evidence. In Claude Code:
 
 ```
 claude mcp add --transport http novera https://www.nover.space/api/mcp --header "Authorization: Bearer nvk_…"
 ```
 
-It offers seven tools, all read-only: `list_agents`, `list_suites`, `list_runs`, `get_run`, `get_evidence_gaps` (scenarios with no verdict, missing evidence or uncorroborated graders), `compare_runs` (fixed, still failing, newly broken, lost or regained a verdict) and `verify_report` (recomputes a sealed report's hash). There is no tool that starts a run, changes a policy, approves anything, or publishes or revokes a report.
+Every key gets seven read-only tools: `list_agents`, `list_suites`, `list_runs`, `get_run`, `get_evidence_gaps` (scenarios with no verdict, missing evidence or uncorroborated graders), `compare_runs` (fixed, still failing, newly broken, lost or regained a verdict) and `verify_report` (recomputes a sealed report's hash). What else the assistant is offered follows what you ticked when you created the key:
+
+- **Can also start runs** adds `start_run` and `advance_run` — the same checks as the run button, and each run uses a trial run or grades on your own model key.
+- **Can also ask for drafts and diagnoses** adds `draft_scenarios` (scenarios drafted from the agent's latest policy, each quoting the passage it tests) and `request_diagnosis` (why one scenario failed, and the policy change that would have prevented it). What they produce lands as a draft or a proposal, marked as asked for by an assistant with that key. At most 20 an hour per workspace.
+
+No key, whatever it can do, approves or rejects a draft or a proposal, changes a policy, publishes or revokes a report, or sends anything. Those stay with a person in Novera, and the tools answer with the link to decide there.
 
 The server keeps no session: every request carries the key, and requests from a web page on another site are refused. It counts against the same 120 requests a minute as the rest of the API.

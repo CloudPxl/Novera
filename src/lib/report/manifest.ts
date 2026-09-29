@@ -1,3 +1,4 @@
+import { DATA_POLICY_VERSION } from "../privacy/data-class.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash, randomUUID } from "node:crypto";
 import { contentHash, type Json } from "./hash.ts";
@@ -45,6 +46,12 @@ export interface RunManifest {
   rubric_hash: string;
   runner_version: string;
   pass_threshold: number;
+  /**
+   * The rule deciding which grading provider may read which data, and so which of them
+   * read personal data only as placeholders (`src/lib/privacy/data-class.ts`). Absent on
+   * runs declared before 2026-09-29, which sent every grader the reply as written.
+   */
+  data_policy?: number;
 }
 
 /** Twelve hex characters is plenty to notice a change; the full digest is noise here. */
@@ -107,6 +114,7 @@ export function buildRunManifest(args: {
     rubric_hash: rubricHash(),
     runner_version: args.runnerVersion,
     pass_threshold: args.passThreshold,
+    data_policy: DATA_POLICY_VERSION,
   };
 
   return { manifest, hash: contentHash(manifest as unknown as Json) };

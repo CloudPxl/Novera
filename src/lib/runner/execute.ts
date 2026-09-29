@@ -420,7 +420,7 @@ async function nextSimulatedMessage(
       messages: [{ role: "user", content: simulatorPrompt(persona, transcript, turnsLeft) }],
       maxTokens: 400,
       temperature: 0,
-    });
+    }, { data: "redacted_customer" });
     const step = parseSimulatorReply(extractJsonObject(response.text) as Record<string, unknown> | null);
     if ("error" in step || step.done) return step;
     return { done: false, message: step.message, model: `${response.servedBy.connection}/${response.servedBy.model}` };
@@ -440,7 +440,9 @@ async function nextSimulatedMessage(
  */
 function everyJudgeRateLimited(record: RunCaseRecord): boolean {
   if (record.status !== "error") return false;
-  const attempts = record.judgeAttempts as Array<{ ok?: boolean; error?: string }>;
+  // A candidate not sent the request for privacy reasons was never rate-limited.
+  const attempts = (record.judgeAttempts as Array<{ ok?: boolean; error?: string; refused?: boolean }>)
+    ?.filter((a) => !a.refused);
   if (!Array.isArray(attempts) || attempts.length === 0) return false;
   return attempts.every(
     (a) => a.ok === false && /rate.?limit|429|quota|too many requests/i.test(a.error ?? ""),

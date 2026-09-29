@@ -25,7 +25,7 @@ export interface CaseRow {
   error: string | null;
   judgeModel: string | null;
   judgeAgreement: string | null;
-  judgeVotes: Array<{ model?: unknown; status?: unknown }>;
+  judgeVotes: Array<{ model?: unknown; status?: unknown; redacted?: unknown }>;
   /** Set when a pass was withheld for want of evidence, rather than the agent failing. */
   evidenceGap: string | null;
   /** The agent's recorded steps, normalised. Operator-only: arguments are raw. */

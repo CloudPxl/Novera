@@ -14,7 +14,9 @@ function connection(name: string, behaviour: (model: string) => Promise<string>)
       return { text, model: request.model, usage: {}, raw: {} };
     },
   };
-  return { name, provider, apiKey: "test-key" };
+  // Customer-owned, so these fallback tests are not also privacy tests: our own
+  // connections are held to data ceilings, tested in tests/privacy.test.ts.
+  return { name, provider, apiKey: "test-key", owner: "customer" };
 }
 
 const routes: RouteTable = {

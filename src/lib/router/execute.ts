@@ -1,6 +1,7 @@
 import type { ChatRequest, ChatResponse } from "../providers/types.ts";
 import type { Connection } from "../providers/registry.ts";
 import type { Candidate, RouteTable, Task } from "./routes.ts";
+import { allows, ceilingFor, classify, describeClass, type DataClass } from "../privacy/data-class.ts";
 
 /**
  * Runs a chat request down a route, falling back on failure.
@@ -15,6 +16,10 @@ export interface RoutedAttempt {
   ok: boolean;
   error?: string;
   ms: number;
+  /** The provider was sent the request with detectable personal data replaced. */
+  redacted?: true;
+  /** Not sent at all: the request's data class exceeds what this provider may receive. */
+  refused?: true;
 }
 
 export interface RoutedResponse extends ChatResponse {
@@ -54,6 +59,12 @@ export interface RouteRequestOptions {
    * Consensus asks across vendors first and only falls back to within one.
    */
   excludeConnections?: string[];
+  /**
+   * What the request carries by origin (`src/lib/privacy/data-class.ts`). Detection can
+   * only raise it. Omitted means identifiable customer data: a call site that has not
+   * said what it sends is treated as sending the most a provider of ours may receive.
+   */
+  data?: DataClass;
 }
 
 export type RoutedChat = (
@@ -67,6 +78,19 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
 
   return async function routedChat(task, request, options) {
     const attempts: RoutedAttempt[] = [];
+
+    // Classed once per request, before any candidate: the answer does not depend on
+    // who receives it, only whether they may.
+    const system = request.system;
+    const classified = classify({
+      floor: options?.data ?? "identifiable_customer",
+      texts: [system ?? "", ...request.messages.map((m) => m.content)],
+      rebuild: ([s, ...contents]) => ({
+        ...request,
+        system: system === undefined ? undefined : s,
+        messages: request.messages.map((m, i) => ({ ...m, content: contents[i] })),
+      }),
+    });
 
     for (const candidate of routes[task] ?? []) {
       const excluded = options?.exclude?.some(
@@ -92,21 +116,43 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
         continue;
       }
 
+      // The original if this provider may receive it; the redacted copy if that is
+      // enough; otherwise it is not sent, and the refusal is recorded like any other
+      // reason a candidate was passed over.
+      const ceiling = ceilingFor(connection);
+      const redacted = !allows(ceiling, classified.original) && classified.redacted && allows(ceiling, classified.redacted.dataClass);
+      if (!allows(ceiling, classified.original) && !redacted) {
+        const attempt: RoutedAttempt = {
+          connection: candidate.connection,
+          model: candidate.model,
+          ok: false,
+          refused: true,
+          error: `not sent: ${describeClass(classified.original)} data exceeds what this provider may receive (${describeClass(ceiling)})`,
+          ms: 0,
+        };
+        attempts.push(attempt);
+        onFallback?.(attempt);
+        continue;
+      }
+      const outgoing = redacted ? classified.redacted!.request : request;
+      const marks = redacted ? { redacted: true as const } : {};
+
       const started = Date.now();
       try {
         const response = await connection.provider.chat(
-          { ...request, model: candidate.model },
+          { ...outgoing, model: candidate.model },
           connection.apiKey,
         );
-        attempts.push({ connection: candidate.connection, model: candidate.model, ok: true, ms: Date.now() - started });
+        attempts.push({ connection: candidate.connection, model: candidate.model, ok: true, ms: Date.now() - started, ...marks });
         return { ...response, servedBy: candidate, attempts };
       } catch (error) {
-        const attempt = {
+        const attempt: RoutedAttempt = {
           connection: candidate.connection,
           model: candidate.model,
           ok: false,
           error: error instanceof Error ? error.message : String(error),
           ms: Date.now() - started,
+          ...marks,
         };
         attempts.push(attempt);
         onFallback?.(attempt);

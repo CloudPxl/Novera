@@ -14,6 +14,22 @@ On your own key, grading uses only that key, and where it is processed is a ques
 
 Every report names the models that graded each scenario, so the document itself records where the evidence was produced rather than leaving you to ask.
 
+## Which providers may see personal data
+
+Each of our model providers is approved for a kind of data, based on its published terms for the plan we use. Every request is checked before it is sent, and a provider that is not approved for what a request contains is not sent it at all.
+
+- **Groq** processes API data as a data processor and does not retain it by default. It may receive personal data.
+- **Mistral**, on the plan we use, may use requests to improve its models. It receives your agent's replies only with detectable personal data — email addresses, phone numbers, IBANs, card numbers, IP addresses, credentials — replaced by placeholders such as `[EMAIL_1]`.
+- **Google** and **OpenRouter** free models receive only material we wrote ourselves, never your data.
+
+A request is treated as containing personal data if anything in it looks like personal data, whatever it was meant to contain. So when your agent's reply leaks an email address, Groq reads the reply as written and Mistral reads it with the address replaced. Both can still see that an address was disclosed, which is what a privacy scenario grades. The run page says on each such scenario which model read placeholders, and the report says that this happened.
+
+Names and street addresses are not detected automatically. A reply that leaks only a name reaches Mistral unchanged.
+
+Messages sent through the support form are a real person's own words, so they go only to Groq, unaltered, and never to a provider approved only for redacted data.
+
+On your own key, these limits do not apply: the provider is your choice, under your agreement with it, and it receives what your run sends.
+
 What is never sent to a grading model: your model API keys, your agent's auth headers, and the body of a read-back response — the read-back checks a claimed action against your own system and records only whether the state matched.
 
 Model API keys and agent auth headers are encrypted before storage using AES-256-GCM, with the ciphertext bound to the workspace it belongs to. They are decrypted only on the server, are never sent to a browser, never written to a log, and never appear in a report.

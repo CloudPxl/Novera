@@ -32,6 +32,12 @@ export interface JudgeVote {
   model: string;
   status: "pass" | "fail" | "error";
   rationale: string | null;
+  /**
+   * This model read the reply with detectable personal data replaced by placeholders,
+   * because it is not approved to receive it (`src/lib/privacy/data-class.ts`). Present
+   * only when true; votes stored before 2026-09-29 have no such key.
+   */
+  redacted?: true;
 }
 
 export type Agreement =
@@ -56,6 +62,7 @@ function vote(outcome: JudgeOutcome): JudgeVote {
     model: name(outcome.servedBy),
     status: outcome.status,
     rationale: outcome.rationale ?? outcome.error,
+    ...(outcome.attempts.some((a) => a.ok && a.redacted) ? { redacted: true as const } : {}),
   };
 }
 

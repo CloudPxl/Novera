@@ -140,7 +140,7 @@ export async function askAssistant(history: AssistantTurn[], message: string): P
       messages: [first, ...rest],
       maxTokens: 700,
       temperature: 0,
-    });
+    }, { data: "redacted_customer" });
     const parsed = parseReply(
       extractJsonObject(response.text) as Record<string, unknown> | null,
       snapshot,

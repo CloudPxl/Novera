@@ -86,7 +86,7 @@ export async function compileScenarios(args: {
         content: buildPrompt({ policyBody: args.policyBody, existing: args.existing ?? [], wanted }),
       }],
       maxTokens: 5000,
-    });
+    }, { data: "redacted_customer" });
   } catch (error) {
     return {
       ok: false,

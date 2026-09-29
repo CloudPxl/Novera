@@ -13,6 +13,20 @@ import { independenceOf, vendorsOf } from "../../../../lib/judge/independence.ts
 export function gradingNote(
   model: string,
   agreement: string | null,
+  votes?: Array<{ model?: unknown; status?: unknown; redacted?: unknown }>,
+): string {
+  const base = baseNote(model, agreement, votes);
+  // Said on the case it happened to, so the reader of a privacy scenario knows a
+  // grader saw placeholders rather than the agent's exact words.
+  const redacted = (votes ?? []).filter((v) => v?.redacted === true && typeof v.model === "string").map((v) => v.model as string);
+  return redacted.length
+    ? `${base}; ${redacted.join(" and ")} read the reply with personal data replaced by placeholders`
+    : base;
+}
+
+function baseNote(
+  model: string,
+  agreement: string | null,
   votes?: Array<{ model?: unknown; status?: unknown }>,
 ): string {
   const usable = (votes ?? []).filter(

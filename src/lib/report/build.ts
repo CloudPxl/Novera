@@ -88,6 +88,9 @@ const UNVERIFIABLE_NOTE =
 const SIMULATED_NOTE =
   "Some scenarios were conversations in which, after a message written by a person, a language model played the customer. Those conversations are test data: no real customer took part, and a model-played customer can phrase things differently from one run to the next.";
 
+const REDACTED_GRADING_NOTE =
+  "Some agent replies contained text shaped like personal data, such as an email address or a phone number. Where such a reply was graded by a model not approved to receive personal data, that text was replaced with placeholders before the model read it; the checks Novera runs itself read the reply unchanged.";
+
 const CONTRADICTED_NOTE =
   "In one or more scenarios the agent described an action it had taken, and an independent read of your own system did not show that action. Those scenarios are recorded as failures on that basis rather than on the wording of the reply.";
 
@@ -305,6 +308,12 @@ export function buildReport(input: ReportInput): BuiltReport {
       ...(corroboration.uncorroborated > 0 ? [UNCORROBORATED_NOTE] : []),
       ...(input.coverage.unverifiable > 0 ? [UNVERIFIABLE_NOTE] : []),
       ...(input.cases.some((c) => c.transcript?.some((t) => t.simulated)) ? [SIMULATED_NOTE] : []),
+      // From the stored attempts: stated only when a grading model actually read a
+      // redacted reply, not whenever redaction was possible.
+      ...(input.cases.some((c) =>
+        (c.judgeVotes as Array<{ redacted?: boolean }> | undefined)?.some((v) => v?.redacted)
+        || (c.judgeAttempts as Array<{ ok?: boolean; redacted?: boolean }> | undefined)?.some((a) => a?.ok && a.redacted),
+      ) ? [REDACTED_GRADING_NOTE] : []),
       ...(input.coverage.effectContradicted > 0 ? [CONTRADICTED_NOTE] : []),
     ].join(" "),
   } satisfies Json;

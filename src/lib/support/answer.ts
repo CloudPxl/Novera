@@ -82,7 +82,9 @@ export async function draftAnswer(args: {
       messages: [{ role: "user", content: buildPrompt(question, pages) }],
       maxTokens: 900,
       temperature: 0,
-    });
+    // A real person's own message. Identifiable by origin, so no redaction lowers it:
+    // it goes only to a provider approved for identifiable data.
+    }, { data: "identifiable_customer" });
   } catch (error) {
     return {
       ...empty,

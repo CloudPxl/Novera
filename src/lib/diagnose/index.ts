@@ -71,7 +71,7 @@ export async function diagnoseFailure(args: {
       system: DIAGNOSE_SYSTEM,
       messages: [{ role: "user", content: buildPrompt(failure, policyBody) }],
       maxTokens: 1400,
-    });
+    }, { data: "redacted_customer" });
   } catch (error) {
     return {
       ok: false,

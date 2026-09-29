@@ -91,7 +91,13 @@ export async function judgeCase(args: {
       // A verdict is a JSON object, not an essay. Hidden reasoning is charged to the
       // same budget and we never read it.
       reasoning: "off",
-    }, exclude || excludeConnections ? { exclude, excludeConnections } : undefined);
+    }, {
+      exclude, excludeConnections,
+      // The customer's agent's words about a scenario. A reply that leaks something
+      // shaped like personal data is raised by detection, and reaches a provider not
+      // approved for it only with that data replaced by placeholders.
+      data: "redacted_customer",
+    });
   } catch (error) {
     // Every candidate failing is not the agent failing. Record it as an error so it
     // stays out of the score instead of silently becoming a verdict.

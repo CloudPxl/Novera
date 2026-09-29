@@ -14,6 +14,12 @@ export interface Connection {
   name: string;
   provider: Provider;
   apiKey: string;
+  /**
+   * Whose credential this is. Ours are held to the data ceilings in
+   * `src/lib/privacy/data-class.ts`; a customer's own key is their choice of processor.
+   * Absent means ours — the stricter reading.
+   */
+  owner?: "novera" | "customer";
 }
 
 /**

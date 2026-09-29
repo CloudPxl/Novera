@@ -33,11 +33,12 @@ const BASE_URLS: Record<string, string> = {
 };
 
 export function connectionFor(provider: string, apiKey: string): Connection | null {
-  if (provider === "google") return { name: "google", provider: googleProvider, apiKey };
-  if (provider === "anthropic") return { name: "anthropic", provider: anthropicProvider, apiKey };
+  // The customer's key: their processor, under their agreement with it.
+  if (provider === "google") return { name: "google", provider: googleProvider, apiKey, owner: "customer" };
+  if (provider === "anthropic") return { name: "anthropic", provider: anthropicProvider, apiKey, owner: "customer" };
   const baseUrl = BASE_URLS[provider];
   if (!baseUrl) return null;
-  return { name: provider, provider: openAiCompatibleProvider(baseUrl), apiKey };
+  return { name: provider, provider: openAiCompatibleProvider(baseUrl), apiKey, owner: "customer" };
 }
 
 /**

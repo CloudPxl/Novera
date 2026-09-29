@@ -2312,3 +2312,33 @@ after `startRunExecution` had already read it, so a run finishing in its first s
 sealed with no duration. `advanceRun` now stamps it before the slice; re-measured 3.8 s.
 No customer run completed in the ~20 minutes it was live. `verify:schedules` now pauses
 the production clock while it runs — left on, the clock claimed its throwaway schedules.
+
+## 2026-09-29 — Phase 11.1: data classes; a provider receives only the data its terms allow
+
+Every model request is classed — public, synthetic, redacted customer, identifiable
+customer, special category — and the router sends it to a provider only if that provider
+is approved for the class (`src/lib/privacy/data-class.ts`). The call site declares what
+the content is by origin; detection (the 9.1 redactor) can only raise it; redaction lowers
+only a class detection raised, never a declared one. An undeclared call is treated as
+identifiable. Ceilings come from each provider's terms for our plan, fetched today:
+Groq processes API data as a processor with no inference retention by default →
+identifiable; Mistral's free plan may train on inputs unless opted out in its admin
+console, which is not verified → redacted only; Google's free tier says "do not submit
+sensitive, confidential, or personal information to the Unpaid Services" (its EEA clause
+may give paid-tier terms, but we cannot show it applies to us) → synthetic only;
+OpenRouter free endpoints may log or train per upstream → synthetic only. A customer's own
+key is their processor under their agreement → anything.
+
+What changed in practice: support drafts (a real person's words) go only to Groq;
+diagnosis, the compiler, the persona simulator and the assistant (all carrying customer
+content) never reach Google or OpenRouter, which remain in those routes only as recorded
+refusals; a grader not approved for personal data reads a leaking reply with
+`[EMAIL_1]`-style placeholders. Measured live: a critical scenario whose reply leaked an
+email and phone number — Groq read it as written, both Mistral models read placeholders,
+all three said fail. Recorded where it happened: each vote carries `redacted: true`, the
+case's grading line names the model that read placeholders, the report adds a limitation
+sentence only when stored votes show it, and new manifests declare `data_policy: 1`. No
+payload field was added; reports sealed before today are unaffected. Known limit, stated
+in the docs: names and street addresses are not detected, so a reply leaking only a name
+reaches Mistral unchanged. Raising Mistral's ceiling needs the training opt-out confirmed
+in its console, then one edit here.

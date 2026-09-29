@@ -14,7 +14,9 @@ Where a scenario expects something to change in your own systems and you have gi
 
 Anything still open goes to the models. On the trial allowance, every verdict is put to two models from different vendors. On your own key it is put to the models you named for that key — one vendor, so the report labels each verdict as corroborated within one vendor, or not corroborated if you named a single model. If they agree, that is the verdict. If they disagree, a third settles it. If the disagreement cannot be settled, the case is recorded as unresolved and excluded from the score.
 
-A run is graded in slices of under a minute, because that is how long one server call may last. A slice starts a scenario only if it can still finish it, judging by how quickly your agent has been answering; the rest waits for the next slice. If a run stops being advanced — the page was closed, a pipeline died — and grades nothing for 24 hours, it is stopped: its graded scenarios are kept, no report is sealed, and a new run is the way forward, so a report never mixes replies from different days.
+A run is graded in slices of under a minute, because that is how long one server call may last. A slice starts a scenario only if it can still finish it, judging by how quickly your agent has been answering; the rest waits for the next slice. On the three trial runs, grading uses Novera's own model keys, which every trial workspace shares. At most two runs grade on them at once; a third waits its turn and says so, then continues on its own. On your own model key there is no queue. You can stop a run that has not finished — its graded scenarios are kept, no report is sealed, and the run records who stopped it.
+
+If a run stops being advanced — the page was closed, a pipeline died — and grades nothing for 24 hours, it is stopped: its graded scenarios are kept, no report is sealed, and a new run is the way forward, so a report never mixes replies from different days.
 
 Runs continue through failure. One dead endpoint on scenario three still leaves the rest of the suite as evidence.
 

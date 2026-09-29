@@ -5,7 +5,8 @@
  * reply (httpbin's /delay/10), drives it slice by slice with the execute endpoint, and
  * times every call. A slice must hand back well before 60 s, the run must finish, and
  * every scenario must be recorded — none lost to a killed function, none cut short by
- * Novera's own budget.
+ * Novera's own budget. Then the shared grading slots (0041): a third concurrent trial
+ * run waits rather than being refused; and a run stopped mid-slice stays stopped.
  *
  * The agent's replies are deliberately unreadable (wrong response path), so no model is
  * called: this measures time, not grading. Needs `npm run dev` and network access.
@@ -28,6 +29,7 @@ function report(ok: boolean, label: string, detail = "") {
 
 const user = (await db.auth.admin.createUser({ email: `verify-slices+${Date.now()}@novera.invalid`, password: crypto.randomUUID(), email_confirm: true })).data.user!;
 const { data: ws } = await db.from("workspaces").insert({ name: "__novera_verify_slices__", owner_id: user.id }).select("id").single();
+const made: Array<{ ws: string; user: string }> = [];
 
 try {
   await db.from("workspace_members").insert({ workspace_id: ws!.id, user_id: user.id, role: "owner" });
@@ -71,10 +73,61 @@ try {
   report(cut.length === 0, "no scenario was cut short by Novera's own budget", cut.map((c) => c.case_id).join(", "));
   const agentErrors = (stored ?? []).filter((c) => c.status === "error" && /response path/.test(String(c.error)));
   report(agentErrors.length === cases.length, "each one reached the agent and waited for its reply", `${agentErrors.length} answered`);
+
+  // Grading capacity (0041): at most two slices grade on the shared trial keys at once.
+  // Three runs driven together — the third is told to wait, then starts when a slot frees.
+  const extra = await Promise.all([1, 2, 3].map(async (i) => {
+    const u = (await db.auth.admin.createUser({ email: `verify-slices-${i}+${Date.now()}@novera.invalid`, password: crypto.randomUUID(), email_confirm: true })).data.user!;
+    const { data: w } = await db.from("workspaces").insert({ name: "__novera_verify_slices__", owner_id: u.id }).select("id").single();
+    made.push({ ws: w!.id, user: u.id });
+    await db.from("workspace_members").insert({ workspace_id: w!.id, user_id: u.id, role: "owner" });
+    const { data: a } = await db.from("agents").insert({ workspace_id: w!.id, name: "slow", kind: "http", is_production: false,
+      config: { kind: "http", url: "https://httpbin.org/delay/10", bodyTemplate: { message: "{{input}}" }, responsePath: "reply" } }).select("id").single();
+    await db.from("policies").insert({ workspace_id: w!.id, agent_id: a!.id, version: 1, body: "x" });
+    const { data: su } = await db.from("suites").insert({ workspace_id: w!.id, key: "slices", version: 1, name: "slices", cases: cases.slice(0, 3) }).select("id").single();
+    const k = mintKey();
+    await db.from("api_keys").insert({ workspace_id: w!.id, name: "s", prefix: k.prefix, key_hash: k.hash, scopes: ["read", "run"], created_by: u.id });
+    const h = { authorization: `Bearer ${k.key}`, "content-type": "application/json" };
+    const r = await fetch(`${base}/api/v1/runs`, { method: "POST", headers: h, body: JSON.stringify({ agent_id: a!.id, suite_id: su!.id }) });
+    return { headers: h, runId: ((await r.json()) as { run: { id: string } }).run.id, user: u.id };
+  }));
+  const firstCalls = await Promise.all(extra.map(async (e, i) => {
+    await new Promise((r) => setTimeout(r, i * 400));
+    const res = await fetch(`${base}/api/v1/runs/${e.runId}/execute`, { method: "POST", headers: e.headers });
+    return (await res.json()) as { started?: boolean; waiting?: string; done?: boolean };
+  }));
+  const waited = firstCalls.filter((b) => b.waiting === "grading_capacity").length;
+  report(waited === 1 && firstCalls.filter((b) => b.started).length === 2, "with two grading slots taken, the third trial run is told to wait, not refused",
+    JSON.stringify(firstCalls.map((b) => b.waiting ?? (b.started ? "started" : "held"))));
+  const waiter = extra[firstCalls.findIndex((b) => b.waiting === "grading_capacity")];
+  const later = waiter ? (await (await fetch(`${base}/api/v1/runs/${waiter.runId}/execute`, { method: "POST", headers: waiter.headers })).json()) as { started?: boolean } : null;
+  report(later?.started === true, "once a slot is free, the waiting run starts");
+
+  // Stopped while a slice is grading: it stays stopped, nothing is sealed, and no new
+  // scenario is sent to the agent after the stop.
+  const again = await fetch(`${base}/api/v1/runs`, { method: "POST", headers, body: JSON.stringify({ agent_id: agent!.id, suite_id: suite!.id }) });
+  const stopId = ((await again.json()) as { run?: { id: string } }).run?.id;
+  const slice = fetch(`${base}/api/v1/runs/${stopId}/execute`, { method: "POST", headers }).then((r) => r.json());
+  await new Promise((r) => setTimeout(r, 4_000));
+  await db.from("runs").update({ status: "aborted", error: "Stopped by the verification before it finished.", finished_at: new Date().toISOString(), lease_until: null, stopped_by: user.id })
+    .eq("id", stopId!).in("status", ["queued", "running"]);
+  const sliceStarted = Date.now();
+  const answer = (await slice) as { status?: string };
+  const { data: after } = await db.from("runs").select("status, stopped_by").eq("id", stopId!).single();
+  const { count: reports } = await db.from("reports").select("id", { count: "exact", head: true }).eq("run_id", stopId!);
+  const { count: sent } = await db.from("run_cases").select("id", { count: "exact", head: true }).eq("run_id", stopId!);
+  report(after?.status === "aborted" && after.stopped_by === user.id && (reports ?? 0) === 0 && answer.status === "aborted",
+    "a run stopped while a slice is grading stays stopped, names who stopped it, and seals no report", `${after?.status}, ${reports} report(s)`);
+  report((sent ?? 0) <= 3 && Date.now() - sliceStarted < 15_000,
+    "after the stop, only the scenarios already sent finish; no new one goes to the agent", `${sent} recorded of ${cases.length}`);
 } finally {
   await db.rpc("erase_workspace", { target: ws!.id });
   await db.auth.admin.deleteUser(user.id);
-  console.log("  removed the verification workspace and user");
+  for (const m of made) {
+    await db.rpc("erase_workspace", { target: m.ws });
+    await db.auth.admin.deleteUser(m.user);
+  }
+  console.log(`  removed ${1 + made.length} verification workspace(s) and their users`);
 }
 
 console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) failed.\n`);

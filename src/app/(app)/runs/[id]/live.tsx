@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { browserClient } from "@/lib/supabase/browser.ts";
@@ -9,6 +9,8 @@ import { Spinner } from "@/components/ui/button.tsx";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { obligationLabel } from "@/lib/report/payload.ts";
 import { gradingNote } from "./grading-note.ts";
+import { stopRun } from "@/lib/workflow/stop-run.ts";
+import type { FormState } from "@/lib/workflow/actions.ts";
 
 type Status = "queued" | "running" | "completed" | "aborted";
 
@@ -49,6 +51,9 @@ export function LiveRun({
   const [cases, setCases] = useState<CaseRow[]>([]);
   const [token, setToken] = useState(reportToken);
   const [failure, setFailure] = useState(initialError);
+  // Set when the server said every shared grading slot is busy; cleared once a slice starts.
+  const [waiting, setWaiting] = useState(false);
+  const [stopState, stop, stopping] = useActionState<FormState, FormData>(stopRun, {});
   const started = useRef(false);
   const lastKick = useRef(0);
   const completedPolls = useRef(0);
@@ -100,10 +105,12 @@ export function LiveRun({
 
       fetch(`/api/runs/${runId}/execute`, { method: "POST", redirect: "error" })
         .then(async (res) => {
+          const body = await res.json().catch(() => ({}));
           if (!res.ok) {
-            const body = await res.json().catch(() => ({}));
             if (!cancelled) setFailure(body.error ?? `The run could not be started (${res.status}).`);
+            return;
           }
+          if (!cancelled) setWaiting(body.waiting === "grading_capacity");
         })
         // `redirect: "error"` rather than the default: a redirect to the sign-in page
         // is followed transparently and arrives as HTML with status 200, which this
@@ -199,6 +206,27 @@ export function LiveRun({
             {errored > 0 && <Badge tone="error">{errored} no result</Badge>}
           </div>
         )}
+
+        {running && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p role="status" className="text-sm text-ink-soft">
+              {waiting
+                ? "Waiting for a grading slot: other trial runs are using Novera's shared graders. It continues on its own."
+                : ""}
+            </p>
+            <form action={stop}>
+              <input type="hidden" name="runId" value={runId} />
+              <button
+                type="submit"
+                disabled={stopping}
+                className="rounded-control border border-line-strong bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-sunken disabled:opacity-60"
+              >
+                {stopping ? "Stopping…" : "Stop this run"}
+              </button>
+            </form>
+          </div>
+        )}
+        {stopState.error && <p role="alert" className="mt-3 text-sm text-fail-text">{stopState.error}</p>}
 
         {failure && (
           <p role="alert" className="mt-4 rounded-lg border border-fail-border bg-fail-surface px-3 py-2 text-sm text-fail-text">

@@ -77,12 +77,13 @@ async function nextOpinion(
   base: Omit<Parameters<typeof judgeCase>[0], "task" | "exclude" | "excludeConnections">,
   task: Task,
   consulted: Candidate[],
+  settling = false,
 ): Promise<JudgeOutcome> {
   const vendors = [...new Set(consulted.map((c) => c.connection))];
-  const independent = await judgeCase({ ...base, task, exclude: consulted, excludeConnections: vendors });
+  const independent = await judgeCase({ ...base, task, exclude: consulted, excludeConnections: vendors, settling });
   if (independent.status !== "error") return independent;
 
-  const sameVendor = await judgeCase({ ...base, task, exclude: consulted });
+  const sameVendor = await judgeCase({ ...base, task, exclude: consulted, settling });
   // Keep the failed cross-vendor attempts: a route that can no longer corroborate
   // independently is a capacity problem the operator should be able to see.
   return { ...sameVendor, attempts: [...independent.attempts, ...sameVendor.attempts] };
@@ -105,6 +106,9 @@ export async function gradeCase(args: {
   if (first.status === "error") {
     return { ...first, votes: [vote(first)], agreement: "unresolved" };
   }
+  // Every opinion's attempts, not only the one whose verdict stands: a second model
+  // that was rate-limited or timed out is part of how this verdict was reached.
+  const every = (...outcomes: JudgeOutcome[]) => ({ attempts: outcomes.flatMap((o) => o.attempts) });
 
   const consulted: Candidate[] = first.servedBy ? [first.servedBy] : [];
   const second = await nextOpinion(base, task, consulted);
@@ -114,6 +118,7 @@ export async function gradeCase(args: {
     // must not be presented as though it were.
     return {
       ...first,
+      ...every(first, second),
       votes: [vote(first), vote(second)],
       agreement: "unconfirmed",
     };
@@ -128,7 +133,7 @@ export async function gradeCase(args: {
     // customer cannot detect for themselves. Two models can agree and both be wrong,
     // and the cost of learning otherwise is one extra call on two or three cases.
     if (severity.toLowerCase() !== "critical") {
-      return { ...first, votes: [vote(first), vote(second)], agreement: "agreed" };
+      return { ...first, ...every(first, second), votes: [vote(first), vote(second)], agreement: "agreed" };
     }
 
     const confirming = await nextOpinion(base, task, consulted);
@@ -137,21 +142,24 @@ export async function gradeCase(args: {
     // A third that could not be reached does not undo two that agreed. The verdict
     // stands on the corroboration it has, and the vote list shows what happened.
     if (confirming.status === "error" || confirming.status === first.status) {
-      return { ...first, votes, agreement: "agreed" };
+      return { ...first, ...every(first, second, confirming), votes, agreement: "agreed" };
     }
 
     // Two against one, on a critical scenario. The majority holds — it is still two
     // corroborated models — but the dissent is recorded rather than dropped, because
     // "two of three models agreed" is a different claim from "both models agreed".
-    return { ...first, votes, agreement: "majority" };
+    return { ...first, ...every(first, second, confirming), votes, agreement: "majority" };
   }
 
-  const third = await nextOpinion(base, task, consulted);
+  // The tie-breaker: a verdict depends on this one answer, so it is not skipped for
+  // speed (see `settling` in the router).
+  const third = await nextOpinion(base, task, consulted, true);
   const votes = [vote(first), vote(second), vote(third)];
 
   if (third.status === "error") {
     return {
       ...third,
+      ...every(first, second, third),
       status: "error",
       rationale: null,
       error: `Two models disagreed (${name(first.servedBy)} said ${first.status}, ${name(second.servedBy)} said ${second.status}) and a third could not settle it`
@@ -163,5 +171,5 @@ export async function gradeCase(args: {
 
   // The tie-breaker joins whichever side it agrees with; that side is the majority.
   const winner = third.status === first.status ? first : second;
-  return { ...winner, votes, agreement: "majority" };
+  return { ...winner, ...every(first, second, third), votes, agreement: "majority" };
 }

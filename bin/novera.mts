@@ -260,13 +260,20 @@ async function runCommand(args: string[]): Promise<number> {
 
   // Slices of about forty seconds, until the run says it is done. A slice refused
   // because another is still working is waited out, not repeated at once.
+  let saidWaiting = false;
   for (let attempt = 0; attempt < 120; attempt++) {
     const step = await api(base, `/api/v1/runs/${runId}/execute`, { method: "POST" });
     if (step.status >= 500) throw new Exit(CI_EXIT.infrastructure, `The run stopped: ${step.body.error ?? step.status}`);
     if (step.status !== 200) throw new Exit(CI_EXIT.configuration, `The run could not be advanced (${step.status}): ${step.body.error ?? ""}`);
     if (step.body.done) break;
     if (step.body.started) console.log(`  ${step.body.graded ?? 0} scenarios graded so far…`);
-    else await new Promise((r) => setTimeout(r, 5_000));
+    else {
+      if (step.body.waiting === "grading_capacity" && !saidWaiting) {
+        console.log("  Waiting for a grading slot: other trial runs are using Novera's shared graders.");
+        saidWaiting = true;
+      }
+      await new Promise((r) => setTimeout(r, 5_000));
+    }
   }
 
   const detail = await api(base, `/api/v1/runs/${runId}`);

@@ -37,7 +37,8 @@
     "schedules:clock": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/schedules-clock.mts",
     "cli:build": "esbuild bin/novera.mts --bundle --platform=node --format=esm --target=node20 --outfile=packages/cli/dist/novera.mjs",
     "cli:pack": "npm run cli:build && npm pack ./packages/cli --dry-run",
-    "verify:slices": "node --conditions=react-server --env-file=.env.local scripts/verify-slices.mts"
+    "verify:slices": "node --conditions=react-server --env-file=.env.local scripts/verify-slices.mts",
+    "measure:throughput": "node --conditions=react-server --env-file=.env.local scripts/measure-throughput.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

@@ -66,8 +66,10 @@ export async function judgeCase(args: {
   exclude?: Candidate[];
   /** Vendors already consulted, so a second opinion is an independent one. */
   excludeConnections?: string[];
+  /** This opinion settles a disagreement (see `RouteRequestOptions.settling`). */
+  settling?: boolean;
 }): Promise<JudgeOutcome> {
-  const { chat, task, testCase, agentResponse, toolActivity, exclude, excludeConnections } = args;
+  const { chat, task, testCase, agentResponse, toolActivity, exclude, excludeConnections, settling } = args;
 
   const empty = {
     rationale: null,
@@ -93,6 +95,7 @@ export async function judgeCase(args: {
       reasoning: "off",
     }, {
       exclude, excludeConnections,
+      ...(settling ? { settling: true } : {}),
       // The customer's agent's words about a scenario. A reply that leaks something
       // shaped like personal data is raised by detection, and reaches a provider not
       // approved for it only with that data replaced by placeholders.

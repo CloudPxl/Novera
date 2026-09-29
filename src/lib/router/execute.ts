@@ -175,7 +175,17 @@ export interface RouteRequestOptions {
    * than that they failed.
    */
   deadline?: number;
+  /**
+   * This request settles a disagreement, so a verdict depends on it. The breaker's skip
+   * is a trade of a wait for speed, which is right for an ordinary opinion and wrong
+   * here: an unsettled tie costs the verdict itself. A settling request is sent past an
+   * open breaker, and a rate limit with a short Retry-After is waited out once.
+   */
+  settling?: boolean;
 }
+
+/** The longest Retry-After a settling request waits out, if the deadline allows it. */
+const SETTLING_WAIT_MAX_MS = 8_000;
 
 /** A model call is not started with less time than this left before the deadline. */
 const MIN_CALL_MS = 1_500;
@@ -257,7 +267,7 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
       const outgoing = redacted ? classified.redacted!.request : request;
       const marks = redacted ? { redacted: true as const } : {};
 
-      const openFor = breaker?.isOpen(candidate.connection);
+      const openFor = options?.settling ? null : breaker?.isOpen(candidate.connection);
       if (openFor) {
         const attempt: RoutedAttempt = {
           connection: candidate.connection,
@@ -293,12 +303,30 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
         timeoutMs = Math.min(timeoutMs, left);
       }
 
-      const started = Date.now();
+      let started = Date.now();
       try {
-        const response = await connection.provider.chat(
-          { ...outgoing, model: candidate.model, timeoutMs },
-          connection.apiKey,
-        );
+        let response: ChatResponse;
+        try {
+          response = await connection.provider.chat({ ...outgoing, model: candidate.model, timeoutMs }, connection.apiKey);
+        } catch (first) {
+          // Settling a tie: a short Retry-After is worth waiting for once, if the case's
+          // deadline leaves room for the wait and the call. Anything else fails as usual.
+          const wait = first instanceof ProviderError && first.status === 429 ? first.retryAfterMs : undefined;
+          const room = options?.deadline === undefined ? Infinity : options.deadline - Date.now() - (wait ?? 0) - MIN_CALL_MS;
+          if (!options?.settling || wait === undefined || wait > SETTLING_WAIT_MAX_MS || room < MIN_CALL_MS) throw first;
+          const limited: RoutedAttempt = {
+            connection: candidate.connection, model: candidate.model, ok: false, ms: Date.now() - started,
+            error: (first as Error).message, reason: "rate_limited", retryAfterMs: wait, ...marks,
+          };
+          attempts.push(limited);
+          onFallback?.(limited);
+          await new Promise((r) => setTimeout(r, wait));
+          started = Date.now();
+          response = await connection.provider.chat(
+            { ...outgoing, model: candidate.model, timeoutMs: Math.min(timeoutMs, room) },
+            connection.apiKey,
+          );
+        }
         attempts.push({ connection: candidate.connection, model: candidate.model, ok: true, ms: Date.now() - started, ...marks });
         breaker?.record(candidate.connection, { ok: true });
         return { ...response, servedBy: candidate, attempts };

@@ -96,6 +96,13 @@ export async function startRunExecution(args: {
   // Out of time, not out of luck: the caller invokes this again and it picks up.
   if (summary.status === "incomplete") return summary;
 
+  // An aborted run is never sealed: stopped by a person (even while this slice was
+  // grading, when the status written above did not take), stopped for making no
+  // progress, or ended by a failure outside any case. Its cases stay as evidence of
+  // the attempt; a report over them would be a report over partial evidence.
+  const { data: now } = await client.from("runs").select("status").eq("id", runId).eq("workspace_id", workspaceId).single();
+  if (now?.status === "aborted" || summary.status === "aborted") return { ...summary, status: "aborted" };
+
   // Rebuilt from stored rows rather than from this invocation's memory: after a
   // resume, memory holds only the cases this attempt happened to grade.
   const whole = await summaryFromStoredRows({ client, runId, suite, status: summary.status, error: summary.error });

@@ -15,7 +15,9 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
         .from("runs")
         .update({ status: "running" })
         .eq("id", runId)
-        .eq("workspace_id", workspaceId);
+        .eq("workspace_id", workspaceId)
+        // Never revives a run someone stopped, or one already finished.
+        .in("status", ["queued", "running"]);
       if (error) throw new Error(`Could not start run: ${error.message}`);
       // Written once. Every slice used to overwrite it, so a resumed run's report
       // measured its duration from the last slice rather than from the start.
@@ -86,6 +88,11 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
       }
     },
 
+    async isStopped(runId) {
+      const { data } = await client.from("runs").select("status").eq("id", runId).eq("workspace_id", workspaceId).maybeSingle();
+      return data?.status === "aborted";
+    },
+
     async finishRun(runId, outcome) {
       const { error } = await client
         .from("runs")
@@ -95,7 +102,10 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
           error: outcome.error ?? null,
         })
         .eq("id", runId)
-        .eq("workspace_id", workspaceId);
+        .eq("workspace_id", workspaceId)
+        // A run stopped while this slice was grading stays stopped: its last cases are
+        // kept, but it is not turned back into a completed run.
+        .in("status", ["queued", "running"]);
       if (error) throw new Error(`Could not finish run: ${error.message}`);
     },
   };

@@ -103,3 +103,41 @@ test("a grader that could not be reached says why in the case's note", () => {
   assert.equal(note, "graded by groq/g alone — no second model was reachable (mistral/m did not answer in time)");
   assert.equal(gradingNote("groq/g", "unconfirmed", [{ model: "groq/g", status: "pass" }]), "graded by groq/g alone — no second model was reachable");
 });
+
+test("a tie-break is sent past an open breaker, and waits out a short Retry-After once", async () => {
+  let calls = 0;
+  const breaker = new CircuitBreaker();
+  breaker.record("groq", { ok: false, reason: "rate_limited", retryAfterMs: 60_000 });
+  const chat = createRoutedChat({
+    connections: new Map([["groq", { name: "groq", provider: {
+      id: "openai-compatible", label: "stub",
+      async chat() {
+        calls++;
+        if (calls === 1) throw new ProviderError("groq", "limit", 429, { retryAfterMs: 50 });
+        return { text: "ok", model: "g", usage: {}, raw: null };
+      },
+    } as Provider, apiKey: "k" }]]),
+    routes: { judge: [{ connection: "groq", model: "g" }] } as never,
+    breaker,
+  });
+  const ordinary = await chat("judge", { messages: [{ role: "user", content: "x" }] }, { data: "public" }).catch((e) => e);
+  assert.equal(calls, 0, "an ordinary opinion is skipped while the breaker is open");
+  assert.equal(ordinary.attempts[0].reason, "skipped_open_circuit");
+
+  const settled = await chat("judge", { messages: [{ role: "user", content: "x" }] }, { data: "public", settling: true, deadline: Date.now() + 10_000 });
+  assert.equal(calls, 2, "the settling request is sent, rate-limited, waits, and is asked again");
+  assert.deepEqual(settled.attempts.map((a) => a.reason ?? "ok"), ["rate_limited", "ok"]);
+});
+
+test("a settling request does not wait longer than its deadline allows", async () => {
+  let calls = 0;
+  const chat = createRoutedChat({
+    connections: new Map([["groq", { name: "groq", provider: {
+      id: "openai-compatible", label: "stub",
+      async chat() { calls++; throw new ProviderError("groq", "limit", 429, { retryAfterMs: 5_000 }); },
+    } as Provider, apiKey: "k" }]]),
+    routes: { judge: [{ connection: "groq", model: "g" }] } as never,
+  });
+  await assert.rejects(() => chat("judge", { messages: [{ role: "user", content: "x" }] }, { data: "public", settling: true, deadline: Date.now() + 3_000 }));
+  assert.equal(calls, 1);
+});

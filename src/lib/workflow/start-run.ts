@@ -112,11 +112,21 @@ export const SLICE_BUDGET_MS = 42_000;
  */
 const LEASE_MS = 70_000;
 
+/**
+ * How many slices may grade on Novera's shared trial keys at once. Measured: at four
+ * concurrent runs the free Groq tier ran out and one scenario in eight got no verdict
+ * (DECISIONS.md, 2026-09-29). A run beyond this waits its turn; its slice is not
+ * started and the caller calls again, as it would for any held lease.
+ */
+export const TRIAL_GRADING_SLOTS = 2;
+
 export interface AdvanceResult {
   status: string;
   started: boolean;
   /** False means "call again", not "something went wrong". */
   done: boolean;
+  /** Set when the slice did not start because the shared grading slots are all busy. */
+  waiting?: "grading_capacity";
   graded?: number;
   passed?: number;
   failed?: number;
@@ -145,17 +155,20 @@ export async function advanceRun(args: {
   if (run.status === "completed" || run.status === "aborted") return { status: run.status as string, started: false, done: true };
 
   // Take the lease in one statement, so of two callers at the same moment exactly one
-  // gets the row back. Reading the lease and then writing it let both through.
+  // gets it — and, for a run on the shared trial keys, only while a grading slot is
+  // free (0041). Reading the lease and then writing it let both through.
   const now = new Date();
-  const { data: leased } = await client.from("runs")
-    .update({ status: "running", lease_until: new Date(now.getTime() + LEASE_MS).toISOString() })
-    .eq("id", runId).eq("workspace_id", workspaceId).in("status", ["queued", "running"])
-    .or(`lease_until.is.null,lease_until.lt.${now.toISOString()}`)
-    .select("id");
-  if (!leased?.length) {
+  const { data: claim, error: claimError } = await client.rpc("claim_run_slice", {
+    target: runId, ws: workspaceId, lease_ms: LEASE_MS, trial_slots: TRIAL_GRADING_SLOTS,
+  });
+  if (claimError) throw new Error(`Could not claim the run: ${claimError.message}`);
+  if (claim !== "claimed") {
     const { data: after } = await client.from("runs").select("status").eq("id", runId).eq("workspace_id", workspaceId).maybeSingle();
     const status = (after?.status as string | undefined) ?? "running";
-    return { status, started: false, done: status === "completed" || status === "aborted" };
+    return {
+      status, started: false, done: status === "completed" || status === "aborted",
+      ...(claim === "busy" ? { waiting: "grading_capacity" as const } : {}),
+    };
   }
 
   // The run's start, written once and before the slice reads it: the report's duration

@@ -2600,3 +2600,51 @@ counts a vendor skipped for rate limits as limited.
 Found while verifying: `verify:conversation` failed once because the simulated customer's
 reply was unreadable — the router falls back on a failed call, not on an unreadable
 answer. It now asks one different model before giving up. 493 tests.
+
+## 2026-09-29 — Phase 12.3: capacity measured, and what the measurement changed
+
+`npm run measure:throughput` — concurrent trial runs (our grading keys) of 12 v4
+scenarios against the fixture, each in its own throwaway workspace, driven through the
+public API. Four measurements in order:
+
+| | 1 run | 2 runs | 4 runs | 4, gated | 4, gated + settling |
+|---|---|---|---|---|---|
+| wall time | 12.5 s | 19.9 s | 16.7 s | 20.4 s | 38.4 s |
+| no result | 0/12 | 1/24 | 6/48 | 5/48 | **0/48** |
+| corroborated within one vendor only | 0 | – | 29/48 | 28/48 | 28/48 |
+
+**Correction to the 12.2 entry.** It said every attempt was already stored. It was not:
+consensus kept only the first grader's attempts, so a second or third grader's rate limits
+and timeouts never reached `judge_attempts` — the first sweep counted no Mistral calls at
+all. `gradeCase` now keeps every opinion's attempts.
+
+**The limit is global, so the planned per-workspace cap was dropped.** Groq's free tier
+(shared by every trial workspace) ran out at four concurrent runs; grading fell back to
+Mistral alone, and where Mistral's two models tied there was nothing independent left to
+settle it. Four customers with one run each hit that exactly as one customer with four
+would. Instead, 0041 `claim_run_slice`: at most two slices grade on the trial keys at
+once, counted and claimed under one advisory lock; a run beyond that is not refused —
+its slice does not start (`waiting: "grading_capacity"`), which the run page, API, CLI,
+n8n and the clock already treat as "call again". Runs on a workspace's own key are not
+held.
+
+**The gate alone barely helped (6 → 5)**, because the binding limit is Groq's tokens per
+minute, not concurrency: two pairs of runs in one minute spend it like four at once.
+Every remaining no-result had the same shape — Mistral's two models tied, and the
+tie-breaker (Groq) was skipped by the breaker. The breaker trades a wait for speed, which
+is wrong exactly there: an unsettled tie costs the verdict. A settling request now goes
+past an open breaker and waits out a Retry-After of up to 8 s once, if the case's
+deadline has room — a judge retry, which is safe; the agent is never retried. 5 → 0.
+
+What remains, honestly: under load most verdicts are corroborated within one vendor, and
+the report says so on each. That is a capacity problem the gate cannot solve; a third
+funded vendor is.
+
+Also: **Stop this run** (the run page). Nothing ended a run early before, and a run
+waiting for a slot needed a way out. It records who stopped it (`runs.stopped_by`); a
+slice grading at that moment checks before each case and sends the agent nothing new —
+measured, 3 of 12 scenarios recorded, the three already in flight. Found while building
+it: a run aborted for any reason could still be sealed if its slice finished; an aborted
+run is now never sealed, and `finishRun` no longer turns a stopped run back into a
+completed one. `verify:slices` covers the gate (third run waits, then starts) and the
+stop. 495 tests.

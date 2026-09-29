@@ -546,6 +546,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   const hardStop = deadline === undefined ? undefined : deadline + CASE_GRACE_MS;
   let slowestAgentMs = 0;
   let startedThisSlice = 0;
+  let stopped = false;
 
   async function worker(): Promise<void> {
     while (true) {
@@ -564,6 +565,12 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
       // Same rule as the deadline: checked before a case starts, never during one.
       if (quotaExhausted) {
         ranOutOfTime = true;
+        return;
+      }
+
+      // A person pressed Stop: no further message goes to their agent.
+      if (stopped || (store.isStopped && await store.isStopped(runId))) {
+        stopped = true;
         return;
       }
 
@@ -617,7 +624,10 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
 
   // Left running on purpose when time ran out: the run is not finished, and marking
   // it finished would publish a report over partial evidence.
-  if (status === "completed" && ranOutOfTime) {
+  if (stopped) {
+    // Already recorded as stopped, with who stopped it; nothing to write.
+    status = "aborted";
+  } else if (status === "completed" && ranOutOfTime) {
     if (quotaExhausted) {
       error =
         "Every grading vendor was rate-limited, so the remaining scenarios were not started. "

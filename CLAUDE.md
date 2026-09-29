@@ -63,6 +63,7 @@ someone with the service role, not merely someone using the application.
 | A model provider receives only the data class its published terms allow: support messages only where identifiable data is allowed, customer content redacted where only that is, nothing of the customer's to free tiers that train on it; where a grader read placeholders, the vote, the case and the report say so | `src/lib/privacy/data-class.ts` in the router, `tests/privacy.test.ts` |
 | An agent's raw replies are kept only for the workspace's retention period (30–365 days, default 180); then the daily pass empties them and nothing else, leaving the verdict and a SHA-256 of the reply; a sealed report shows quoted personal data only as placeholders; a support conversation is erased 90 days after it last moved, and a probe receipt's reply emptied after 90 days | 0037 `expire_raw_evidence()`, 0038 `expire_inbound_and_probes()`, `verify:retention`; `buildReport` scrub |
 | Novera calls only public addresses — an agent or read-back URL resolving to a private, loopback or metadata address is refused when saved and on every call, and redirects are reported, not followed; every agent and model call has a deadline inside the slice, and a run idle for 24 hours is stopped, never sealed | `src/lib/net/public-url.ts`, 0040, `verify:slices` |
+| An aborted run is never sealed — stopped by a person (even mid-slice), idle for 24 hours, or ended by a failure; a stopped run sends its agent no further scenario; at most two slices grade on the shared trial keys at once, and a third waits rather than degrading everyone's verdicts | 0041 `claim_run_slice`, `src/lib/workflow/stop-run.ts`, `verify:slices` |
 | A production failure is stored redacted — the original only as a hash — cannot be edited, and becomes a test only as a draft a person approves, linked to it for good | 0031 |
 | A workspace key grades only on models it was proved to reach, and one it cannot reach refuses the run rather than erroring every case | 0025 + 0026, route built from the key |
 | A person's finding sits beside a verdict and never replaces it; it needs a reason, freezes the verdict it read, and cannot be filed against another workspace's case | 0028 |
@@ -194,7 +195,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 493 unit tests | free |
+| `npm test` | 495 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -206,6 +207,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 | `verify:mcp` | the MCP endpoint, driven by the official MCP client: isolation, tools per scope, refusals before any model call, frozen attribution, transport rules (needs `npm run dev`; `VERIFY_MCP_MODEL=1` also drafts and diagnoses for real) | free · two model calls |
 | `verify:retention` | raw evidence past its period is emptied and nothing else changes; the fingerprint still matches; expiry mode opens nothing else | free |
 | `verify:slices` | a run against a 10-second agent stays inside the 60 s function limit: several slices, every scenario recorded, none cut by our budget (needs `npm run dev`, network) | free |
+| `measure:throughput` (`THROUGHPUT_LEVELS=1,2,4`) | concurrent trial runs against the fixture: wall time, verdicts without a result, how each was corroborated, per-vendor calls, rate limits and breaker skips | **real quota — one sweep** |
 | `verify:schedules` | a due schedule starts one run however many ticks race; the clock drives it to the end; skip, pause, frozen fields, RLS, erasure (needs `npm run dev`) | free |
 | `schedules:clock -- install \| status \| remove` | installs the pg_cron job that calls `/api/cron/tick`, secret in Vault; `status` shows its last calls | free |
 | `verify:regressions` | a production failure is stored redacted, append-only, tenant-isolated, and reaches a suite only as a draft naming it | free |
@@ -284,6 +286,10 @@ they drive the scripted fixture at `/api/test-agent`.
   2026-09-22 OpenAI key had no credits). Independence currently means groq + mistral. A
   funded key is one env line; `verify:models` then prints the calibration command, and the
   model enters a route only where its measured false passes place it.
+- **Measured capacity on the trial keys (2026-09-29):** one run at a time is clean;
+  four at once saturate Groq's free tier. With the grading gate and settling tie-breaks,
+  48 of 48 scenarios still got a verdict, but 28 were corroborated within one vendor only
+  (labelled as such). A third funded vendor is what fixes the second number.
 - **Free-tier ceilings:** Groq 8,000 **tokens** per minute (not requests), Mistral about
   one request per second, Google's daily quota exhausted by a couple of calibration runs.
   Consensus doubles judge calls, so throughput is the thing to measure before promising

@@ -154,4 +154,6 @@ export interface RunStore {
   saveCase(record: RunCaseRecord): Promise<void>;
   markRunning(runId: string): Promise<void>;
   finishRun(runId: string, outcome: { status: "completed" | "aborted"; error?: string }): Promise<void>;
+  /** Whether someone stopped the run since this slice began. Checked before each case. */
+  isStopped?(runId: string): Promise<boolean>;
 }

@@ -1,0 +1,439 @@
+{
+  "name": "Novera — run a suite and report the outcome",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "name": "Every Monday",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "every-monday"
+    },
+    {
+      "parameters": {},
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "id": "run-now"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "u",
+              "name": "novera_url",
+              "type": "string",
+              "value": "https://www.nover.space"
+            },
+            {
+              "id": "a",
+              "name": "agent_id",
+              "type": "string",
+              "value": "REPLACE_WITH_AGENT_ID"
+            },
+            {
+              "id": "s",
+              "name": "suite_id",
+              "type": "string",
+              "value": "REPLACE_WITH_SUITE_ID"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Configure",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        100
+      ],
+      "id": "configure"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ agent_id: $('Configure').item.json.agent_id, suite_id: $('Configure').item.json.suite_id }) }}"
+      },
+      "name": "Start run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Novera API key"
+        }
+      },
+      "id": "start-run"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs/{{ $('Start run').item.json.run.id }}/execute",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Advance run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Novera API key"
+        }
+      },
+      "id": "advance-run"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d",
+              "leftValue": "={{ $json.done }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Finished?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        100
+      ],
+      "id": "finished"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "name": "Wait 10 seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        320
+      ],
+      "id": "wait",
+      "webhookId": "novera-wait"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs/{{ $('Start run').item.json.run.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "name": "Get result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Novera API key"
+        }
+      },
+      "id": "get-result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "st",
+              "leftValue": "={{ $json.run.status }}",
+              "rightValue": "completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "f",
+              "leftValue": "={{ $json.run.counts.failed }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "n",
+              "leftValue": "={{ $json.run.counts.no_result }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "r",
+              "leftValue": "={{ $json.run.report }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Every scenario passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        100
+      ],
+      "id": "passed"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "o",
+              "name": "outcome",
+              "type": "string",
+              "value": "pass"
+            },
+            {
+              "id": "m",
+              "name": "message",
+              "type": "string",
+              "value": "=Novera: all {{ $json.run.counts.passed }} scenarios passed for {{ $json.run.agent.name }} ({{ $json.run.suite }}). Report: {{ $json.run.report.url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "All passed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1540,
+        0
+      ],
+      "id": "all-passed"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "o",
+              "name": "outcome",
+              "type": "string",
+              "value": "={{ $json.run.status !== 'completed' || !$json.run.report ? 'incomplete' : $json.run.counts.failed > 0 ? 'fail' : 'incomplete' }}"
+            },
+            {
+              "id": "m",
+              "name": "message",
+              "type": "string",
+              "value": "=Novera: {{ $json.run.agent.name }} ({{ $json.run.suite }}) — {{ $json.run.counts.failed }} failed, {{ $json.run.counts.no_result }} with no result, {{ $json.run.counts.passed }} passed. A scenario with no result is not a pass. {{ $json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + ($json.run.error || ($json.run.status === 'completed' ? 'no scenario produced a verdict, so there was nothing to seal.' : 'the run did not finish (status: ' + $json.run.status + ').')) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Needs attention",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1540,
+        200
+      ],
+      "id": "needs-attention"
+    }
+  ],
+  "connections": {
+    "Every Monday": {
+      "main": [
+        [
+          {
+            "node": "Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure": {
+      "main": [
+        [
+          {
+            "node": "Start run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start run": {
+      "main": [
+        [
+          {
+            "node": "Advance run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Advance run": {
+      "main": [
+        [
+          {
+            "node": "Finished?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finished?": {
+      "main": [
+        [
+          {
+            "node": "Get result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 10 seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 10 seconds": {
+      "main": [
+        [
+          {
+            "node": "Advance run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get result": {
+      "main": [
+        [
+          {
+            "node": "Every scenario passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every scenario passed?": {
+      "main": [
+        [
+          {
+            "node": "All passed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Needs attention",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

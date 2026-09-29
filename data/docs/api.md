@@ -40,6 +40,14 @@ The run records which key started it, and the person who created that key as res
 
 When the run is done, `GET /api/v1/runs/<id>` gives its report's link; the JSON and JUnit downloads of that report carry the CI exit code (see **Reports in CI, and verifying a copy**). The `novera` command line does all of this in one step — `novera run --agent <id>` — but it is not yet published as a package. Whatever you use, keep the key in an environment variable or your CI's secret store, never in a command's arguments: arguments are visible to other processes and often printed in CI logs.
 
+## With n8n
+
+A ready workflow for [n8n](https://n8n.io) does the same without any code: download it from `https://www.nover.space/examples/n8n-novera-run-suite.json` and import it (**Workflows → Import from file**). It starts a run every Monday at 06:00, or when you press **Run now**, advances it every ten seconds until it is done, then fetches the result and takes one of two branches: **All passed**, or **Needs attention** — which a scenario with no result also takes, because no result is not a pass.
+
+1. Create a credential of type **Header Auth** named `Novera API key`: name `Authorization`, value `Bearer nvk_…`, using a key that can start runs. The key lives in n8n's credential store, never in the workflow.
+2. Open **Configure** and set `agent_id` and `suite_id` (from `GET /api/v1/agents` and `/suites`).
+3. Connect whatever should hear about it — Slack, email, a ticket — after the two final nodes. Each carries an `outcome` (`pass`, `fail` or `incomplete`) and a one-line `message` with the report's link.
+
 ## For AI assistants (MCP)
 
 The same key opens a read-only MCP server at `https://www.nover.space/api/mcp`, so an assistant that speaks the Model Context Protocol — Claude, Cursor and others — can answer questions such as "what failed in the last run, and why?" from your stored evidence. In Claude Code:

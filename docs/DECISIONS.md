@@ -2451,3 +2451,23 @@ ESLint 10 was installed and run rather than judged from metadata: `eslint-plugin
 (inside eslint-config-next) crashes on `context.getFilename`, which 10 removed, so no file
 lints. No release of the plugin — not even 7.8.0-rc.0 — declares support. Restored 9.39.5
 from the saved lockfile. Revisit when eslint-plugin-react, -import and -jsx-a11y do.
+
+## 2026-09-29 — Upgrade step 2: the n8n template, run in n8n rather than described
+
+`public/examples/n8n-novera-run-suite.json`, served at `/examples/…` and documented in
+`/docs/api` under "With n8n". Eleven nodes: a Monday 06:00 schedule and a manual trigger,
+one Configure node for the ids, start → advance → "finished?" → wait 10 s → advance,
+then the run's stored counts decide between "All passed" and "Needs attention". The key
+is an n8n Header Auth credential, never a field in the workflow.
+
+Proved in n8n 2.41.3 (Docker, `execute --rawOutput`) against the local API, three runs in
+two throwaway workspaces, both erased with their users afterwards:
+a planted failure took the fail branch with the report link; an 18-case slow agent took
+two slices — advance ran twice with the wait between, `incomplete` 6/18 then done; and
+the fourth start was refused by the 3-run trial cap, which n8n surfaced as the 409 with
+Novera's sentence. The pass branch requires completed, zero failed, zero no-result and a
+sealed report — no result is not a pass here either.
+
+One defect found by running it: a completed run with nothing graded said "the run did
+not finish". It now says no scenario produced a verdict, so there was nothing to seal,
+and a genuinely unfinished run names its status.

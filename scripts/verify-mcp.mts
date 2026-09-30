@@ -122,6 +122,8 @@ try {
 
   const passed = await writeKey.call("request_diagnosis", { run_id: a.runs[1], scenario_id: "T01" });
   report(passed.isError === true && /passed/.test(passed.content[0].text), "a passed scenario is not diagnosed", passed.content[0].text.slice(0, 60));
+  const noResult = await writeKey.call("request_diagnosis", { run_id: a.runs[0], scenario_id: "T02" });
+  report(noResult.isError === true && /no verdict/.test(noResult.content[0].text), "a scenario with no result is not diagnosed — there is no failure to explain", noResult.content[0].text.slice(0, 60));
   const foreignDiag = await writeKey.call("request_diagnosis", { run_id: b.runs[0], scenario_id: "T01" });
   report(foreignDiag.isError === true && /No such scenario/.test(foreignDiag.content[0].text), "another workspace's scenario is refused before any model call");
   const foreignDraft = await writeKey.call("draft_scenarios", { agent_id: (await db.from("agents").select("id").eq("workspace_id", b.ws).single()).data!.id });

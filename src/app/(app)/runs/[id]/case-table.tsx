@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Badge, ProgressBar, inputClass } from "@/components/ui/primitives.tsx";
 import { gradingNote } from "./grading-note.ts";
+import { rulesLine } from "./chain.ts";
 import type { AgentEvent } from "@/lib/agents/trajectory.ts";
 
 export interface CaseRow {
@@ -29,7 +30,11 @@ export interface CaseRow {
   error: string | null;
   judgeModel: string | null;
   judgeAgreement: string | null;
-  judgeVotes: Array<{ model?: unknown; status?: unknown; redacted?: unknown }>;
+  judgeVotes: Array<{ model?: unknown; status?: unknown; redacted?: unknown; rationale?: unknown }>;
+  /** How the verdict was reached: `deterministic` (rules), `read_back`, `models`; null on rows from before 0017. */
+  settledBy: string | null;
+  /** How many rules the suite gives this scenario, per-turn ones included. */
+  ruleCount: number;
   /** Set when a pass was withheld for want of evidence, rather than the agent failing. */
   evidenceGap: string | null;
   /** The agent's recorded steps, normalised. Operator-only: arguments are raw. */
@@ -321,8 +326,33 @@ export function CaseTable({
   );
 }
 
+/** One link of the evidence chain, numbered in the order Novera gathered it. */
+function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+  return (
+    <li>
+      <h3 className="type-pill text-ink-faint">
+        <span className="tnum">{n}</span> · {title}
+      </h3>
+      <div className="mt-1.5">{children}</div>
+    </li>
+  );
+}
+
+const quiet = "text-sm leading-relaxed text-ink-soft";
+
+/**
+ * A scenario's evidence as one chain, in the order the runner gathered it: what was
+ * sent, what came back, what the agent did, the scenario's rules, the read-back, the
+ * graders, the verdict — then any proposal, which is a model's reading of all of it.
+ * Every link is always shown, and says so when it is empty or was never reached: a
+ * missing step is a fact about the run, and leaving it out lets a reader assume one.
+ */
 function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode }) {
   const failed = new Set(row.failedAssertions);
+  // Settled before any model read the reply. Such a row stores no per-assertion result
+  // by design (the runner writes none), which is not the same as a row from before
+  // migration 0011 that never recorded them.
+  const settledEarly = row.settledBy === "deterministic" || row.settledBy === "read_back";
 
   /* Which assertions failed has only been stored since migration 0011. A run from
      before it has an empty list, which is indistinguishable at the column level from
@@ -331,236 +361,311 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
      assertions is shown as unassessed, with the reason stated. */
   const unrecorded = row.status === "fail" && row.failedAssertions.length === 0;
   const unassessed = row.status === "error" || unrecorded;
+  const noReply = !row.responseText && !row.rawExpiredAt;
 
-  return (
-    <div className="novera-panel-in border-t border-line bg-ground px-3 py-4 sm:px-4">
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section>
-          {row.transcript ? (
-            <>
-              <h3 className="type-pill text-ink-faint">The conversation, turn by turn</h3>
-              <p className="mt-1 text-xs text-ink-soft">
-                Graded as a whole: a rule broken in any turn fails the scenario.
-                {row.transcript.some((t) => t.simulated) &&
-                  " Lines marked as a simulated customer were written by a model playing one — test data, not a real customer."}
-              </p>
-              <ol className="mt-1.5 space-y-2">
-                {row.transcript.map((t, i) => (
-                  <li
-                    key={i}
-                    className={`whitespace-pre-wrap rounded-control px-3 py-2 text-sm leading-relaxed ring-1 ${
-                      t.role === "customer" ? "bg-sunken text-ink ring-line" : "bg-surface text-ink ring-line"
-                    }`}
-                  >
-                    <span className="type-pill text-ink-faint">
-                      {t.role === "agent" ? "Agent" : t.simulated ? `Simulated customer${t.model ? ` (${t.model})` : ""}` : "Scenario"} ·{" "}
-                    </span>
-                    {t.content}
-                  </li>
-                ))}
-              </ol>
-              {!row.responseText && (
-                <p className="mt-2 rounded-control bg-warning-surface px-3 py-2 text-sm leading-relaxed text-warning-text ring-1 ring-warning-border">
-                  {row.error ?? "The conversation ended without a reply."}
-                </p>
-              )}
-            </>
-          ) : (
-            <>
-          <h3 className="type-pill text-ink-faint">What the scenario sent</h3>
-          <p className="mt-1.5 whitespace-pre-wrap rounded-control bg-surface px-3 py-2 text-sm leading-relaxed text-ink ring-1 ring-line">
-            {row.input}
+  let n = 0;
+  const sent = row.transcript ? (
+    <Step n={++n} title="The conversation, turn by turn">
+      <p className="text-xs text-ink-soft">
+        Graded as a whole: a rule broken in any turn fails the scenario.
+        {row.transcript.some((t) => t.simulated) &&
+          " Lines marked as a simulated customer were written by a model playing one — test data, not a real customer."}
+      </p>
+      <ol className="mt-1.5 space-y-2">
+        {row.transcript.map((t, i) => (
+          <li
+            key={i}
+            className={`whitespace-pre-wrap rounded-control px-3 py-2 text-sm leading-relaxed ring-1 ${
+              t.role === "customer" ? "bg-sunken text-ink ring-line" : "bg-surface text-ink ring-line"
+            }`}
+          >
+            <span className="type-pill text-ink-faint">
+              {t.role === "agent" ? "Agent" : t.simulated ? `Simulated customer${t.model ? ` (${t.model})` : ""}` : "Scenario"} ·{" "}
+            </span>
+            {t.content}
+          </li>
+        ))}
+      </ol>
+      {!row.responseText && (
+        <p className="mt-2 rounded-control bg-warning-surface px-3 py-2 text-sm leading-relaxed text-warning-text ring-1 ring-warning-border">
+          {row.error ?? "The conversation ended without a reply."}
+        </p>
+      )}
+    </Step>
+  ) : (
+    <>
+      <Step n={++n} title="What the scenario sent">
+        <p className="whitespace-pre-wrap rounded-control bg-surface px-3 py-2 text-sm leading-relaxed text-ink ring-1 ring-line">
+          {row.input}
+        </p>
+      </Step>
+      <Step n={++n} title="What the agent replied">
+        {row.rawExpiredAt ? (
+          // Expired is not missing: the reply existed, was graded, and was removed on
+          // schedule. Said as that, with the fingerprint that still identifies it.
+          <p className="rounded-control bg-sunken px-3 py-2 text-sm leading-relaxed text-ink-soft ring-1 ring-line">
+            Removed on {row.rawExpiredAt.slice(0, 10)} under this workspace&rsquo;s retention setting. The verdict
+            and its reasons are kept.
+            {row.rawSha256 && (
+              <>
+                {" "}Fingerprint of the evidence as graded:{" "}
+                <span className="break-all font-mono text-xs">{row.rawSha256}</span>
+              </>
+            )}
           </p>
+        ) : row.responseText ? (
+          <p className="whitespace-pre-wrap rounded-control bg-surface px-3 py-2 text-sm leading-relaxed text-ink ring-1 ring-line">
+            {row.responseText}
+          </p>
+        ) : (
+          <p className="rounded-control bg-warning-surface px-3 py-2 text-sm leading-relaxed text-warning-text ring-1 ring-warning-border">
+            {row.error ?? "No reply was recorded for this scenario."}
+          </p>
+        )}
+      </Step>
+    </>
+  );
 
-          <h3 className="mt-4 type-pill text-ink-faint">What the agent replied</h3>
-          {row.rawExpiredAt ? (
-            // Expired is not missing: the reply existed, was graded, and was removed on
-            // schedule. Said as that, with the fingerprint that still identifies it.
-            <p className="mt-1.5 rounded-control bg-sunken px-3 py-2 text-sm leading-relaxed text-ink-soft ring-1 ring-line">
-              Removed on {row.rawExpiredAt.slice(0, 10)} under this workspace&rsquo;s retention setting. The verdict
-              and its reasons are kept.
-              {row.rawSha256 && (
-                <>
-                  {" "}Fingerprint of the evidence as graded:{" "}
-                  <span className="break-all font-mono text-xs">{row.rawSha256}</span>
-                </>
+  /* The steps the agent actually took. This is the evidence an effect case turns on.
+     Operator-only: arguments are verbatim and never reach a client report. */
+  const did = (
+    <Step n={++n} title="What the agent did">
+      {row.trajectory.length > 0 ? (
+        <ol className="space-y-1">
+          {row.trajectory.map((event) => (
+            <li
+              key={event.sequence}
+              className="flex items-baseline gap-2 rounded-control bg-sunken px-2.5 py-1.5 type-mono text-xs"
+            >
+              <span className="tnum text-ink-faint">{event.sequence}.</span>
+              <span
+                className={
+                  event.status === "failed"
+                    ? "font-semibold text-fail-text"
+                    : event.type === "approval"
+                      ? "font-semibold text-info-text"
+                      : "font-semibold text-ink"
+                }
+              >
+                {event.name ?? "(unnamed step)"}
+              </span>
+              {event.arguments !== undefined && event.arguments !== null && (
+                <span className="min-w-0 flex-1 truncate text-ink-soft">
+                  {typeof event.arguments === "string" ? event.arguments : JSON.stringify(event.arguments)}
+                </span>
               )}
-            </p>
-          ) : row.responseText ? (
-            <p className="mt-1.5 whitespace-pre-wrap rounded-control bg-surface px-3 py-2 text-sm leading-relaxed text-ink ring-1 ring-line">
-              {row.responseText}
-            </p>
-          ) : (
-            <p className="mt-1.5 rounded-control bg-warning-surface px-3 py-2 text-sm leading-relaxed text-warning-text ring-1 ring-warning-border">
-              {row.error ?? "No reply was recorded for this scenario."}
-            </p>
-          )}
-            </>
-          )}
-        </section>
+              {/* "unknown" is shown, not hidden: a step that reported no outcome is
+                  different from one that reported success. */}
+              <span className="shrink-0 text-ink-faint">{event.status}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className={quiet}>No tool activity was recorded for this scenario.</p>
+      )}
+    </Step>
+  );
 
-        <section>
-          <h3 className="type-pill text-ink-faint">Assertions</h3>
-          {row.assertions.length === 0 ? (
-            <p className="mt-1.5 text-sm text-ink-soft">This scenario recorded no assertions.</p>
-          ) : (
-            <ul className="mt-1.5 space-y-1.5">
-              {row.assertions.map((a, i) => {
-                /* A case that errored produced no verdict on any assertion, so none of
-                   them may be drawn as met. An unticked box is the honest mark. */
-                const unmet = failed.has(a);
-                const unknown = unassessed;
-                return (
-                  <li key={i} className="flex gap-2 text-sm leading-relaxed">
-                    <span
-                      aria-hidden
-                      className={`mt-0.5 grid size-4 shrink-0 place-items-center rounded-full text-[10px] font-bold text-on-ink ${
-                        unknown ? "bg-ink-faint" : unmet ? "bg-fail-text" : "bg-pass-text"
-                      }`}
-                    >
-                      {unknown ? "?" : unmet ? "✕" : "✓"}
-                    </span>
-                    <span className={unknown ? "text-ink-soft" : unmet ? "text-fail-text" : "text-ink-soft"}>
-                      {a}
-                      <span className="sr-only">
-                        {unknown ? " — not assessed" : unmet ? " — not met" : " — met"}
-                      </span>
-                    </span>
-                  </li>
-                );
-              })}
+  const rules = (
+    <Step n={++n} title="The scenario’s rules">
+      {row.settledBy === "deterministic" ? (
+        <div className="rounded-control border border-fail-border bg-fail-surface px-3 py-2 text-sm leading-relaxed text-fail-text">
+          <p className="font-semibold">Broken. The scenario&rsquo;s own rules settled it, and no model was asked.</p>
+          {row.rationale && <p className="mt-1 whitespace-pre-wrap">{row.rationale}</p>}
+        </div>
+      ) : (
+        <p className={quiet}>{rulesLine(row)}</p>
+      )}
+    </Step>
+  );
+
+  /* The only thing on this page that can say an action actually happened. When the
+     system of record disagrees with the agent, that is the finding, and everything
+     after it is commentary on the wording of a reply. */
+  const readBack = (
+    <Step n={++n} title="What your own system showed">
+      {row.observation ? (
+        <p
+          className={`rounded-control border px-3 py-2 text-xs leading-relaxed ${
+            row.observation.status === "contradicted"
+              ? "border-fail-border bg-fail-surface text-fail-text"
+              : row.observation.status === "confirmed"
+                ? "border-pass-border bg-pass-surface text-pass-text"
+                : "border-warning-border bg-warning-surface text-warning-text"
+          }`}
+        >
+          <span className="font-semibold">
+            {row.observation.status === "contradicted"
+              ? "Your own system does not show this action."
+              : row.observation.status === "confirmed"
+                ? "Confirmed by reading your own system."
+                : "The read-back could not be completed."}
+          </span>{" "}
+          {row.observation.detail}
+          {row.observation.status === "contradicted" && " No model was asked: there was nothing left for one to weigh."}
+          <span className="mt-1 block type-mono text-[11px] opacity-70">
+            {row.observation.connector} v{row.observation.connectorVersion} · {row.observation.mode}
+            {row.observation.latencyMs !== null && ` · ${row.observation.latencyMs}ms`}
+          </span>
+        </p>
+      ) : row.settledBy === "deterministic" ? (
+        <p className={quiet}>Not reached: the rules settled this scenario first.</p>
+      ) : (
+        <p className={quiet}>Nothing was read back from your own system for this scenario.</p>
+      )}
+    </Step>
+  );
+
+  const votes = row.judgeVotes.filter(
+    (v): v is { model: string; status: "pass" | "fail" | "error"; rationale?: unknown; redacted?: unknown } =>
+      typeof v?.model === "string" && typeof v?.status === "string",
+  );
+  const graders = (
+    <Step n={++n} title="The graders">
+      {settledEarly ? (
+        <p className={quiet}>
+          Not asked: {row.settledBy === "deterministic" ? "the scenario’s own rules" : "your own system"} had already
+          settled this scenario.
+        </p>
+      ) : (
+        <>
+          {votes.length > 0 && (
+            <ul className="space-y-1">
+              {votes.map((v, i) => (
+                <li key={i} className="flex flex-wrap items-baseline gap-x-2 text-xs">
+                  <span className="type-mono text-ink">{v.model}</span>
+                  <span className={v.status === "fail" ? "text-fail-text" : v.status === "pass" ? "text-pass-text" : "text-warning-text"}>
+                    {v.status === "error" ? "no verdict" : v.status}
+                  </span>
+                  {v.redacted === true && <span className="text-ink-faint">read with personal data replaced by placeholders</span>}
+                </li>
+              ))}
             </ul>
           )}
-
-          {/* The only thing on this page that can say an action actually happened.
-              Shown above the evidence gap and the judge's reasoning on purpose: when
-              the system of record disagrees with the agent, that is the finding, and
-              everything else is commentary on the wording of a reply. */}
-          {row.observation && (
-            <p
-              className={`mt-2 rounded-control border px-3 py-2 text-xs leading-relaxed ${
-                row.observation.status === "contradicted"
-                  ? "border-fail-border bg-fail-surface text-fail-text"
-                  : row.observation.status === "confirmed"
-                    ? "border-pass-border bg-pass-surface text-pass-text"
-                    : "border-warning-border bg-warning-surface text-warning-text"
-              }`}
-            >
-              <span className="font-semibold">
-                {row.observation.status === "contradicted"
-                  ? "Your own system does not show this action."
-                  : row.observation.status === "confirmed"
-                    ? "Confirmed by reading your own system."
-                    : "The read-back could not be completed."}
-              </span>{" "}
-              {row.observation.detail}
-              <span className="mt-1 block type-mono text-[11px] opacity-70">
-                {row.observation.connector} v{row.observation.connectorVersion} ·{" "}
-                {row.observation.mode}
-                {row.observation.latencyMs !== null && ` · ${row.observation.latencyMs}ms`}
-              </span>
-            </p>
-          )}
-
-          {/* An evidence gap is not a fault in the agent, and the row has to say so:
-              an operator seeing "no result" would otherwise go looking at their
-              endpoint for a problem that is in the test setup. */}
-          {row.evidenceGap && (
-            <p className="mt-2 rounded-control border border-warning-border bg-warning-surface px-3 py-2 text-xs leading-relaxed text-warning-text">
-              <span className="font-semibold">Unable to verify.</span>{" "}
-              {row.evidenceGap === "no_tool_evidence"
-                ? "The response reads as though the action was carried out, but no tool activity was recorded for it. Novera does not pass an action on the agent's own account of it."
-                : "Confirming this needs a source Novera can read independently of the agent, and none is configured. The outcome is unverified rather than failed."}
-            </p>
-          )}
-
-          {unrecorded && (
-            <p className="mt-2 text-xs leading-relaxed text-ink-faint">
-              This run was graded before Novera recorded which individual assertions
-              failed, so they are shown as unassessed. The judge&rsquo;s reasoning below
-              is the evidence for the verdict.
-            </p>
-          )}
-
-          {/* The steps the agent actually took. This is the evidence an effect case
-              turns on, and until now the operator could not see it at all — the
-              blob was stored, read by the rules, and never shown to the person
-              deciding whether to trust the verdict. Operator-only: arguments are
-              verbatim and never reach a client report. */}
-          {row.trajectory.length > 0 && (
-            <>
-              <h3 className="mt-4 type-pill text-ink-faint">What the agent did</h3>
-              <ol className="mt-1.5 space-y-1">
-                {row.trajectory.map((event) => (
-                  <li
-                    key={event.sequence}
-                    className="flex items-baseline gap-2 rounded-control bg-sunken px-2.5 py-1.5 type-mono text-xs"
-                  >
-                    <span className="tnum text-ink-faint">{event.sequence}.</span>
-                    <span
-                      className={
-                        event.status === "failed"
-                          ? "font-semibold text-fail-text"
-                          : event.type === "approval"
-                            ? "font-semibold text-info-text"
-                            : "font-semibold text-ink"
-                      }
-                    >
-                      {event.name ?? "(unnamed step)"}
-                    </span>
-                    {event.arguments !== undefined && event.arguments !== null && (
-                      <span className="min-w-0 flex-1 truncate text-ink-soft">
-                        {typeof event.arguments === "string"
-                          ? event.arguments
-                          : JSON.stringify(event.arguments)}
-                      </span>
-                    )}
-                    {/* "unknown" is shown, not hidden: a step that reported no
-                        outcome is different from one that reported success. */}
-                    <span className="shrink-0 text-ink-faint">{event.status}</span>
-                  </li>
-                ))}
-              </ol>
-            </>
-          )}
-
-          {row.rationale && (
-            <>
-              <h3 className="mt-4 type-pill text-ink-faint">Why the judge decided that</h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">{row.rationale}</p>
-            </>
-          )}
-
-          <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs text-ink-faint">
-            <div>
-              <dt className="inline">Obligation: </dt>
-              <dd className="inline text-ink-soft">{row.obligationLabel}</dd>
-            </div>
-            {row.latencyMs !== null && (
-              <div>
-                <dt className="inline">Agent latency: </dt>
-                <dd className="inline tnum text-ink-soft">{row.latencyMs} ms</dd>
-              </div>
-            )}
-          </dl>
-
           {row.judgeModel && (
-            <p className="mt-2 type-mono text-xs text-ink-faint">
+            <p className={`${votes.length ? "mt-2 " : ""}type-mono text-xs text-ink-faint`}>
               {gradingNote(row.judgeModel, row.judgeAgreement, row.judgeVotes)}
             </p>
           )}
-          {row.instability && (
-            <p className="mt-2 text-xs text-warning-text">
-              Its verdict has moved before with the policy unchanged: passed {row.instability.passes} and failed{" "}
-              {row.instability.fails} of {row.instability.runs} runs.{" "}
-              {row.instability.cause === "graders"
-                ? "The agent's reply was identical in runs graded differently, so the graders moved, not the agent."
-                : row.instability.cause === "agent"
-                  ? "The agent's reply differed between those runs."
-                  : ""}
+          {row.rationale && (
+            <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+              <span className="font-medium text-ink">Why: </span>
+              {row.rationale}
             </p>
           )}
-        </section>
+          {/* Why the graders produced nothing, when the reply existed. Stored with the
+              case since 2026-09-29; before this chain it was never shown here. */}
+          {row.status === "error" && !noReply && row.error && (
+            <p className="mt-2 rounded-control bg-warning-surface px-3 py-2 text-sm leading-relaxed text-warning-text ring-1 ring-warning-border">
+              {row.error}
+            </p>
+          )}
+          {row.status === "error" && noReply && <p className={quiet}>Not asked: there was no reply to grade.</p>}
+          {votes.length === 0 && !row.judgeModel && row.status !== "error" && (
+            <p className={quiet}>No grader verdict was recorded for this scenario.</p>
+          )}
+        </>
+      )}
+    </Step>
+  );
+
+  const verdict = (
+    <Step n={++n} title="The verdict">
+      <p className="flex items-center gap-2 text-sm text-ink-soft">
+        <Badge tone={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Badge>
+        {row.judgeAgreement === "unresolved" && <span>the graders disagreed and a third could not settle it</span>}
+      </p>
+      {row.assertions.length === 0 ? (
+        <p className={`mt-2 ${quiet}`}>This scenario recorded no assertions.</p>
+      ) : (
+        <ul className="mt-2 space-y-1.5">
+          {row.assertions.map((a, i) => {
+            /* A case that errored produced no verdict on any assertion, so none of
+               them may be drawn as met. An unticked box is the honest mark. */
+            const unmet = failed.has(a);
+            const unknown = unassessed;
+            return (
+              <li key={i} className="flex gap-2 text-sm leading-relaxed">
+                <span
+                  aria-hidden
+                  className={`mt-0.5 grid size-4 shrink-0 place-items-center rounded-full text-[10px] font-bold text-on-ink ${
+                    unknown ? "bg-ink-faint" : unmet ? "bg-fail-text" : "bg-pass-text"
+                  }`}
+                >
+                  {unknown ? "?" : unmet ? "✕" : "✓"}
+                </span>
+                <span className={unknown ? "text-ink-soft" : unmet ? "text-fail-text" : "text-ink-soft"}>
+                  {a}
+                  <span className="sr-only">{unknown ? " — not assessed" : unmet ? " — not met" : " — met"}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* An evidence gap is not a fault in the agent, and the row has to say so: an
+          operator seeing "no result" would otherwise go looking at their endpoint for
+          a problem that is in the test setup. */}
+      {row.evidenceGap && (
+        <p className="mt-2 rounded-control border border-warning-border bg-warning-surface px-3 py-2 text-xs leading-relaxed text-warning-text">
+          <span className="font-semibold">Unable to verify.</span>{" "}
+          {row.evidenceGap === "no_tool_evidence"
+            ? "The response reads as though the action was carried out, but no tool activity was recorded for it. Novera does not pass an action on the agent's own account of it."
+            : "Confirming this needs a source Novera can read independently of the agent, and none is configured. The outcome is unverified rather than failed."}
+        </p>
+      )}
+
+      {unrecorded && row.assertions.length > 0 && (
+        <p className="mt-2 text-xs leading-relaxed text-ink-faint">
+          {settledEarly
+            ? `Not assessed one by one: ${row.settledBy === "deterministic" ? "the scenario’s rules" : "your own system"} settled this scenario before any model read the reply. The finding above is the evidence.`
+            : "This run was graded before Novera recorded which individual assertions failed, so they are shown as unassessed. The graders’ reasoning above is the evidence for the verdict."}
+        </p>
+      )}
+
+      <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-ink-faint">
+        <div>
+          <dt className="inline">Obligation: </dt>
+          <dd className="inline text-ink-soft">{row.obligationLabel}</dd>
+        </div>
+        {row.latencyMs !== null && (
+          <div>
+            <dt className="inline">Agent latency: </dt>
+            <dd className="inline tnum text-ink-soft">{row.latencyMs} ms</dd>
+          </div>
+        )}
+      </dl>
+
+      {row.instability && (
+        <p className="mt-2 text-xs text-warning-text">
+          Its verdict has moved before with the policy unchanged: passed {row.instability.passes} and failed{" "}
+          {row.instability.fails} of {row.instability.runs} runs.{" "}
+          {row.instability.cause === "graders"
+            ? "The agent's reply was identical in runs graded differently, so the graders moved, not the agent."
+            : row.instability.cause === "agent"
+              ? "The agent's reply differed between those runs."
+              : ""}
+        </p>
+      )}
+    </Step>
+  );
+
+  const splitAt = row.transcript ? 2 : 3;
+  return (
+    <div className="novera-panel-in border-t border-line bg-ground px-3 py-4 sm:px-4">
+      <p className="sr-only">The evidence for this scenario, in the order Novera gathered it.</p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ol className="min-w-0 space-y-4">
+          {sent}
+          {did}
+        </ol>
+        <ol className="min-w-0 space-y-4" start={splitAt + 1}>
+          {rules}
+          {readBack}
+          {graders}
+          {verdict}
+        </ol>
       </div>
 
       {diagnosis && <div className="mt-4 border-t border-line pt-4">{diagnosis}</div>}

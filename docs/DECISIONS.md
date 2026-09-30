@@ -2813,3 +2813,37 @@ pages 0 px overflow at 390/640/768/1024/1440, axe clean at 390 and 1440 on the t
 touched pages, light and dark; the tooltip reached and shown by keyboard; another
 workspace's user gets the not-found page (a soft 404 with status 200 — Next streams
 before `notFound()`, documented; not changed here). 517 tests.
+
+## 2026-09-30 — Phase 12.5, finished: one scenario as an evidence chain
+
+The case detail is now seven numbered steps in the order the runner gathers them — sent,
+replied, what the agent did, the scenario's rules, what your own system showed, the
+graders (each model and its vote), the verdict — then the proposal zone. The plan wrote
+"read-back → rules"; the runner checks rules first (rules → read-back → models, the
+documented order), so the page follows the code. Every step is always shown and says
+when it is empty or was never reached.
+
+Three misleading states it replaced, each seen on a real run in a throwaway workspace:
+- **A rule- or read-back-settled failure said "This run was graded before Novera
+  recorded which individual assertions failed"** — false: the runner stores no
+  per-assertion result when it settles without a model, by design — and printed the
+  rule's finding under "Why the judge decided that", when no judge was asked.
+- **A reply with no verdict never showed why.** "No grader could answer: …" (12.2) is
+  stored in `error`, which the detail printed only when there was no reply at all.
+- **Individual grader votes were never shown**, only a summary sentence.
+
+Found beside it: **"Why did this fail?" was offered on scenarios with no result**, and
+`diagnoseRunCase` (the button and MCP's `request_diagnosis`) accepted them, asking a
+model to explain and fix a failure that never happened. Diagnosis now requires a
+failed verdict; retest stays. Refused in 103 ms, no model call, nothing stored;
+`verify:mcp` gained the check, and its model path still stores a real proposal.
+
+Measured headless on a real run (T01 models, T22 read-back contradiction, T42 rules,
+T43 a four-turn conversation failed at turn 2) plus one planted no-result row: every
+branch as described, opened and closed by keyboard, axe clean and 0 px overflow at 390
+and 1440 with every case open, light and dark. The docs' "How a run works" gained
+"Reading one scenario". 520 tests.
+
+The planted row is itself a finding, not fixed here: the database accepted a `run_cases`
+row for a scenario outside the run's frozen manifest, into a completed run, from the
+service role. That is the next item.

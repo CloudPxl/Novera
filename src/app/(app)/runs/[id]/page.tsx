@@ -340,6 +340,15 @@ export default async function RunPage({
     c.id as string,
     Array.isArray(c.duty_refs) ? (c.duty_refs as unknown[]).filter((d): d is string => typeof d === "string") : [],
   ]));
+  // From the suite version the run froze, which is immutable: the rules this scenario
+  // was held to, whole-conversation and per-turn.
+  const ruleCountByCase = new Map(suiteCases.map((c) => [
+    c.id as string,
+    (Array.isArray(c.checks) ? c.checks.length : 0)
+      + (Array.isArray(c.turn_checks)
+        ? (c.turn_checks as Array<{ checks?: unknown }>).reduce((n, t) => n + (Array.isArray(t?.checks) ? t.checks.length : 0), 0)
+        : 0),
+  ]));
   const caseRows: CaseRow[] = rows.map((c) => ({
     id: c.id as string,
     caseId: c.case_id as string,
@@ -377,6 +386,8 @@ export default async function RunPage({
     latencyMs: (c.latency_ms as number | null) ?? null,
     dutyRefs: dutyRefsByCase.get(c.case_id as string) ?? [],
     instability: stability.get(c.case_id as string) ?? null,
+    settledBy: (c.settled_by as string | null) ?? null,
+    ruleCount: ruleCountByCase.get(c.case_id as string) ?? 0,
   }));
 
   // The diagnosis controls are server-rendered per case and handed to the client
@@ -388,12 +399,13 @@ export default async function RunPage({
       .filter((r) => r.runCaseId === c.id)
       .map((r) => ({ ...r, mine: r.reviewerId === viewerId }));
     // Review is offered on passes too: a false pass is the verdict a person most needs
-    // to be able to dispute. Diagnosis and retest stay on the ones that did not pass.
+    // to be able to dispute. Retest stays on the ones that did not pass; diagnosis only
+    // on failures — a scenario with no result has no failure for a model to explain.
     diagnosis[c.id as string] = (
       <>
         {c.status !== "pass" && (
           <>
-            {c.raw_expired_at ? (
+            {c.status !== "fail" ? null : c.raw_expired_at ? (
               // Not a button that can only refuse: say why, and what works instead.
               <p className="text-sm leading-relaxed text-ink-soft">
                 A diagnosis reads the agent&rsquo;s reply, which was removed under this workspace&rsquo;s retention

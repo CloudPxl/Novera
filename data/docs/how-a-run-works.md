@@ -22,6 +22,14 @@ Runs continue through failure. One dead endpoint on scenario three still leaves 
 
 Three things are counted separately and never as passes: a scenario that errored, a scenario that never ran, and a scenario whose expected action nothing could evidence. If scenarios never ran, the grade is `INCOMPLETE` and the remedy is to run the suite again. If everything ran and the evidence still does not support a letter, the grade is `WITHHELD`, and the remedy is different.
 
+## Reading one scenario
+
+Open a scenario on the run page and its evidence is laid out in the order Novera gathered it: what was sent, what your agent replied, the tools it called, the scenario's rules, what your own system showed, the graders — each model with its vote — and the verdict. A step that was empty or never reached says so: a scenario settled by a rule shows that no read-back ran and no model was asked, and a scenario with no result shows why the graders could not give one.
+
+Under the run's verdict counts, the run page also shows how the grading went: for each model vendor, how many requests were sent and answered, how many were rate-limited, timed out or failed, and the slowest answer. It is counted from what was stored for the run, not estimated.
+
+A failed scenario can be diagnosed: a model reads the stored evidence and proposes a change to the policy version the run used. It is a proposal, and nothing changes until you approve it. A scenario with no result has no failure to explain, so it is not diagnosed — retest it instead.
+
 ## When you disagree with a verdict
 
 You cannot change a verdict, and neither can we. What you can do is record your own finding beside it: open the scenario on the run page, say whether you find that it passed or failed, and say why. A reason is required, because a finding with no reason is an assertion rather than evidence.

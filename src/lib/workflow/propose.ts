@@ -146,6 +146,12 @@ export async function diagnoseRunCase(args: {
 
   if (error || !runCase) return { ok: false, error: "That scenario could not be found." };
   if (runCase.status === "pass") return { ok: false, error: "That scenario passed; there is nothing to diagnose." };
+  // A scenario with no result — graders that could not answer or deadlocked, an action
+  // nothing could verify, an agent that did not reply — has no failure to explain. A
+  // proposal would have a model invent one and suggest a policy change for it.
+  if (runCase.status !== "fail") {
+    return { ok: false, error: "That scenario has no verdict, so there is no failure to diagnose. Retest it to get one." };
+  }
   // A diagnosis reads what the agent said. Without it, a proposal would be a guess
   // from the rationale alone, presented as though it had read the reply.
   if (runCase.raw_expired_at) {

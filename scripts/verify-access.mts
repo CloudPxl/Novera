@@ -100,13 +100,15 @@ const { data: pol } = await db
   .from("policies").insert({ workspace_id: ws!.id, agent_id: ag!.id, version: 1, body: "p" }).select("id").single();
 const { data: st } = await db
   .from("suites").select("id").is("workspace_id", null).eq("key", "eu-support").eq("version", 1).single();
+// Created running, completed after its cases, as the runner does: a completed run takes no new evidence (0043).
 const { data: rn } = await db
-  .from("runs").insert({ workspace_id: ws!.id, agent_id: ag!.id, policy_id: pol!.id, suite_id: st!.id, status: "completed" })
+  .from("runs").insert({ workspace_id: ws!.id, agent_id: ag!.id, policy_id: pol!.id, suite_id: st!.id, status: "running" })
   .select("id").single();
 await db.from("run_cases").insert({
   workspace_id: ws!.id, run_id: rn!.id, case_id: "T01", category: "policy", obligation: "policy_accuracy",
   severity: "low", input: "i", expected: "e", assertions: [], status: "fail", judge_attempts: [],
 });
+await db.from("runs").update({ status: "completed" }).eq("id", rn!.id);
 
 const { error: pieceErr } = await db.from("policies").delete().eq("id", pol!.id);
 check(!!pieceErr, "a single policy version still cannot be deleted on its own", pieceErr?.message.slice(0, 64));

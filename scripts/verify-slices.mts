@@ -72,7 +72,9 @@ try {
   const cut = (stored ?? []).filter((c) => /time slice was ending/.test(String(c.error)));
   report(cut.length === 0, "no scenario was cut short by Novera's own budget", cut.map((c) => c.case_id).join(", "));
   const agentErrors = (stored ?? []).filter((c) => c.status === "error" && /response path/.test(String(c.error)));
-  report(agentErrors.length === cases.length, "each one reached the agent and waited for its reply", `${agentErrors.length} answered`);
+  const others = (stored ?? []).filter((c) => !agentErrors.includes(c)).map((c) => `${c.case_id}: ${String(c.error ?? c.status).slice(0, 90)}`);
+  report(agentErrors.length === cases.length, "each one reached the agent and waited for its reply",
+    `${agentErrors.length} answered${others.length ? `; ${others.join("; ")}` : ""}`);
 
   // Grading capacity (0041): at most two slices grade on the shared trial keys at once.
   // Three runs driven together — the third is told to wait, then starts when a slot frees.

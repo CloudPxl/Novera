@@ -26,7 +26,8 @@ const makeWorkspace = async (tag: string, retention: number) => {
   const { data: agent } = await db.from("agents").insert({ workspace_id: ws!.id, name: tag, kind: "http", config: { kind: "http", url: "https://x.example" } }).select("id").single();
   const { data: policy } = await db.from("policies").insert({ workspace_id: ws!.id, agent_id: agent!.id, version: 1, body: "p" }).select("id").single();
   const { data: suite } = await db.from("suites").select("id").is("workspace_id", null).limit(1).single();
-  const { data: run } = await db.from("runs").insert({ workspace_id: ws!.id, agent_id: agent!.id, policy_id: policy!.id, suite_id: suite!.id, status: "completed" }).select("id").single();
+  // Created running, completed after its cases, as the runner does: a completed run takes no new evidence (0043).
+  const { data: run } = await db.from("runs").insert({ workspace_id: ws!.id, agent_id: agent!.id, policy_id: policy!.id, suite_id: suite!.id, status: "running" }).select("id").single();
   return { user, ws: ws!.id as string, run: run!.id as string, policy: policy!.id as string };
 };
 const caseRow = (w: { ws: string; run: string }, id: string, age: number, reply: string) => ({
@@ -45,6 +46,7 @@ try {
   const { data: inserted, error: insErr } = await db.from("run_cases").insert([
     caseRow(a, "OLD", 31, reply), caseRow(a, "NEW", 5, reply), caseRow(b, "OLD", 31, reply),
   ]).select("id, case_id, workspace_id, raw_sha256");
+  await db.from("runs").update({ status: "completed" }).in("id", [a.run, b.run]);
   report(!insErr && (inserted ?? []).every((r) => /^[0-9a-f]{64}$/.test(r.raw_sha256 ?? "")),
     "every stored case gets a fingerprint of its raw evidence when it is written", insErr?.message ?? "");
   const oldA = inserted!.find((r) => r.case_id === "OLD" && r.workspace_id === a.ws)!;

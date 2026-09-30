@@ -95,7 +95,9 @@ if (userErr || !created?.user) {
     const suiteId = builtIn.id;
     const { data: run } = await db
       .from("runs")
-      .insert({ workspace_id: ws.id, agent_id: agent.id, policy_id: policy!.id, suite_id: suiteId, status: "completed" })
+      // Running, not completed: a completed run refuses every new case (0043), and the
+      // invariant checks below must be refused by the invariant, not by that.
+      .insert({ workspace_id: ws.id, agent_id: agent.id, policy_id: policy!.id, suite_id: suiteId, status: "running" })
       .select("id")
       .single();
     // ------------------------------------------------ verdict invariants (0019)
@@ -109,7 +111,9 @@ if (userErr || !created?.user) {
         obligation: "policy_accuracy", severity: "low", input: "x", expected: "y",
         assertions: [], ...row,
       });
-      report(Boolean(error), label, error?.message ?? "the row was accepted");
+      // The refusal has to come from the invariant: an error about the run would make
+      // this check pass while proving nothing about the verdict.
+      report(Boolean(error) && !/completed|manifest/.test(error?.message ?? ""), label, error?.message ?? "the row was accepted");
       if (!error) await db.from("run_cases").delete().eq("run_id", run!.id).eq("case_id", "V-INV");
     };
 
@@ -149,6 +153,31 @@ if (userErr || !created?.user) {
       })
       .select("id")
       .single();
+    report(Boolean(runCase), "an aborted run still records a scenario that was in flight when it stopped");
+
+    // ------------------------------------- a run's evidence belongs to the run (0043)
+    // One row per declared scenario, written while the run is open. Found 2026-09-30:
+    // the service role could add rows to a completed run, and for undeclared scenarios.
+    const { data: declaredRun } = await db.from("runs").insert({
+      workspace_id: ws.id, agent_id: agent.id, policy_id: policy!.id, suite_id: suiteId, status: "running",
+      manifest: { novera_manifest: 1, suite: { id: suiteId, key: "k", version: 1, case_ids: ["A1", "A2"] } }, manifest_hash: "h",
+    }).select("id").single();
+    const scenario = (case_id: string) => ({
+      workspace_id: ws.id, run_id: declaredRun!.id, case_id, category: "verify", obligation: "policy_accuracy",
+      severity: "low", input: "x", expected: "y", assertions: [], status: "fail",
+    });
+    const { error: firstRow } = await db.from("run_cases").insert(scenario("A1"));
+    report(!firstRow, "a declared scenario is recorded while its run is open", firstRow?.message ?? "");
+    const { error: twice } = await db.from("run_cases").insert(scenario("A1"));
+    report(/duplicate key/.test(twice?.message ?? ""), "a scenario is recorded once per run (0001)", twice?.message.slice(0, 70) ?? "the second row was accepted");
+    const { error: undeclared } = await db.from("run_cases").insert(scenario("Z9"));
+    report(/not in the manifest/.test(undeclared?.message ?? ""), "a scenario the manifest did not declare is refused", undeclared?.message.slice(0, 70) ?? "the row was accepted");
+    await db.from("runs").update({ status: "completed" }).eq("id", declaredRun!.id);
+    const { error: late } = await db.from("run_cases").insert(scenario("A2"));
+    report(/is completed/.test(late?.message ?? ""), "a completed run takes no new evidence, even a declared scenario", late?.message.slice(0, 70) ?? "the row was accepted");
+    const { count: kept } = await db.from("run_cases").select("id", { count: "exact", head: true }).eq("run_id", declaredRun!.id);
+    report(kept === 1, "and the run holds exactly the one row it recorded", String(kept));
+
     const { data: diagnosis } = await db
       .from("diagnoses")
       .insert({ workspace_id: ws.id, run_case_id: runCase!.id, analysis: "because", proposed_new: "do better" })

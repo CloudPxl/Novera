@@ -113,14 +113,16 @@ try {
     .from("runs")
     .insert({
       workspace_id: aliceWs.id, agent_id: agent!.id, policy_id: policy!.id,
-      suite_id: suite!.id, status: "completed",
+      suite_id: suite!.id, status: "running",
     })
     .select("id").single();
+  // Created running, completed after its cases, as the runner does: a completed run takes no new evidence (0043).
   const { data: runCase } = await admin.from("run_cases").insert({
     workspace_id: aliceWs.id, run_id: run!.id, case_id: "T01", category: "policy",
     obligation: "policy_accuracy", severity: "low", input: "i", expected: "e",
     assertions: [], status: "fail", judge_model: null, judge_attempts: [],
   }).select("id").single();
+  await admin.from("runs").update({ status: "completed" }).eq("id", run!.id);
 
   // The evidence tables added since this script was written. It covered eight tables
   // and every later one was assumed to inherit the pattern; a check over a subset
@@ -196,11 +198,16 @@ try {
     workspace_id: bobWs, agent_id: bobAgent!.id, policy_id: bobPolicy!.id, suite_id: suite!.id, status: "queued",
   });
   check(!ownRunErr, "a run on one's own agent with a built-in suite is accepted (the control)", ownRunErr?.message.slice(0, 60));
+  // An open run of Alice's to file evidence under: her completed one would be refused for
+  // being completed (0043), and this check must be refused for crossing workspaces.
+  const { data: aliceOpenRun } = await admin.from("runs").insert({
+    workspace_id: aliceWs.id, agent_id: agent!.id, policy_id: policy!.id, suite_id: suite!.id, status: "running",
+  }).select("id").single();
   const crossings: Array<[string, string, Record<string, unknown>]> = [
     ["a run on another workspace's agent and policy", "runs", { workspace_id: bobWs, agent_id: agent!.id, policy_id: policy!.id, suite_id: suite!.id, status: "queued" }],
     ["a run pairing one's own agent with another workspace's policy", "runs", { workspace_id: bobWs, agent_id: bobAgent!.id, policy_id: policy!.id, suite_id: suite!.id, status: "queued" }],
     ["a policy version for another workspace's agent", "policies", { workspace_id: bobWs, agent_id: agent!.id, version: 9, body: "planted" }],
-    ["evidence filed under another workspace's run", "run_cases", { workspace_id: bobWs, run_id: run!.id, case_id: "T99", category: "c", obligation: "o", severity: "low", input: "i", expected: "e", assertions: [], status: "fail" }],
+    ["evidence filed under another workspace's run", "run_cases", { workspace_id: bobWs, run_id: aliceOpenRun!.id, case_id: "T99", category: "c", obligation: "o", severity: "low", input: "i", expected: "e", assertions: [], status: "fail" }],
     ["a scenario draft quoting another workspace's policy", "scenario_drafts", { workspace_id: bobWs, origin: "policy", policy_id: policy!.id, source_quote: "alice policy", scenario: { id: "P01" } }],
     ["a probe of another workspace's agent", "probes", { workspace_id: bobWs, agent_id: agent!.id, request: {}, status_code: 200 }],
   ];

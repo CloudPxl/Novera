@@ -33,11 +33,13 @@ const makeWorkspace = async (tag: string) => {
   const { data: agent } = await db.from("agents").insert({ workspace_id: ws!.id, name: `agent-${tag}`, kind: "http", config: { url: `https://${tag}.example/chat` } }).select("id").single();
   const { data: policy } = await db.from("policies").insert({ workspace_id: ws!.id, agent_id: agent!.id, version: 1, body: `SECRET POLICY TEXT ${tag}` }).select("id").single();
   const { data: suite } = await db.from("suites").select("id").is("workspace_id", null).limit(1).single();
-  const { data: run } = await db.from("runs").insert({ workspace_id: ws!.id, agent_id: agent!.id, policy_id: policy!.id, suite_id: suite!.id, status: "completed" }).select("id").single();
+  // Created running, completed after its cases, as the runner does: a completed run takes no new evidence (0043).
+  const { data: run } = await db.from("runs").insert({ workspace_id: ws!.id, agent_id: agent!.id, policy_id: policy!.id, suite_id: suite!.id, status: "running" }).select("id").single();
   await db.from("run_cases").insert([
     { workspace_id: ws!.id, run_id: run!.id, case_id: "T01", category: "c", obligation: "policy_accuracy", severity: "low", input: "hi", expected: "x", assertions: ["a"], response_text: `reply ${tag}`, status: "pass" },
     { workspace_id: ws!.id, run_id: run!.id, case_id: "T02", category: "c", obligation: "policy_accuracy", severity: "low", input: "hi", expected: "x", assertions: ["a"], status: "error", error: "HTTP 502" },
   ]);
+  await db.from("runs").update({ status: "completed" }).eq("id", run!.id);
   return { user, ws: ws!.id as string, agent: agent!.id as string, run: run!.id as string };
 };
 

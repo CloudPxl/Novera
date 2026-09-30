@@ -2847,3 +2847,40 @@ and 1440 with every case open, light and dark. The docs' "How a run works" gaine
 The planted row is itself a finding, not fixed here: the database accepted a `run_cases`
 row for a scenario outside the run's frozen manifest, into a completed run, from the
 service role. That is the next item.
+
+## 2026-09-30 — A run's evidence belongs to the run (0043)
+
+Found while planting a no-result row for 12.5's walk: the service role inserted a
+`run_cases` row for T06 — a scenario the run's frozen manifest never declared — into a
+run that had already completed. A sealed report keeps its own hash, but the run page,
+the API, MCP, exports, comparisons and webhooks count from these rows and would have
+disagreed with it. The manifest (0016) proved what a run declared; nothing tied what it
+recorded to that declaration.
+
+0043, a `before insert` trigger on `run_cases`: a row must name a scenario in the
+manifest's `suite.case_ids` (runs from before manifests are left alone), and a completed
+run takes no row at all. The run row is read `for share`, so it cannot complete between
+the check and the insert. An aborted run still takes rows — a scenario in flight when a
+person presses Stop is recorded when it returns, and an aborted run is never sealed.
+The runner writes every row before `finishRun` (read in the code, not assumed); six
+production runs whose last row is stamped 3–128 ms after `finished_at` are the app's
+clock against the database's (the 12.8 skew), not late rows.
+
+Planned a unique index on `(run_id, case_id)` as well. `verify:db`, run before the
+migration, showed the duplicate already refused — `unique (run_id, case_id)` has been in
+the table since 0001, which a grep for `on run_cases` missed. Dropped; the check stays.
+
+Six verification scripts planted cases into runs created as `completed` — the reverse of
+the runner — and now create them running and complete them after. Two checks would
+otherwise have kept passing for the wrong reason: `verify:db`'s verdict invariants and
+`verify:tenancy`'s cross-workspace refusal were refused by the new trigger first. The
+invariants now require an error that is not about the run; the tenancy check targets an
+open run. Measured: `verify:db` with the new checks failed 2 of them before the migration
+and passes after; access, api, mcp, retention, tenancy, slices (stop mid-slice: 3 of 12
+recorded after the abort), webhooks, schedules, effect and byok green.
+
+`verify:slices` failed twice in a row on "each one reached the agent" (11 of 12) and then
+passed three times. The trigger cannot cause it — it stores a row as given or refuses it,
+and a refusal aborts the run, while both runs completed 12/12 — so the odd row's error
+came from the agent call to the external httpbin; its content was not captured. The check
+now prints the outlier's stored error.

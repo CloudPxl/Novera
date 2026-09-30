@@ -31,11 +31,13 @@ const makeWorkspace = async (tag: string) => {
   const { data: suite } = await db.from("suites").select("id").is("workspace_id", null).limit(1).single();
   const runs: string[] = [];
   for (const statuses of [["fail", "error"], ["pass", "fail"]]) {
-    const { data: run } = await db.from("runs").insert({ workspace_id: ws!.id, agent_id: agent!.id, policy_id: policy!.id, suite_id: suite!.id, status: "completed" }).select("id").single();
+    // Created running, completed after its cases, as the runner does: a completed run takes no new evidence (0043).
+    const { data: run } = await db.from("runs").insert({ workspace_id: ws!.id, agent_id: agent!.id, policy_id: policy!.id, suite_id: suite!.id, status: "running" }).select("id").single();
     await db.from("run_cases").insert(statuses.map((status, i) => ({
       workspace_id: ws!.id, run_id: run!.id, case_id: `T0${i + 1}`, category: "c", obligation: "policy_accuracy", severity: "low",
       input: "hi", expected: "x", assertions: ["a"], status, ...(status === "error" ? { error: "HTTP 502" } : {}),
     })));
+    await db.from("runs").update({ status: "completed" }).eq("id", run!.id);
     runs.push(run!.id);
   }
   return { user, ws: ws!.id as string, runs };

@@ -61,3 +61,52 @@ function baseNote(
       return `graded by ${model}`;
   }
 }
+
+export interface Corroboration {
+  agreed: number;
+  /** Of `agreed`, those where both models came from one vendor. */
+  sameVendor: number;
+  settled: number;
+  unconfirmed: number;
+  unresolved: number;
+  /** Verdicts settled by the scenario's own rules, with no model asked (0017). */
+  rules: number;
+  /** Verdicts settled by reading back the customer's system, with no model asked (0020). */
+  readBack: number;
+}
+
+/** "by the scenario's own rules", "by reading back the customer's system", or both. */
+function withoutModel(c: Corroboration): string | null {
+  const n = c.rules + c.readBack;
+  if (!n) return null;
+  const how = !c.readBack
+    ? "by the scenario's own rules"
+    : !c.rules
+      ? "by reading back the customer's system"
+      : `${c.rules} by the scenario's own rules and ${c.readBack} by reading back the customer's system`;
+  return `settled without a model, ${how}`;
+}
+
+/**
+ * The run's verdicts in one sentence: how many were corroborated, and how. A verdict
+ * settled by a rule or a read-back carries no agreement by construction (0020), so it
+ * is counted here on its own — before, a run settled entirely by rules read "No verdict
+ * was recorded" above a list of its failures.
+ */
+export function engineLine(c: Corroboration, judgeModel: string | null): string {
+  const total = c.agreed + c.settled + c.unconfirmed + c.unresolved;
+  const other = withoutModel(c);
+  const n = c.rules + c.readBack;
+  if (total === 0) {
+    if (other) return `${n} ${n === 1 ? "verdict was" : "verdicts were"} ${other}.`;
+    return judgeModel ? `Graded by ${judgeModel}.` : "No verdict was recorded.";
+  }
+
+  const parts = [`${c.agreed} of ${total} ${other ? "model verdicts" : "verdicts"} were confirmed by a second model`
+    + (c.sameVendor ? ` (${c.sameVendor === c.agreed ? "all" : c.sameVendor} by two models from one vendor)` : "")];
+  if (c.settled) parts.push(`${c.settled} needed a third to settle a disagreement`);
+  if (c.unconfirmed) parts.push(`${c.unconfirmed} could not be corroborated`);
+  if (c.unresolved) parts.push(`${c.unresolved} could not be resolved at all`);
+  if (other) parts.push(`and ${n} more ${n === 1 ? "was" : "were"} ${other}`);
+  return `${parts.join(", ")}.`;
+}

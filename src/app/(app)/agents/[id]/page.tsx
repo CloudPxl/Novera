@@ -86,7 +86,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
 
       <header className="mt-4 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{agent.name}</h1>
+          <h1 className="min-w-0 text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">{agent.name}</h1>
           <p className="mt-1 break-all font-mono text-xs text-ink-faint">{config.url}</p>
         </div>
         {agent.attested_at ? (

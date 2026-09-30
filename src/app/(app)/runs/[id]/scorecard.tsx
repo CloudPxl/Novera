@@ -1,6 +1,10 @@
 import { Badge, Tooltip } from "@/components/ui/primitives.tsx";
 import type { Grade } from "@/lib/evidence/grade.ts";
 import type { Coverage } from "@/lib/evidence/coverage.ts";
+import { describeVendor, type GradingHealth } from "@/lib/evidence/grading-health.ts";
+import { engineLine, type Corroboration } from "./grading-note.ts";
+
+export type { Corroboration };
 
 /**
  * The band's colour ring. `INCOMPLETE` and `WITHHELD` are deliberately not red: neither is a bad
@@ -18,24 +22,6 @@ const BAND_RING = {
   WITHHELD: "border-dashed border-warning-text bg-warning-surface text-warning-text",
 } as const;
 
-export interface Corroboration {
-  agreed: number;
-  settled: number;
-  unconfirmed: number;
-  unresolved: number;
-}
-
-function engineLine(c: Corroboration, judgeModel: string | null): string {
-  const total = c.agreed + c.settled + c.unconfirmed + c.unresolved;
-  if (total === 0) return judgeModel ? `Graded by ${judgeModel}.` : "No verdict was recorded.";
-
-  const parts = [`${c.agreed} of ${total} verdicts were confirmed by a second model`];
-  if (c.settled) parts.push(`${c.settled} needed a third to settle a disagreement`);
-  if (c.unconfirmed) parts.push(`${c.unconfirmed} could not be corroborated`);
-  if (c.unresolved) parts.push(`${c.unresolved} could not be resolved at all`);
-  return `${parts.join(", ")}.`;
-}
-
 function duration(startedAt: string | null, finishedAt: string | null): string | null {
   if (!startedAt || !finishedAt) return null;
   const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
@@ -49,6 +35,7 @@ export function Scorecard({
   grade,
   coverage,
   corroboration,
+  health = null,
   agentName,
   policyVersion,
   suiteLabel,
@@ -63,6 +50,8 @@ export function Scorecard({
   grade: Grade;
   coverage: Coverage;
   corroboration: Corroboration;
+  /** How the graders behaved, from the attempts stored on the cases. */
+  health?: GradingHealth | null;
   agentName: string;
   policyVersion: number | null;
   suiteLabel: string;
@@ -170,6 +159,22 @@ export function Scorecard({
             </Tooltip>
             <span>— {engineLine(corroboration, judgeModel)}</span>
           </p>
+
+          {/* Counted from the requests stored on the cases, never estimated. A run whose
+              verdicts came through rate limits and fallbacks is not the same evidence as
+              one that did not, and the verdict counts alone cannot show the difference. */}
+          {health && health.vendors.length > 0 && (
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs leading-relaxed text-ink-faint">
+              <Tooltip text="Every request Novera made to a grading model for this run, counted from the attempts stored on its scenarios. “Not sent” means the vendor was passed over without a request: skipped after failing repeatedly in the same slice, the slice was ending, its terms do not cover the data, or no key was configured.">
+                <span className="underline decoration-dotted underline-offset-2">Grading health</span>
+              </Tooltip>
+              <span>
+                — {health.vendors.map(describeVendor).join(" · ")}.
+                {health.absorbed > 0 && <> {health.absorbed} {health.absorbed === 1 ? "scenario" : "scenarios"} reached a verdict after a grader failed.</>}
+                {health.unclassified > 0 && <> {health.unclassified} {health.unclassified === 1 ? "failure was" : "failures were"} stored before failures were classified.</>}
+              </span>
+            </p>
+          )}
 
           {runError && (
             <p role="alert" className="mt-3 rounded-control border border-fail-border bg-fail-surface px-3 py-2 text-sm text-fail-text">

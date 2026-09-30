@@ -13,6 +13,8 @@ import { unstableInComparison } from "@/lib/evidence/stability.ts";
 import { coverage, coverageByCategory } from "@/lib/evidence/coverage.ts";
 import { categoryMeta } from "@/lib/evidence/categories.ts";
 import { gradeRun } from "@/lib/evidence/grade.ts";
+import { gradingHealth } from "@/lib/evidence/grading-health.ts";
+import { independenceOf } from "@/lib/judge/independence.ts";
 import { obligationLabel } from "@/lib/report/payload.ts";
 import { normaliseTrajectory } from "@/lib/agents/trajectory.ts";
 import { resolveAssertions } from "@/lib/judge/parse.ts";
@@ -99,7 +101,7 @@ export default async function RunPage({
         await db
           .from("run_cases")
           .select(
-            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by, tool_activity, transcript, raw_expired_at, raw_sha256",
+            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by, tool_activity, transcript, raw_expired_at, raw_sha256, judge_attempts",
           )
           .eq("run_id", id)
           .order("case_id")
@@ -315,13 +317,23 @@ export default async function RunPage({
   const corroboration = rows.reduce<Corroboration>(
     (acc, c) => {
       const a = c.judge_agreement as string | null;
-      if (a === "agreed") acc.agreed += 1;
+      if (a === "agreed") {
+        acc.agreed += 1;
+        // Derived from the votes, as the sealed report does: two models of one vendor
+        // agreeing is corroboration, but a weaker kind, and the line says how much.
+        const votes = Array.isArray(c.judge_votes) ? (c.judge_votes as Array<{ model: string; status: "pass" | "fail" | "error" }>) : [];
+        if (independenceOf(votes) === "single-vendor") acc.sameVendor += 1;
+      }
       else if (a === "majority") acc.settled += 1;
       else if (a === "unconfirmed") acc.unconfirmed += 1;
       else if (a === "unresolved") acc.unresolved += 1;
+      else if (c.status === "pass" || c.status === "fail") {
+        if (c.settled_by === "deterministic") acc.rules += 1;
+        else if (c.settled_by === "read_back") acc.readBack += 1;
+      }
       return acc;
     },
-    { agreed: 0, settled: 0, unconfirmed: 0, unresolved: 0 },
+    { agreed: 0, sameVendor: 0, settled: 0, unconfirmed: 0, unresolved: 0, rules: 0, readBack: 0 },
   );
 
   const dutyRefsByCase = new Map(suiteCases.map((c) => [
@@ -439,6 +451,7 @@ export default async function RunPage({
               grade={grade}
               coverage={runCoverage}
               corroboration={corroboration}
+              health={gradingHealth(rows)}
               agentName={agent?.name ?? "Agent"}
               policyVersion={(policy?.version as number | undefined) ?? null}
               suiteLabel={suiteLabel}

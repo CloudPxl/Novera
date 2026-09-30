@@ -152,10 +152,15 @@ export function Tooltip({ text, children }: { text: string; children: ReactNode 
         390 — an invisible element causing a real horizontal scrollbar on every page
         that uses one. The width is also capped against the viewport so that showing
         it cannot reintroduce the same overflow on a narrow screen.
+
+        Below `sm` it is pinned to the bottom of the viewport, full width less the
+        gutter. Centred on its trigger, a tooltip whose trigger sat near the left edge
+        ran off-screen to the left — unreadable, and invisible to an overflow check,
+        because content past the left edge makes no scrollbar.
       */}
       <span
         role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden w-56 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-control bg-ink px-2.5 py-1.5 text-xs leading-relaxed text-on-ink shadow-modal group-hover/tip:block group-focus-within/tip:block"
+        className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden w-56 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-control bg-ink px-2.5 py-1.5 text-xs leading-relaxed text-on-ink shadow-modal group-hover/tip:block group-focus-within/tip:block max-sm:fixed max-sm:inset-x-4 max-sm:top-auto max-sm:bottom-4 max-sm:mb-0 max-sm:w-auto max-sm:max-w-none max-sm:translate-x-0"
       >
         {text}
       </span>

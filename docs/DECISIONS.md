@@ -2780,3 +2780,36 @@ API, the CLI or MCP are driven by their callers, and the shared trial grading is
 metered by 0041. Unit-tested; `verify:schedules` green. Extending `verify:schedules` with
 two workspaces, as planned, would have needed more than 20 due schedules to show
 starvation at the current caps, so the rule is proved by its unit test instead.
+
+## 2026-09-30 — Phase 12.3, finished: grading health on the run page
+
+The line 12.3 planned and did not ship. Under "How verdicts were reached", per vendor:
+requests sent, answered, unreadable, rate-limited, timed out, failed, passed over
+without a request, slowest answer — summed from `run_cases.judge_attempts`, nothing
+estimated (`src/lib/evidence/grading-health.ts`). A failure stored before reasons were
+typed counts as unclassified, never guessed from its message: every case row in the
+database today is of that kind (the typed rows lived in erased throwaway workspaces).
+Run page only; the API, MCP and the sealed report are unchanged.
+
+Found while verifying it, all fixed:
+- **A run settled entirely by rules read "No verdict was recorded."** above its list of
+  failures — rule and read-back verdicts carry no agreement by construction (0020), and
+  the line only counted agreements. They are now counted and named.
+- **The scorecard never said a confirmation was same-vendor**, which the sealed report
+  has derived from the votes since 2026-09-22 — the run page now says it too.
+- **Tooltips ran off the left edge at 390**, unreadable, and invisible to the overflow
+  check because content past the left edge makes no scrollbar. Below `sm` a tooltip is
+  now pinned to the bottom of the viewport; its box measured inside at 390, 768, 1440.
+- **Every operator page was 41 px too wide at 768** since "Review" joined the nav
+  (12.5): 785 px of bar in 720. The inline nav now starts at `lg` (below that it is in
+  the menu, as on a phone) and the trial badge at `xl` (in the menu below), leaving
+  321 px of room at 1024 for a staff account's fifth link.
+- **A long unbroken workspace or agent name pushed `/dashboard` and `/agents/[id]`
+  103 px past 390** — the 12.7 report-heading defect, in two more headings.
+
+Measured on a real six-scenario run (groq 6/6 answered, slowest 1.1 s; mistral 6/6,
+2.2 s) and a rule-settled run, in throwaway workspaces since erased: seven operator
+pages 0 px overflow at 390/640/768/1024/1440, axe clean at 390 and 1440 on the three
+touched pages, light and dark; the tooltip reached and shown by keyboard; another
+workspace's user gets the not-found page (a soft 404 with status 200 — Next streams
+before `notFound()`, documented; not changed here). 517 tests.

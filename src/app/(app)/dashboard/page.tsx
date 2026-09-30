@@ -96,7 +96,7 @@ export default async function DashboardPage() {
           to render them differently. */}
       <header className="border-b border-line pb-6">
         <p className="type-pill text-ink-faint">Workspace</p>
-        <h1 className="mt-2 type-h1">{workspace.name}</h1>
+        <h1 className="mt-2 type-h1 [overflow-wrap:anywhere]">{workspace.name}</h1>
         <p className="mt-1 type-body text-ink-soft">
           {user.email} ·{" "}
           {entitlement.ownKey

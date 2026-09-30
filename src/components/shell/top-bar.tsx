@@ -76,9 +76,12 @@ export async function TopBar() {
           <span aria-hidden className="hidden text-sm font-semibold tracking-tight sm:inline">Novera</span>
         </Link>
 
-        <span aria-hidden className="hidden h-5 w-px bg-line md:block" />
+        <span aria-hidden className="hidden h-5 w-px bg-line lg:block" />
 
-        <nav aria-label="Primary" className="hidden items-center gap-0.5 md:flex">
+        {/* From lg only. At md the four links, the agent menu, Import, Run and Menu came
+            to 785 px in a 720 px bar — 41 px past the edge on every page at 768 — and
+            staff get a fifth link. Below lg they are in the menu, as on a phone. */}
+        <nav aria-label="Primary" className="hidden items-center gap-0.5 lg:flex">
           <NavLinks items={nav} variant="bar" />
         </nav>
 
@@ -110,7 +113,7 @@ export async function TopBar() {
         </Menu>
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="hidden lg:inline">
+          <span className="hidden xl:inline">
             {/* What is really stored, not an invented environment label: a report has
                 to say who funded the grading, so the bar says it too. */}
             <Badge tone={entitlement.ownKey ? "pass" : "neutral"}>
@@ -130,16 +133,16 @@ export async function TopBar() {
             <div className="border-b border-line px-3 py-2">
               <p className="truncate text-sm font-medium text-ink">{workspace.name}</p>
               <p className="truncate text-xs text-ink-faint">{user.email}</p>
-              <p className="mt-1.5 text-xs text-ink-soft lg:hidden">
+              <p className="mt-1.5 text-xs text-ink-soft xl:hidden">
                 {entitlement.ownKey ? `Own key · ${entitlement.provider}` : `Trial · ${runsLeft} of ${TRIAL_RUN_LIMIT} runs left`}
               </p>
             </div>
 
-            <div className="py-1 md:hidden">
+            <div className="py-1 lg:hidden">
               <NavLinks items={nav} variant="stack" />
             </div>
 
-            <div className="border-t border-line py-1 md:border-t-0">
+            <div className="border-t border-line py-1 lg:border-t-0">
               <Link href="/agents/new" className={menuItemClass}>Connect an agent</Link>
               <Link href="/settings" className={menuItemClass}>Settings</Link>
               <Link href="/guide" className={menuItemClass}>Step-by-step guide</Link>

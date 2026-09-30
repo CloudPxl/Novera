@@ -1,61 +1,63 @@
 {
-  "name": "Novera — run a suite and report the outcome",
+  "name": "Novera — pre-release gate",
   "nodes": [
     {
       "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "weeks",
-              "triggerAtDay": [
-                1
-              ],
-              "triggerAtHour": 6
-            }
-          ]
-        }
+        "httpMethod": "POST",
+        "path": "novera-release-gate",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
       },
-      "name": "Every Monday",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
+      "name": "Release pipeline calls",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
       "position": [
         0,
-        0
+        100
       ],
-      "id": "every-monday"
-    },
-    {
-      "parameters": {},
-      "name": "Run now",
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [
-        0,
-        200
-      ],
-      "id": "run-now"
+      "id": "release-pipeline-calls",
+      "webhookId": "novera-release-gate",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Release gate secret"
+        }
+      }
     },
     {
       "parameters": {
         "assignments": {
           "assignments": [
             {
-              "id": "u",
+              "id": "a0",
               "name": "novera_url",
               "type": "string",
               "value": "https://www.nover.space"
             },
             {
-              "id": "a",
+              "id": "a1",
               "name": "agent_id",
               "type": "string",
               "value": "REPLACE_WITH_AGENT_ID"
             },
             {
-              "id": "s",
+              "id": "a2",
               "name": "suite_id",
               "type": "string",
               "value": "REPLACE_WITH_SUITE_ID"
+            },
+            {
+              "id": "a3",
+              "name": "release_id",
+              "type": "string",
+              "value": "={{ $json.body?.release_id ?? '' }}"
+            },
+            {
+              "id": "a4",
+              "name": "knowledge_base_revision",
+              "type": "string",
+              "value": "={{ $json.body?.knowledge_base_revision ?? '' }}"
             }
           ]
         },
@@ -76,10 +78,17 @@
         "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "options": {},
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ agent_id: $('Configure').item.json.agent_id, suite_id: $('Configure').item.json.suite_id }) }}"
+        "jsonBody": "={{ JSON.stringify(Object.assign({ agent_id: $('Configure').item.json.agent_id, suite_id: $('Configure').item.json.suite_id }, $('Configure').item.json.release_id ? { release_id: $('Configure').item.json.release_id } : {}, $('Configure').item.json.knowledge_base_revision ? { knowledge_base_revision: $('Configure').item.json.knowledge_base_revision } : {})) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
       },
       "name": "Start run",
       "type": "n8n-nodes-base.httpRequest",
@@ -88,18 +97,67 @@
         440,
         100
       ],
+      "id": "start-run",
       "credentials": {
         "httpHeaderAuth": {
           "id": "REPLACE_WITH_YOUR_CREDENTIAL",
           "name": "Novera API key"
         }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c0",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 201,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "id": "start-run"
+      "name": "Run started?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        100
+      ],
+      "id": "run-started"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ outcome: 'blocked', release_id: $('Configure').item.json.release_id || null, reason: 'The Novera run could not start: ' + ($json.body?.error ?? 'HTTP ' + $json.statusCode) }) }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "name": "Respond: could not start",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        320
+      ],
+      "id": "respond-could-not-start"
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs/{{ $('Start run').item.json.run.id }}/execute",
+        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs/{{ $('Start run').item.json.body.run.id }}/execute",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {
@@ -114,16 +172,16 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        660,
+        880,
         100
       ],
+      "id": "advance-run",
       "credentials": {
         "httpHeaderAuth": {
           "id": "REPLACE_WITH_YOUR_CREDENTIAL",
           "name": "Novera API key"
         }
-      },
-      "id": "advance-run"
+      }
     },
     {
       "parameters": {
@@ -135,7 +193,7 @@
           },
           "conditions": [
             {
-              "id": "d",
+              "id": "c0",
               "leftValue": "={{ $json.done }}",
               "rightValue": true,
               "operator": {
@@ -145,7 +203,7 @@
               }
             },
             {
-              "id": "limit",
+              "id": "c1",
               "leftValue": "={{ $runIndex }}",
               "rightValue": 90,
               "operator": {
@@ -162,7 +220,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        880,
+        1100,
         100
       ],
       "id": "finished"
@@ -175,16 +233,16 @@
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        880,
+        1100,
         320
       ],
-      "id": "wait",
-      "webhookId": "novera-wait"
+      "id": "wait-10-seconds",
+      "webhookId": "novera-wait-10s"
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs/{{ $('Start run').item.json.run.id }}",
+        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs/{{ $('Start run').item.json.body.run.id }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {}
@@ -193,16 +251,16 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1100,
+        1320,
         100
       ],
+      "id": "get-result",
       "credentials": {
         "httpHeaderAuth": {
           "id": "REPLACE_WITH_YOUR_CREDENTIAL",
           "name": "Novera API key"
         }
-      },
-      "id": "get-result"
+      }
     },
     {
       "parameters": {
@@ -214,7 +272,7 @@
           },
           "conditions": [
             {
-              "id": "st",
+              "id": "c0",
               "leftValue": "={{ $json.run.status }}",
               "rightValue": "completed",
               "operator": {
@@ -223,7 +281,7 @@
               }
             },
             {
-              "id": "f",
+              "id": "c1",
               "leftValue": "={{ $json.run.counts.failed }}",
               "rightValue": 0,
               "operator": {
@@ -232,7 +290,7 @@
               }
             },
             {
-              "id": "n",
+              "id": "c2",
               "leftValue": "={{ $json.run.counts.no_result }}",
               "rightValue": 0,
               "operator": {
@@ -241,7 +299,7 @@
               }
             },
             {
-              "id": "r",
+              "id": "c3",
               "leftValue": "={{ $json.run.report }}",
               "rightValue": "",
               "operator": {
@@ -255,87 +313,52 @@
         },
         "options": {}
       },
-      "name": "Every scenario passed?",
+      "name": "Release may proceed?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
         1320,
         100
       ],
-      "id": "passed"
+      "id": "release-may-proceed"
     },
     {
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "o",
-              "name": "outcome",
-              "type": "string",
-              "value": "pass"
-            },
-            {
-              "id": "m",
-              "name": "message",
-              "type": "string",
-              "value": "=Novera: all {{ $json.run.counts.passed }} scenarios passed for {{ $json.run.agent.name }} ({{ $json.run.suite }}). Report: {{ $json.run.report.url }}"
-            }
-          ]
-        },
-        "options": {}
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ outcome: 'pass', release_id: $('Configure').item.json.release_id || null, counts: $json.run.counts, report_url: $json.run.report.url, message: 'Novera: all ' + $json.run.counts.passed + ' scenarios passed. Report: ' + $json.run.report.url }) }}",
+        "options": {
+          "responseCode": 200
+        }
       },
-      "name": "All passed",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "name": "Respond: proceed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
       "position": [
         1540,
         0
       ],
-      "id": "all-passed"
+      "id": "respond-proceed"
     },
     {
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "o",
-              "name": "outcome",
-              "type": "string",
-              "value": "={{ $json.run.status !== 'completed' || !$json.run.report ? 'incomplete' : $json.run.counts.failed > 0 ? 'fail' : 'incomplete' }}"
-            },
-            {
-              "id": "m",
-              "name": "message",
-              "type": "string",
-              "value": "=Novera: {{ $json.run.agent.name }} ({{ $json.run.suite }}) — {{ $json.run.counts.failed }} failed, {{ $json.run.counts.no_result }} with no result, {{ $json.run.counts.passed }} passed. A scenario with no result is not a pass. {{ $json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + ($json.run.error || ($json.run.status === 'completed' ? 'no scenario produced a verdict, so there was nothing to seal.' : 'the run did not finish (status: ' + $json.run.status + ').')) }}"
-            }
-          ]
-        },
-        "options": {}
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ outcome: $json.run.status !== 'completed' || !$json.run.report ? 'incomplete' : $json.run.counts.failed > 0 ? 'fail' : 'incomplete', release_id: $('Configure').item.json.release_id || null, counts: $json.run.counts, report_url: $json.run.report ? $json.run.report.url : null, message: 'Novera: ' + $json.run.counts.failed + ' failed, ' + $json.run.counts.no_result + ' with no result, ' + $json.run.counts.passed + ' passed. A scenario with no result is not a pass. ' + ($json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + ($json.run.error || ($json.run.status === 'completed' ? 'no scenario produced a verdict, so there was nothing to seal.' : 'the run did not finish (status: ' + $json.run.status + ').'))) }) }}",
+        "options": {
+          "responseCode": 409
+        }
       },
-      "name": "Needs attention",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "name": "Respond: blocked",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
       "position": [
         1540,
         200
       ],
-      "id": "needs-attention"
+      "id": "respond-blocked"
     }
   ],
   "connections": {
-    "Every Monday": {
-      "main": [
-        [
-          {
-            "node": "Configure",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run now": {
+    "Release pipeline calls": {
       "main": [
         [
           {
@@ -361,7 +384,25 @@
       "main": [
         [
           {
+            "node": "Run started?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run started?": {
+      "main": [
+        [
+          {
             "node": "Advance run",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: could not start",
             "type": "main",
             "index": 0
           }
@@ -412,25 +453,25 @@
       "main": [
         [
           {
-            "node": "Every scenario passed?",
+            "node": "Release may proceed?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Every scenario passed?": {
+    "Release may proceed?": {
       "main": [
         [
           {
-            "node": "All passed",
+            "node": "Respond: proceed",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Needs attention",
+            "node": "Respond: blocked",
             "type": "main",
             "index": 0
           }
@@ -443,6 +484,7 @@
   },
   "pinData": {},
   "meta": {
-    "templateCredsSetupCompleted": false
+    "templateCredsSetupCompleted": false,
+    "novera": "A release pipeline POSTs {release_id, knowledge_base_revision} to this webhook and waits. 200 only when every scenario passed and a report was sealed; 409 otherwise, including when the run could not start or did not finish."
   }
 }

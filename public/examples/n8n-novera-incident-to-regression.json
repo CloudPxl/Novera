@@ -1,0 +1,334 @@
+{
+  "name": "Novera — incident to regression draft",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "novera-incident",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Helpdesk sends an incident",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        100
+      ],
+      "id": "helpdesk-sends-an-incident",
+      "webhookId": "novera-incident",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Incident webhook secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "novera_url",
+              "type": "string",
+              "value": "https://www.nover.space"
+            },
+            {
+              "id": "a1",
+              "name": "agent_id",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "a2",
+              "name": "default_obligation",
+              "type": "string",
+              "value": "policy_accuracy"
+            },
+            {
+              "id": "a3",
+              "name": "default_severity",
+              "type": "string",
+              "value": "high"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Configure",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        100
+      ],
+      "id": "configure"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "customer_message",
+              "type": "string",
+              "value": "={{ $('Helpdesk sends an incident').item.json.body.customer_message }}"
+            },
+            {
+              "id": "a1",
+              "name": "agent_reply",
+              "type": "string",
+              "value": "={{ $('Helpdesk sends an incident').item.json.body.agent_reply ?? '' }}"
+            },
+            {
+              "id": "a2",
+              "name": "expected_behavior",
+              "type": "string",
+              "value": "={{ $('Helpdesk sends an incident').item.json.body.expected_behavior }}"
+            },
+            {
+              "id": "a3",
+              "name": "what_went_wrong",
+              "type": "string",
+              "value": "={{ $('Helpdesk sends an incident').item.json.body.what_went_wrong ?? '' }}"
+            },
+            {
+              "id": "a4",
+              "name": "occurred_on",
+              "type": "string",
+              "value": "={{ $('Helpdesk sends an incident').item.json.body.occurred_on ?? '' }}"
+            },
+            {
+              "id": "a5",
+              "name": "obligation",
+              "type": "string",
+              "value": "={{ $('Helpdesk sends an incident').item.json.body.obligation || $('Configure').item.json.default_obligation }}"
+            },
+            {
+              "id": "a6",
+              "name": "severity",
+              "type": "string",
+              "value": "={{ $('Helpdesk sends an incident').item.json.body.severity || $('Configure').item.json.default_severity }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Map the incident",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        100
+      ],
+      "id": "map-the-incident"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/production-failures",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.fromEntries(Object.entries({ customer_message: $json.customer_message, agent_reply: $json.agent_reply, expected_behavior: $json.expected_behavior, what_went_wrong: $json.what_went_wrong, occurred_on: $json.occurred_on, obligation: $json.obligation, severity: $json.severity, agent_id: $('Configure').item.json.agent_id }).filter(([, v]) => v !== '' && v !== null && v !== undefined))) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Record in Novera",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        100
+      ],
+      "id": "record-in-novera",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Novera API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c0",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 300,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Recorded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        100
+      ],
+      "id": "recorded"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ outcome: $json.body.production_failure.duplicate ? 'already_recorded' : 'drafted', scenario_id: $json.body.draft ? $json.body.draft.scenario_id : null, review_url: $json.body.draft ? $json.body.draft.review_url : null, removed: $json.body.redaction.removed, note: $json.body.note }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "name": "Respond: drafted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "respond-drafted"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "message",
+              "type": "string",
+              "value": "={{ $('Record in Novera').item.json.body.production_failure.duplicate ? 'Novera: this incident was already recorded as ' + $('Record in Novera').item.json.body.draft.scenario_id + '.' : 'Novera: incident drafted as regression scenario ' + $('Record in Novera').item.json.body.draft.scenario_id + '. It runs only after someone approves it: ' + $('Record in Novera').item.json.body.draft.review_url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Tell the team",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1320,
+        0
+      ],
+      "id": "tell-the-team"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ outcome: 'not_recorded', status: $json.statusCode, error: $json.body?.error ?? 'HTTP ' + $json.statusCode }) }}",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "name": "Respond: not recorded",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        200
+      ],
+      "id": "respond-not-recorded"
+    }
+  ],
+  "connections": {
+    "Helpdesk sends an incident": {
+      "main": [
+        [
+          {
+            "node": "Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure": {
+      "main": [
+        [
+          {
+            "node": "Map the incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map the incident": {
+      "main": [
+        [
+          {
+            "node": "Record in Novera",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record in Novera": {
+      "main": [
+        [
+          {
+            "node": "Recorded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recorded?": {
+      "main": [
+        [
+          {
+            "node": "Respond: drafted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: not recorded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond: drafted": {
+      "main": [
+        [
+          {
+            "node": "Tell the team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "novera": "A helpdesk or incident tool POSTs a conversation that went wrong. Novera stores it redacted and drafts a regression scenario that runs only after a person approves it. The same incident sent twice is recorded once."
+  }
+}

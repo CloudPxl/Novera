@@ -2921,3 +2921,42 @@ the resubmission is recognised, both labels shown, axe clean and 0 px at 390 and
 
 Out of scope: an MCP tool for it (the plan named the REST endpoint), the CLI, and
 names and street addresses, which redaction still does not detect (as documented).
+
+## 2026-09-30 — The three agency templates, each run in n8n before shipping
+
+Deferred from 12.8 until each could be proven in n8n; now proven in n8n 2.41.3 in Docker
+against the dev server and throwaway workspaces (since erased), webhooks through a
+running n8n server, the weekly one through `n8n execute`. Built from one generator
+(`scripts/n8n/build-templates.py`) so the Configure node, the advance loop and the
+pass condition are the same shapes as the proven run-suite template.
+
+- **Pre-release gate** (`n8n-novera-release-gate.json`): the pipeline POSTs its
+  `release_id` / `knowledge_base_revision` (recorded on the run as declared) and waits.
+  Measured: no secret 403, wrong secret 403; passing suite 200 `pass` with the report
+  link; failing 409 `fail`; a run that could not start 409 `blocked` with Novera's
+  reason; a run with no verdict 409 `incomplete`, "No report was sealed". The webhook
+  demands a header secret — an open gate would let anyone who learned its address
+  spend the workspace's runs.
+- **Weekly assurance** (`n8n-novera-weekly-assurance.json`): runs the suite, compares with
+  the last completed run of the same suite version, and reaches "Open a ticket" only on
+  a newly failing scenario, a lost verdict or incomplete evidence. Measured: against a
+  baseline where T01 passed, "Open a ticket", regression T01; run again, compared with
+  that real run, "Nothing to do" — an unchanged failure is not a regression, and the
+  message still says it failed. Grader movement (`stability.moved`) is labelled.
+- **Incident to regression draft** (`n8n-novera-incident-to-regression.json`): posts to
+  the new endpoint. Measured: wrong secret 403; new incident 200 `drafted` R01 (one email,
+  one phone removed; stored "[EMAIL_1], [PHONE_1]"); resent 200 `already_recorded`;
+  missing expectation 422 with Novera's reason.
+
+Found beside it: the advance loop in every template, including the published run-suite
+one, had no bound — a run that never finished kept the n8n execution looping until the
+24-hour stalled-run stop. Each now gives up after 90 advances (about fifteen minutes)
+and reports `incomplete`, never a pass; proven with a test copy set to give up after
+the first advance on a slow agent: "the run did not finish (status: running)". The
+run-suite template was re-run after the change: `All passed`. A refused start in the
+run-suite template still errors the n8n execution (unchanged; visible, not a pass).
+
+All nine n8n executions finished `success`; the 403s never started one. A test pins the
+properties the runs proved: no key or real id in any template, every connection
+resolves, every webhook demands a secret, 200 only on the sealed all-pass branch, the
+loop bounded, and the ticket condition. 540 tests.

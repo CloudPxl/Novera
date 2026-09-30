@@ -1,0 +1,662 @@
+{
+  "name": "Novera — weekly assurance against the last run",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "name": "Every Monday",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "every-monday"
+    },
+    {
+      "parameters": {},
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "id": "run-now"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "novera_url",
+              "type": "string",
+              "value": "https://www.nover.space"
+            },
+            {
+              "id": "a1",
+              "name": "agent_id",
+              "type": "string",
+              "value": "REPLACE_WITH_AGENT_ID"
+            },
+            {
+              "id": "a2",
+              "name": "suite_id",
+              "type": "string",
+              "value": "REPLACE_WITH_SUITE_ID"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Configure",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        100
+      ],
+      "id": "configure"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ agent_id: $('Configure').item.json.agent_id, suite_id: $('Configure').item.json.suite_id }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Start run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        100
+      ],
+      "id": "start-run",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Novera API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c0",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 201,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Run started?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        100
+      ],
+      "id": "run-started"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a0",
+              "name": "open_ticket",
+              "type": "boolean",
+              "value": "={{ true }}"
+            },
+            {
+              "id": "a1",
+              "name": "outcome",
+              "type": "string",
+              "value": "not_started"
+            },
+            {
+              "id": "a2",
+              "name": "title",
+              "type": "string",
+              "value": "Novera: the weekly run could not start"
+            },
+            {
+              "id": "a3",
+              "name": "message",
+              "type": "string",
+              "value": "=The Novera run could not start: {{ $json.body?.error ?? 'HTTP ' + $json.statusCode }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Could not start",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        320
+      ],
+      "id": "could-not-start"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs/{{ $('Start run').item.json.body.run.id }}/execute",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Advance run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        100
+      ],
+      "id": "advance-run",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Novera API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c0",
+              "leftValue": "={{ $json.done }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c1",
+              "leftValue": "={{ $runIndex }}",
+              "rightValue": 90,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "name": "Finished?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        100
+      ],
+      "id": "finished"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "name": "Wait 10 seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        320
+      ],
+      "id": "wait-10-seconds",
+      "webhookId": "novera-wait-10s"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs/{{ $('Start run').item.json.body.run.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "name": "Get result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        100
+      ],
+      "id": "get-result",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Novera API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs?agent={{ $('Configure').item.json.agent_id }}&limit=20",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "name": "Recent runs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        100
+      ],
+      "id": "recent-runs",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Novera API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// The last completed run of the same suite version, before this one.\nconst run = $('Get result').first().json.run;\nconst recent = $('Recent runs').first().json.runs ?? [];\nconst base = recent.find((r) => r.id !== run.id && r.status === 'completed' && r.suite === run.suite && r.created_at < run.created_at);\nreturn [{ json: { baseline_run_id: base ? base.id : null } }];"
+      },
+      "name": "Pick the baseline",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        100
+      ],
+      "id": "pick-the-baseline"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c0",
+              "leftValue": "={{ $json.baseline_run_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Has a baseline?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1980,
+        100
+      ],
+      "id": "has-a-baseline"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Configure').item.json.novera_url }}/api/v1/runs/{{ $json.baseline_run_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "name": "Get baseline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        0
+      ],
+      "id": "get-baseline",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "Novera API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compares this run with the last completed run of the same suite for the same agent.\n// Every number comes from Novera's stored verdicts; nothing is estimated here.\nconst run = $('Get result').first().json.run;\nconst base = $('Get baseline').isExecuted ? $('Get baseline').first().json.run : null;\nconst before = new Map((base?.cases ?? []).map((c) => [c.id, c.verdict]));\nconst newlyFailing = run.cases.filter((c) => c.verdict === 'fail' && before.get(c.id) === 'pass');\nconst lostVerdict = run.cases.filter((c) => c.verdict === 'no_result' && before.has(c.id) && before.get(c.id) !== 'no_result').map((c) => c.id);\nconst fixed = run.cases.filter((c) => c.verdict === 'pass' && before.get(c.id) === 'fail').map((c) => c.id);\n// A newly failing scenario whose identical reply was graded both ways before is the\n// graders moving, not the agent. It is still listed; it is labelled.\nconst gradersMoved = newlyFailing.filter((c) => c.stability?.moved === 'graders').map((c) => c.id);\nconst regressions = newlyFailing.map((c) => c.id);\nconst incomplete = run.status !== 'completed' || !run.report || run.counts.no_result > 0;\nconst report = run.report ? run.report.url : null;\nconst lines = [\n  `Novera weekly check: ${run.agent.name} (${run.suite}) — ${run.counts.passed} passed, ${run.counts.failed} failed, ${run.counts.no_result} with no result.`,\n  base ? `Compared with the run of ${base.created_at.slice(0, 10)}.` : 'No earlier completed run of this suite to compare with.',\n  regressions.length ? `Newly failing: ${regressions.join(', ')}.` + (gradersMoved.length ? ` Of these, ${gradersMoved.join(', ')} had an identical reply graded both ways before — the graders moved, not necessarily the agent.` : '') : '',\n  lostVerdict.length ? `No verdict this time: ${lostVerdict.join(', ')}.` : '',\n  incomplete ? 'The evidence is incomplete: a scenario with no result is not a pass.' : '',\n  fixed.length ? `Fixed since then: ${fixed.join(', ')}.` : '',\n  report ? `Report: ${report}` : `No report was sealed${run.error ? ': ' + run.error : '.'}`,\n].filter(Boolean);\nreturn [{ json: {\n  open_ticket: incomplete || regressions.length > 0,\n  outcome: regressions.length ? 'regression' : incomplete ? 'incomplete' : 'no_change',\n  baseline_run_id: base ? base.id : null,\n  regressions, graders_moved: gradersMoved, lost_verdict: lostVerdict, fixed,\n  report_url: report,\n  title: regressions.length ? `Novera: ${regressions.length} scenario(s) newly failing for ${run.agent.name}` : `Novera: incomplete evidence for ${run.agent.name}`,\n  message: lines.join('\\n'),\n} }];"
+      },
+      "name": "Compare",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        100
+      ],
+      "id": "compare"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c0",
+              "leftValue": "={{ $json.open_ticket }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Regression or incomplete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2640,
+        100
+      ],
+      "id": "regression-or-incomplete"
+    },
+    {
+      "parameters": {},
+      "name": "Open a ticket",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2860,
+        0
+      ],
+      "id": "open-a-ticket"
+    },
+    {
+      "parameters": {},
+      "name": "Nothing to do",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2860,
+        200
+      ],
+      "id": "nothing-to-do"
+    }
+  ],
+  "connections": {
+    "Every Monday": {
+      "main": [
+        [
+          {
+            "node": "Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure": {
+      "main": [
+        [
+          {
+            "node": "Start run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start run": {
+      "main": [
+        [
+          {
+            "node": "Run started?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run started?": {
+      "main": [
+        [
+          {
+            "node": "Advance run",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Could not start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Could not start": {
+      "main": [
+        [
+          {
+            "node": "Open a ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Advance run": {
+      "main": [
+        [
+          {
+            "node": "Finished?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finished?": {
+      "main": [
+        [
+          {
+            "node": "Get result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 10 seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 10 seconds": {
+      "main": [
+        [
+          {
+            "node": "Advance run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get result": {
+      "main": [
+        [
+          {
+            "node": "Recent runs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recent runs": {
+      "main": [
+        [
+          {
+            "node": "Pick the baseline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick the baseline": {
+      "main": [
+        [
+          {
+            "node": "Has a baseline?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has a baseline?": {
+      "main": [
+        [
+          {
+            "node": "Get baseline",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Compare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get baseline": {
+      "main": [
+        [
+          {
+            "node": "Compare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare": {
+      "main": [
+        [
+          {
+            "node": "Regression or incomplete?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Regression or incomplete?": {
+      "main": [
+        [
+          {
+            "node": "Open a ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing to do",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "novera": "Weekly: runs the suite, compares with the last completed run of the same suite, and reaches 'Open a ticket' only on a newly failing scenario, a lost verdict, or incomplete evidence. Replace 'Open a ticket' with your Jira, Linear or email node; it receives title and message."
+  }
+}

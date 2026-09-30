@@ -18,7 +18,7 @@ A missing key gets a `401` that says how to send one. A key that is wrong, unkno
 
 ## Endpoints
 
-All are `GET`, under `https://www.nover.space/api/v1`.
+These are `GET`, under `https://www.nover.space/api/v1`. The two that write are below: starting a run, and recording a failure from production.
 
 - `/agents` — your agents: name, host, whether it serves real customers, and its latest policy version. Policy text is never returned.
 - `/suites` — the suite versions you can run: built-in and your own, with how many scenarios each has.
@@ -39,6 +39,16 @@ With a key that can start runs:
 The run records which key started it, and the person who created that key as responsible for it.
 
 When the run is done, `GET /api/v1/runs/<id>` gives its report's link; the JSON and JUnit downloads of that report carry the CI exit code (see **Reports in CI, and verifying a copy**). The `novera` command line does all of this in one step — `novera run --agent <id>`, with `--release` and `--kb-revision` to record what you are testing — but it is not yet published as a package. Whatever you use, keep the key in an environment variable or your CI's secret store, never in a command's arguments: arguments are visible to other processes and often printed in CI logs.
+
+## Recording a failure from production
+
+With a key that can ask for drafts and diagnoses, a helpdesk or incident pipeline can send a conversation that went wrong, and Novera drafts it as a regression scenario — the same as the form on the **Regressions** page:
+
+- `POST /api/v1/production-failures` with `customer_message` and `expected_behavior` (what should have happened, in one sentence), `obligation` (for example `data_minimisation`) and `severity` (`low`, `medium`, `high` or `critical`); optionally `agent_reply`, `what_went_wrong`, `agent_id` and `occurred_on` (`2026-09-29`). Up to 4,000 characters for the message, 8,000 for the reply, 1,000 for the other two.
+
+Everything is redacted before it is stored and the original text is never kept — see **Regressions from production** for what is and is not detected. It answers `201` with the failure's id, its draft (`R01`, `R02`…, status `draft`) and what redaction removed. The draft cannot run until a person approves it in Novera; nothing a key can do approves it, adds it to a suite or runs it. The failure and its draft name the key that sent them.
+
+Sending the same text again — a retry, say — answers `200` with the first record and stores nothing new. An agent id from another workspace answers `404`, like one that does not exist. A workspace can record 60 new failures an hour this way; past that, `429`.
 
 ## With n8n
 

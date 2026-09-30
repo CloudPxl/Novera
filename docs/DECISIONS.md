@@ -2884,3 +2884,40 @@ passed three times. The trigger cannot cause it — it stores a row as given or 
 and a refusal aborts the run, while both runs completed 12/12 — so the odd row's error
 came from the agent call to the external httpbin; its content was not captured. The check
 now prints the outlier's stored error.
+
+## 2026-09-30 — Production failures from a pipeline: `POST /api/v1/production-failures` (0044)
+
+Deferred from 12.8, and what the incident → regression n8n template needs. A key with
+the `write` scope sends a conversation that went wrong; Novera stores it and drafts a
+regression scenario exactly as the form on /regressions does — because it is the same
+function. `submitProductionFailure`'s body moved to `recordProductionFailure`
+(`src/lib/regressions/record.ts`); the form keeps its wording, the API names the JSON
+field. Redacted before anything is stored, the original only as a hash, no model asked,
+the draft waiting for a named approval. Nothing a key can do approves it.
+
+0044: the failure names the key that sent it (append-only since 0031, so the name cannot
+be rewritten; same-workspace like every reference, 0034). A unique index on the
+workspace and the original's hash makes a retry — which an automation will send —
+answer `200` with the first record instead of a second failure and draft, and makes two
+identical requests racing each other resolve to one (a lost race answers with the
+winner). There were no failures stored when it shipped. At most 60 new failures an hour
+per workspace through the API, counted before the work: the table leaves only with the
+workspace, so a runaway automation must not be able to fill it.
+
+Also: the same resubmission through the form now says "already recorded" instead of
+creating a duplicate; /regressions says "sent with the API key …" and /scenarios "Built
+from a failure sent with the API key …" — the 0039 label "asked for by an assistant"
+would have been wrong for a pipeline; the Settings checkbox for `write` now says it
+also records failures from production.
+
+Measured: `verify:api` 14 new checks over real HTTP (read key 403; write key 201 with
+draft R01; three emails removed and absent from the stored row; key and creator named;
+resubmission 200 with the same ids and one row; another workspace's agent 404 identical
+to a missing one; bad fields refused by name, storing nothing; attribution frozen;
+another workspace's key refused; the 61st in an hour 429). Browser: the form records,
+the resubmission is recognised, both labels shown, axe clean and 0 px at 390 and 1440 on
+/regressions, /scenarios and /settings. `verify:regressions`, db, tenancy, access green.
+524 tests.
+
+Out of scope: an MCP tool for it (the plan named the REST endpoint), the CLI, and
+names and street addresses, which redaction still does not detect (as documented).

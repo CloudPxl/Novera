@@ -22,6 +22,8 @@ interface FailureRow {
   redaction: RedactionRecord;
   created_at: string;
   agents: { name: string } | null;
+  /** Set when a pipeline sent the failure through the API (0044). */
+  api_keys: { name: string } | null;
 }
 
 interface DraftRow {
@@ -49,7 +51,7 @@ export default async function RegressionsPage() {
 
   const [{ data: failures }, { data: drafts }, { data: suites }, { data: agents }] = await Promise.all([
     admin.from("production_failures")
-      .select("id, customer_message, agent_reply, expected_behavior, what_went_wrong, occurred_on, redaction, created_at, agents(name)")
+      .select("id, customer_message, agent_reply, expected_behavior, what_went_wrong, occurred_on, redaction, created_at, agents(name), api_keys(name)")
       .eq("workspace_id", workspace.id).order("created_at", { ascending: false }),
     admin.from("scenario_drafts")
       .select("production_failure_id, status, rejection_reason, scenario, included_in_suite_id")
@@ -150,6 +152,7 @@ export default async function RegressionsPage() {
                     {f.agents && <Badge tone="neutral">{f.agents.name}</Badge>}
                     <span className="text-xs text-ink-faint">
                       {f.occurred_on ? `happened ${f.occurred_on} · ` : ""}recorded {f.created_at.slice(0, 10)}
+                      {f.api_keys ? ` · sent with the API key “${f.api_keys.name}”` : ""}
                     </span>
                   </div>
 

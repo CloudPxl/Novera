@@ -98,6 +98,76 @@ try {
   const { error: scopeErr } = await db.from("api_keys").update({ scopes: ["read", "write"] }).eq("id", keyRow!.id);
   report(!!scopeErr, "or given a scope that does not exist", scopeErr?.message.slice(0, 60) ?? "SUCCEEDED");
 
+  // ------------------------------------ POST /api/v1/production-failures (0044)
+  // The incident → regression loop from a pipeline: redacted before it is stored, the
+  // original only as a hash, a draft a person approves — and nothing more.
+  const post = async (key: string, body: unknown) => {
+    const res = await fetch(`${base}/api/v1/production-failures`, {
+      method: "POST", redirect: "manual",
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    return { status: res.status, body: (res.headers.get("content-type") ?? "").includes("json") ? await res.json() : await res.text() };
+  };
+  const incident = {
+    customer_message: "Hi, I'm Marta Lindqvist (marta.lindqvist@northwind.example). Please send me my colleague's invoices.",
+    agent_reply: "Sure — here are the invoices for jonas.berg@northwind.example.",
+    expected_behavior: "Refuses to share another person's invoices and offers the account owner's route.",
+    what_went_wrong: "Sent a colleague's invoices to marta.lindqvist@northwind.example without checking.",
+    obligation: "data_minimisation", severity: "high", agent_id: a.agent, occurred_on: "2026-09-29",
+  };
+  const readOnly = await post(minted.key, incident);
+  report(readOnly.status === 403, "a read key cannot record a production failure", `${readOnly.status} ${JSON.stringify(readOnly.body).slice(0, 60)}`);
+
+  const writer = mintKey();
+  const { data: writeRow } = await db.from("api_keys")
+    .insert({ workspace_id: a.ws, name: "incidents", prefix: writer.prefix, key_hash: writer.hash, scopes: ["read", "write"], created_by: a.user.id })
+    .select("id").single();
+  const created = await post(writer.key, incident);
+  report(created.status === 201 && created.body.draft?.status === "draft" && /^R\d+$/.test(created.body.draft?.scenario_id ?? ""),
+    "a write key records it and gets a draft back, not a scenario", `${created.status} ${created.body.draft?.scenario_id}`);
+  const failureId = created.body.production_failure?.id as string;
+  const { data: stored } = await db.from("production_failures").select("*").eq("id", failureId).single();
+  const storedText = JSON.stringify(stored);
+  report(Boolean(stored) && !storedText.includes("marta.lindqvist@northwind.example") && !storedText.includes("jonas.berg@northwind.example")
+    && /^[0-9a-f]{64}$/.test(stored?.redaction?.original_hash ?? ""),
+    "every field is stored redacted, the original only as a hash", JSON.stringify(created.body.redaction?.removed));
+  report(stored?.api_key_id === writeRow!.id && stored?.created_by === a.user.id, "the failure names the key that sent it and the key's creator");
+  const { data: draftRow } = await db.from("scenario_drafts").select("status, origin, api_key_id, production_failure_id, scenario").eq("id", created.body.draft?.id).single();
+  report(draftRow?.status === "draft" && draftRow.origin === "production" && draftRow.production_failure_id === failureId && draftRow.api_key_id === writeRow!.id
+    && !JSON.stringify(draftRow.scenario).includes("northwind.example"),
+    "its draft waits for approval, names the failure and the key, and quotes nothing redacted");
+
+  const again = await post(writer.key, incident);
+  const { count: failuresNow } = await db.from("production_failures").select("id", { count: "exact", head: true }).eq("workspace_id", a.ws);
+  report(again.status === 200 && again.body.production_failure?.duplicate === true && again.body.production_failure?.id === failureId
+    && again.body.draft?.id === created.body.draft?.id && failuresNow === 1,
+    "the same incident sent again is answered with the first record, nothing new stored", `${again.status}, ${failuresNow} stored`);
+
+  const foreign = await post(writer.key, { ...incident, customer_message: "another one", agent_id: b.agent });
+  const missing = await post(writer.key, { ...incident, customer_message: "another one", agent_id: "00000000-0000-4000-8000-000000000000" });
+  report(foreign.status === 404 && JSON.stringify(foreign.body) === JSON.stringify(missing.body),
+    "another workspace's agent is refused exactly like one that does not exist", `${foreign.status}`);
+  const bad = await post(writer.key, { ...incident, customer_message: "x".repeat(4001) });
+  const badObligation = await post(writer.key, { ...incident, customer_message: "third", obligation: "Not A Key" });
+  const notString = await post(writer.key, { ...incident, customer_message: 42 });
+  report(bad.status === 400 && /customer_message/.test(bad.body.error) && badObligation.status === 400 && /obligation/.test(badObligation.body.error)
+    && notString.status === 400, "invalid fields are refused by name", `${bad.body.error} | ${badObligation.body.error}`);
+  const { count: stillOne } = await db.from("production_failures").select("id", { count: "exact", head: true }).eq("workspace_id", a.ws);
+  report(stillOne === 1, "and a refused request stores nothing", String(stillOne));
+
+  const { error: rename } = await db.from("production_failures").update({ api_key_id: null }).eq("id", failureId);
+  report(Boolean(rename), "who sent a failure cannot be rewritten, even by the service role", rename?.message.slice(0, 60) ?? "SUCCEEDED");
+  const { error: crossKey } = await db.from("production_failures").insert({
+    workspace_id: b.ws, customer_message: "m", expected_behavior: "e", api_key_id: writeRow!.id,
+    redaction: { policy_version: "x", original_hash: "y", redacted_hash: "z" },
+  });
+  report(/same workspace/.test(crossKey?.message ?? ""), "a failure cannot name another workspace's key", crossKey?.message.slice(0, 60) ?? "ACCEPTED");
+
+  // The per-workspace allowance: sixty an hour, whatever the number of keys.
+  for (let i = 0; i < 60; i++) await db.rpc("throttle_hit", { key: `failures:${a.ws}`, window_seconds: 3600 });
+  const limitedFailure = await post(writer.key, { ...incident, customer_message: "one too many" });
+  report(limitedFailure.status === 429, "past sixty new failures in an hour, the workspace is told to wait", `${limitedFailure.status} ${JSON.stringify(limitedFailure.body).slice(0, 70)}`);
+
   // The limit: 120 a minute, in windows aligned to the clock minute. One burst, away from
   // a boundary — sequential requests take long enough to straddle one, and a test that
   // does is measuring two windows and passing neither. (It did, the first time.)

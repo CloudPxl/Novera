@@ -198,7 +198,7 @@ export default async function ScenariosPage() {
 
                   {(d.model || d.origin !== "policy") && (
                     <p className="mt-4 text-xs text-ink-faint">
-                      {d.model ? `Drafted by ${d.model}${d.api_keys ? `, asked for by an assistant with the key “${d.api_keys.name}”` : ""}.` : d.origin === "production" ? "Built from what you recorded, no model involved." : "Converted by Novera, no model involved."} Nothing
+                      {d.model ? `Drafted by ${d.model}${d.api_keys ? `, asked for by an assistant with the key “${d.api_keys.name}”` : ""}.` : d.origin === "production" ? (d.api_keys ? `Built from a failure sent with the API key “${d.api_keys.name}”, no model involved.` : "Built from what you recorded, no model involved.") : "Converted by Novera, no model involved."} Nothing
                       has been run and nothing will be until you approve it.
                     </p>
                   )}

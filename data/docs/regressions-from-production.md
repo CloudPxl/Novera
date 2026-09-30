@@ -8,6 +8,8 @@ When your agent gets something wrong with a real customer, that conversation is 
 
 Paste what the customer sent, and optionally what the agent replied. Then say, in one sentence, what should have happened — the scenario passes only if the agent does that. If you also say what went wrong, a reply that does it again fails the scenario for that reason. Choose the obligation it broke and its severity; the agent and the date are optional.
 
+A pipeline can record one too, with an API key — see **The Novera API** for `POST /api/v1/production-failures`. It is stored exactly as the form stores it, and the Regressions page says which key sent it.
+
 No model writes the scenario. It is built from what you recorded, so the expectation a regression test holds your agent to is yours, not a guess.
 
 ## What is stored, and what is not

@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { mintKey } from "../src/lib/api/keys.ts";
+import { sealThrowawayReport } from "./verify-fixtures.mts";
 
 const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -81,9 +82,14 @@ try {
   report(JSON.stringify(c.fixed) === '["T01"]' && JSON.stringify(c.regained_verdict) === '["T02"]',
     "compare_runs: T01 fixed; T02 regained a verdict (as a failure), which is not a fix", JSON.stringify({ fixed: c.fixed, newly_broken: c.newly_broken, regained: c.regained_verdict }));
 
-  const { data: real } = await db.from("reports").select("token").is("revoked_at", null).limit(1).single();
-  const verified = await call("verify_report", { report: `${base}/report/${real!.token}` });
-  report(verified.structuredContent?.verified === true, "verify_report recomputes a sealed report's hash", String(verified.structuredContent?.content_hash).slice(0, 16));
+  // A report it seals itself, rather than whichever happens to exist (scripts/verify-fixtures.mts).
+  const sealed = await sealThrowawayReport(db, "mcp");
+  try {
+    const verified = await call("verify_report", { report: `${base}/report/${sealed.token}` });
+    report(verified.structuredContent?.verified === true, "verify_report recomputes a sealed report's hash", String(verified.structuredContent?.content_hash).slice(0, 16));
+  } finally {
+    await sealed.erase();
+  }
 
   const unknownTool = await client.callTool({ name: "start_run", arguments: {} }).then(() => "answered", (e) => String(e.message ?? e));
   report(/Unknown tool|-32602/.test(unknownTool), "a read key is offered no tool that starts anything", unknownTool.slice(0, 60));

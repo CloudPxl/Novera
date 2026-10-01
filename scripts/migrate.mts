@@ -32,6 +32,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import pg from "pg";
 import { checkJobs, isLocalDatabase, readJobs, STRUCTURAL } from "./required-jobs.mts";
+import { sslFor } from "./db-ssl.mts";
 
 const connectionString = process.env.SUPABASE_DB_URL;
 if (!connectionString) {
@@ -62,7 +63,7 @@ const PRIVILEGES = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFEREN
  */
 const LOCK = "select pg_advisory_xact_lock(hashtext('novera_migrations'))";
 
-const client = new pg.Client({ connectionString, ssl: { rejectUnauthorized: false } });
+const client = new pg.Client({ connectionString, ssl: sslFor(connectionString) });
 await client.connect();
 
 async function finish(code: number): Promise<never> {

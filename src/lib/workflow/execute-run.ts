@@ -161,7 +161,7 @@ export async function startRunExecution(args: {
  * once a run can be executed across more than one invocation it is also the only way
  * to get the right answer.
  */
-async function summaryFromStoredRows(args: {
+export async function summaryFromStoredRows(args: {
   client: SupabaseClient;
   runId: string;
   suite: Suite;

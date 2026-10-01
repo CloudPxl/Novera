@@ -3158,3 +3158,29 @@ Evidence:
 **Not changed, needs approval:**
 - The API docs, which must describe `Idempotency-Key`.
 - The n8n templates, which should send `{{$execution.id}}`.
+
+## 2026-10-01 — The free verifiers run from an empty database with nothing left behind (G3, T1, R5 in part)
+
+Reproduced again on an empty, migrated and seeded database:
+- `verify:access` exited "No report found. Run npm run demo:run first." (`demo:run` calls models);
+- `verify:mcp` crashed on a null report;
+- `verify:retention` crashed on `relation "cron.job" does not exist`;
+- the database scripts needed a TLS workaround to reach local Postgres;
+- `verify:slices` depended on httpbin.org, whose 502 failed it on 2026-09-30.
+
+What changed:
+- `scripts/verify-fixtures.mts` seals a throwaway report through the product's own `publishReport`, from
+  planted stored rows: one pass by a grader, one fail by a rule. No agent, no model. `verify:access`
+  (which revokes and expires its report) and `verify:mcp` use it and erase it, so they no longer touch a
+  report someone else depends on.
+- `verify:slices` uses a local slow agent.
+- `verify:retention` says which schedule checks it could not make without pg_cron, and exits 2, not 0.
+- `scripts/db-ssl.mts`: no TLS for a local database. Certificate verification when `SUPABASE_DB_CA` names
+  Supabase's CA. Otherwise unverified as before, which is R5 and stays open until that file is configured.
+- `npm run verify:free` runs the set and never seeds.
+- `summaryFromStoredRows` is exported for the fixture; no behaviour changes.
+
+Evidence from an empty database with no workaround: the first `verify:free` failed only on my fixture's
+own bulk insert (a column one row omitted became NULL); fixed. Then without pg_cron: 13 passed, retention
+and cron exit 2, overall 2. With pg_cron and the four jobs: all 15 passed, exit 0, 106 s, and 0 reports
+left behind.

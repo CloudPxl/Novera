@@ -14,6 +14,7 @@
  */
 import pg from "pg";
 import { tickSecret } from "../src/lib/schedules/secret.ts";
+import { sslFor } from "./db-ssl.mts";
 
 const JOB = "novera-schedule-tick";
 const SECRET_NAME = "novera_schedule_tick";
@@ -23,7 +24,7 @@ const [command = "status", ...rest] = process.argv.slice(2);
 const urlFlag = rest.indexOf("--url");
 const url = urlFlag >= 0 ? rest[urlFlag + 1] : DEFAULT_URL;
 
-const client = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+const client = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: sslFor(process.env.SUPABASE_DB_URL!) });
 await client.connect();
 
 try {

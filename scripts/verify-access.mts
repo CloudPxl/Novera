@@ -2,34 +2,27 @@
  * Verifies the two things a shared report must never get wrong: who can read it,
  * and whether its evidence can be rewritten after the fact.
  *
- * Runs against the most recent stored report. Temporarily revokes and expires it,
- * then restores the original values.
+ * Runs against a report it seals itself from a small planted run (scripts/verify-fixtures.mts),
+ * so it needs nothing left behind by anything else and never touches a customer's report.
+ * Revokes and expires it, restores it, and erases it at the end.
  *
  * Needs the dev server running.
  * Run: npm run verify:access
  */
 import { createClient } from "@supabase/supabase-js";
+import { sealThrowawayReport } from "./verify-fixtures.mts";
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
   auth: { persistSession: false },
 });
 const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
+const sealed = await sealThrowawayReport(db, "access");
 const { data: report, error } = await db
-  .from("reports")
-  .select("token, expires_at, revoked_at, run_id")
-  // Must be a LIVE report. This script drives the live -> revoked -> expired ->
-  // restored cycle, so it needs one that starts live; picking the newest regardless
-  // of state made it fail whenever the newest report had been legitimately revoked,
-  // reporting a product defect where there was only a stale assumption.
-  .is("revoked_at", null)
-  .gt("expires_at", new Date().toISOString())
-  .order("created_at", { ascending: false })
-  .limit(1)
-  .maybeSingle();
-
+  .from("reports").select("token, expires_at, revoked_at, run_id").eq("token", sealed.token).single();
 if (error || !report) {
-  console.error("No report found. Run npm run demo:run first.");
+  await sealed.erase();
+  console.error(`The verification report could not be read back: ${error?.message ?? "no row"}`);
   process.exit(1);
 }
 
@@ -125,6 +118,8 @@ const { error: afterErr } = await db.from("run_cases").delete().eq("run_id", rep
 check(!!afterErr, "piecemeal deletion is refused again once the erasure is over", afterErr?.message.slice(0, 64));
 
 await db.auth.admin.deleteUser(owner.id);
+await sealed.erase();
+console.log("  removed the verification report's workspace");
 
 console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) failed.\n`);
 process.exit(failures === 0 ? 0 : 1);

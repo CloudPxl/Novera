@@ -15,6 +15,7 @@
  */
 import pg from "pg";
 import { checkJobs, isLocalDatabase, readJobs, REQUIRED_JOBS } from "./required-jobs.mts";
+import { sslFor } from "./db-ssl.mts";
 
 const connectionString = process.env.SUPABASE_DB_URL;
 if (!connectionString) {
@@ -23,7 +24,7 @@ if (!connectionString) {
 }
 const local = isLocalDatabase(connectionString);
 const allowNew = process.argv.includes("--allow-new");
-const client = new pg.Client({ connectionString, ssl: local ? false : { rejectUnauthorized: false } });
+const client = new pg.Client({ connectionString, ssl: sslFor(connectionString) });
 await client.connect();
 
 let code = 0;

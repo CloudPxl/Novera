@@ -172,11 +172,26 @@ if (userErr || !created?.user) {
     report(/duplicate key/.test(twice?.message ?? ""), "a scenario is recorded once per run (0001)", twice?.message.slice(0, 70) ?? "the second row was accepted");
     const { error: undeclared } = await db.from("run_cases").insert(scenario("Z9"));
     report(/not in the manifest/.test(undeclared?.message ?? ""), "a scenario the manifest did not declare is refused", undeclared?.message.slice(0, 70) ?? "the row was accepted");
-    await db.from("runs").update({ status: "completed" }).eq("id", declaredRun!.id);
+    // A completed run holds every scenario it declared (0048): marking one completed while a
+    // declared scenario has no row is how a pipeline once read "pass" off a report that
+    // said INCOMPLETE (audit R2, planted).
+    const { error: early } = await db.from("runs").update({ status: "completed" }).eq("id", declaredRun!.id);
+    report(/no recorded result/.test(early?.message ?? ""), "a run cannot be marked completed while a declared scenario has no row",
+      early?.message.slice(0, 80) ?? "the run was marked completed with A2 missing");
+    const { error: secondRow } = await db.from("run_cases").insert(scenario("A2"));
+    const { error: done } = await db.from("runs").update({ status: "completed" }).eq("id", declaredRun!.id);
+    report(!secondRow && !done, "once every declared scenario is recorded, it can be", (secondRow ?? done)?.message ?? "");
     const { error: late } = await db.from("run_cases").insert(scenario("A2"));
     report(/is completed/.test(late?.message ?? ""), "a completed run takes no new evidence, even a declared scenario", late?.message.slice(0, 70) ?? "the row was accepted");
     const { count: kept } = await db.from("run_cases").select("id", { count: "exact", head: true }).eq("run_id", declaredRun!.id);
-    report(kept === 1, "and the run holds exactly the one row it recorded", String(kept));
+    report(kept === 2, "and the run holds exactly the two rows it recorded", String(kept));
+    const { data: partRun } = await db.from("runs").insert({
+      workspace_id: ws.id, agent_id: agent.id, policy_id: policy!.id, suite_id: suiteId, status: "running",
+      manifest: { novera_manifest: 1, suite: { id: suiteId, key: "k", version: 1, case_ids: ["B1", "B2"] } }, manifest_hash: "h2",
+    }).select("id").single();
+    await db.from("run_cases").insert({ ...scenario("B1"), run_id: partRun!.id });
+    const { error: abortPart } = await db.from("runs").update({ status: "aborted" }).eq("id", partRun!.id);
+    report(!abortPart, "an aborted run may end with declared scenarios missing — it is never sealed", abortPart?.message ?? "");
 
     const { data: diagnosis } = await db
       .from("diagnoses")

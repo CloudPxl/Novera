@@ -4,6 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { open, seal } from "../crypto.ts";
 import { assertPublicUrl } from "../net/public-url.ts";
 import { SIGNATURE_HEADER, signatureFor } from "./sign.ts";
+import { pipelineOutcome } from "../report/outcome.ts";
+import type { ReportPayload } from "../report/payload.ts";
 
 /**
  * Outbound webhooks (0042): minting an endpoint, queueing an event, delivering it.
@@ -177,7 +179,7 @@ export async function runEventBody(db: SupabaseClient, workspaceId: string, runI
     db.from("runs").select("id, status, error, created_at, finished_at, schedule_id, agents(id, name), suites(key, version)")
       .eq("workspace_id", workspaceId).eq("id", runId).maybeSingle(),
     db.from("run_cases").select("status").eq("workspace_id", workspaceId).eq("run_id", runId),
-    db.from("reports").select("token, content_hash").eq("workspace_id", workspaceId).eq("run_id", runId).is("revoked_at", null)
+    db.from("reports").select("token, content_hash, payload").eq("workspace_id", workspaceId).eq("run_id", runId).is("revoked_at", null)
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (!run || (run.status !== "completed" && run.status !== "aborted")) return null;
@@ -185,8 +187,9 @@ export async function runEventBody(db: SupabaseClient, workspaceId: string, runI
   const passed = count("pass"), failed = count("fail"), noResult = count("error");
   const agent = run.agents as unknown as { id: string; name: string } | null;
   const suite = run.suites as unknown as { key: string; version: number } | null;
-  // No report means the evidence did not support one: never a pass.
-  const outcome = run.status !== "completed" || !report ? "incomplete" : failed > 0 ? "fail" : noResult > 0 ? "incomplete" : "pass";
+  // What the sealed report supports, decided where the CLI and the exports decide it. No
+  // report means the evidence did not support one: never a pass.
+  const outcome = pipelineOutcome(run, report?.payload as ReportPayload | null);
   return {
     event: run.status === "completed" ? "run.completed" : "run.stopped",
     body: {

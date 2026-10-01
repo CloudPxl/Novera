@@ -3074,3 +3074,27 @@ Proven against the local database reached as if deployed: no pg_cron gives exit 
 listed; without the clock, exactly that job is named; with all four, 0. Production, read-only: all four in
 place, the daily ones last succeeded at 03:17, 03:27 and 03:37 today, the clock at 08:33. **Not an
 outage**; a hazard for a new or restored database. 548 tests, 5 new for the job states.
+
+## 2026-10-01 — A completed run holds every declared scenario (0048); the webhook reads the report
+
+Reassessed after 0043. 0043 refuses new rows on a completed run and rows for undeclared scenarios, but
+nothing refused the reverse. `verify:db` reproduced it directly: a run marked `completed` with one of its
+two declared scenarios missing. The runner never does this; it finishes only after every scenario was
+recorded, and C4's fencing keeps it that way. But the service role could, and the webhook, counting rows,
+said `pass` over a report that said INCOMPLETE (audit R2, planted).
+
+**0048** refuses the transition into `completed` while a declared scenario has no row, for every writer.
+Aborting is still allowed: an aborted run is never sealed. Runs completed earlier are not re-examined.
+
+The webhook's outcome now comes from `pipelineOutcome(run, sealed payload)`, which is `ciOutcome`, the
+function behind the CLI's exit codes and the JUnit and JSON exports. It no longer recounts rows. No report,
+a run that did not complete, or a payload without coverage is never a pass.
+
+A property test enumerates every combination of up to three planned scenarios across every band and run
+status: never `pass` with an error, a not-run, a missing scenario, WITHHELD or INCOMPLETE; the webhook and
+the CLI agree everywhere. The audit's harness, with realistic sealed payloads: A→pass, F→fail,
+WITHHELD→incomplete; the planted mismatch is refused by the database. `verify:db` 62, `verify:webhooks` 24.
+
+Not done (customer-facing API, needs approval): an `outcome` and `planned` field on
+`GET /api/v1/runs/<id>`, so n8n and other API consumers stop deriving the outcome from counts. Their
+derivation is now consistent for every state the database allows.

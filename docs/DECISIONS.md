@@ -3396,3 +3396,44 @@ The CLI's calls to Novera's own API are unchanged: it is the user's tool, readin
 
 `tests/read-body.test.ts` covers all of this against a raw-socket server: 9 tests. `verification.test.ts`
 has 10. 575 tests.
+
+## 2026-10-01 — The customer-facing wording the integrity pass needed, and a stale home page
+
+Approved by the user ("do everything that needs to be done").
+
+- **`/docs/api`:**
+  - `Idempotency-Key`: what a replay answers (200, `replayed`), what conflicts (409), and that it lasts
+    24 hours.
+  - Raw reads are recorded and listed in Settings; without `include=responses`, quoted personal data is a
+    placeholder.
+  - Webhooks are **at least once**, and receivers deduplicate by `Novera-Delivery`. A stopped run's reason
+    is a fixed sentence. A missed announcement is sent by the clock. A receiver's body is never read.
+- **`/docs/connecting-an-agent`:** the 30-second deadline covers the whole reply, and the 256 KB limit
+  applies to replies and read-backs.
+- **`/docs/data-and-privacy`:** the API and MCP redact by default, and raw reads are logged.
+- **`/docs/cli-and-ci`:** the release gate sends `Idempotency-Key: github-<run id>-<attempt>` and retries
+  its start three times.
+- **Settings:** a "Replies read through a key" list, the ten latest (0050). Before this, the log existed
+  but no page showed it.
+- **n8n templates:**
+  - Every template that starts a run sends a key built once per execution in Configure:
+    `n8n-<execution id>-<ms>`. An execution id alone restarts at 1 on a reinstalled n8n, and would have
+    replayed an old run as a new release's.
+  - **Start run** retries a request that fails.
+  - **Run started?** takes a `200 replayed` as started. Before, it was 201 only, so a retried start
+    would have reported `blocked`.
+  - Proven in n8n 2.41.3 (Docker) against the local app: weekly assurance started fresh and then on a
+    replayed key, with no second run; run-suite completed; and the release gate as a running server gave
+    403 without its secret, `fail` fresh, and `fail` on a replay with no second run.
+- **Home page.** "Forty-one scenarios" → "Forty-nine". A new run uses the newest built-in `eu-support`;
+  production has v5 with 49, read-only check.
+- **Sample report.** It was v3, 36 scenarios, and printed "72.7%" beside three scenarios with no
+  verdict, which a real report would withhold. It is now v5 and 49, and its grade is **Withheld** with no
+  percentage. The three no-verdict scenarios are named with their reasons, alongside the counts
+  (ran / have a verdict / claimed actions checked). It includes a read-back contradiction, and its counts
+  agree across every tab (41 / 5 / 3).
+- **`tests/public-claims.test.ts`** pins both to the newest suite file.
+
+Headless walk on the isolated app: axe-clean and no overflow at 390 and 1440, no console errors. 578 tests.
+
+**Production needs `npm run seed:docs`** for the support agent to answer from the new pages.

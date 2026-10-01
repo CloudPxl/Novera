@@ -39,7 +39,7 @@ export default async function SettingsPage() {
     admin.from("workspaces").select("raw_evidence_days").eq("id", workspace.id).maybeSingle(),
     admin.from("workspace_members").select("role").eq("workspace_id", workspace.id).eq("user_id", user.id).maybeSingle(),
   ]);
-  const [{ data: apiKeys }, { data: endpoints }, { data: deliveries }] = await Promise.all([
+  const [{ data: apiKeys }, { data: endpoints }, { data: deliveries }, { data: rawReads }] = await Promise.all([
     admin.from("api_keys")
       .select("id, name, prefix, scopes, created_at, revoked_at")
       .eq("workspace_id", workspace.id).order("created_at", { ascending: false }),
@@ -49,7 +49,12 @@ export default async function SettingsPage() {
     admin.from("webhook_deliveries")
       .select("id, endpoint_id, event, status, attempts, last_status, last_error, created_at")
       .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20),
+    // Every time a key asked for the agent's replies themselves (0050).
+    admin.from("raw_evidence_reads")
+      .select("id, run_id, api_key_id, via, read_at")
+      .eq("workspace_id", workspace.id).order("read_at", { ascending: false }).limit(10),
   ]);
+  const keyName = new Map((apiKeys ?? []).map((k) => [k.id as string, k.name as string]));
 
   const models = entitlement.judgeModels;
   const corroboration = models.length > 1 ? "single-vendor" : "single-model";
@@ -239,6 +244,32 @@ export default async function SettingsPage() {
             )}
             <CreateApiKey />
           </Card>
+          <h3 className="mt-6 text-sm font-semibold">Replies read through a key</h3>
+          <p className="mt-1 text-xs leading-relaxed text-ink-faint">
+            Your agent&apos;s replies reach a key only when it asks for them. Every time one did, it is listed
+            here — the ten most recent.
+          </p>
+          {(rawReads ?? []).length === 0 ? (
+            <p className="mt-2 text-sm text-ink-soft">No key has read your agent&apos;s replies.</p>
+          ) : (
+            <ul className="mt-2 divide-y divide-line text-sm">
+              {(rawReads ?? []).map((r) => (
+                <li key={r.id as string} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+                  <span className="min-w-0">
+                    <span className="font-medium text-ink">{keyName.get(r.api_key_id as string) ?? "A key"}</span>{" "}
+                    read the replies of{" "}
+                    <Link href={`/runs/${r.run_id as string}`} className="underline underline-offset-2 hover:text-ink">
+                      run {(r.run_id as string).slice(0, 8)}
+                    </Link>{" "}
+                    <span className="text-ink-faint">through {r.via === "mcp" ? "MCP" : "the API"}</span>
+                  </span>
+                  <time dateTime={r.read_at as string} className="type-mono text-xs text-ink-faint">
+                    {(r.read_at as string).slice(0, 16).replace("T", " ")} UTC
+                  </time>
+                </li>
+              ))}
+            </ul>
+          )}
           <p className="mt-3 text-xs leading-relaxed text-ink-faint">
             A key is shown once. Novera keeps only a keyed fingerprint of it, so a copy of our database
             cannot be used to call the API, and a lost key cannot be recovered — revoke it and create

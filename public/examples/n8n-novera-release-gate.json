@@ -58,6 +58,12 @@
               "name": "knowledge_base_revision",
               "type": "string",
               "value": "={{ $json.body?.knowledge_base_revision ?? '' }}"
+            },
+            {
+              "id": "a5",
+              "name": "idempotency_key",
+              "type": "string",
+              "value": "={{ 'n8n-' + $execution.id + '-' + $now.toMillis() }}"
             }
           ]
         },
@@ -81,6 +87,15 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify(Object.assign({ agent_id: $('Configure').item.json.agent_id, suite_id: $('Configure').item.json.suite_id }, $('Configure').item.json.release_id ? { release_id: $('Configure').item.json.release_id } : {}, $('Configure').item.json.knowledge_base_revision ? { knowledge_base_revision: $('Configure').item.json.knowledge_base_revision } : {})) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $('Configure').item.json.idempotency_key }}"
+            }
+          ]
+        },
         "options": {
           "response": {
             "response": {
@@ -103,7 +118,10 @@
           "id": "REPLACE_WITH_YOUR_CREDENTIAL",
           "name": "Novera API key"
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
     },
     {
       "parameters": {
@@ -116,11 +134,12 @@
           "conditions": [
             {
               "id": "c0",
-              "leftValue": "={{ $json.statusCode }}",
-              "rightValue": 201,
+              "leftValue": "={{ $json.statusCode === 201 || ($json.statusCode === 200 && $json.body?.replayed === true) }}",
+              "rightValue": true,
               "operator": {
-                "type": "number",
-                "operation": "equals"
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
               }
             }
           ],

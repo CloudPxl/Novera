@@ -46,6 +46,8 @@ When Novera checks that your agent answers, it keeps a receipt of that one reque
 
 Sealed reports also leave out anything shaped like personal data that a grading model quoted in its reasons: an email address in a finding is shown as a placeholder such as `[EMAIL_1]`, and the report says when that happened.
 
+The API and the MCP server do the same by default. Your agent's replies and the scenarios' messages reach an API key only when the request asks for them (`include=responses`). Each such read is recorded with the key, the run and the route, and listed under **Settings → API keys**.
+
 A workspace can be erased completely. Erasure removes the agents, policies, runs, verdicts, probe receipts, diagnoses and reports, and leaves behind only a record that an erasure happened and what it removed — which contains no personal data.
 
 Erasure is all or nothing by design. Individual verdicts, policy versions and reports cannot be deleted, because a product whose evidence could be selectively removed would not be evidence.

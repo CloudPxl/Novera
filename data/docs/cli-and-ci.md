@@ -56,7 +56,9 @@ With a workspace API key that can start runs (**Settings → API keys**, tick *C
     api="https://www.nover.space/api/v1"
     auth="Authorization: Bearer $NOVERA_API_KEY"
     body="{\"agent_id\":\"$NOVERA_AGENT_ID\",\"release_id\":\"$GITHUB_SHA\"}"
-    run=$(curl -fsS -X POST "$api/runs" -H "$auth" -H 'content-type: application/json' -d "$body" | jq -r .run.id) || exit 3
+    # One key per attempt of this job: a retried request returns the run it started, not a second one.
+    key="github-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+    run=$(curl -fsS --retry 3 --retry-all-errors -X POST "$api/runs" -H "$auth" -H "Idempotency-Key: $key" -H 'content-type: application/json' -d "$body" | jq -r .run.id) || exit 3
     for i in $(seq 1 120); do
       finished=$(curl -fsS -X POST "$api/runs/$run/execute" -H "$auth" | jq -r .done) || exit 4
       [ "$finished" = "true" ] && break
@@ -69,6 +71,8 @@ With a workspace API key that can start runs (**Settings → API keys**, tick *C
     jq -r '.ci.reason' novera.json
     exit "$(jq -r '.ci.code' novera.json)"
 ```
+
+The `Idempotency-Key` makes the retries safe: a request that timed out after the run started returns that same run instead of starting and paying for another. Re-running the job is a new attempt, so it starts a new run.
 
 Exit code `2` — evidence incomplete — fails the job exactly as a failed scenario does: a release does not go out because nothing was found wrong in a run that did not finish. The commit is recorded on the report as the release you declared, labelled as declared by you. To be told about runs rather than waiting for them, add a webhook (**Settings → Webhooks**; see [the API](/docs/api)).
 

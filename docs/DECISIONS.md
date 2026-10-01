@@ -3319,3 +3319,28 @@ nothing else is due.
 
 **Needs action in production:** migration 0051, then `npm run schedules:clock -- install` to replace the
 installed job's condition.
+
+## 2026-10-01 — The rest of the audit's open questions, examined (no code change)
+
+- **Old sealed reports.** All 18 production reports, which span payload formats 1, 2, 4, 5, 7, 9, 10 and
+  11 with one revoked, were read read-only and re-hashed by the current code (18/18 verify). Each renders
+  through all four exports (18/18), and the CLI and webhook decisions agree on every one.
+- **The clock, end to end.** `schedules:clock -- status` (read-only) shows the job succeeding every
+  minute. It fires the app call only when something is due; its last real calls, on 2026-09-29, returned
+  200 and started, advanced and finished a scheduled run. No schedule is active now. Fairness across
+  workspaces is held by `tests/tick-fairness.test.ts`; `verify:schedules` passes 29.
+- **Soft 404s.** Next 16 documents that `notFound()` after streaming has begun keeps the 200 and adds
+  `noindex`; a real 404 needs a lookup in `proxy`, on every operator request. Isolation holds, and API
+  routes return true 404s. Accepted, not changed.
+- **Raw evidence expiry and a report's recipient.** A sealed report carries no reply and no reply
+  fingerprint, so it verifies the same after expiry. What expiry removes is re-checking a verdict against
+  the agent's words. Because the report has no reply fingerprints, a recipient cannot later match a reply
+  presented to them against the sealed run. Proposed, not done: per-scenario `reply_sha256` and the
+  evidence's retention date in a format-13 payload, with its absence branch. That is customer-facing and
+  needs approval.
+- **UI truthfulness**, checked on planted runs in a browser:
+  - withheld: run page and report say "withheld", show no letter, and show only coverage percentages;
+  - never finished: "not graded", no letter;
+  - one-model pass: the run page says "1 could not be corroborated"; the report, "1 graded by one model
+    only".
+  Whether such a pass should count as a pass at all is decision G5.

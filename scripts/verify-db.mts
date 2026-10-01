@@ -397,5 +397,57 @@ if (userErr || !created?.user) {
   }
 }
 
+// The migration ledger decides which migrations run, so no API role may reach it (0045).
+// Every probe is built so that it cannot change anything even where access is open: the
+// read asks for no rows, the insert sends a name that can never be stored, and the update
+// and delete target a name no migration has. A refusal is told apart from success by
+// Postgres's own code, 42501, so this is safe against any database, production included.
+console.log("\nThe migration ledger");
+{
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const ledgerUser = `verify-ledger+${Date.now()}@novera.invalid`;
+  const ledgerPassword = crypto.randomUUID();
+  const { data: made } = await db.auth.admin.createUser({ email: ledgerUser, password: ledgerPassword, email_confirm: true });
+  try {
+    const signedIn = anonKey
+      ? await createClient(url, anonKey, { auth: { persistSession: false } }).auth.signInWithPassword({ email: ledgerUser, password: ledgerPassword })
+      : null;
+    const callers: Array<[string, string | undefined]> = [
+      ["anon", anonKey],
+      ["authenticated", signedIn?.data.session?.access_token],
+      ["service_role", key],
+    ];
+    const NEVER = "__never_a_migration__";
+    for (const [role, token] of callers) {
+      if (!token || !anonKey) {
+        report(false, `${role}: could not get a token to probe with`);
+        continue;
+      }
+      const probe = async (method: string, query: string, body?: unknown) => {
+        const res = await fetch(`${url}/rest/v1/novera_migrations${query}`, {
+          method,
+          headers: { apikey: role === "service_role" ? key : anonKey, authorization: `Bearer ${token}`, "content-type": "application/json" },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+        const text = await res.text();
+        let code: string | undefined;
+        try { code = (JSON.parse(text) as { code?: string }).code; } catch { /* not JSON */ }
+        return { status: res.status, code };
+      };
+      const results = {
+        SELECT: await probe("GET", "?select=name&limit=0"),
+        INSERT: await probe("POST", "", { name: null, checksum: null }),
+        UPDATE: await probe("PATCH", `?name=eq.${NEVER}`, { checksum: "x" }),
+        DELETE: await probe("DELETE", `?name=eq.${NEVER}`),
+      };
+      const open = Object.entries(results).filter(([, r]) => r.code !== "42501");
+      report(open.length === 0, `${role} is refused SELECT, INSERT, UPDATE and DELETE on the ledger`,
+        open.length ? open.map(([verb, r]) => `${verb} answered ${r.status}${r.code ? ` (${r.code})` : ""}`).join(", ") : "42501 each time");
+    }
+  } finally {
+    if (made?.user) await db.auth.admin.deleteUser(made.user.id);
+  }
+}
+
 console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) failed.\n`);
 process.exit(failures === 0 ? 0 : 1);

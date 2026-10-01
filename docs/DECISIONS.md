@@ -2960,3 +2960,42 @@ All nine n8n executions finished `success`; the 403s never started one. A test p
 properties the runs proved: no key or real id in any template, every connection
 resolves, every webhook demands a secret, 200 only on the sealed all-pass branch, the
 loop bounded, and the ticket condition. 540 tests.
+
+## 2026-10-01 — The migration ledger is reachable only by the runner (0045)
+
+The runner created `novera_migrations` in `public` with a plain `create table`. Supabase's default
+privileges grant every new public table to `anon`, `authenticated` and `service_role`, and the table never
+had RLS. So anyone with the public anon key could read, insert, change or delete ledger rows. A row naming
+an unapplied migration, with the checksum anyone can compute from the public repository, made `migrate`
+exit 0 with "0 migration(s) applied" and skip it silently (audit 2026-09-30 C1, reproduced locally).
+
+Production was assessed read-only and needs no reconciliation:
+- RLS is off and both API roles hold all seven privileges.
+- The 44 ledger rows match the 44 files by name and checksum, in file order by `applied_at` and by
+  inserting transaction.
+- Since statistics were reset on 2026-08-25, before the ledger existed: 44 inserts, 0 updates, 0 deletes.
+- The public schema is byte-identical to a database built from zero with the 44 migrations (tables,
+  columns, constraints, indexes, triggers, function bodies, policies, grants).
+- 0037's data backfill left no row without its hash.
+
+The runner connects as `postgres`, the owner, with `rolbypassrls`. RLS without FORCE cannot lock it out;
+this was checked, not assumed. The fix:
+- **0045** enables RLS and revokes everything from `public`, `anon`, `authenticated` and `service_role`.
+  Nothing else reads the ledger.
+- **`migrate.mts`** creates the ledger closed in the same transaction as the table, so a new database is
+  never exposed.
+- It refuses (exit 2) a ledger any API role can reach, and `--harden-ledger` closes it.
+- `--check` is read-only.
+- A ledger row with no file, or a changed checksum, stops it before anything is applied. The message
+  names both checksums and both possible causes.
+- Runners serialise on a per-transaction advisory lock, because the pooler on 6543 makes a session lock
+  unsafe.
+
+Proven locally:
+- exposed ledger: refused, then hardened; the catalogue shows RLS on and no API privilege;
+- `verify:db`: 42501 for all three roles, from probes that cannot write even where access is open;
+- a new migration applies once under two overlapping runners ("by another run, meanwhile");
+- a rerun applies 0;
+- a fresh database gets a closed ledger before its first migration.
+
+540 tests; typecheck, lint, build. Production is not yet changed.

@@ -1,4 +1,4 @@
-import { isTimeout, PROVIDER_TIMEOUT_MS, ProviderError, redactCredentials, retryAfterMs, type ChatRequest, type ChatResponse } from "./types.ts";
+import { isTimeout, PROVIDER_TIMEOUT_MS, ProviderError, readProviderJson, redactCredentials, retryAfterMs, type ChatRequest, type ChatResponse } from "./types.ts";
 
 /**
  * Any /v1/chat/completions endpoint. One adapter covers OpenAI itself and the
@@ -74,7 +74,7 @@ export function openAiCompatibleProvider(baseUrl: string): {
         throw new ProviderError("openai-compatible", error instanceof Error ? error.message : String(error));
       }
 
-      const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+      const payload = await readProviderJson("openai-compatible", response, request.timeoutMs ?? PROVIDER_TIMEOUT_MS);
 
       if (!response.ok) {
         throw new ProviderError(

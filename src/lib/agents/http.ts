@@ -3,6 +3,7 @@ import { PROBE_INPUT } from "./types.ts";
 import { fillTemplate, readPath } from "./template.ts";
 import { suggestPathHint } from "./discover.ts";
 import { assertPublicUrl, publicOnlyDispatcher, refusedAddress } from "../net/public-url.ts";
+import { BodyTooLarge, readTextLimited } from "../net/read-body.ts";
 
 /**
  * Calls a customer's deployed agent over HTTP.
@@ -45,29 +46,6 @@ export const AGENT_TIMEOUT_MAX_MS = 30_000;
  */
 export const MAX_REPLY_BYTES = 256 * 1024;
 
-class ReplyTooLarge extends Error {}
-
-/** The body, read under the request's own deadline and never past `limit` bytes. */
-async function readReply(response: Response, limit: number): Promise<string> {
-  if (!response.body) return "";
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > limit) {
-      await reader.cancel().catch(() => {});
-      throw new ReplyTooLarge();
-    }
-    chunks.push(value);
-  }
-  const all = new Uint8Array(size);
-  let at = 0;
-  for (const c of chunks) { all.set(c, at); at += c.byteLength; }
-  return new TextDecoder().decode(all);
-}
 /** Below this, a message is not sent at all: the answer could not be waited for. */
 const MIN_AGENT_WAIT_MS = 2_000;
 
@@ -162,10 +140,10 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
     // ends the run (audit 2026-10-01, C5).
     let text: string;
     try {
-      text = await readReply(response, MAX_REPLY_BYTES);
+      text = await readTextLimited(response, MAX_REPLY_BYTES);
     } catch (error) {
       const base = { ok: false as const, responseText: null, toolActivity: null, statusCode: response.status, latencyMs: Date.now() - started };
-      if (error instanceof ReplyTooLarge) {
+      if (error instanceof BodyTooLarge) {
         return { ...base, error: `The agent's reply was larger than ${MAX_REPLY_BYTES / 1024} KB, so Novera stopped reading it. Nothing was graded; this says nothing about whether the reply was right.` };
       }
       if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {

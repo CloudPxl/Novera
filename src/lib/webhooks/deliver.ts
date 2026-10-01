@@ -6,6 +6,7 @@ import { assertPublicUrl, publicOnlyDispatcher, refusedAddress } from "../net/pu
 import { SIGNATURE_HEADER, signatureFor } from "./sign.ts";
 import { pipelineOutcome } from "../report/outcome.ts";
 import type { ReportPayload } from "../report/payload.ts";
+import { discardBody } from "../net/read-body.ts";
 
 /**
  * Outbound webhooks (0042): minting an endpoint, queueing an event, delivering it.
@@ -162,6 +163,9 @@ export async function deliverDue(args: {
         },
         body,
       } as RequestInit);
+      // Only the status is read. The receiver's body is released unread: whatever it says, at
+      // whatever size, is not ours to store, and an unread body would hold its connection.
+      await discardBody(res);
       if (res.status >= 200 && res.status < 300) {
         if (await settle({ status: "delivered", last_status: res.status, last_error: null, delivered_at: new Date().toISOString() })) out.delivered++;
       } else {

@@ -3375,3 +3375,24 @@ installed job's condition.
   - **0:** a pending migration alone. It is listed and changes nothing.
 
 `verify:free` 15/15 from an empty database (51 migrations). `verify:webhooks` 32. 565 tests.
+
+## 2026-10-01 — C13: every answer Novera reads is capped and read under its deadline
+
+- **The cap.** Agent replies already had a 256 KB cap. The read-back connector, both model providers and
+  the mail sender still read whole bodies, and the webhook sender held the receiver's body unread.
+  `src/lib/net/read-body.ts` now reads a stream to a limit:
+  - a declared Content-Length over the limit is refused before a byte is read;
+  - a Content-Length that lies smaller lets no more through than it declared;
+  - a gzip body is counted at its expanded size;
+  - bytes that are not UTF-8 become U+FFFD and never throw;
+  - a body that stalls ends in the request's own timeout.
+- **The limits.** Agent and read-back: 256 KB. Model answers: 1 MB, a typed provider failure past it. A
+  model answer that stops arriving is now a timeout, not an empty answer. Mail: a 10 s deadline, where
+  there was none. Webhook receivers' bodies are released unread.
+- **Read-back.** A read-back past its limit is `unavailable`. A match that would only be found past the
+  cap never confirms: the new test fails against the old connector, which read on and confirmed.
+
+The CLI's calls to Novera's own API are unchanged: it is the user's tool, reading our server.
+
+`tests/read-body.test.ts` covers all of this against a raw-socket server: 9 tests. `verification.test.ts`
+has 10. 575 tests.

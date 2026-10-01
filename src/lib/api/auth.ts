@@ -55,7 +55,10 @@ export async function authenticateApiKey(request: Request, scope: Scope): Promis
   const scopes = (data.scopes as Scope[]) ?? [];
   if (!scopes.includes(scope)) return refuse(403, `This key does not have the ${scope} scope.`);
 
-  const limit = await rateLimit(`api:${data.id}`, API_LIMIT);
+  // Allowed when the count cannot be read: the caller is authenticated, most requests are
+  // reads, and what a run spends is bounded where runs start (the trial cap, the grading
+  // slots), not here.
+  const limit = await rateLimit(`api:${data.id}`, API_LIMIT, { onError: "allow" });
   if (!limit.allowed) {
     return refuse(429, "Too many requests for this key. Slow down and try again in a minute.", { "retry-after": "60" });
   }

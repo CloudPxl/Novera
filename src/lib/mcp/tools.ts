@@ -273,7 +273,9 @@ function runTools(db: SupabaseClient, caller: McpCaller, origin: string): Tool[]
 function writeTools(db: SupabaseClient, caller: McpCaller, origin: string): Tool[] {
   const spend = async () => {
     const { rateLimit } = await import("../support/rate-limit.ts");
-    const limit = await rateLimit(`mcp-model:${caller.workspaceId}`, MODEL_TOOL_LIMIT);
+    // Refused when the count cannot be read: drafting and diagnosing are model calls.
+    const limit = await rateLimit(`mcp-model:${caller.workspaceId}`, MODEL_TOOL_LIMIT, { onError: "refuse" });
+    if (!limit.counted) throw new ToolRefusal("Novera could not check this workspace's hourly limit just now, so nothing was drafted. Try again in a minute.");
     if (!limit.allowed) {
       throw new ToolRefusal(`This workspace has asked for ${MODEL_TOOL_LIMIT.max} drafts or diagnoses in the last hour. Try again in ${limit.retryAfterMinutes} minute(s), or use the buttons in Novera.`);
     }

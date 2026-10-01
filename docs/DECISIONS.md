@@ -3098,3 +3098,29 @@ WITHHELD→incomplete; the planted mismatch is refused by the database. `verify:
 Not done (customer-facing API, needs approval): an `outcome` and `planned` field on
 `GET /api/v1/runs/<id>`, so n8n and other API consumers stop deriving the outcome from counts. Their
 derivation is now consistent for every state the database allows.
+
+## 2026-10-01 — A rate limit that cannot count does what its caller chose (R3)
+
+Every limit failed open: if the throttle function errored, `rateLimit` answered "allowed". Reproduced on
+the real paths with the old code, with the throttle made unreachable for the service role on the local
+stack:
+- a production failure was stored (201);
+- an MCP drafting call went on to the model;
+- a password-reset email went out.
+
+`onError` is now a required option. It is decided in the pure `decideLimit`, which also reports whether
+the request was `counted`, so no caller can inherit a default.
+
+| Policy | Callers | Why |
+|---|---|---|
+| `allow` | API requests | Authenticated; a run's spend is bounded where runs start |
+| `allow` | Sign-in | Refusing locks everyone out, the operator included; Supabase Auth limits password attempts itself |
+| `allow` | Trial applications | Stored for a person; no model |
+| `allow`, no draft | Support form | Keeps the question; drafts nothing when uncounted |
+| `refuse` | Password reset | It sends email |
+| `refuse` | The in-app assistant and the MCP model tools | Model quota |
+| `refuse` | Production-failure ingestion | Append-only rows; 503 with `retry-after` |
+
+After the fix, with the throttle unreachable: API read 200, sign-in works, production failure 503, MCP
+drafting refused before any model, reset refused, each with a sentence. With it restored, all go through.
+2 new unit tests; 554 tests; `verify:throttle` 12, api 33, mcp 30, regressions 13.

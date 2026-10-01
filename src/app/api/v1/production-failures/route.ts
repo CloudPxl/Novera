@@ -1,7 +1,7 @@
 import { authenticateApiKey } from "@/lib/api/auth.ts";
 import { apiJson } from "@/lib/api/respond.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
-import { rateLimit } from "@/lib/support/rate-limit.ts";
+import { COUNT_UNAVAILABLE_MESSAGE, rateLimit } from "@/lib/support/rate-limit.ts";
 import { FAILURE_LIMITS, recordProductionFailure, type FailureProblem } from "@/lib/regressions/record.ts";
 
 export const dynamic = "force-dynamic";
@@ -72,8 +72,12 @@ export async function POST(request: Request) {
     return apiJson({ error: "`agent_id` must be an agent id. GET /api/v1/agents lists them." }, 400);
   }
 
-  // Counted before any work, per workspace: several keys share one allowance.
-  const limit = await rateLimit(`failures:${auth.caller.workspaceId}`, FAILURE_API_LIMIT);
+  // Counted before any work, per workspace: several keys share one allowance. A failure is
+  // append-only, so an uncounted request is refused rather than risk filling the table.
+  const limit = await rateLimit(`failures:${auth.caller.workspaceId}`, FAILURE_API_LIMIT, { onError: "refuse" });
+  if (!limit.counted) {
+    return Response.json({ error: COUNT_UNAVAILABLE_MESSAGE }, { status: 503, headers: { "cache-control": "no-store", "retry-after": "60" } });
+  }
   if (!limit.allowed) {
     return Response.json(
       { error: `This workspace has recorded ${FAILURE_API_LIMIT.max} failures through the API in the last hour. Try again in ${limit.retryAfterMinutes} minute(s).` },

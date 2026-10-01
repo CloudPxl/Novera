@@ -108,7 +108,7 @@ export function JudgeKeyForm({
       <Field
         label="Second model, for corroboration"
         htmlFor="secondModel"
-        hint="Optional, and it changes what a verdict means: with one model a case is graded by one opinion and reported as not corroborated. Two models from the same provider are corroborated within one vendor — which the report states, because they can still share a blind spot."
+        hint="Optional, and it changes what a verdict means: with one model a case is graded by one opinion and reported as not corroborated, and a release gate does not count its passes as a pass. Two models from the same provider are corroborated within one vendor — which the report states, because they can still share a blind spot."
       >
         <input
           id="secondModel"

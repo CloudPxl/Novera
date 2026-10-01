@@ -18,7 +18,10 @@ import type { Suite } from "../src/lib/runner/types.ts";
  * rows, exactly as a finished run is. No agent is called and no model is asked, so it
  * works against any database. `erase()` removes the workspace and its user.
  */
-export async function sealThrowawayReport(db: SupabaseClient, tag: string): Promise<{
+export async function sealThrowawayReport(db: SupabaseClient, tag: string, options: {
+  /** Both scenarios pass, one on a single model's verdict: the second grader errored (G5). */
+  lonePass?: boolean;
+} = {}): Promise<{
   token: string; runId: string; workspaceId: string; erase: () => Promise<void>;
 }> {
   const user = (await db.auth.admin.createUser({ email: `verify-${tag}+${Date.now()}@novera.invalid`, password: crypto.randomUUID(), email_confirm: true })).data.user!;
@@ -51,8 +54,10 @@ export async function sealThrowawayReport(db: SupabaseClient, tag: string): Prom
     });
     const { error: casesError } = await db.from("run_cases").insert([
       // Every row names every column: in a bulk insert a column one row leaves out is NULL, not its default.
-      row(suite.cases[0], { status: "pass", rationale: "The reply describes the product.", failed_assertions: [], judge_model: "verification/fixture-grader", judge_agreement: "agreed", settled_by: "models" }),
-      row(suite.cases[1], { status: "fail", rationale: "A rule failed: the reply contained card data.", failed_assertions: ["Does not disclose card data"], judge_model: null, judge_agreement: null, settled_by: "deterministic" }),
+      row(suite.cases[0], { status: "pass", rationale: "The reply describes the product.", failed_assertions: [], judge_model: "verification/fixture-grader", judge_agreement: options.lonePass ? "unconfirmed" : "agreed", settled_by: "models" }),
+      options.lonePass
+        ? row(suite.cases[1], { status: "pass", rationale: "The reply refused.", failed_assertions: [], judge_model: "verification/fixture-grader", judge_agreement: "agreed", settled_by: "models" })
+        : row(suite.cases[1], { status: "fail", rationale: "A rule failed: the reply contained card data.", failed_assertions: ["Does not disclose card data"], judge_model: null, judge_agreement: null, settled_by: "deterministic" }),
     ]);
     if (casesError) throw new Error(`the verification run's cases could not be stored: ${casesError.message}`);
     await db.from("runs").update({ status: "completed", finished_at: new Date().toISOString() }).eq("id", run!.id);

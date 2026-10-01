@@ -223,9 +223,20 @@ test("an uncorroborated verdict counts as neither independent nor single-vendor"
   assert.equal(run.corroboration.single_vendor, 0);
 });
 
-test("the payload is format 12, and states what was tested only when the run recorded it", () => {
+test("format 13 counts the uncorroborated passes apart from the uncorroborated failures (G5)", () => {
+  const { payload } = buildReport(input({ cases: [
+    caseRecord({ caseId: "T01", status: "pass", judgeAgreement: "unconfirmed", judgeVotes: [VOTE("groq/a"), VOTE("mistral/b", "error")] }),
+    caseRecord({ caseId: "T02", status: "fail", judgeAgreement: "unconfirmed", judgeVotes: [VOTE("groq/a", "fail"), VOTE("mistral/b", "error")] }),
+    caseRecord({ caseId: "T03", status: "pass", judgeAgreement: "agreed" }),
+  ] }));
+  const c = (payload as { run: { corroboration: { uncorroborated: number; uncorroborated_passes: number } } }).run.corroboration;
+  assert.equal(c.uncorroborated, 2);
+  assert.equal(c.uncorroborated_passes, 1);
+});
+
+test("the payload is format 13, and states what was tested only when the run recorded it", () => {
   const { payload } = buildReport(input());
-  assert.equal((payload as { novera: { format: number } }).novera.format, 12);
+  assert.equal((payload as { novera: { format: number } }).novera.format, 13);
   assert.equal((payload as { run: Record<string, unknown> }).run.fingerprint, undefined, "no manifest, no claim");
 
   const fingerprint = [

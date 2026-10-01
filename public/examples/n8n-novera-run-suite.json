@@ -232,6 +232,15 @@
           },
           "conditions": [
             {
+              "id": "o",
+              "leftValue": "={{ $json.run.outcome }}",
+              "rightValue": "pass",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
               "id": "st",
               "leftValue": "={{ $json.run.status }}",
               "rightValue": "completed",
@@ -325,7 +334,7 @@
               "id": "m",
               "name": "message",
               "type": "string",
-              "value": "=Novera: {{ $json.run.agent.name }} ({{ $json.run.suite }}) — {{ $json.run.counts.failed }} failed, {{ $json.run.counts.no_result }} with no result, {{ $json.run.counts.passed }} passed. A scenario with no result is not a pass. {{ $json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + ($json.run.error || ($json.run.status === 'completed' ? 'no scenario produced a verdict, so there was nothing to seal.' : 'the run did not finish (status: ' + $json.run.status + ').')) }}"
+              "value": "=Novera: {{ $json.run.agent.name }} ({{ $json.run.suite }}) — {{ $json.run.counts.failed }} failed, {{ $json.run.counts.no_result }} with no result, {{ $json.run.counts.passed }} passed. A scenario with no result is not a pass. {{ $json.run.outcome_reason ? $json.run.outcome_reason + ' ' : '' }}{{ $json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + ($json.run.error || ($json.run.status === 'completed' ? 'no scenario produced a verdict, so there was nothing to seal.' : 'the run did not finish (status: ' + $json.run.status + ').')) }}"
             }
           ]
         },

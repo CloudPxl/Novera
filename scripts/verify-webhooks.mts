@@ -92,6 +92,9 @@ try {
 
   const body = JSON.parse(last.body) as { run: { counts: Record<string, number>; outcome: string; report: { url: string } | null } };
   report(body.run.counts.failed === 2 && body.run.outcome === "fail" && Boolean(body.run.report?.url), "the body carries counts, the outcome and the report link", JSON.stringify(body.run.counts));
+  const apiRun = (await (await fetch(`${base}/api/v1/runs/${runId}`, { headers })).json()) as { run: { outcome?: string; outcome_reason?: string } };
+  report(apiRun.run.outcome === body.run.outcome && typeof apiRun.run.outcome_reason === "string",
+    "the API states the same outcome as the webhook, with its reason (one decision, G5)", `${apiRun.run.outcome} — ${apiRun.run.outcome_reason}`);
   const { data: replies } = await db.from("run_cases").select("response_text, input").eq("run_id", runId);
   const leaked = (replies ?? []).some((r) => last.body.includes(String(r.response_text)) || last.body.includes(String(r.input)))
     || last.body.includes("SECRET-POLICY-TEXT") || last.body.includes(secret);

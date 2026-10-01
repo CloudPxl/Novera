@@ -3437,3 +3437,37 @@ Approved by the user ("do everything that needs to be done").
 Headless walk on the isolated app: axe-clean and no overflow at 390 and 1440, no console errors. 578 tests.
 
 **Production needs `npm run seed:docs`** for the support agent to answer from the new pages.
+
+## 2026-10-01 — G5: a pass one model gave alone does not pass a release gate (format 13)
+
+**Decision.** A verdict is the finding of two models. A pass that rests on one, because the second model it
+was put to could not be reached (rate limit, timeout, or a workspace key with one model), is
+uncorroborated. From report format 13, the release gate reads any such pass as **incomplete evidence**,
+exit 2, with the reason "N pass(es) rest on one model's verdict". A failure one model found still
+outranks it: it is a finding.
+
+**What did not change:**
+- **Two models from one vendor agreeing** is still a pass. The CI reason now names how many verdicts that
+  covers.
+- **Grade.** The letter is unchanged, and the report already labels each uncorroborated verdict.
+- **Sealed reports** carry no `uncorroborated_passes` and keep their codes. Measured read-only over the
+  18 production reports:
+  - 6 hold uncorroborated verdicts;
+  - 2 of those (formats 1 and 2) exit 0;
+  - with the new code, 18/18 CI codes are unchanged and 18/18 hashes verify.
+- **Production rows:** 16 single-model passes across 6 runs.
+
+**One decision everywhere:**
+- The payload counts `corroboration.uncorroborated_passes`, and `ciOutcome` reads it.
+- The API's `/runs` and `/runs/<id>` and MCP `get_run` now carry `outcome` and `outcome_reason` from
+  `pipelineOutcome` over the sealed report, as the webhook already did.
+- The n8n gate, run-suite and weekly-assurance templates require `run.outcome === "pass"` (counts alone
+  read a lone pass as passed).
+- Settings tells a one-model key's owner what this means before they rely on it.
+
+`verify:api` seals a report whose two scenarios both passed, one on a lone verdict:
+- the counts read 2/0/0;
+- the export says exit 2 with the reason;
+- the API says `incomplete` with the same reason.
+
+`verify:webhooks` checks that the API and webhook outcomes agree on a real run. 583 tests.

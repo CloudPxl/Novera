@@ -10,7 +10,7 @@ A pass/fail answer would hide the difference between an agent that failed and a 
 
 - `0` — every scenario in the suite ran and passed.
 - `1` — at least one scenario failed. This outranks missing evidence: a failure is a finding whatever else is missing.
-- `2` — the evidence is incomplete: a scenario produced no result, did not run, the grade was withheld, or a copy could not be verified.
+- `2` — the evidence is incomplete: a scenario produced no result, did not run, the grade was withheld, or a copy could not be verified. On reports in format 13 or later (`novera.format` in the JSON), also when a scenario passed on one model's verdict because the second model it was put to could not be reached: Novera grades with two models so that no single model's reading decides, and a pass only one gave is not corroborated. Rerun the suite; with your own model key, connect a second model. Reports sealed earlier keep the code they always had.
 - `3` — configuration or authorisation: the link is wrong, the report was withdrawn, or its link expired.
 - `4` — infrastructure: the report could not be fetched.
 

@@ -284,6 +284,27 @@ try {
     }
   }
 
+  // ------------------------------------------------------------------ G5: a pass one model gave
+  console.log("\nA pass one model gave alone (G5)");
+  {
+    const { sealThrowawayReport } = await import("./verify-fixtures.mts");
+    const lone = await sealThrowawayReport(db, "g5", { lonePass: true });
+    try {
+      const k = mintKey();
+      await db.from("api_keys").insert({ workspace_id: lone.workspaceId, name: "g5", prefix: k.prefix, key_hash: k.hash, scopes: ["read"], created_by: (await db.from("workspaces").select("owner_id").eq("id", lone.workspaceId).single()).data!.owner_id });
+      const exported = (await (await fetch(`${base}/api/reports/${lone.token}/export?format=json`)).json()) as { payload?: { novera: { format: number } }; report?: { novera: { format: number } }; ci: { code: number; reason: string } };
+      const viaApi = (await call(`/api/v1/runs/${lone.runId}`, k.key)).body as { run: { counts: { passed: number; failed: number; no_result: number }; outcome: string; outcome_reason: string } };
+      report(viaApi.run.counts.passed === 2 && viaApi.run.counts.failed === 0 && viaApi.run.counts.no_result === 0,
+        "the counts alone read as all passed", JSON.stringify(viaApi.run.counts));
+      report(exported.ci.code === 2 && /one model's verdict/.test(exported.ci.reason),
+        "the sealed report's CI code is 2, evidence incomplete, and says why", `${exported.ci.code}: ${exported.ci.reason}`);
+      report(viaApi.run.outcome === "incomplete" && viaApi.run.outcome_reason === exported.ci.reason,
+        "the API's outcome agrees: incomplete, with the same reason", `${viaApi.run.outcome}: ${viaApi.run.outcome_reason}`);
+    } finally {
+      await lone.erase();
+    }
+  }
+
   const { error: eraseErr } = await db.rpc("erase_workspace", { target: a.ws });
   const { count } = await db.from("api_keys").select("*", { count: "exact", head: true }).eq("workspace_id", a.ws);
   report(!eraseErr && count === 0, "erasure removes the workspace's keys", eraseErr?.message ?? `${count} left`);

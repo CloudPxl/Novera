@@ -73,7 +73,7 @@ const LIMITATIONS =
   "This report records how the named agent behaved on the listed scenarios, under the recorded configuration, on the date shown. It does not cover untested interactions, does not predict future behaviour, and is not a certification or a statement of legal compliance. Obligation codes group the evidence; they do not determine which obligations apply to your organisation. Producing this evidence sent the agent's responses to the grading models named against each scenario, which are operated by third parties and may process data outside the EU.";
 
 const UNCORROBORATED_NOTE =
-  "Some verdicts in this run were produced by a single model because a second was unavailable. They are counted in the score and marked as uncorroborated below; rerun the suite for a fully corroborated result.";
+  "Some verdicts in this run were produced by a single model because a second was unavailable. They are counted in the score and marked as uncorroborated below, and a release gate reads a pass that rests on one model as incomplete evidence, not a pass. Rerun the suite for a fully corroborated result.";
 
 const MIXED_GRADING_NOTE =
   "More than one grading model was used in this run, because a provider was unavailable partway through. The verdicts are therefore not uniformly graded. Rerun the suite if you need a single-model result.";
@@ -192,6 +192,9 @@ export function buildReport(input: ReportInput): BuiltReport {
     agreed: agreementCount("agreed"),
     majority: agreementCount("majority"),
     uncorroborated: agreementCount("unconfirmed"),
+    // Format 13 (decision G5): the passes among them. A failure one model found is still a
+    // finding; a pass nobody corroborated is not one a release can rest on.
+    uncorroborated_passes: input.cases.filter((c) => c.judgeAgreement === "unconfirmed" && c.status === "pass").length,
     unresolved: agreementCount("unresolved"),
     independent,
     single_vendor: singleVendor,
@@ -224,7 +227,7 @@ export function buildReport(input: ReportInput): BuiltReport {
     // Novera or declared by the customer. Reports
     // sealed as any earlier format are still rendered from their own payload and must
     // keep verifying — every reader of this payload branches on absence.
-    novera: { format: 12 },
+    novera: { format: 13 },
     subject: {
       client: input.client,
       agent: input.agentName,

@@ -2,6 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadStability } from "../evidence/stability-history.ts";
 import { redact } from "../redact/pii.ts";
+import { ciOutcome, type CiInput } from "../report/ci.ts";
+import { pipelineOutcome } from "../report/outcome.ts";
 
 /**
  * What a workspace API key can read. Shared by the REST routes and the MCP server, so the
@@ -61,6 +63,22 @@ export async function listSuites(db: Db, workspaceId: string) {
   }));
 }
 
+/**
+ * What the run means to a pipeline — `pass`, `fail` or `incomplete` — decided by the same
+ * function as the webhook, the CLI and the exports, over the sealed report (G5, audit R2).
+ * Counts alone cannot say it: a scenario with no row, or a pass one model gave alone,
+ * reads as a pass from counts.
+ */
+function decided(status: string, payload: unknown): { outcome: "pass" | "fail" | "incomplete"; outcome_reason: string } {
+  const sealed = payload as CiInput | null;
+  const outcome = pipelineOutcome({ status }, sealed);
+  const outcome_reason = status === "aborted" ? "The run ended before it finished, so no report was sealed."
+    : status !== "completed" ? "The run has not finished."
+    : !sealed?.coverage ? "No report is sealed for this run."
+    : ciOutcome(sealed).reason;
+  return { outcome, outcome_reason };
+}
+
 /** Who started a run: a person with the button, a pipeline with an API key, or a schedule. */
 function startedBy(r: { api_key_id?: unknown; schedule_id?: unknown }): "person" | "api_key" | "schedule" {
   return r.schedule_id ? "schedule" : r.api_key_id ? "api_key" : "person";
@@ -77,7 +95,7 @@ export async function listRuns(db: Db, workspaceId: string, options: { agentId?:
   const [{ data: cases }, { data: reports }] = ids.length
     ? await Promise.all([
         db.from("run_cases").select("run_id, status").eq("workspace_id", workspaceId).in("run_id", ids),
-        db.from("reports").select("run_id, token, content_hash, revoked_at").eq("workspace_id", workspaceId).in("run_id", ids),
+        db.from("reports").select("run_id, token, content_hash, revoked_at, payload").eq("workspace_id", workspaceId).in("run_id", ids),
       ])
     : [{ data: [] }, { data: [] }];
   return (runs ?? []).map((r) => {
@@ -95,6 +113,7 @@ export async function listRuns(db: Db, workspaceId: string, options: { agentId?:
       created_at: r.created_at as string,
       finished_at: (r.finished_at as string | null) ?? null,
       counts: tally((cases ?? []) as Array<{ run_id: unknown; status: unknown }>, r.id as string),
+      ...decided(r.status as string, report?.payload ?? null),
       report: report ? { content_hash: report.content_hash as string, token: report.token as string } : null,
     };
   });
@@ -134,7 +153,7 @@ export async function getRun(
     client: db as unknown as Parameters<typeof loadStability>[0]["client"],
     agentId: run.agent_id as string, suiteId: run.suite_id as string, asOf: run.created_at as string,
   });
-  const { data: report } = await db.from("reports").select("token, content_hash, revoked_at, created_at")
+  const { data: report } = await db.from("reports").select("token, content_hash, revoked_at, created_at, payload")
     .eq("workspace_id", workspaceId).eq("run_id", runId).is("revoked_at", null)
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
   const rows = (cases ?? []) as unknown as Array<Record<string, unknown>>;
@@ -153,6 +172,7 @@ export async function getRun(
     finished_at: (run.finished_at as string | null) ?? null,
     manifest_hash: (run.manifest_hash as string | null) ?? null,
     counts: tally(rows as Array<{ status: unknown }>),
+    ...decided(run.status as string, report?.payload ?? null),
     report: report ? { content_hash: report.content_hash as string, token: report.token as string } : null,
     cases: rows.map((c) => ({
       id: c.case_id as string,

@@ -138,8 +138,9 @@ export default async function SettingsPage() {
 
                 {models.length === 1 && (
                   <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-                    One model means one opinion, so every verdict is reported as not corroborated.
-                    Adding a second {entitlement.provider} model below makes each verdict a finding
+                    One model means one opinion, so every verdict is reported as not corroborated, and a
+                    release gate — the CLI, the exports, the API&apos;s outcome, a webhook — reads a run
+                    whose passes rest on it as incomplete evidence, never as a pass. Adding a second {entitlement.provider} model below makes each verdict a finding
                     of two — still within one vendor, which the report says plainly.
                   </p>
                 )}

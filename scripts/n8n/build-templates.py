@@ -80,8 +80,11 @@ LOOP_CONNECTIONS = {
     "Wait 10 seconds": [["Advance run"]],
 }
 
-# Passed means: finished, sealed, nothing failed, nothing without a verdict.
+# Passed means: finished, sealed, nothing failed, nothing without a verdict — and Novera's
+# own decision over the sealed report says pass (`run.outcome`, the one the CLI and the
+# webhook use), which also refuses a pass one model gave alone (G5).
 ALL_PASSED = [
+    {"leftValue": "={{ $json.run.outcome }}", "rightValue": "pass", "operator": {"type": "string", "operation": "equals"}},
     {"leftValue": "={{ $json.run.status }}", "rightValue": "completed", "operator": {"type": "string", "operation": "equals"}},
     {"leftValue": "={{ $json.run.counts.failed }}", "rightValue": 0, "operator": {"type": "number", "operation": "equals"}},
     {"leftValue": "={{ $json.run.counts.no_result }}", "rightValue": 0, "operator": {"type": "number", "operation": "equals"}},
@@ -134,7 +137,7 @@ gate = workflow("Novera — pre-release gate", [
         "options": {"responseCode": 200}}, [1540, 0], 1.1),
     node("Respond: blocked", "respondToWebhook", {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ outcome: " + OUTCOME[4:-3] + ", release_id: $('Configure').item.json.release_id || null, counts: $json.run.counts, report_url: $json.run.report ? $json.run.report.url : null, message: 'Novera: ' + $json.run.counts.failed + ' failed, ' + $json.run.counts.no_result + ' with no result, ' + $json.run.counts.passed + ' passed. A scenario with no result is not a pass. ' + ($json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + " + WHY_NO_REPORT + ") }) }}",
+        "responseBody": "={{ JSON.stringify({ outcome: " + OUTCOME[4:-3] + ", release_id: $('Configure').item.json.release_id || null, counts: $json.run.counts, report_url: $json.run.report ? $json.run.report.url : null, message: 'Novera: ' + $json.run.counts.failed + ' failed, ' + $json.run.counts.no_result + ' with no result, ' + $json.run.counts.passed + ' passed. A scenario with no result is not a pass. ' + ($json.run.outcome_reason ? $json.run.outcome_reason + ' ' : '') + ($json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + " + WHY_NO_REPORT + ") }) }}",
         "options": {"responseCode": 409}}, [1540, 200], 1.1),
 ], {
     "Release pipeline calls": [["Configure"]],
@@ -160,14 +163,14 @@ const fixed = run.cases.filter((c) => c.verdict === 'pass' && before.get(c.id) =
 // graders moving, not the agent. It is still listed; it is labelled.
 const gradersMoved = newlyFailing.filter((c) => c.stability?.moved === 'graders').map((c) => c.id);
 const regressions = newlyFailing.map((c) => c.id);
-const incomplete = run.status !== 'completed' || !run.report || run.counts.no_result > 0;
+const incomplete = run.status !== 'completed' || !run.report || run.counts.no_result > 0 || run.outcome === 'incomplete';
 const report = run.report ? run.report.url : null;
 const lines = [
   `Novera weekly check: ${run.agent.name} (${run.suite}) — ${run.counts.passed} passed, ${run.counts.failed} failed, ${run.counts.no_result} with no result.`,
   base ? `Compared with the run of ${base.created_at.slice(0, 10)}.` : 'No earlier completed run of this suite to compare with.',
   regressions.length ? `Newly failing: ${regressions.join(', ')}.` + (gradersMoved.length ? ` Of these, ${gradersMoved.join(', ')} had an identical reply graded both ways before — the graders moved, not necessarily the agent.` : '') : '',
   lostVerdict.length ? `No verdict this time: ${lostVerdict.join(', ')}.` : '',
-  incomplete ? 'The evidence is incomplete: a scenario with no result is not a pass.' : '',
+  incomplete ? `The evidence is incomplete: ${run.outcome_reason ?? 'a scenario with no result is not a pass.'}` : '',
   fixed.length ? `Fixed since then: ${fixed.join(', ')}.` : '',
   report ? `Report: ${report}` : `No report was sealed${run.error ? ': ' + run.error : '.'}`,
 ].filter(Boolean);

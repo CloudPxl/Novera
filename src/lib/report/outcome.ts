@@ -1,5 +1,4 @@
-import { ciOutcome } from "./ci.ts";
-import type { ReportPayload } from "./payload.ts";
+import { ciOutcome, type CiInput } from "./ci.ts";
 
 export type PipelineOutcome = "pass" | "fail" | "incomplete";
 
@@ -15,7 +14,7 @@ export type PipelineOutcome = "pass" | "fail" | "incomplete";
  */
 export function pipelineOutcome(
   run: { status: string },
-  payload: Pick<ReportPayload, "coverage" | "grade"> | null | undefined,
+  payload: CiInput | null | undefined,
 ): PipelineOutcome {
   if (run.status !== "completed" || !payload?.coverage) return "incomplete";
   const { code } = ciOutcome(payload);

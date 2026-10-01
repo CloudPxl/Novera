@@ -3344,3 +3344,34 @@ installed job's condition.
   - one-model pass: the run page says "1 could not be corroborated"; the report, "1 graded by one model
     only".
   Whether such a pass should count as a pass at all is decision G5.
+
+## 2026-10-01 — R7 re-proved with canaries; a local stack no longer installs the clock against production
+
+- **R7, every way a run ends early.** `verify:webhooks` now plants three aborted runs. Each one's stored
+  error carries an email address, a phone number, a secret-shaped token, policy text, an agent reply and a
+  database error:
+  - stopped by a person;
+  - stopped after 24 idle hours;
+  - ended by a failure outside any scenario.
+
+  For each run, the check reads the body that reached the receiver and the delivery row every retry
+  resends. Both carry only the fixed sentence, and the run itself still holds the full error for the
+  workspace.
+
+  With R7's one line reverted, the three checks fail and name all six canaries. The first version of the
+  check missed the database canary, because JSON escapes its quotes inside a body. The check now matches
+  the escaped form as well.
+
+  A paused schedule's reason is not covered by this check. It comes from a closed set of Novera's own
+  refusal sentences, none of which interpolates customer text.
+- **The clock on a local stack.** `schedules:clock -- install` with no `--url` installed a job that calls
+  `https://www.nover.space/api/cron/tick`, even into a local database. No request left. The local job is
+  idle until something is due, it was removed at once, and pg_net's queue was empty; a call would also
+  have been refused, because the local secret is not production's. A local database now has to name its
+  app, and may use `http`. A deployed database keeps the production default and https only.
+- **`migrate -- --check` exit codes**, stated precisely:
+  - **1:** an exposed ledger, a disagreement between the ledger and the files, or missing jobs on a
+    deployed database;
+  - **0:** a pending migration alone. It is listed and changes nothing.
+
+`verify:free` 15/15 from an empty database (51 migrations). `verify:webhooks` 32. 565 tests.

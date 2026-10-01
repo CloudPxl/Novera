@@ -4,6 +4,7 @@
  * scheduled run is still in progress, so an idle database makes no request at all.
  *
  *   npm run schedules:clock -- install [--url https://www.nover.space/api/cron/tick]
+ *   npm run schedules:clock -- install --url http://host.docker.internal:3100/api/cron/tick   (a local stack)
  *   npm run schedules:clock -- status
  *   npm run schedules:clock -- remove
  *
@@ -15,6 +16,7 @@
 import pg from "pg";
 import { tickSecret } from "../src/lib/schedules/secret.ts";
 import { sslFor } from "./db-ssl.mts";
+import { isLocalDatabase } from "./required-jobs.mts";
 
 const JOB = "novera-schedule-tick";
 const SECRET_NAME = "novera_schedule_tick";
@@ -22,7 +24,10 @@ const DEFAULT_URL = "https://www.nover.space/api/cron/tick";
 
 const [command = "status", ...rest] = process.argv.slice(2);
 const urlFlag = rest.indexOf("--url");
-const url = urlFlag >= 0 ? rest[urlFlag + 1] : DEFAULT_URL;
+// A local database never defaults to production: its clock would call the live app with a
+// secret the live app does not hold. It names its own app, and may use plain http.
+const local = isLocalDatabase(process.env.SUPABASE_DB_URL!);
+const url = urlFlag >= 0 ? rest[urlFlag + 1] : local ? undefined : DEFAULT_URL;
 
 const client = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: sslFor(process.env.SUPABASE_DB_URL!) });
 await client.connect();
@@ -38,9 +43,13 @@ try {
   }
 
   if (command === "install") {
+    if (!url) {
+      console.error(`This is a local database, and the default URL is production. Name the app it should call: --url http://host.docker.internal:3100/api/cron/tick`);
+      process.exit(3);
+    }
     // The URL goes into the job's SQL text, so it is checked rather than escaped.
-    if (!/^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/api\/cron\/tick$/.test(url ?? "")) {
-      console.error(`Refusing URL ${JSON.stringify(url)}: expected https://<host>/api/cron/tick.`);
+    if (!(local ? /^https?:\/\/[A-Za-z0-9.-]+(:\d+)?\/api\/cron\/tick$/ : /^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/api\/cron\/tick$/).test(url)) {
+      console.error(`Refusing URL ${JSON.stringify(url)}: expected ${local ? "http(s)" : "https"}://<host>/api/cron/tick.`);
       process.exit(3);
     }
 

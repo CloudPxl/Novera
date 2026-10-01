@@ -113,6 +113,41 @@ try {
   report(!stoppedRaw.includes(email) && /stopped by a member/i.test(stoppedRaw),
     "it says a member stopped it, without naming them: a receiver is a third party (audit R7)", stoppedRaw.includes(email) ? "the stopper's email address is in the body" : JSON.stringify((stopped?.run as { reason?: string } | undefined)?.reason));
 
+  // Every way a run ends early, with an error carrying everything a receiver must never
+  // see. The run keeps its words for the workspace; the receiver gets a fixed sentence,
+  // and the delivery row — what every retry resends — holds nothing more (audit R7).
+  {
+    const canaries = {
+      email: "canary.person+r7@example.test", phone: "+40 712 345 678",
+      secret: "sk-canaryR7abcdefghijklmnopqrstuvwxyz0123456789", policy: "SECRET-POLICY-TEXT",
+      reply: "CANARY-AGENT-REPLY refund NW-9 approved",
+      database: 'duplicate key value violates unique constraint "run_cases_run_id_case_id_key"',
+    };
+    const everything = Object.values(canaries).join(" | ");
+    const policyId = (await db.from("policies").select("id").eq("agent_id", agent!.id).single()).data!.id;
+    const paths = [
+      { label: "a person pressed Stop", stopped_by: user.id as string | null, error: `Stopped by ${canaries.email} before it finished. ${everything}`, says: /stopped by a member/i },
+      { label: "no scenario was graded for 24 hours", stopped_by: null, error: `Stopped: no scenario was graded for 24 hours, so this run cannot finish as one sitting. ${everything}`, says: /24 hours/ },
+      { label: "a database or provider failure outside any scenario", stopped_by: null, error: `Could not save case T01: ${canaries.database}. Agent said: ${canaries.reply}. ${everything}`, says: /error outside any scenario/ },
+    ];
+    for (const path of paths) {
+      const { data: planted } = await db.from("runs").insert({
+        workspace_id: ws!.id, agent_id: agent!.id, policy_id: policyId, suite_id: suite!.id,
+        status: "aborted", error: path.error, stopped_by: path.stopped_by, finished_at: new Date().toISOString(),
+      }).select("id").single();
+      await notifyRunFinished(db, ws!.id, planted!.id, Date.now() + 8_000);
+      const sentBody = received.map((r) => r.body).find((b) => b.includes(planted!.id)) ?? "";
+      const { data: queuedRow } = await db.from("webhook_deliveries").select("body").eq("subject_id", planted!.id).eq("endpoint_id", endpointId).maybeSingle();
+      const stored = JSON.stringify(queuedRow?.body ?? null);
+      // As written, or as JSON escapes it inside a body (the database's quotes).
+      const leakedIn = (text: string) => Object.entries(canaries).filter(([, v]) => text.includes(v) || text.includes(JSON.stringify(v).slice(1, -1))).map(([k]) => k);
+      const { data: kept } = await db.from("runs").select("error").eq("id", planted!.id).single();
+      report(sentBody !== "" && leakedIn(sentBody).length === 0 && leakedIn(stored).length === 0 && path.says.test(sentBody) && kept?.error === path.error,
+        `${path.label}: the receiver gets a fixed sentence and nothing of the run's error; the run keeps it`,
+        sentBody === "" ? "nothing arrived" : `leaked in body: [${leakedIn(sentBody)}], in delivery row: [${leakedIn(stored)}], reason ${JSON.stringify((JSON.parse(sentBody) as { run?: { reason?: string } }).run?.reason)}`);
+    }
+  }
+
   // A private address is refused at delivery, whatever was stored.
   const { id: privateId } = await createEndpoint({ db, workspaceId: ws!.id, url: "http://10.0.0.7/hook", events: ["run.completed"], createdBy: user.id });
   const [pid] = await enqueue({ db, workspaceId: ws!.id, event: "test", subjectId: null, body: {}, onlyEndpoint: privateId });

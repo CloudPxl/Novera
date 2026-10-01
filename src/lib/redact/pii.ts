@@ -46,10 +46,19 @@ interface Rule {
 
 // Order matters: credentials and cards before phones, which would otherwise claim
 // their digits; IBAN before cards for the same reason.
+//
+// Email and phone repetitions are bounded by what the thing can be, and the email's local part may only
+// start where a run of its characters starts. Unbounded, the email pattern retried from
+// every position of a long token with no "@" — a hash dump, a base64 attachment — and the
+// cost grew with the square of its length: 6.9 s for 64 KB, on every report seal and every
+// redacted model call (audit 2026-10-01, C6). tests/redact.test.ts holds each family linear.
 const RULES: Rule[] = [
   { kind: "SECRET", pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g },
+  // A key is matched whole, however long: each alternative needs its literal prefix, so it
+  // starts only where a key starts, and bounding it would leave the tail of a long one.
   { kind: "SECRET", pattern: /\b(?:sk|gsk|pk|rk)[-_][A-Za-z0-9_-]{6,}|\bsk-or-[A-Za-z0-9_-]{6,}|\bAIza[A-Za-z0-9_-]{10,}|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*|\bBearer\s+[A-Za-z0-9._-]{12,}/g },
-  { kind: "EMAIL", pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g },
+  // RFC 5321: a local part is at most 64 characters, a label 63, a name 253.
+  { kind: "EMAIL", pattern: /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}(?![A-Za-z])/g },
   { kind: "IBAN", pattern: /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,4})?\b/g },
   {
     kind: "CARD",
@@ -65,7 +74,7 @@ const RULES: Rule[] = [
     // An international prefix, or a leading 0, then at least eight more digits with the
     // separators people type. A bare run of digits is left alone: it is far more often
     // an order number than a phone number.
-    pattern: /(?:\+|00)\d{1,3}[\s().-]*(?:\d[\s().-]*){6,13}\d|\b0\d(?:[\s().-]*\d){7,11}\b/g,
+    pattern: /(?:\+|00)\d{1,3}[\s().-]{0,3}(?:\d[\s().-]{0,3}){6,13}\d|\b0\d(?:[\s().-]{0,3}\d){7,11}\b/g,
     accept: (m) => m.replace(/\D/g, "").length >= 9,
   },
 ];

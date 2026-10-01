@@ -3207,3 +3207,19 @@ before: FOUND on both; after: clean on both, raw unchanged.
 **Proposed, not done (it changes what existing keys can do, and the docs; needs approval):**
 - A separate `responses` scope, existing keys grandfathered until rotated.
 - A sentence in `/docs/api` and `/docs/data-and-privacy` saying that raw reads are recorded.
+
+## 2026-10-01 — Redaction takes linear time (C6, part one)
+
+The email pattern had no left boundary. On a long unbroken token with no "@", such as a hash dump or a
+base64 attachment, it retried from every position, so the cost grew with the square of the length:
+64 KB 6.9 s, 128 KB 27 s. That ran on every report seal and every redacted model call, and since the
+privacy change it would also run on API answers.
+
+Now the local part may only start where a run of its characters starts, and email and phone repetitions
+are bounded by what the values can be (RFC 5321 lengths; three separator characters between phone
+digits). The key patterns are unchanged: each needs its literal prefix, and bounding them would leave the
+tail of a long key in clear.
+
+New tests cover ten adversarial shapes at 64 and 256 KB, one per pattern family. Before: "64 KB took
+6867 ms", fail. After: all pass in 114 ms. Real values are still found next to 100 KB tokens. Measured
+directly: 64 KB 1 ms, 1 MB 7 ms, 20 MB 118 ms, the email at the end found each time. 558 tests.

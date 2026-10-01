@@ -12,6 +12,10 @@ import { SIGNATURE_HEADER, signatureFor } from "./sign.ts";
  * growing wait, until it succeeds or has been tried six times. What is sent is frozen
  * when the event is queued; what moves is only whether it arrived. The body carries
  * counts, the outcome and links — never a transcript, a reply, a policy or a secret.
+ *
+ * At least once, not exactly once: each attempt is claimed by one sender (0046), but a
+ * sender can die after the receiver accepted and before recording it, and the attempt is
+ * then made again. Receivers ignore a repeat by its `Novera-Delivery` id.
  */
 
 export const WEBHOOK_EVENTS = ["run.completed", "run.stopped", "schedule.paused"] as const;
@@ -63,34 +67,64 @@ export async function enqueue(args: {
   return (data ?? []).map((d) => d.id as string);
 }
 
-/** Sends due deliveries — the given ones, or any that are due — within the time given. */
+/**
+ * How long a claimed attempt is held before another sender may take it over: well past the
+ * request's own deadline, so a takeover means the first sender died, not that it was slow.
+ */
+const LEASE_SECONDS = 30;
+
+type Endpoint = { url: string; revoked_at: string | null; secret_ciphertext: string; secret_iv: string; secret_tag: string };
+
+/**
+ * Sends due deliveries — the given ones, or any that are due — within the time given.
+ *
+ * Each attempt is claimed first (0046): one statement takes a lease, a token and counts
+ * the attempt, so of several senders at once exactly one sends, and the outcome is
+ * recorded only while that token stands. One row at a time, so a sweep that runs out of
+ * time never counts an attempt it did not make. Delivery is at-least-once: a sender that
+ * dies after the receiver accepted leaves the row to be retried when its lease runs out.
+ */
 export async function deliverDue(args: {
   db: SupabaseClient; ids?: string[]; deadline: number; limit?: number;
 }): Promise<{ delivered: number; failed: number; retrying: number }> {
   const out = { delivered: 0, failed: 0, retrying: 0 };
-  let q = args.db.from("webhook_deliveries")
-    .select("id, event, body, attempts, endpoint_id, webhook_endpoints(url, revoked_at, secret_ciphertext, secret_iv, secret_tag)")
-    .eq("status", "pending")
-    .order("next_attempt_at").limit(args.limit ?? 20);
-  // Named deliveries are attempted now. Only the clock's sweep asks what is due, and it
-  // asks the database's clock: a row stamped by the database's now() looked "not yet
-  // due" to an app whose clock ran a few milliseconds behind, and was skipped.
-  q = args.ids
-    ? q.in("id", args.ids.length ? args.ids : ["00000000-0000-0000-0000-000000000000"])
-    : q.lte("next_attempt_at", new Date(Date.now() + 2_000).toISOString());
-  const { data: due } = await q;
+  // Named deliveries still to try in this call: each at most once, whatever happens to it.
+  const remaining = args.ids ? [...args.ids] : null;
+  if (remaining && remaining.length === 0) return out;
 
-  for (const d of due ?? []) {
+  for (let n = 0; n < (args.limit ?? 20); n++) {
+    if (remaining && remaining.length === 0) break;
     if (Date.now() + DELIVERY_TIMEOUT_MS > args.deadline) break;
-    const ep = d.webhook_endpoints as unknown as { url: string; revoked_at: string | null; secret_ciphertext: string; secret_iv: string; secret_tag: string } | null;
-    const attempts = (d.attempts as number) + 1;
-    const fail = async (lastStatus: number | null, why: string) => {
-      const final = attempts > BACKOFF_MS.length || !ep || ep.revoked_at !== null;
-      await args.db.from("webhook_deliveries").update({
-        attempts, last_status: lastStatus, last_error: why.slice(0, 300),
-        ...(final ? { status: "failed" } : { next_attempt_at: new Date(Date.now() + BACKOFF_MS[attempts - 1]).toISOString() }),
-      }).eq("id", d.id).eq("status", "pending");
-      if (final) out.failed++; else out.retrying++;
+    // Named deliveries are attempted now; only the clock's sweep asks what is due, and it
+    // asks the database's clock, in the claim.
+    const { data: claimed, error: claimError } = await args.db.rpc("claim_webhook_deliveries", {
+      only_ids: remaining, max_rows: 1, lease_seconds: LEASE_SECONDS,
+    });
+    if (claimError) {
+      console.error(`Webhook deliveries could not be claimed: ${claimError.message}`);
+      break;
+    }
+    const d = (claimed as Array<{ id: string; lease_token: string; attempts: number; event: string; body: unknown; endpoint_id: string }> | null)?.[0];
+    if (!d) break;
+    if (remaining) remaining.splice(remaining.indexOf(d.id), 1);
+
+    // Recorded only while this sender's claim stands: one that outlived its lease never
+    // overwrites the sender that took over.
+    const settle = async (patch: Record<string, unknown>) => {
+      const { data } = await args.db.from("webhook_deliveries")
+        .update({ ...patch, lease_token: null, lease_until: null })
+        .eq("id", d.id).eq("lease_token", d.lease_token).eq("status", "pending").select("id");
+      return (data ?? []).length === 1;
+    };
+    const { data: ep } = await args.db.from("webhook_endpoints")
+      .select("url, revoked_at, secret_ciphertext, secret_iv, secret_tag").eq("id", d.endpoint_id).maybeSingle<Endpoint>();
+    const fail = async (lastStatus: number | null, why: string, giveUp = false) => {
+      const final = giveUp || d.attempts > BACKOFF_MS.length || !ep || ep.revoked_at !== null;
+      const kept = await settle({
+        last_status: lastStatus, last_error: why.slice(0, 300),
+        ...(final ? { status: "failed" } : { next_attempt_at: new Date(Date.now() + BACKOFF_MS[d.attempts - 1]).toISOString() }),
+      });
+      if (kept) { if (final) out.failed++; else out.retrying++; }
     };
 
     if (!ep || ep.revoked_at) { await fail(null, "The endpoint was revoked."); continue; }
@@ -102,7 +136,15 @@ export async function deliverDue(args: {
     }
 
     const body = JSON.stringify(d.body);
-    const secret = open({ ciphertext: ep.secret_ciphertext, iv: ep.secret_iv, tag: ep.secret_tag }, aad(d.endpoint_id as string));
+    let secret: string;
+    try {
+      secret = open({ ciphertext: ep.secret_ciphertext, iv: ep.secret_iv, tag: ep.secret_tag }, aad(d.endpoint_id));
+    } catch {
+      // A secret sealed under another key never opens; retrying cannot help, and it must
+      // not hold up any other delivery.
+      await fail(null, "Not sent: the endpoint's signing secret could not be opened. Remove the endpoint and add it again.", true);
+      continue;
+    }
     try {
       const res = await fetch(ep.url, {
         method: "POST",
@@ -111,17 +153,14 @@ export async function deliverDue(args: {
         headers: {
           "content-type": "application/json",
           "user-agent": "Novera-Webhooks/1",
-          "novera-event": d.event as string,
-          "novera-delivery": d.id as string,
+          "novera-event": d.event,
+          "novera-delivery": d.id,
           [SIGNATURE_HEADER]: signatureFor(secret, body, Math.floor(Date.now() / 1000)),
         },
         body,
       });
       if (res.status >= 200 && res.status < 300) {
-        await args.db.from("webhook_deliveries").update({
-          status: "delivered", attempts, last_status: res.status, last_error: null, delivered_at: new Date().toISOString(),
-        }).eq("id", d.id).eq("status", "pending");
-        out.delivered++;
+        if (await settle({ status: "delivered", last_status: res.status, last_error: null, delivered_at: new Date().toISOString() })) out.delivered++;
       } else {
         await fail(res.status, res.status >= 300 && res.status < 400 ? `Answered ${res.status}; redirects are not followed.` : `Answered ${res.status}.`);
       }

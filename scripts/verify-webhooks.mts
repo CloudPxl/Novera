@@ -132,6 +132,111 @@ try {
   const { data: visible } = await member.from("webhook_endpoints").select("id, url, secret_prefix").eq("id", endpointId);
   const { error: sealed } = await member.from("webhook_endpoints").select("secret_ciphertext").eq("id", endpointId);
   report(visible?.length === 1 && Boolean(sealed), "a member sees the endpoint and its prefix, not the sealed secret");
+
+  // ------------------------------------------------------------------ concurrency (audit C2, C3, C8)
+  // Delivery is at-least-once: one claim per attempt, every attempt counted, and a repeat
+  // only when a sender died between the receiver's answer and recording it. Never two
+  // senders on one attempt, and one broken row never holds up another.
+  console.log("\nConcurrent delivery");
+  const hits = new Map<string, Array<{ body: string; signature: string }>>();
+  let answer: "ok" | "fail" | "slow" = "ok";
+  const busy = createServer((req, res) => {
+    let b = "";
+    req.on("data", (c) => (b += c));
+    req.on("end", () => {
+      const id = String(req.headers["novera-delivery"]);
+      hits.set(id, [...(hits.get(id) ?? []), { body: b, signature: String(req.headers["novera-signature"]) }]);
+      if (answer === "slow") setTimeout(() => res.end("late"), 7_000);
+      else { res.statusCode = answer === "ok" ? 200 : 500; res.end(); }
+    });
+  });
+  await new Promise<void>((r) => busy.listen(0, "127.0.0.1", r));
+  try {
+    const busyUrl = `http://127.0.0.1:${(busy.address() as { port: number }).port}/hook`;
+    const ep = await createEndpoint({ db, workspaceId: ws!.id, url: busyUrl, events: ["run.completed"], createdBy: user.id });
+    const queue = async (endpoint = ep.id) =>
+      (await enqueue({ db, workspaceId: ws!.id, event: "test", subjectId: crypto.randomUUID(), body: { probe: true }, onlyEndpoint: endpoint }))[0];
+    const row = async (id: string) =>
+      (await db.from("webhook_deliveries").select("status, attempts, last_error").eq("id", id).single()).data as { status: string; attempts: number; last_error: string | null };
+    const sent = (id: string) => hits.get(id)?.length ?? 0;
+    const burst = (id: string, n: number) => Promise.all(Array.from({ length: n }, () => deliverDue({ db, ids: [id], deadline: Date.now() + 20_000 }).catch(() => null)));
+
+    answer = "ok";
+    const okId = await queue();
+    await burst(okId, 20);
+    const okRow = await row(okId);
+    report(sent(okId) === 1 && okRow.status === "delivered" && okRow.attempts === 1,
+      "twenty senders at once, receiver answering 2xx: one POST, recorded once", `${sent(okId)} POST(s); ${okRow.status}, attempts ${okRow.attempts}`);
+
+    answer = "fail";
+    const failId = await queue();
+    await burst(failId, 20);
+    const failRow = await row(failId);
+    report(sent(failId) === 1 && failRow.attempts === 1 && failRow.status === "pending",
+      "twenty senders at once, receiver answering 500: one POST, and attempts counts it", `${sent(failId)} POST(s); attempts ${failRow.attempts}, ${failRow.status}`);
+
+    answer = "slow";
+    const slowId = await queue();
+    await burst(slowId, 5);
+    const slowRow = await row(slowId);
+    report(sent(slowId) === 1 && slowRow.attempts === 1 && /No answer within/.test(String(slowRow.last_error)),
+      "five senders at once, receiver too slow: one POST, one attempt, recorded as a timeout", `${sent(slowId)} POST(s); attempts ${slowRow.attempts}; ${slowRow.last_error}`);
+
+    answer = "ok";
+    let doubled = 0;
+    for (let trial = 0; trial < 10; trial++) {
+      const id = await queue();
+      await Promise.all([
+        deliverDue({ db, ids: [id], deadline: Date.now() + 20_000 }).catch(() => null),
+        deliverDue({ db, deadline: Date.now() + 20_000 }).catch(() => null),
+      ]);
+      if (sent(id) !== 1) doubled++;
+    }
+    report(doubled === 0, "a run's own attempt and a clock sweep at the same moment: one POST each time", `${doubled} of 10 trials sent twice or never`);
+
+    // A sender that claims a delivery and dies before recording what happened.
+    const crashId = await queue();
+    const { data: claimed, error: claimError } = await db.rpc("claim_webhook_deliveries", { only_ids: [crashId], max_rows: 1, lease_seconds: 30 });
+    await deliverDue({ db, ids: [crashId], deadline: Date.now() + 20_000 }).catch(() => null);
+    const whileHeld = sent(crashId);
+    await db.from("webhook_deliveries").update({ lease_until: new Date(Date.now() - 1_000).toISOString() }).eq("id", crashId);
+    await deliverDue({ db, ids: [crashId], deadline: Date.now() + 20_000 }).catch(() => null);
+    const crashRow = await row(crashId);
+    report(!claimError && (claimed as unknown[] | null)?.length === 1 && whileHeld === 0 && sent(crashId) === 1 && crashRow.status === "delivered" && crashRow.attempts === 2,
+      "a claim whose sender died is not touched until its lease runs out, then retried; both attempts are counted",
+      claimError ? claimError.message : `${whileHeld} POST(s) while held, ${sent(crashId)} after; attempts ${crashRow.attempts}`);
+    const copies = [...hits.values()].flat();
+    report(copies.every((h) => verifySignature({ secret: ep.secret, body: h.body, header: h.signature })),
+      "every copy sent, retries included, is signed over the frozen body");
+
+    // An endpoint revoked between queueing and sending.
+    const revokedId = await queue();
+    const ep2 = await createEndpoint({ db, workspaceId: ws!.id, url: busyUrl, events: ["run.completed"], createdBy: user.id });
+    const revokedTwo = await queue(ep2.id);
+    await db.from("webhook_endpoints").update({ revoked_at: new Date().toISOString(), revoked_by: user.id }).eq("id", ep2.id);
+    await deliverDue({ db, ids: [revokedTwo], deadline: Date.now() + 20_000 });
+    const revokedRow = await row(revokedTwo);
+    report(sent(revokedTwo) === 0 && revokedRow.status === "failed", "a delivery to an endpoint revoked after it was queued is never sent", `${revokedRow.status}: ${revokedRow.last_error}`);
+    await deliverDue({ db, ids: [revokedId], deadline: Date.now() + 20_000 });
+
+    // One endpoint whose secret cannot be opened, queued ahead of a healthy one.
+    const broken = crypto.randomUUID();
+    const junk = (n: number) => Buffer.from(crypto.getRandomValues(new Uint8Array(n))).toString("base64");
+    await db.from("webhook_endpoints").insert({
+      id: broken, workspace_id: ws!.id, url: busyUrl, events: ["run.completed"], created_by: user.id,
+      secret_prefix: "whsec_broken", secret_ciphertext: junk(48), secret_iv: junk(12), secret_tag: junk(16),
+    });
+    const brokenId = await queue(broken);
+    await new Promise((r) => setTimeout(r, 20));
+    const healthyId = await queue();
+    let swept = "";
+    try { await deliverDue({ db, deadline: Date.now() + 20_000 }); swept = "returned"; } catch (e) { swept = `threw: ${e instanceof Error ? e.message : e}`; }
+    const brokenRow = await row(brokenId);
+    report(sent(healthyId) === 1 && brokenRow.status === "failed" && sent(brokenId) === 0,
+      "an endpoint whose secret cannot be opened fails on its own; the sweep delivers the rest", `sweep ${swept}; broken ${brokenRow.status}: ${brokenRow.last_error}; healthy sent ${sent(healthyId)}`);
+  } finally {
+    busy.close();
+  }
 } finally {
   await db.rpc("erase_workspace", { target: ws!.id });
   const { count } = await db.from("webhook_endpoints").select("id", { count: "exact", head: true }).eq("workspace_id", ws!.id);

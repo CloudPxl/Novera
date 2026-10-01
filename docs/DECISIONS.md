@@ -2999,3 +2999,28 @@ Proven locally:
 - a fresh database gets a closed ledger before its first migration.
 
 540 tests; typecheck, lint, build. Production is not yet changed.
+
+## 2026-10-01 — A webhook attempt is claimed before it is sent (0046)
+
+`deliverDue` read pending rows and then sent them. Reproduced fresh before the fix:
+- 20 concurrent senders on one delivery: 10 POSTs to a receiver answering 2xx, 20 to one answering 500
+  (recorded as 1 attempt), 5 to one too slow.
+- A run's own attempt overlapping a clock sweep sent twice in 10 of 10 trials.
+- One endpoint whose secret could not be opened made every sweep throw, so no workspace's deliveries went
+  out (audit C2, C3, and C8 from 2026-10-01).
+
+The fix:
+- `claim_webhook_deliveries` takes a lease and a token and counts the attempt, in one statement with
+  `for update skip locked`.
+- Only the claimant sends, and it records the outcome only while its token stands.
+- One row at a time, so a sweep out of time never counts an attempt it did not make.
+- A named delivery is attempted at once only the first time, and after that only when due.
+- The secret is opened inside the per-row `try`; one that never opens fails that row alone, for good.
+
+Delivery is **at least once**: a sender that dies after the receiver accepted leaves the row to be retried
+when its 30-second lease runs out, and both attempts are counted. `verify:webhooks` gains 9 checks
+(before: 6 failed; after: 24 ok), and the audit's own race reproduction now reads 1 POST, 1 attempt and
+0 of 20 doubled.
+
+The public docs still say "Each run is announced once" (`data/docs/api.md:73`). That copy changes only
+with approval.

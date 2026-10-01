@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { advanceRun, RunRefusal, startRun } from "../workflow/start-run.ts";
-import { deliverDue, notifySchedulePaused } from "../webhooks/deliver.ts";
+import { announceMissedRuns, deliverDue, notifySchedulePaused } from "../webhooks/deliver.ts";
 import { nextOccurrence, type ScheduleTiming } from "./cadence.ts";
 
 /**
@@ -125,6 +125,8 @@ export async function runScheduleTick(args: {
   // Webhook deliveries that failed their first attempt, retried with whatever time is
   // left. Their own backoff decides which are due.
   if (deadline - Date.now() > 6_000) {
+    // First the runs whose announcement was never queued (0051), so this sweep sends them too.
+    await announceMissedRuns(client, deadline - 6_000);
     const retried = await deliverDue({ db: client, deadline: deadline - 1_000 });
     report.delivered = retried.delivered;
   }

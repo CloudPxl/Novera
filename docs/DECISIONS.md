@@ -3290,3 +3290,32 @@ address is in the body".
 nothing was graded for 24 hours; ended by an error, details on the run page. The run page keeps the full
 text. `verify:webhooks` 25 (the new check fails before and passes after), plus a unit test covering all
 three. 565 tests.
+
+## 2026-10-01 — A finished run nobody announced is found and announced (0051)
+
+A run is announced by the slice that finishes it, just after marking it finished. A slice killed between
+the two left a finished run that no delivery named, and nothing looked for one. Runs ended by the 24-hour
+stalled-run pass, which runs in the database, were never announced at all. Reproduced: a planted finished
+run, then a sweep, gives 0 delivery rows.
+
+`runs_awaiting_announcement()` lists finished runs, with the endpoints that missed them, under three
+conditions:
+- the run finished more than two minutes ago, so its own slice had its chance;
+- it finished less than a day ago;
+- the endpoint already existed when it finished, so adding one does not replay history.
+
+The clock's tick queues those before its delivery sweep (`announceMissedRuns`), one endpoint at a time.
+A first version queued to every endpoint in the workspace; `verify:webhooks` caught it (4 rows for 1). The
+clock's wake-up condition in `schedules:clock` now includes them, so the clock fires for them when
+nothing else is due.
+
+`verify:webhooks` 29, with 4 new checks:
+- the sweep alone does not announce;
+- the clock announces once, only to the endpoint that existed;
+- asking again adds nothing;
+- a run that just finished is left alone.
+
+`verify:schedules` 29. 565 tests.
+
+**Needs action in production:** migration 0051, then `npm run schedules:clock -- install` to replace the
+installed job's condition.

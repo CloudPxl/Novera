@@ -243,6 +243,38 @@ export async function notifyRunFinished(db: SupabaseClient, workspaceId: string,
   }
 }
 
+/**
+ * Queues the announcements a finishing slice never made — it was killed between marking the
+ * run finished and queueing the event — and those of runs ended by the stalled-run pass,
+ * which runs in the database (0051). Called by the clock; the sweep after it delivers them.
+ * The unique index keeps a run announced once per endpoint however often this runs.
+ */
+export async function announceMissedRuns(db: SupabaseClient, deadline: number): Promise<number> {
+  const { data, error } = await db.rpc("runs_awaiting_announcement", { max_rows: 20 });
+  if (error) {
+    console.error(`Missed run announcements could not be listed: ${error.message}`);
+    return 0;
+  }
+  // Only to the endpoints that missed it: an endpoint added after the run finished is not
+  // sent the workspace's history.
+  const byRun = new Map<string, { workspaceId: string; endpoints: string[] }>();
+  for (const row of (data ?? []) as Array<{ workspace_id: string; run_id: string; endpoint_id: string }>) {
+    const entry = byRun.get(row.run_id) ?? { workspaceId: row.workspace_id, endpoints: [] };
+    entry.endpoints.push(row.endpoint_id);
+    byRun.set(row.run_id, entry);
+  }
+  let queued = 0;
+  for (const [runId, { workspaceId, endpoints }] of byRun) {
+    if (Date.now() > deadline) break;
+    const built = await runEventBody(db, workspaceId, runId, appOrigin());
+    if (!built) continue;
+    for (const endpoint of endpoints) {
+      queued += (await enqueue({ db, workspaceId, event: built.event, subjectId: runId, body: built.body, onlyEndpoint: endpoint })).length;
+    }
+  }
+  return queued;
+}
+
 /** Announces a paused schedule. Never throws, for the same reason. */
 export async function notifySchedulePaused(db: SupabaseClient, workspaceId: string, schedule: { id: string; reason: string; agentId: string }, deadline: number): Promise<void> {
   try {

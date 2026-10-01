@@ -137,6 +137,45 @@ try {
   const { error: sealed } = await member.from("webhook_endpoints").select("secret_ciphertext").eq("id", endpointId);
   report(visible?.length === 1 && Boolean(sealed), "a member sees the endpoint and its prefix, not the sealed secret");
 
+  // ------------------------------------------------------------------ a finished run nobody announced (0051)
+  // A slice killed between finishing a run and queueing its event, or the stalled-run pass,
+  // leaves a finished run with no delivery. The clock now finds and announces it, once.
+  console.log("\nA finished run nobody announced");
+  {
+    const finishedAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+    const plant = async (minutesAgo: number) => (await db.from("runs").insert({
+      workspace_id: ws!.id, agent_id: agent!.id, policy_id: (await db.from("policies").select("id").eq("agent_id", agent!.id).single()).data!.id,
+      suite_id: suite!.id, status: "completed", finished_at: finishedAgo(minutesAgo),
+    }).select("id").single()).data!.id as string;
+    const deliveriesFor = async (runId: string) => (await db.from("webhook_deliveries").select("endpoint_id").eq("subject_id", runId)).data ?? [];
+    // An endpoint that already existed ten minutes ago, before the planted runs finished.
+    const { seal } = await import("../src/lib/crypto.ts");
+    const olderId = crypto.randomUUID();
+    const olderSecret = `whsec_${crypto.randomUUID().replace(/-/g, "")}`;
+    const sealed = seal(olderSecret, `novera:webhook:${olderId}`);
+    await db.from("webhook_endpoints").insert({
+      id: olderId, workspace_id: ws!.id, url: `http://127.0.0.1:${port}/hook`, events: ["run.completed"], created_by: user.id,
+      secret_prefix: olderSecret.slice(0, 12), secret_ciphertext: sealed.ciphertext, secret_iv: sealed.iv, secret_tag: sealed.tag,
+      created_at: finishedAgo(10),
+    });
+    const missed = await plant(5);
+    const fresh = await plant(0);
+    await deliverDue({ db, deadline: Date.now() + 10_000 });
+    report((await deliveriesFor(missed)).length === 0, "a sweep alone never announces a finished run whose event was not queued", `${(await deliveriesFor(missed)).length} delivery row(s)`);
+    const later = await createEndpoint({ db, workspaceId: ws!.id, url: `http://127.0.0.1:${port}/hook`, events: ["run.completed"], createdBy: user.id });
+    const { announceMissedRuns } = await import("../src/lib/webhooks/deliver.ts");
+    const queued = await announceMissedRuns(db, Date.now() + 10_000);
+    await deliverDue({ db, deadline: Date.now() + 10_000 });
+    const arrived = received.filter((r) => r.body.includes(missed)).length;
+    const rows = await deliveriesFor(missed);
+    report(queued === 1 && arrived === 1 && rows.length === 1 && rows[0].endpoint_id === olderId,
+      "the clock announces it once, only to the endpoint that existed when it finished", `queued ${queued}, arrived ${arrived}, rows ${JSON.stringify(rows.map((r) => r.endpoint_id === olderId ? "the older endpoint" : r.endpoint_id === later.id ? "the later endpoint" : "another"))}`);
+    const again = await announceMissedRuns(db, Date.now() + 10_000);
+    report((await deliveriesFor(missed)).length === 1, "asking again announces nothing twice", `queued ${again}`);
+    report((await deliveriesFor(fresh)).length === 0, "a run finished moments ago is left to the slice that finished it");
+    await db.from("webhook_endpoints").update({ revoked_at: new Date().toISOString(), revoked_by: user.id }).in("id", [later.id, olderId]);
+  }
+
   // ------------------------------------------------------------------ concurrency (audit C2, C3, C8)
   // Delivery is at-least-once: one claim per attempt, every attempt counted, and a repeat
   // only when a sender died between the receiver's answer and recording it. Never two

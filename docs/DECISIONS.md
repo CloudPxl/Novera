@@ -3250,3 +3250,30 @@ Evidence:
 
 **Customer-visible:** a reply over 256 KB is now a no-result with that sentence. It should be stated in
 `/docs/connecting-an-agent`, which needs approval.
+
+## 2026-10-01 — A connection is opened only to an address the guard approved (R4)
+
+`assertPublicUrl` resolved a customer's hostname and checked every address; the request then resolved the
+name again on its own. What was checked was therefore not necessarily what was reached (audit R4, a
+code-review risk; no attack harness was built, by the constraint this pass works under).
+
+The fix: the agent, read-back and webhook requests now go through one undici `Agent` whose connection
+lookup is the guard itself (`publicOnlyDispatcher`). Every address the name resolves to at the moment of
+connecting is checked, and the socket is opened only to an approved one; TLS still verifies the
+certificate against the hostname. A refusal reads "Not sent: … points to a private or internal address".
+Literal addresses are unchanged: the pre-check judges them, and they cannot change. Node's own fetch
+honours the dispatcher, and Next's fetch wrapper passes it through (it spreads the options). `undici`
+7.30 was added; `npm audit` still finds 0 vulnerabilities.
+
+Tests use a stand-in resolver and a loopback server:
+- an internal answer is refused at connect;
+- one internal answer among public ones refuses the name;
+- an answer that differs from the earlier check is judged at connect;
+- loopback outside production still connects.
+
+Also: numeric spellings (decimal, hex, octal, short) and IPv4-mapped and NAT64 forms of internal
+addresses are refused. Webhooks 24, leases 10, slices 11 end to end. 564 tests.
+
+**Not proven:** that Vercel's network path preserves this. There is no deployment in this pass, and an
+egress proxy or platform DNS behaviour there is unverified. 6to4 and Teredo addresses embedding private
+IPv4 are judged public, unreachable by ordinary routing, noted rather than claimed.

@@ -1,6 +1,6 @@
 import { runChecks, describeFailures, type DeterministicCheck } from "../../judge/checks.ts";
 import { redactCredentials } from "../../providers/types.ts";
-import { assertPublicUrl } from "../../net/public-url.ts";
+import { assertPublicUrl, publicOnlyDispatcher, refusedAddress } from "../../net/public-url.ts";
 import type {
   ConnectorMode, ValidationResult, VerificationConnector, VerificationInput, VerificationObservation,
 } from "./types.ts";
@@ -65,7 +65,7 @@ export function httpVerificationConnector(
       // Never followed: a redirect would carry the read-back — and its credential —
       // outside the endpoint the customer configured, which this connector promises not
       // to leave.
-      const response = await fetch(url, { method: "GET", headers, signal: controller.signal, redirect: "manual" });
+      const response = await fetch(url, { method: "GET", headers, signal: controller.signal, redirect: "manual", dispatcher: publicOnlyDispatcher() } as RequestInit);
       const text = await response.text();
       if (response.status >= 300 && response.status < 400) {
         return { ok: false, why: `The verification endpoint answered ${response.status} (a redirect), and redirects are not followed.` };
@@ -75,7 +75,7 @@ export function httpVerificationConnector(
       }
       return { ok: true, text };
     } catch (error) {
-      const why = error instanceof Error ? error.message : String(error);
+      const why = refusedAddress(error) ?? (error instanceof Error ? error.message : String(error));
       return { ok: false, why: `The verification endpoint could not be reached: ${why}` };
     } finally {
       clearTimeout(timer);

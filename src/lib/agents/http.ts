@@ -2,7 +2,7 @@ import type { AgentAdapter, AgentInvocation, AgentResult, HttpAgentConfig } from
 import { PROBE_INPUT } from "./types.ts";
 import { fillTemplate, readPath } from "./template.ts";
 import { suggestPathHint } from "./discover.ts";
-import { assertPublicUrl } from "../net/public-url.ts";
+import { assertPublicUrl, publicOnlyDispatcher, refusedAddress } from "../net/public-url.ts";
 
 /**
  * Calls a customer's deployed agent over HTTP.
@@ -132,7 +132,9 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
         // to an address the check above never saw.
         redirect: "manual",
         signal: AbortSignal.timeout(wait),
-      });
+        // The address connected to is checked when the connection opens, not only above.
+        dispatcher: publicOnlyDispatcher(),
+      } as RequestInit);
     } catch (error) {
       if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
         const cut = wait < own;
@@ -144,12 +146,13 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
             : `The agent did not answer within ${Math.round(own / 1000)} s.`,
         };
       }
+      const refused = refusedAddress(error);
       return {
         ok: false,
         responseText: null,
         toolActivity: null,
         latencyMs: Date.now() - started,
-        error: `Request failed: ${error instanceof Error ? error.message : String(error)}`,
+        error: refused ? `Not sent: ${refused}` : `Request failed: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
 

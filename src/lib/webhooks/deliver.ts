@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { open, seal } from "../crypto.ts";
-import { assertPublicUrl } from "../net/public-url.ts";
+import { assertPublicUrl, publicOnlyDispatcher, refusedAddress } from "../net/public-url.ts";
 import { SIGNATURE_HEADER, signatureFor } from "./sign.ts";
 import { pipelineOutcome } from "../report/outcome.ts";
 import type { ReportPayload } from "../report/payload.ts";
@@ -152,6 +152,7 @@ export async function deliverDue(args: {
         method: "POST",
         redirect: "manual",
         signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
+        dispatcher: publicOnlyDispatcher(),
         headers: {
           "content-type": "application/json",
           "user-agent": "Novera-Webhooks/1",
@@ -160,14 +161,16 @@ export async function deliverDue(args: {
           [SIGNATURE_HEADER]: signatureFor(secret, body, Math.floor(Date.now() / 1000)),
         },
         body,
-      });
+      } as RequestInit);
       if (res.status >= 200 && res.status < 300) {
         if (await settle({ status: "delivered", last_status: res.status, last_error: null, delivered_at: new Date().toISOString() })) out.delivered++;
       } else {
         await fail(res.status, res.status >= 300 && res.status < 400 ? `Answered ${res.status}; redirects are not followed.` : `Answered ${res.status}.`);
       }
     } catch (e) {
-      await fail(null, e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError") ? `No answer within ${DELIVERY_TIMEOUT_MS / 1000} s.` : `Could not connect: ${e instanceof Error ? e.message : String(e)}`);
+      const refused = refusedAddress(e);
+      await fail(null, refused ? `Not sent: ${refused}`
+        : e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError") ? `No answer within ${DELIVERY_TIMEOUT_MS / 1000} s.` : `Could not connect: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   return out;

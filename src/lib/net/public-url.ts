@@ -1,4 +1,6 @@
 import { lookup } from "node:dns/promises";
+import type { LookupFunction } from "node:net";
+import { Agent } from "undici";
 import { isIP } from "node:net";
 
 /**
@@ -135,4 +137,57 @@ export async function assertPublicUrl(
     );
   }
   return url;
+}
+
+
+/**
+ * The connection-time half of the guard (audit 2026-09-30, R4). `assertPublicUrl` checks a
+ * host's addresses before a request; the connection then resolved the name again on its
+ * own, so what was checked and what was reached could differ. This lookup is the one the
+ * socket uses: every address the name resolves to at the moment of connecting is checked,
+ * and the connection is opened only to an approved one. TLS still verifies the certificate
+ * against the hostname, which the lookup does not touch.
+ *
+ * A literal address never reaches a lookup; `assertPublicUrl` has already judged it, and a
+ * literal cannot change.
+ */
+function guardedLookup(allowLoopback: boolean): LookupFunction {
+  const lookupFn = (hostname: string, options: { all?: boolean }, callback: (error: Error | null, address?: unknown, family?: number) => void) => {
+    defaultResolver(hostname).then((addresses) => {
+      if (!addresses.length) throw new PrivateAddressError(`${hostname} could not be resolved.`);
+      for (const address of addresses) {
+        if (isPublicAddress(address) || (allowLoopback && isLoopback(address))) continue;
+        throw new PrivateAddressError(
+          `${hostname} points to a private or internal address (${address}). Novera calls only addresses on the public internet.`,
+        );
+      }
+      const family = (address: string) => (isIP(address) === 6 ? 6 : 4);
+      if (options?.all) callback(null, addresses.map((address) => ({ address, family: family(address) })));
+      else callback(null, addresses[0], family(addresses[0]));
+    }).catch((error: Error) => callback(error));
+  };
+  return lookupFn as unknown as LookupFunction;
+}
+
+const dispatchers = new Map<boolean, Agent>();
+
+/**
+ * The dispatcher every request to a customer-supplied address goes through: the agent, the
+ * read-back endpoint, webhooks. Pass it as `dispatcher` to fetch. Loopback is allowed
+ * outside production, as in `assertPublicUrl`.
+ */
+export function publicOnlyDispatcher(options: { allowLoopback?: boolean } = {}): Agent {
+  const allow = options.allowLoopback ?? process.env.NODE_ENV !== "production";
+  let dispatcher = dispatchers.get(allow);
+  if (!dispatcher) {
+    dispatcher = new Agent({ connect: { lookup: guardedLookup(allow) } });
+    dispatchers.set(allow, dispatcher);
+  }
+  return dispatcher;
+}
+
+/** The sentence for a request the connection-time check refused, if that is why it failed. */
+export function refusedAddress(error: unknown): string | null {
+  const cause = (error as { cause?: unknown } | null)?.cause;
+  return cause instanceof PrivateAddressError ? cause.message : null;
 }

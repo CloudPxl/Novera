@@ -43,3 +43,45 @@ test("literal addresses, schemes, and loopback outside production", async () => 
   await assert.doesNotReject(() => assertPublicUrl("http://127.0.0.1:3000/api/test-agent", { allowLoopback: true }));
   await assert.rejects(() => assertPublicUrl("http://10.0.0.1/", { allowLoopback: true }), PrivateAddressError);
 });
+
+// Audit 2026-09-30, R4: the check above and the connection each resolved the name, so what
+// was checked was not necessarily what was reached. The connection now resolves through the
+// guard itself. Against a real socket on loopback, with a stand-in resolver.
+async function loopbackServer() {
+  const { createServer } = await import("node:http");
+  const server = createServer((_req, res) => res.end("reached"));
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  return { port: (server.address() as { port: number }).port, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
+}
+const { publicOnlyDispatcher, refusedAddress, setResolverForTests } = await import("../src/lib/net/public-url.ts");
+const reach = (url: string, allowLoopback: boolean) =>
+  fetch(url, { dispatcher: publicOnlyDispatcher({ allowLoopback }) } as RequestInit).then(async (r) => `reached ${r.status}`, (e) => refusedAddress(e) ?? `failed: ${e}`);
+
+test("the connection is opened only to an address the guard approved, checked as it opens", async () => {
+  const server = await loopbackServer();
+  try {
+    setResolverForTests(async () => ["127.0.0.1"]);
+    assert.match(await reach(`http://agent.example:${server.port}/`, false), /private or internal address \(127\.0\.0\.1\)/);
+
+    setResolverForTests(async () => ["93.184.216.34", "10.0.0.5"]);
+    assert.match(await reach(`http://agent.example:${server.port}/`, false), /10\.0\.0\.5/, "any internal answer refuses the name");
+
+    // What the earlier check saw does not decide what the connection reaches.
+    let calls = 0;
+    setResolverForTests(async () => (++calls === 1 ? ["93.184.216.34"] : ["127.0.0.1"]));
+    await assertPublicUrl(`http://agent.example:${server.port}/`, { allowLoopback: false });
+    assert.match(await reach(`http://agent.example:${server.port}/`, false), /127\.0\.0\.1/);
+
+    setResolverForTests(async () => ["127.0.0.1"]);
+    assert.equal(await reach(`http://agent.example:${server.port}/`, true), "reached 200", "loopback outside production, as before");
+  } finally {
+    setResolverForTests(null);
+    await server.close();
+  }
+});
+
+test("numeric spellings of an internal address are the address they spell", async () => {
+  for (const url of ["http://2130706433/", "http://0x7f.0.0.1/", "http://0177.0.0.1/", "http://127.1/", "http://[::ffff:7f00:1]/", "http://[64:ff9b::a00:1]/"]) {
+    await assert.rejects(assertPublicUrl(url, { allowLoopback: false }), /private or internal/, url);
+  }
+});

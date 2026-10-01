@@ -103,11 +103,15 @@ try {
   // Stopping a run announces it as stopped.
   const again2 = await fetch(`${base}/api/v1/runs`, { method: "POST", headers, body: JSON.stringify({ agent_id: agent!.id, suite_id: suite!.id }) });
   const stopId = ((await again2.json()) as { run: { id: string } }).run.id;
-  await db.from("runs").update({ status: "aborted", error: "Stopped by the verification.", finished_at: new Date().toISOString(), stopped_by: user.id }).eq("id", stopId);
+  // The exact sentence the Stop button writes, which names the person by email address.
+  await db.from("runs").update({ status: "aborted", error: `Stopped by ${email} before it finished. Its graded scenarios are kept; no report was sealed.`, finished_at: new Date().toISOString(), stopped_by: user.id }).eq("id", stopId);
   const { notifyRunFinished } = await import("../src/lib/webhooks/deliver.ts");
   await notifyRunFinished(db, ws!.id, stopId, Date.now() + 8_000);
   const stopped = received.map((r) => JSON.parse(r.body) as { event: string; run?: { id: string; outcome: string } }).find((b) => b.event === "run.stopped");
   report(stopped?.run?.id === stopId && stopped.run.outcome === "incomplete", "a stopped run is announced as stopped, and as incomplete — never a pass");
+  const stoppedRaw = received.map((r) => r.body).find((b) => b.includes(stopId)) ?? "";
+  report(!stoppedRaw.includes(email) && /stopped by a member/i.test(stoppedRaw),
+    "it says a member stopped it, without naming them: a receiver is a third party (audit R7)", stoppedRaw.includes(email) ? "the stopper's email address is in the body" : JSON.stringify((stopped?.run as { reason?: string } | undefined)?.reason));
 
   // A private address is refused at delivery, whatever was stored.
   const { id: privateId } = await createEndpoint({ db, workspaceId: ws!.id, url: "http://10.0.0.7/hook", events: ["run.completed"], createdBy: user.id });

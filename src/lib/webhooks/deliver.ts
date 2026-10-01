@@ -179,7 +179,7 @@ export async function deliverDue(args: {
 /** What a finished run's webhook says: counts and links from stored rows, nothing more. */
 export async function runEventBody(db: SupabaseClient, workspaceId: string, runId: string, origin: string): Promise<{ event: WebhookEvent; body: Record<string, unknown> } | null> {
   const [{ data: run }, { data: cases }, { data: report }] = await Promise.all([
-    db.from("runs").select("id, status, error, created_at, finished_at, schedule_id, agents(id, name), suites(key, version)")
+    db.from("runs").select("id, status, error, stopped_by, created_at, finished_at, schedule_id, agents(id, name), suites(key, version)")
       .eq("workspace_id", workspaceId).eq("id", runId).maybeSingle(),
     db.from("run_cases").select("status").eq("workspace_id", workspaceId).eq("run_id", runId),
     db.from("reports").select("token, content_hash, payload").eq("workspace_id", workspaceId).eq("run_id", runId).is("revoked_at", null)
@@ -203,12 +203,24 @@ export async function runEventBody(db: SupabaseClient, workspaceId: string, runI
         created_at: run.created_at, finished_at: run.finished_at,
         counts: { passed, failed, no_result: noResult },
         outcome,
-        ...(run.status === "aborted" ? { reason: run.error } : {}),
+        ...(run.status === "aborted" ? { reason: abortedReason(run) } : {}),
         url: `${origin}/runs/${run.id}`,
         report: report ? { url: `${origin}/report/${report.token}`, content_hash: report.content_hash } : null,
       },
     },
   };
+}
+
+/**
+ * Why a run ended early, as one of three fixed sentences. The run's own error text is for the
+ * workspace — the Stop button writes the person's email address into it, and a failure can
+ * carry an agent's or the database's words — while a webhook goes to a third party's system
+ * (audit R7: the stopper's email reached the receiver). The run page keeps the full text.
+ */
+export function abortedReason(run: { error: string | null; stopped_by: string | null }): string {
+  if (run.stopped_by) return "Stopped by a member of the workspace before it finished.";
+  if (/no scenario was graded for 24 hours/.test(run.error ?? "")) return "Stopped because no scenario was graded for 24 hours.";
+  return "Ended by an error outside any scenario; the run page says what happened.";
 }
 
 /** The app's public origin, for links in a webhook body. */

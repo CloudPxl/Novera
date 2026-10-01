@@ -59,3 +59,12 @@ test("the webhook and the CLI decide the same way over the same report", () => {
     assert.equal(pipelineOutcome({ status: "completed" }, p), expected, JSON.stringify({ c, band }));
   }
 });
+
+test("a webhook says why a run ended in one of three fixed sentences, never the run's own words (R7)", async () => {
+  const { abortedReason } = await import("../src/lib/webhooks/deliver.ts");
+  const stopped = abortedReason({ error: "Stopped by someone@example.test before it finished.", stopped_by: "u1" });
+  assert.equal(stopped, "Stopped by a member of the workspace before it finished.");
+  assert.equal(abortedReason({ error: "Stopped: no scenario was graded for 24 hours, so this run cannot finish as one sitting.", stopped_by: null }), "Stopped because no scenario was graded for 24 hours.");
+  const failed = abortedReason({ error: "Could not save case T01: duplicate key value violates unique constraint run_cases_run_id_case_id_key", stopped_by: null });
+  assert.doesNotMatch(failed, /duplicate key|run_cases/);
+});

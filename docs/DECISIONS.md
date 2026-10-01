@@ -3277,3 +3277,16 @@ addresses are refused. Webhooks 24, leases 10, slices 11 end to end. 564 tests.
 **Not proven:** that Vercel's network path preserves this. There is no deployment in this pass, and an
 egress proxy or platform DNS behaviour there is unverified. 6to4 and Teredo addresses embedding private
 IPv4 are judged public, unreachable by ordinary routing, noted rather than claimed.
+
+## 2026-10-01 — A webhook says why a run ended in a fixed sentence (R7, now confirmed)
+
+The audit listed the aborted run's raw error in the webhook body as a code-review risk. It is worse than
+that. The Stop button writes "Stopped by <the person's email> …" into the run's error, and the webhook
+forwarded it as `reason`, so a member's email address reached a third party's system. The verifier had
+planted a neutral sentence instead of the real one; with the real one it fails: "the stopper's email
+address is in the body".
+
+`reason` is now one of three fixed sentences: stopped by a member of the workspace; stopped because
+nothing was graded for 24 hours; ended by an error, details on the run page. The run page keeps the full
+text. `verify:webhooks` 25 (the new check fails before and passes after), plus a unit test covering all
+three. 565 tests.

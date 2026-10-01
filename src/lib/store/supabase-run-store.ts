@@ -8,8 +8,24 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * turns that into an aborted run, which is the honest outcome. A run that silently
  * lost half its cases would still produce a confident-looking report.
  */
-export function supabaseRunStore(client: SupabaseClient, workspaceId: string): RunStore {
+export function supabaseRunStore(
+  client: SupabaseClient,
+  workspaceId: string,
+  /** The token this slice's claim wrote (0047). Every write below is fenced by it when given. */
+  options: { leaseToken?: string } = {},
+): RunStore {
+  const { leaseToken } = options;
+  // Whose lease it is, not whether the run is still going: a person who stops a run keeps
+  // the scenarios already sent (they finish and are saved), and that is decided by
+  // isStopped, which the runner checks first. Only another slice's token means "not yours".
+  async function holds(runId: string): Promise<boolean> {
+    if (!leaseToken) return true;
+    const { data } = await client.from("runs").select("lease_token").eq("id", runId).eq("workspace_id", workspaceId).maybeSingle();
+    return data?.lease_token === leaseToken;
+  }
   return {
+    holdsRun: holds,
+
     async markRunning(runId) {
       const { error } = await client
         .from("runs")
@@ -31,6 +47,8 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
     },
 
     async saveCase(record: RunCaseRecord) {
+      // A slice that lost the run saves nothing: the slice that took it over records its own.
+      if (!(await holds(record.runId))) return "not_holder";
       const { data: saved, error } = await client.from("run_cases").insert({
         workspace_id: workspaceId,
         run_id: record.runId,
@@ -61,6 +79,14 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
       })
         .select("id")
         .single();
+      if (error?.code === "23505") {
+        // The run already has this scenario — unique on (run_id, case_id), so the row that
+        // won is this run's and this case's. Read back to be sure it is there, then treat it
+        // as done rather than aborting the run over evidence that exists.
+        const { data: existing } = await client.from("run_cases").select("id")
+          .eq("run_id", record.runId).eq("case_id", record.caseId).eq("workspace_id", workspaceId).maybeSingle();
+        if (existing) return "already_recorded";
+      }
       if (error) throw new Error(`Could not save case ${record.caseId}: ${error.message}`);
 
       // What an independent read of the customer's system showed, if one happened.
@@ -86,6 +112,7 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
           throw new Error(`Could not save the verification of ${record.caseId}: ${observed.message}`);
         }
       }
+      return "saved";
     },
 
     async isStopped(runId) {
@@ -94,19 +121,24 @@ export function supabaseRunStore(client: SupabaseClient, workspaceId: string): R
     },
 
     async finishRun(runId, outcome) {
-      const { error } = await client
+      let update = client
         .from("runs")
         .update({
           status: outcome.status,
           finished_at: new Date().toISOString(),
           error: outcome.error ?? null,
+          ...(leaseToken ? { lease_until: null, lease_token: null } : {}),
         })
         .eq("id", runId)
         .eq("workspace_id", workspaceId)
         // A run stopped while this slice was grading stays stopped: its last cases are
         // kept, but it is not turned back into a completed run.
         .in("status", ["queued", "running"]);
+      // Only the slice holding the run finishes it.
+      if (leaseToken) update = update.eq("lease_token", leaseToken);
+      const { data, error } = await update.select("id");
       if (error) throw new Error(`Could not finish run: ${error.message}`);
+      return (data ?? []).length === 1;
     },
   };
 }

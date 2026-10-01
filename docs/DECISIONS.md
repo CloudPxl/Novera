@@ -3024,3 +3024,33 @@ when its 30-second lease runs out, and both attempts are counted. `verify:webhoo
 
 The public docs still say "Each run is announced once" (`data/docs/api.md:73`). That copy changes only
 with approval.
+
+## 2026-10-01 — A run's lease names its holder (0047)
+
+A slice that outlived its 70-second lease went on sending scenarios after another slice took the run over.
+It saved over the newcomer, so the second save of a scenario aborted the run on the unique key, and it
+released the newcomer's lease. Reproduced fresh with the audit's race harness: 9 agent calls for 6
+scenarios, both slices `aborted`, no report; the stale slice set `lease_until = null` (audit C4).
+
+The fix:
+- `claim_run_slice_fenced` writes a fresh `lease_token` and returns it. The old function is kept for any
+  caller still deployed with it.
+- The store fences every write with the token: save, finish, release, and `abortHeldRun`.
+- The runner checks `holdsRun` before each scenario. It stops on `not_holder`, and treats
+  `already_recorded` (23505 on `(run_id, case_id)`, read back) as done.
+- A finish that writes nothing is `incomplete`, or `aborted` if a person stopped the run in between.
+- The fence asks only whose token it is, not whether the run is still running. A first version also
+  required `running`, which made a person's Stop discard the scenarios already in flight;
+  `verify:slices` caught it ("0 recorded of 12" instead of 3).
+
+**The limit, stated rather than hidden:** scenarios already in flight at a takeover (at most the runner's
+concurrency, 3) can reach the agent twice. The agent takes no idempotency key and returns no receipt, so
+nothing can know whether it acted on the first.
+
+Evidence:
+- `verify:leases`, new: 10 ok. A stale slice sent 3 in flight, then 0 more; saved 0; left the other
+  slice's lease alone; a stale abort was not applied. A takeover ran to completion with 6 rows, the 3
+  in-flight scenarios sent twice.
+- The race harness: slice A `incomplete`, slice B `completed`, lease kept.
+- `verify:slices` (local responder) 11, schedules 29, api 33, mcp 30, access 15, tenancy 27, db 59.
+- Three runner unit tests fail on the old runner and pass on the new. 543 tests.

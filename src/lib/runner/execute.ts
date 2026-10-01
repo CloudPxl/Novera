@@ -559,6 +559,8 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   let slowestAgentMs = 0;
   let startedThisSlice = 0;
   let stopped = false;
+  // Another slice took the run over (0047): it sends and records what is left.
+  let lostLease = false;
 
   async function worker(): Promise<void> {
     while (true) {
@@ -585,6 +587,12 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         stopped = true;
         return;
       }
+      // Nor from a slice that no longer holds the run: the one that took it over sends
+      // what is left. Checked before each scenario, never in the middle of one.
+      if (lostLease || (store.holdsRun && !(await store.holdsRun(runId)))) {
+        lostLease = true;
+        return;
+      }
 
       if (hardStop !== undefined && startedThisSlice > 0 && hardStop - Date.now() < caseNeedsMs(testCase, slowestAgentMs)) {
         ranOutOfTime = true;
@@ -609,7 +617,17 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         })),
       };
       slowestAgentMs = Math.max(slowestAgentMs, records[index].latencyMs ?? 0);
-      await store.saveCase(records[index]);
+      const saved = await store.saveCase(records[index]);
+      if (saved === "not_holder" || saved === "already_recorded") {
+        // Not this slice's evidence to count: either nothing was stored, or the run already
+        // holds this scenario. The stored row is the record.
+        delete records[index];
+        if (saved === "not_holder") {
+          lostLease = true;
+          return;
+        }
+        continue;
+      }
 
       if (everyJudgeRateLimited(records[index])) {
         consecutiveQuotaFailures++;
@@ -636,9 +654,14 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
 
   // Left running on purpose when time ran out: the run is not finished, and marking
   // it finished would publish a report over partial evidence.
+  const superseded = "Another slice took this run over and continues it; this one stopped before sending anything more.";
   if (stopped) {
     // Already recorded as stopped, with who stopped it; nothing to write.
     status = "aborted";
+  } else if (lostLease) {
+    // Not finished and not failed: another slice holds the run and writes its outcome.
+    status = "incomplete";
+    error = superseded;
   } else if (status === "completed" && ranOutOfTime) {
     if (quotaExhausted) {
       error =
@@ -647,8 +670,14 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         + "Run the suite again when the quota has recovered.";
     }
     status = "incomplete";
-  } else {
-    await store.finishRun(runId, { status, error });
+  } else if ((await store.finishRun(runId, { status, error })) === false) {
+    // Nothing was written: a person stopped the run meanwhile, or another slice took it over.
+    if (store.isStopped && await store.isStopped(runId)) {
+      status = "aborted";
+    } else {
+      status = "incomplete";
+      error = superseded;
+    }
   }
 
   const plannedByObligation: Record<string, number> = {};

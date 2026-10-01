@@ -63,20 +63,14 @@ try {
     `${fresh.runsUsed}/${fresh.runsAllowed}`);
   report(fresh.judgeSource === "trial_free", "a trial run is attributed to the trial allowance");
 
-  // Fill the trial exactly to its limit.
-  for (let i = 0; i < TRIAL_RUN_LIMIT; i++) {
+  // Fill the trial to one short of its limit; the last one is queued, because a queued run
+  // counts too: three started at once is still three runs.
+  for (let i = 0; i < TRIAL_RUN_LIMIT - 1; i++) {
     await db.from("runs").insert({
       workspace_id: workspaceId, agent_id: agent!.id, policy_id: policy!.id,
       suite_id: suite!.id, status: "completed", judge_source: "trial_free",
     });
   }
-
-  const exhausted = await workspaceEntitlement({ client: db, workspaceId });
-  report(!exhausted.canRun, `the trial stops at ${TRIAL_RUN_LIMIT} runs`,
-    exhausted.canRun ? "it did NOT stop, which is wrong" : `${exhausted.runsUsed} used`);
-  report(Boolean(exhausted.blockedReason), "the refusal explains itself to the customer");
-
-  // A queued run counts too: three started at once is still three runs.
   const beforeQueued = (await workspaceEntitlement({ client: db, workspaceId })).runsUsed;
   await db.from("runs").insert({
     workspace_id: workspaceId, agent_id: agent!.id, policy_id: policy!.id,
@@ -84,6 +78,20 @@ try {
   });
   const afterQueued = (await workspaceEntitlement({ client: db, workspaceId })).runsUsed;
   report(afterQueued === beforeQueued + 1, "a queued run counts against the trial");
+
+  const exhausted = await workspaceEntitlement({ client: db, workspaceId });
+  report(!exhausted.canRun, `the trial stops at ${TRIAL_RUN_LIMIT} runs`,
+    exhausted.canRun ? "it did NOT stop, which is wrong" : `${exhausted.runsUsed} used`);
+  report(Boolean(exhausted.blockedReason), "the refusal explains itself to the customer");
+
+  // And the database holds the line itself (0049), whoever inserts: the application's check
+  // alone let twenty starts at once through.
+  const { error: fourth } = await db.from("runs").insert({
+    workspace_id: workspaceId, agent_id: agent!.id, policy_id: policy!.id,
+    suite_id: suite!.id, status: "queued", judge_source: "trial_free",
+  });
+  report(/trial_exhausted/.test(fourth?.message ?? ""), `a trial run past the ${TRIAL_RUN_LIMIT}rd is refused by the database, even inserted directly`,
+    fourth?.message.slice(0, 70) ?? "the fourth run was accepted");
 
   // Now the workspace brings its own key.
   await storeSecret({

@@ -184,6 +184,62 @@ try {
   const { error: unrevokeErr } = await db.from("api_keys").update({ revoked_at: null, revoked_by: null }).eq("id", keyRow!.id);
   report(!!unrevokeErr, "and stays revoked", unrevokeErr?.message.slice(0, 60) ?? "SUCCEEDED");
 
+  // ------------------------------------------------------------------ starting a run, retried (G1, C7)
+  // A pipeline that times out and retries must not start, and spend, a second run; and the
+  // trial's three runs are three however many requests arrive at once. makeWorkspace has
+  // already used one of each workspace's three.
+  console.log("\nStarting a run, retried");
+  const made: Array<{ ws: string; user: { id: string } }> = [];
+  try {
+    const keyed = async (tag: string) => {
+      const w = await makeWorkspace(tag);
+      made.push(w);
+      const k = mintKey();
+      await db.from("api_keys").insert({ workspace_id: w.ws, name: tag, prefix: k.prefix, key_hash: k.hash, scopes: ["read", "run"], created_by: w.user.id });
+      const start = (body: Record<string, unknown>, idempotency?: string) => fetch(`${base}/api/v1/runs`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${k.key}`, "content-type": "application/json", ...(idempotency ? { "idempotency-key": idempotency } : {}) },
+        body: JSON.stringify(body),
+      }).then(async (r) => ({ status: r.status, body: (await r.json().catch(() => ({}))) as { run?: { id: string }; replayed?: boolean; error?: string } }));
+      return { ...w, start };
+    };
+    const runsIn = async (ws: string) => (await db.from("runs").select("id", { count: "exact", head: true }).eq("workspace_id", ws)).count ?? 0;
+    const tally = (rs: Array<{ status: number }>) => JSON.stringify(rs.reduce<Record<number, number>>((m, r) => ({ ...m, [r.status]: (m[r.status] ?? 0) + 1 }), {}));
+
+    const c = await keyed("idem");
+    const request = { agent_id: c.agent };
+    const first = await c.start(request, "release-2026-10-01");
+    const replay = await c.start(request, "release-2026-10-01");
+    report(first.status === 201 && replay.status === 200 && replay.body.run?.id === first.body.run?.id && replay.body.replayed === true && await runsIn(c.ws) === 2,
+      "the same request with the same Idempotency-Key is answered with the first run, not a second", `${first.status} then ${replay.status}; ${await runsIn(c.ws)} run(s)`);
+    const changed = await c.start({ ...request, release_id: "something else" }, "release-2026-10-01");
+    report(changed.status === 409 && await runsIn(c.ws) === 2, "the same key with a different request is refused, not run", `${changed.status}: ${String(changed.body.error).slice(0, 70)}`);
+    const burst = await Promise.all(Array.from({ length: 20 }, () => c.start(request, "release-2026-10-02")));
+    const ids = new Set(burst.filter((r) => r.status < 300).map((r) => r.body.run?.id));
+    report(ids.size === 1 && burst.every((r) => r.status === 200 || r.status === 201) && await runsIn(c.ws) === 3,
+      "twenty identical requests at once with one key start one run, and all twenty are told which", `${tally(burst)}; ${await runsIn(c.ws)} run(s)`);
+    const fourth = await c.start(request, "release-2026-10-03");
+    const { count: claims, error: claimsError } = await db.from("run_requests").select("workspace_id", { count: "exact", head: true }).eq("workspace_id", c.ws).eq("idempotency_key", "release-2026-10-03");
+    report(fourth.status === 409 && await runsIn(c.ws) === 3 && !claimsError && claims === 0,
+      "a new key does not get past the trial's three runs, and a refused start leaves no claim behind", `${fourth.status}: ${String(fourth.body.error ?? claimsError?.message).slice(0, 60)}`);
+
+    const d = await keyed("idem-other");
+    const elsewhere = await d.start({ agent_id: d.agent }, "release-2026-10-01");
+    report(elsewhere.status === 201 && elsewhere.body.run?.id !== first.body.run?.id, "a key is scoped to its workspace: another workspace using the same key starts its own run", String(elsewhere.status));
+    const long = await d.start({ agent_id: d.agent }, "x".repeat(300));
+    report(long.status === 400, "an Idempotency-Key over 200 characters is refused", String(long.status));
+
+    const e = await keyed("cap");
+    const rush = await Promise.all(Array.from({ length: 20 }, () => e.start({ agent_id: e.agent })));
+    report(await runsIn(e.ws) === 3 && rush.filter((r) => r.status === 201).length === 2,
+      "twenty starts at once on a trial with two runs left start exactly two", `${tally(rush)}; ${await runsIn(e.ws)} run(s) in all`);
+  } finally {
+    for (const w of made) {
+      await db.rpc("erase_workspace", { target: w.ws });
+      await db.auth.admin.deleteUser(w.user.id);
+    }
+  }
+
   const { error: eraseErr } = await db.rpc("erase_workspace", { target: a.ws });
   const { count } = await db.from("api_keys").select("*", { count: "exact", head: true }).eq("workspace_id", a.ws);
   report(!eraseErr && count === 0, "erasure removes the workspace's keys", eraseErr?.message ?? `${count} left`);

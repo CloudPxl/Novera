@@ -6,7 +6,7 @@
  *   novera report verify <link | token | export.json>
  *   novera report status <link | token | export.json> [--junit results.xml]
  *   novera report export <link | token> --format md|csv|json|junit [--out file]
- *   novera run --agent <id> [--suite <id>] [--release <r>] [--kb-revision <k>] [--junit results.xml]   (NOVERA_API_KEY)
+ *   novera run --agent <id> [--suite <id>] [--release <r>] [--kb-revision <k>] [--idempotency-key <k>] [--junit results.xml]   (NOVERA_API_KEY)
  *
  * Exit codes (docs: /docs/cli-and-ci):
  *   0 complete and every scenario passed   1 a scenario failed
@@ -41,7 +41,7 @@ const USAGE = `novera — verify and read sealed Novera reports
   novera report verify <link | token | export.json> [--offline]
   novera report status <link | token | export.json> [--junit results.xml]
   novera report export <link | token> --format md|csv|json|junit [--out file]
-  novera run --agent <id> [--suite <id>] [--release <r>] [--kb-revision <k>] [--junit results.xml]
+  novera run --agent <id> [--suite <id>] [--release <r>] [--kb-revision <k>] [--idempotency-key <k>] [--junit results.xml]
 
 run needs NOVERA_API_KEY: a workspace key with the "can also start runs" scope. It is
 read from the environment only — never pass a key as an argument.
@@ -247,8 +247,12 @@ async function runCommand(args: string[]): Promise<number> {
   const base = (opts.base ?? process.env.NOVERA_URL ?? DEFAULT_BASE).replace(/\/+$/, "");
   if (!opts.agent) throw new Exit(CI_EXIT.configuration, "Pass --agent <id>. GET /api/v1/agents lists them.");
 
+  // A job retried after a timeout should get the run it already started: give the same key
+  // on every attempt (the pipeline's run id, say). Without one, each invocation is a new run.
+  const idempotencyKey = opts["idempotency-key"] ?? process.env.NOVERA_IDEMPOTENCY_KEY;
   const started = await api(base, "/api/v1/runs", {
     method: "POST",
+    ...(idempotencyKey ? { headers: { "idempotency-key": idempotencyKey } } : {}),
     body: JSON.stringify({
       agent_id: opts.agent,
       ...(opts.suite ? { suite_id: opts.suite } : {}),
@@ -257,7 +261,7 @@ async function runCommand(args: string[]): Promise<number> {
       ...(opts["kb-revision"] ? { knowledge_base_revision: opts["kb-revision"] } : {}),
     }),
   });
-  if (started.status !== 201) {
+  if (started.status !== 201 && !(started.status === 200 && started.body.replayed === true)) {
     throw new Exit(started.status >= 500 ? CI_EXIT.infrastructure : CI_EXIT.configuration,
       `The run was not started (${started.status}): ${started.body.error ?? "no reason given"}`);
   }

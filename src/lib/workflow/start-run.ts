@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { plannedRoutes, workspaceEntitlement } from "../auth/entitlement.ts";
+import { plannedRoutes, TRIAL_EXHAUSTED, workspaceEntitlement } from "../auth/entitlement.ts";
 import { manifestForNewRun } from "../report/manifest.ts";
 import { startRunExecution } from "./execute-run.ts";
 import { notifyRunFinished } from "../webhooks/deliver.ts";
@@ -38,6 +38,8 @@ export async function startRun(args: {
    * with whatever completed last. Must be this agent's, on this suite, in this workspace.
    */
   baselineRunId?: string | null;
+  /** The id to create the run with, chosen first by an Idempotency-Key claim. */
+  runId?: string;
 }): Promise<{ id: string }> {
   const { client, workspaceId, agentId } = args;
 
@@ -86,6 +88,7 @@ export async function startRun(args: {
     client, agentId, policyId: policy.id, suiteId: suite.id,
     judgeSource: entitlement.judgeSource, routes: plannedRoutes(entitlement),
     declared: args.customerDeclared,
+    runId: args.runId,
   });
 
   const { data: run, error } = await client
@@ -101,6 +104,9 @@ export async function startRun(args: {
       manifest: declared.manifest, manifest_hash: declared.manifest_hash,
     })
     .select("id").single();
+  // The database counts the trial under a lock (0049): of several starts at once, the ones
+  // past the third are refused here even though each passed the check above.
+  if (error && /trial_exhausted/.test(error.message)) throw new RunRefusal(TRIAL_EXHAUSTED);
   if (error || !run) throw new Error(`Could not start the run: ${error?.message ?? "no row returned"}`);
   return { id: run.id as string };
 }

@@ -55,6 +55,7 @@ someone with the service role, not merely someone using the application.
 | A destructive or fixture-only scenario never runs against a production agent | `agents.is_production`, checked in the runner |
 | A support reply goes draft → approved → sent, forward only; editing writes a new draft | 0009 |
 | A public form cannot be made free | 0024, counted in Postgres |
+| The trial funds three runs per workspace however many starts arrive at once, and a run start retried with the same `Idempotency-Key` returns the run it started instead of a second one | 0049, `src/lib/api/idempotency.ts`, `verify:api` |
 | A person gets one workspace on first use, however many page loads race to create it | 0029, advisory lock per user |
 | A row can refer only to rows in its own workspace — agents, policies, runs, cases, failures, suites (built-ins shared) — even for the service role | 0034 `refuse_cross_workspace()`, `verify:tenancy` |
 | An API key is stored only as an HMAC, reads by default and starts runs only if its creator chose that (never `run` without `read`), cannot be altered, and once revoked stays revoked; a key reads only its own workspace, and a run it starts names it | 0033 + 0035 + `src/lib/api/`, `verify:api` |
@@ -202,7 +203,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 554 unit tests | free |
+| `npm test` | 556 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |

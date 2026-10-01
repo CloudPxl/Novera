@@ -3124,3 +3124,37 @@ the request was `counted`, so no caller can inherit a default.
 After the fix, with the throttle unreachable: API read 200, sign-in works, production failure 503, MCP
 drafting refused before any model, reset refused, each with a sentence. With it restored, all go through.
 2 new unit tests; 554 tests; `verify:throttle` 12, api 33, mcp 30, regressions 13.
+
+## 2026-10-01 — Starting a run is safe to retry; the trial cap holds under concurrency (0049)
+
+Reproduced fresh: the same `POST /api/v1/runs` sent twice with one `Idempotency-Key` made 2 runs. Twenty
+concurrent starts on a fresh three-run trial made 7, 20 and 15 runs, because the cap was counted in the
+application and then inserted (audit G1; C7 from 2026-10-01).
+
+**0049:**
+- `runs_trial_cap`: inserting a trial-funded run takes a per-workspace lock, counts the workspace's runs as
+  `workspaceEntitlement` does, and refuses a fourth (`trial_exhausted`). `startRun` maps that to the same
+  sentence, so the button, the API, MCP and the clock all get it.
+- `run_requests`: a key is claimed before the run exists, together with the id the run will be created
+  with, so a retry finds that run or proof it never started.
+  - Same key, same request: 200, `replayed: true`, the original run.
+  - Same key, different request: 409.
+  - Concurrent repeats wait up to 10 s for the first.
+  - A claim whose run never appears after 60 s is taken over.
+  - A refused start removes its claim.
+  - Workspace-scoped, 24 hours; cleaned lazily and with the workspace.
+  - RLS on, no policy.
+- `novera run` takes `--idempotency-key` or `NOVERA_IDEMPOTENCY_KEY`.
+
+Evidence:
+- `verify:api`, 7 new checks: replay; conflict; 20 identical requests answered 1×201 and 19×200 with one
+  run; a new key cannot pass an exhausted trial and leaves no claim; per-workspace scope; an over-long key
+  400; 20 starts with two left give exactly 2. 40 ok.
+- The audit's harness now stores exactly 3 runs in each rush, and 1 run on a retry.
+- `verify:byok`, restructured, not weakened: the queued run still counts, and a fourth inserted directly is
+  refused. 21 ok.
+- 556 tests.
+
+**Not changed, needs approval:**
+- The API docs, which must describe `Idempotency-Key`.
+- The n8n templates, which should send `{{$execution.id}}`.

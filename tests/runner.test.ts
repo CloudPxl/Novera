@@ -448,3 +448,22 @@ test("a finish that writes nothing is not reported as finished (0047)", async ()
   const run = executeRun({ runId: "r1", suite, agent: agentReturning({}), policy: "p", judge: judgeArgs(judgeReturning({})), store: { ...stopping, async finishRun() { stopped = true; return false; } }, concurrency: 1 });
   assert.equal((await run).status, "aborted", "a person stopped it between the last scenario and the finish");
 });
+
+test("an agent adapter that throws costs that scenario, not the run (C5)", async () => {
+  const { store, saved, events } = memoryStore();
+  const agent: AgentAdapter = {
+    probe: async () => ({ ok: true, responseText: "probe", toolActivity: null, latencyMs: 1 }),
+    send: async ({ input }) => {
+      if (input === "in2") throw new Error("The operation was aborted due to timeout");
+      return { ok: true, responseText: `reply to ${input}`, toolActivity: null, latencyMs: 1 };
+    },
+    acceptsContext: () => true,
+  };
+  const summary = await executeRun({ runId: "r1", suite, agent, policy: "p", judge: judgeArgs(judgeReturning({})), store, concurrency: 1 });
+  assert.equal(summary.status, "completed");
+  assert.equal(saved.length, 3, "every scenario is recorded");
+  const c2 = saved.find((c) => c.caseId === "C2")!;
+  assert.equal(c2.status, "error");
+  assert.match(c2.error ?? "", /aborted due to timeout/);
+  assert.deepEqual(events, ["running", "finished:completed"]);
+});

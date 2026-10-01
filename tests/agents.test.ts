@@ -98,3 +98,54 @@ test("the auth header is sent only when both a name and a value exist", async (t
   await httpAgent(config, "Bearer tok").probe();
   assert.equal(seen.authorization, undefined);
 });
+
+// Audit 2026-10-01, C5 and C6: the reply body was read outside the request's error
+// handling and without a limit, so a reply whose body stalled threw out of the adapter
+// (aborting the whole run) and a 20 MB reply was read whole. Against a real socket on
+// loopback, because only a real connection stalls the way a slow agent does.
+async function localAgent(handler: (res: import("node:http").ServerResponse) => void) {
+  const { createServer } = await import("node:http");
+  const sockets = new Set<import("node:net").Socket>();
+  const server = createServer((req, res) => { req.resume(); req.on("end", () => handler(res)); });
+  server.on("connection", (s) => { sockets.add(s); s.on("close", () => sockets.delete(s)); });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/chat`;
+  return { url, close: () => new Promise<void>((r) => { for (const s of sockets) s.destroy(); server.close(() => r()); }) };
+}
+
+test("a reply whose body never finishes is a timed-out result, not an exception", async () => {
+  const agent = await localAgent((res) => { res.writeHead(200, { "content-type": "application/json" }); res.write('{"reply":"half a re'); });
+  try {
+    const started = Date.now();
+    const result = await httpAgent({ ...config, url: agent.url, timeoutMs: 3_000 }).send({ input: "hi", policy: "p" });
+    assert.equal(result.ok, false);
+    assert.equal(result.timedOut, true);
+    assert.match(result.error ?? "", /did not finish arriving within 3 s/);
+    assert.ok(Date.now() - started < 6_000, "it gave up at its deadline");
+  } finally {
+    await agent.close();
+  }
+});
+
+test("a reply larger than the limit is not read whole, and is a result that says so", async () => {
+  const agent = await localAgent((res) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ reply: "x".repeat(1024 * 1024) })); });
+  try {
+    const result = await httpAgent({ ...config, url: agent.url }).send({ input: "hi", policy: "p" });
+    assert.equal(result.ok, false);
+    assert.equal(result.responseText, null);
+    assert.match(result.error ?? "", /larger than 256 KB/);
+  } finally {
+    await agent.close();
+  }
+});
+
+test("a reply just under the limit is read as usual", async () => {
+  const agent = await localAgent((res) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ reply: "y".repeat(200 * 1024) })); });
+  try {
+    const result = await httpAgent({ ...config, url: agent.url }).send({ input: "hi", policy: "p" });
+    assert.equal(result.ok, true);
+    assert.equal(result.responseText?.length, 200 * 1024);
+  } finally {
+    await agent.close();
+  }
+});

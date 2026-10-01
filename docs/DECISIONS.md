@@ -3223,3 +3223,30 @@ tail of a long key in clear.
 New tests cover ten adversarial shapes at 64 and 256 KB, one per pattern family. Before: "64 KB took
 6867 ms", fail. After: all pass in 114 ms. Real values are still found next to 100 KB tokens. Measured
 directly: 64 KB 1 ms, 1 MB 7 ms, 20 MB 118 ms, the email at the end found each time. 558 tests.
+
+## 2026-10-01 — An agent's reply is read under its deadline and to a limit (C5; C6, part two)
+
+The adapter read the reply body outside its error handling and without a limit, and the runner did not
+catch an adapter exception per scenario. Reproduced with the local responder:
+- a reply whose headers arrived and whose body stalled threw "The operation was aborted due to timeout"
+  out of the run: aborted, 0 rows;
+- with one of six stalling, 5 good rows were stranded with no report;
+- a 20 MB reply held a slice past 300 s and the server at 100% CPU.
+
+Now the body is read under the request's own deadline, inside its error handling, and never past 256 KB:
+- a stalled body is that scenario's timeout ("did not finish arriving within N s"), or "cut by Novera" when
+  the slice was ending;
+- an oversized reply is a no-result that says nothing about whether it was right;
+- any exception from an adapter is recorded as that scenario's result.
+
+Evidence:
+- Tests: a stalled body against a real loopback socket, 1 MB refused, 200 KB read as usual, a throwing
+  adapter costing one scenario. They fail 3 of 31 without the fix and pass 31 with it.
+- The harness end to end:
+  - stalled body: completed, 1 row;
+  - first of six stalls: completed, 6 rows;
+  - 20 MB: a 133 ms slice, the server answering in 0.07 s.
+- `verify:slices` 11, leases 10, schedules 29, webhooks 24. 562 tests.
+
+**Customer-visible:** a reply over 256 KB is now a no-result with that sentence. It should be stated in
+`/docs/connecting-an-agent`, which needs approval.

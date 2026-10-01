@@ -252,13 +252,23 @@ export async function executeCase(args: {
       break;
     }
 
-    const result = await agent.send({
-      input: message,
-      policy,
-      ...(agentDeadline !== undefined ? { deadline: agentDeadline } : {}),
-      ...(testCase.context ? { context: testCase.context } : {}),
-      ...(isConversation ? { history: [...history], conversationId } : {}),
-    });
+    // Whatever an adapter does, it costs this scenario at most: a failure here is recorded
+    // as the scenario's result, never thrown out to abort the run (audit 2026-10-01, C5).
+    let result: AgentResult;
+    try {
+      result = await agent.send({
+        input: message,
+        policy,
+        ...(agentDeadline !== undefined ? { deadline: agentDeadline } : {}),
+        ...(testCase.context ? { context: testCase.context } : {}),
+        ...(isConversation ? { history: [...history], conversationId } : {}),
+      });
+    } catch (thrown) {
+      result = {
+        ok: false, responseText: null, toolActivity: null, latencyMs: 0,
+        error: `The agent could not be asked: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
+      };
+    }
 
     if (!isConversation) {
       agentResult = result;

@@ -23,12 +23,15 @@
  *       record a migration already applied by hand (the SQL editor) without re-running it
  *
  * Exit codes: 0 done; 1 a migration failed, or the ledger and the files disagree;
- * 2 refused because client roles can reach the ledger.
+ * 2 refused because client roles can reach the ledger; 3 every migration is applied, but
+ * a scheduled job Novera depends on is missing from this (non-local) database — see
+ * `npm run verify:cron`.
  */
 import { readdir, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import pg from "pg";
+import { checkJobs, isLocalDatabase, readJobs, STRUCTURAL } from "./required-jobs.mts";
 
 const connectionString = process.env.SUPABASE_DB_URL;
 if (!connectionString) {
@@ -197,9 +200,31 @@ for (const file of files) {
   }
 }
 
+/**
+ * Whether the jobs the migrations schedule — only when pg_cron is already installed — and
+ * the clock exist. Migrations alone cannot guarantee it (audit R1). Structure only here;
+ * `npm run verify:cron` also checks that they last succeeded.
+ */
+async function jobsMissing(): Promise<boolean> {
+  const local = isLocalDatabase(connectionString!);
+  const read = await readJobs(client);
+  if (!read) {
+    if (local) {
+      console.log("  note       pg_cron is not installed on this local database: the scheduled jobs do not exist here.");
+      return false;
+    }
+    console.error("  NOT READY  pg_cron is not installed, so the retention, stalled-run and clock jobs do not exist. Run `npm run verify:cron` for the fix.");
+    return true;
+  }
+  const broken = checkJobs(read.jobs, read.lastRuns, new Date(), { allowNew: true }).filter((r) => STRUCTURAL.includes(r.state));
+  for (const r of broken) console.error(`  NOT READY  ${r.job.name}: ${r.state} — ${r.detail}. ${r.job.fix}`);
+  return broken.length > 0 && !local;
+}
+
 if (checkOnly) {
+  const notReady = await jobsMissing();
   await client.query("rollback");
-  const problems = (exposed.length ? 1 : 0) + drift;
+  const problems = (exposed.length ? 1 : 0) + drift + (notReady ? 1 : 0);
   console.log(`\n${pending.length} pending; ${drift} disagreement(s) between the ledger and the files${exposed.length ? "; the ledger is exposed" : ""}. Nothing was changed.\n`);
   await finish(problems ? 1 : 0);
 }
@@ -246,4 +271,8 @@ for (const { file, checksum } of pending) {
 }
 
 console.log(`\n${count} migration(s) applied.\n`);
+if (await jobsMissing()) {
+  console.error("\nEvery migration is applied, but this database is not ready: a required scheduled job is missing.\n");
+  await finish(3);
+}
 await finish(0);

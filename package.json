@@ -40,7 +40,8 @@
     "verify:slices": "node --conditions=react-server --env-file=.env.local scripts/verify-slices.mts",
     "measure:throughput": "node --conditions=react-server --env-file=.env.local scripts/measure-throughput.mts",
     "verify:webhooks": "node --conditions=react-server --env-file=.env.local scripts/verify-webhooks.mts",
-    "verify:leases": "node --conditions=react-server --env-file=.env.local scripts/verify-leases.mts"
+    "verify:leases": "node --conditions=react-server --env-file=.env.local scripts/verify-leases.mts",
+    "verify:cron": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/verify-cron.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

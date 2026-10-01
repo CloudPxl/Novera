@@ -202,7 +202,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 543 unit tests | free |
+| `npm test` | 548 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -215,6 +215,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 | `verify:retention` | raw evidence past its period is emptied and nothing else changes; the fingerprint still matches; expiry mode opens nothing else | free |
 | `verify:slices` | a run against a 10-second agent stays inside the 60 s function limit: several slices, every scenario recorded, none cut by our budget (needs `npm run dev`, network) | free |
 | `measure:throughput` (`THROUGHPUT_LEVELS=1,2,4`) | concurrent trial runs against the fixture: wall time, verdicts without a result, how each was corroborated, per-vendor calls, rate limits and breaker skips | **real quota — one sweep** |
+| `verify:cron` | every scheduled job the guarantees depend on (three daily ones from 0037/0038/0040, the clock from `schedules:clock`) exists, is on, and last succeeded; read-only. `migrate` exits 3 on a deployed database missing one. Exit 2 means "local stack without pg_cron", never a pass | free |
 | `verify:leases` | a slice that lost its run's lease sends no new scenario, saves nothing, and cannot release or abort the run; a takeover still completes the run with every scenario recorded once (needs `npm run dev`) | free |
 | `verify:webhooks` | a real run is announced once to a local receiver, a failed delivery retried, the signature checks, the body carries no reply or policy, private addresses refused, rows frozen, secret unreadable (needs `npm run dev`) | free |
 | `verify:schedules` | a due schedule starts one run however many ticks race; the clock drives it to the end; skip, pause, frozen fields, RLS, erasure (needs `npm run dev`) | free |

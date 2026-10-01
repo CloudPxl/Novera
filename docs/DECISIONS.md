@@ -3054,3 +3054,23 @@ Evidence:
 - The race harness: slice A `incomplete`, slice B `completed`, lease kept.
 - `verify:slices` (local responder) 11, schedules 29, api 33, mcp 30, access 15, tenancy 27, db 59.
 - Three runner unit tests fail on the old runner and pass on the new. 543 tests.
+
+## 2026-10-01 — Scheduled jobs are checked at deployment, not assumed (`verify:cron`)
+
+0037, 0038 and 0040 schedule the daily jobs only when pg_cron is already installed. Without it they apply
+cleanly and create nothing. Reproduced again: a fresh database, 47 migrations, 0 jobs. The clock that
+starts scheduled runs and retries webhooks is installed by a script, never by a migration. Applied
+migrations are not edited, so the check lives at deployment:
+- `scripts/required-jobs.mts` names the four jobs, with schedule, command, freshness window, why each
+  matters and its fix.
+- `npm run verify:cron`, read-only, checks each one exists, is on, is on schedule, calls the right thing
+  and last succeeded in time.
+- `npm run migrate` ends with the structural part, and exits 3 ("every migration is applied, but this
+  database is not ready") on a deployed database missing one.
+- A local stack without pg_cron gets a notice from `migrate` and exit 2 from `verify:cron` ("not
+  applicable here — not a pass"), so local development still works.
+
+Proven against the local database reached as if deployed: no pg_cron gives exit 3 and 1 with every fix
+listed; without the clock, exactly that job is named; with all four, 0. Production, read-only: all four in
+place, the daily ones last succeeded at 03:17, 03:27 and 03:37 today, the clock at 08:33. **Not an
+outage**; a hazard for a new or restored database. 548 tests, 5 new for the job states.

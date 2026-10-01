@@ -2960,3 +2960,19 @@ All nine n8n executions finished `success`; the 403s never started one. A test p
 properties the runs proved: no key or real id in any template, every connection
 resolves, every webhook demands a secret, 200 only on the sealed all-pass branch, the
 loop bounded, and the ticket condition. 540 tests.
+
+## 2026-10-01 — Audit at `b18dec7`: baseline, findings, invariants, remediation order
+
+Re-ran the 2026-09-30 audit in an isolated local stack built from an empty database (all 44 migrations,
+both seeds), and extended it. Every earlier finding reproduced (C1–C4, R1, R2, G4). Five new confirmed bugs:
+- C5: a reply whose body stalls aborts the run;
+- C6: redaction is quadratic and replies are uncapped (6.9 s per 64 KB token; a 20 MB reply held the server at 100% CPU);
+- C7: 20 concurrent starts made 7–17 runs against the three-run trial cap;
+- C8: one undecryptable webhook endpoint stops every workspace's deliveries;
+- C9: personal data quoted in a model's rationale reaches the API and MCP unredacted.
+
+C1 is worse than first recorded: a ledger row forged with a checksum anyone can compute from the public repo
+makes `migrate` skip a migration silently. Free checks: 540 tests, both typechecks, lint, `npm audit` 0,
+every free verifier green once given the setup it cannot do itself, and `verify:slices` green on a local
+responder with no external network. Model-dependent verifiers were not run.
+`docs/audits/2026-10-01-*.md`, `docs/INVARIANTS.md`. Remediation waits for approval of the order.

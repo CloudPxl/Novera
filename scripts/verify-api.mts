@@ -184,6 +184,50 @@ try {
   const { error: unrevokeErr } = await db.from("api_keys").update({ revoked_at: null, revoked_by: null }).eq("id", keyRow!.id);
   report(!!unrevokeErr, "and stays revoked", unrevokeErr?.message.slice(0, 60) ?? "SUCCEEDED");
 
+  // ------------------------------------------------------------------ raw evidence (privacy review; C9)
+  // A caller that did not ask for conversations gets none of their words, even quoted by a
+  // grading model; a caller that asks gets them exactly, and the read is recorded (0050).
+  console.log("\nRaw evidence");
+  {
+    const w = await makeWorkspace("raw");
+    const other = await makeWorkspace("raw-other");
+    try {
+      const k = mintKey();
+      const { data: keyRow } = await db.from("api_keys").insert({ workspace_id: w.ws, name: "raw", prefix: k.prefix, key_hash: k.hash, scopes: ["read"], created_by: w.user.id }).select("id").single();
+      const EMAIL = "quoted.person@example.test";
+      const { data: pol } = await db.from("policies").select("id").eq("agent_id", w.agent).single();
+      const { data: suite } = await db.from("suites").select("id").is("workspace_id", null).limit(1).single();
+      const { data: run } = await db.from("runs").insert({ workspace_id: w.ws, agent_id: w.agent, policy_id: pol!.id, suite_id: suite!.id, status: "running" }).select("id").single();
+      await db.from("run_cases").insert({ workspace_id: w.ws, run_id: run!.id, case_id: "T01", category: "c", obligation: "privacy", severity: "high",
+        input: "hi", expected: "x", assertions: ["a"], response_text: `Your email is ${EMAIL}.`, status: "fail", failed_assertions: ["a"],
+        rationale: `The agent disclosed ${EMAIL} without checking identity.`, judge_model: "verify/judge", judge_agreement: "agreed", settled_by: "models" });
+      await db.from("runs").update({ status: "completed" }).eq("id", run!.id);
+      const reads = async () => (await db.from("raw_evidence_reads").select("api_key_id, via").eq("run_id", run!.id)).data ?? [];
+
+      const plain = await call(`/api/v1/runs/${run!.id}`, k.key);
+      const plainText = JSON.stringify(plain.body);
+      report(plain.status === 200 && !plainText.includes(EMAIL) && plainText.includes("[EMAIL_1]") && (await reads()).length === 0,
+        "without include=responses, personal data a grader quoted is a placeholder, and nothing is logged", plainText.includes(EMAIL) ? "the address is in the answer" : `${(await reads()).length} read(s) logged`);
+      const raw = await call(`/api/v1/runs/${run!.id}?include=responses`, k.key);
+      const rawText = JSON.stringify(raw.body);
+      const logged = await reads();
+      report(raw.status === 200 && rawText.includes(EMAIL) && logged.length === 1 && logged[0].api_key_id === keyRow!.id && logged[0].via === "rest",
+        "with include=responses the evidence is exact, and the read is recorded with its key", `${rawText.includes(EMAIL) ? "exact" : "REDACTED"}; ${JSON.stringify(logged)}`);
+
+      const member = createClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
+      await member.auth.signInWithPassword({ email: w.user.email!, password });
+      const { data: mine } = await member.from("raw_evidence_reads").select("id").eq("run_id", run!.id);
+      const outsider = createClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
+      await outsider.auth.signInWithPassword({ email: other.user.email!, password });
+      const { data: theirs } = await outsider.from("raw_evidence_reads").select("id").eq("run_id", run!.id);
+      const { error: forged } = await member.from("raw_evidence_reads").insert({ workspace_id: w.ws, run_id: run!.id, api_key_id: keyRow!.id, via: "rest" });
+      report(mine?.length === 1 && (theirs ?? []).length === 0 && Boolean(forged),
+        "members see who read their raw evidence; another workspace sees nothing; no member can write the log", `${mine?.length} / ${(theirs ?? []).length}; write ${forged ? "refused" : "ACCEPTED"}`);
+    } finally {
+      for (const x of [w, other]) { await db.rpc("erase_workspace", { target: x.ws }); await db.auth.admin.deleteUser(x.user.id); }
+    }
+  }
+
   // ------------------------------------------------------------------ starting a run, retried (G1, C7)
   // A pipeline that times out and retries must not start, and spend, a second run; and the
   // trial's three runs are three however many requests arrive at once. makeWorkspace has

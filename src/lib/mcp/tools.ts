@@ -71,7 +71,7 @@ export function buildTools(db: SupabaseClient, caller: McpCaller, origin: string
     r ? { content_hash: r.content_hash, url: `${origin}/report/${r.token}` } : null;
 
   const run = async (id: string, responses = false) => {
-    const found = await getRun(db, workspaceId, id, { responses });
+    const found = await getRun(db, workspaceId, id, { responses, readBy: { keyId: caller.keyId, via: "mcp" } });
     if (!found) throw new ToolRefusal("No such run in this workspace.");
     return found;
   };

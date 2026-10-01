@@ -23,6 +23,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   const url = new URL(request.url);
   const run = await getRun(serviceClient(), auth.caller.workspaceId, id, {
     responses: url.searchParams.get("include") === "responses",
+    readBy: { keyId: auth.caller.keyId, via: "rest" },
   });
   if (!run) return apiJson({ error: "No such run in this workspace." }, 404);
   return apiJson({

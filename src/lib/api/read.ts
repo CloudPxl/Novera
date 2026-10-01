@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadStability } from "../evidence/stability-history.ts";
+import { redact } from "../redact/pii.ts";
 
 /**
  * What a workspace API key can read. Shared by the REST routes and the MCP server, so the
@@ -100,7 +101,17 @@ export async function listRuns(db: Db, workspaceId: string, options: { agentId?:
 }
 
 /** One run and every scenario in it. `null` when it does not exist in this workspace. */
-export async function getRun(db: Db, workspaceId: string, runId: string, options: { responses?: boolean } = {}) {
+/**
+ * `responses` adds the raw evidence — inputs, replies, transcripts — exactly as stored, for
+ * investigating a verdict; `readBy` names who asked, and the read is recorded (0050).
+ * Without it, personal data a grading model quoted in a rationale, or an agent's error
+ * repeated, is shown as placeholders, as in a sealed report: a caller that did not ask
+ * for conversations does not receive pieces of them (audit 2026-10-01, C9).
+ */
+export async function getRun(
+  db: Db, workspaceId: string, runId: string,
+  options: { responses?: boolean; readBy?: { keyId: string; via: "rest" | "mcp" } } = {},
+) {
   const [{ data: run }, { data: cases }] = await Promise.all([
     db.from("runs").select("id, agent_id, suite_id, status, created_at, finished_at, error, manifest_hash, api_key_id, schedule_id, agents(name), suites(key, version), policies(version)")
       .eq("workspace_id", workspaceId).eq("id", runId).maybeSingle(),
@@ -109,6 +120,14 @@ export async function getRun(db: Db, workspaceId: string, runId: string, options
       .eq("workspace_id", workspaceId).eq("run_id", runId).order("case_id"),
   ]);
   if (!run) return null;
+  const quoted = (text: string | null) => (text === null || options.responses ? text : redact(text).text);
+  if (options.responses && options.readBy) {
+    const { error: logError } = await db.from("raw_evidence_reads").insert({
+      workspace_id: workspaceId, run_id: runId, api_key_id: options.readBy.keyId, via: options.readBy.via,
+    });
+    // Raw evidence is not handed over unrecorded.
+    if (logError) throw new Error(`The read of this run's raw evidence could not be recorded: ${logError.message}`);
+  }
   // The same history the run page reads, up to this run: a scenario whose verdict has
   // moved under an unchanged policy says so, and says what moved when it can.
   const stability = await loadStability({
@@ -141,8 +160,8 @@ export async function getRun(db: Db, workspaceId: string, runId: string, options
       obligation: c.obligation as string,
       severity: c.severity as string,
       verdict: c.status === "error" ? "no_result" : (c.status as string),
-      rationale: (c.rationale as string | null) ?? null,
-      error: (c.error as string | null) ?? null,
+      rationale: quoted((c.rationale as string | null) ?? null),
+      error: quoted((c.error as string | null) ?? null),
       settled_by: (c.settled_by as string | null) ?? null,
       agreement: (c.judge_agreement as string | null) ?? null,
       graded_by: (c.judge_model as string | null) ?? null,

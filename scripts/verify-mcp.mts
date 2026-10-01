@@ -73,6 +73,15 @@ try {
   const theirs = await call("get_run", { run_id: b.runs[0] });
   report(theirs.isError === true && /No such run in this workspace/.test(theirs.content[0].text), "another workspace's run is refused as a tool error");
 
+  // Raw evidence through MCP lands in an assistant's context: recorded like the REST read (0050).
+  const before = (await db.from("raw_evidence_reads").select("id").eq("run_id", a.runs[0])).data?.length ?? 0;
+  await call("get_run", { run_id: a.runs[0] });
+  const plainReads = (await db.from("raw_evidence_reads").select("id").eq("run_id", a.runs[0])).data?.length ?? 0;
+  await call("get_run", { run_id: a.runs[0], include_responses: true });
+  const { data: mcpReads } = await db.from("raw_evidence_reads").select("via").eq("run_id", a.runs[0]);
+  report(plainReads === before && mcpReads?.length === before + 1 && mcpReads.at(-1)?.via === "mcp",
+    "get_run records a read only when it returns raw evidence, and says it was MCP", JSON.stringify({ before, plainReads, after: mcpReads?.length }));
+
   const gaps = await call("get_evidence_gaps", { run_id: a.runs[0] });
   const gapList = gaps.structuredContent?.gaps as Array<{ id: string; verdict: string }>;
   report(gapList.length === 1 && gapList[0].verdict === "no_result", "get_evidence_gaps names the scenario with no verdict", JSON.stringify(gapList));

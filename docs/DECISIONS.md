@@ -3184,3 +3184,26 @@ Evidence from an empty database with no workaround: the first `verify:free` fail
 own bulk insert (a column one row omitted became NULL); fixed. Then without pg_cron: 13 passed, retention
 and cron exit 2, overall 2. With pg_cron and the four jobs: all 15 passed, exit 0, 106 s, and 0 reports
 left behind.
+
+## 2026-10-01 — Raw evidence on request only, and every such read recorded (0050); quoted personal data scrubbed otherwise
+
+The audit's canary found personal data and key-shaped strings only where an authorised caller asked for raw
+replies (`?include=responses`, MCP `include_responses`). That path is how a customer investigates a
+verdict, so it stays exact. Assessed:
+
+| Aspect | Finding | Action |
+|---|---|---|
+| Cache | Both REST and MCP answer `no-store` | None; verified |
+| Retention | Replies past the workspace's period come back as `raw_expired_at` plus `raw_sha256` (0037) | None |
+| Client reports | Never contain raw replies, and scrub what a grader quoted; canary clean on the page, the payload and all four exports | None |
+| Default (non-raw) mode | Returned graders' rationales and error text verbatim. A planted rationale quoting an email and phone came back through REST and MCP `get_run` (C9, reproduced fresh) | Both now pass through the report's own `redact`, so a caller that did not ask for conversations receives none of their words |
+| Audit trail | None for raw reads | Each raw read, REST or MCP, inserts a `raw_evidence_reads` row (key, run, route) that members can read and nobody can write but the server; the read fails rather than going unrecorded |
+
+`verify:api` 43, with 3 new checks: placeholder by default and nothing logged; exact raw evidence with one
+logged read naming its key; members see the log, another workspace does not, no member can write it.
+`verify:mcp` 31, with 1 new: a plain `get_run` logs nothing, a raw one logs `via: mcp`. Rationale canary
+before: FOUND on both; after: clean on both, raw unchanged.
+
+**Proposed, not done (it changes what existing keys can do, and the docs; needs approval):**
+- A separate `responses` scope, existing keys grandfathered until rotated.
+- A sentence in `/docs/api` and `/docs/data-and-privacy` saying that raw reads are recorded.

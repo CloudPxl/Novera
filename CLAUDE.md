@@ -55,6 +55,7 @@ someone with the service role, not merely someone using the application.
 | A destructive or fixture-only scenario never runs against a production agent | `agents.is_production`, checked in the runner |
 | A support reply goes draft → approved → sent, forward only; editing writes a new draft | 0009 |
 | A public form cannot be made free | 0024, counted in Postgres |
+| Raw evidence — inputs, replies, transcripts — reaches an API or MCP caller only when asked for, exactly as stored, and each such read is recorded with its key and route where members can see it; otherwise personal data a grader quoted is a placeholder, as in a report | 0050, `src/lib/api/read.ts`, `verify:api`, `verify:mcp` |
 | The trial funds three runs per workspace however many starts arrive at once, and a run start retried with the same `Idempotency-Key` returns the run it started instead of a second one | 0049, `src/lib/api/idempotency.ts`, `verify:api` |
 | A person gets one workspace on first use, however many page loads race to create it | 0029, advisory lock per user |
 | A row can refer only to rows in its own workspace — agents, policies, runs, cases, failures, suites (built-ins shared) — even for the service role | 0034 `refuse_cross_workspace()`, `verify:tenancy` |

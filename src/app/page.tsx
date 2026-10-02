@@ -35,9 +35,6 @@ export default async function Home() {
 
   return (
     <div className="bg-surface text-ink">
-      <a href="#main" className="sr-only z-50 rounded-control bg-ink px-4 py-2 text-sm font-medium text-on-ink focus:not-sr-only focus:fixed focus:left-4 focus:top-3">
-        Skip to the page
-      </a>
       <SiteHeader signedIn={signedIn} />
 
       <main id="main">

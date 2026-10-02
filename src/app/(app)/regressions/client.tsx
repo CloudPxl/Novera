@@ -7,6 +7,7 @@ import type { FormState } from "@/lib/workflow/actions.ts";
 import { submitProductionFailure } from "@/lib/workflow/scenarios.ts";
 import { OBLIGATION_LABELS } from "@/lib/report/payload.ts";
 import { redact, NOT_DETECTED } from "@/lib/redact/pii.ts";
+import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 /**
  * Recording a production failure.
@@ -16,6 +17,7 @@ import { redact, NOT_DETECTED } from "@/lib/redact/pii.ts";
  */
 export function FailureForm({ agents }: { agents: Array<{ id: string; name: string }> }) {
   const [state, submit] = useActionState<FormState, FormData>(submitProductionFailure, {});
+  const keepValues = useKeepValuesOnError(state);
   const [message, setMessage] = useState("");
   const [reply, setReply] = useState("");
   const preview = useMemo(() => {
@@ -28,7 +30,7 @@ export function FailureForm({ agents }: { agents: Array<{ id: string; name: stri
   const removed = Object.entries(preview.counts);
 
   return (
-    <form action={submit} className="mt-4 space-y-4">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-4 space-y-4">
       <Field label="What the customer sent" htmlFor="customerMessage" hint="This becomes the message the scenario sends to your agent.">
         <textarea
           id="customerMessage" name="customerMessage" required rows={4} maxLength={4000}

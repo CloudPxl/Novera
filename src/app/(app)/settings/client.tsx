@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { saveJudgeKey, removeJudgeKey, type FormState } from "@/lib/workflow/actions.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { Field, inputClass } from "@/components/ui/primitives.tsx";
+import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 export interface ProviderChoice {
   id: string;
@@ -53,11 +54,12 @@ export function JudgeKeyForm({
   replacing?: boolean;
 }) {
   const [state, submit] = useActionState<FormState, FormData>(saveJudgeKey, {});
+  const keepValues = useKeepValuesOnError(state);
   const [provider, setProvider] = useState(providers[0]?.id ?? "groq");
   const chosen = providers.find((p) => p.id === provider);
 
   return (
-    <form action={submit} className="mt-5 space-y-4">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-5 space-y-4">
       <Field label="Provider" htmlFor="provider">
         <select
           id="provider"

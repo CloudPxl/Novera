@@ -20,6 +20,7 @@ export default async function NewAgentPage() {
         until you have confirmed you may test it, and we make one harmless request first so you
         can see the answer before trusting a full run.
       </p>
+      <p className="mt-3 text-sm text-ink-faint">About two minutes. You need the endpoint&apos;s URL and, if it asks for one, its auth header.</p>
       <ConnectAgentForm />
     </main>
   );

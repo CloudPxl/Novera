@@ -11,6 +11,7 @@ import {
   promoteApprovedScenarios,
 } from "@/lib/workflow/scenarios.ts";
 import { OBLIGATION_LABELS } from "@/lib/report/payload.ts";
+import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 function Message({ state }: { state: FormState }) {
   if (!state.error && !state.notice) return null;
@@ -30,6 +31,7 @@ export function DraftForm({
   agents: Array<{ id: string; name: string; is_production: boolean }>;
 }) {
   const [state, submit] = useActionState<FormState, FormData>(draftScenarios, {});
+  const keepValues = useKeepValuesOnError(state);
 
   if (agents.length === 0) {
     return (
@@ -40,7 +42,7 @@ export function DraftForm({
   }
 
   return (
-    <form action={submit} className="mt-4 grid gap-4 sm:grid-cols-[2fr_1fr]">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-4 grid gap-4 sm:grid-cols-[2fr_1fr]">
       <Field label="Agent" htmlFor="agentId" hint="Its most recent policy version is what gets read.">
         <select id="agentId" name="agentId" className={inputClass} required>
           {agents.map((a) => (
@@ -74,9 +76,10 @@ export function DraftForm({
  */
 export function ImportForm() {
   const [state, submit] = useActionState<FormState, FormData>(importScenarioDrafts, {});
+  const keepValues = useKeepValuesOnError(state);
 
   return (
-    <form action={submit} className="mt-4 grid gap-4 sm:grid-cols-2">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-4 grid gap-4 sm:grid-cols-2">
       <div className="sm:col-span-2">
         <Field
           label="File"
@@ -135,10 +138,11 @@ export function ImportForm() {
  */
 export function DecideForm({ draftId }: { draftId: string }) {
   const [state, submit] = useActionState<FormState, FormData>(decideScenarioDraft, {});
+  const keepValues = useKeepValuesOnError(state);
   const [rejecting, setRejecting] = useState(false);
 
   return (
-    <form action={submit} className="mt-5 border-t border-line pt-4">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-5 border-t border-line pt-4">
       <input type="hidden" name="draftId" value={draftId} />
 
       {rejecting ? (
@@ -200,9 +204,10 @@ export function PromoteForm({
     : origins.imported ? "Our imported scenarios"
     : "Regressions from production";
   const [state, submit] = useActionState<FormState, FormData>(promoteApprovedScenarios, {});
+  const keepValues = useKeepValuesOnError(state);
 
   return (
-    <form action={submit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmitCapture={keepValues} action={submit} className="grid gap-4 sm:grid-cols-2">
       <Field label="Suite key" htmlFor="key" hint="Lowercase. It identifies the suite across versions.">
         <input id="key" name="key" required defaultValue="own-policy" className={`${inputClass} font-mono text-xs`} />
       </Field>

@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { authenticate, type AuthState } from "./actions.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { Field, inputClass } from "@/components/ui/primitives.tsx";
+import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 type Mode = "signin" | "signup" | "reset";
 
@@ -28,9 +29,10 @@ const SUBMIT: Record<Mode, string> = {
 export function SignInForm() {
   const [mode, setMode] = useState<Mode>("signin");
   const [state, submit] = useActionState<AuthState, FormData>(authenticate, {});
+  const keepValues = useKeepValuesOnError(state);
 
   return (
-    <form action={submit} className="mt-8 space-y-4">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-8 space-y-4">
       <input type="hidden" name="mode" value={mode} />
 
       <Field label="Email address" htmlFor="email">

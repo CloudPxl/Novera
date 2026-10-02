@@ -6,6 +6,7 @@ import {
 } from "@/lib/support/actions.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { inputClass } from "@/components/ui/primitives.tsx";
+import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 /**
  * Both outcomes announced, not only the bad one.
@@ -64,6 +65,7 @@ export function CloseButton({ requestId }: { requestId: string }) {
 
 export function DraftEditor({ requestId, seed }: { requestId: string; seed: string }) {
   const [state, submit] = useActionState<InboundState, FormData>(writeDraft, {});
+  const keepValues = useKeepValuesOnError(state);
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState(seed);
 
@@ -80,7 +82,7 @@ export function DraftEditor({ requestId, seed }: { requestId: string; seed: stri
   }
 
   return (
-    <form action={submit} className="mt-2 space-y-3">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-2 space-y-3">
       <input type="hidden" name="requestId" value={requestId} />
       <textarea
         name="body"

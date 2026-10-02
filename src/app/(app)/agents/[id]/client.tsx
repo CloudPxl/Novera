@@ -10,6 +10,7 @@ import {
 } from "@/lib/workflow/actions.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { inputClass } from "@/components/ui/primitives.tsx";
+import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 const STARTER = `Refunds are granted within 14 days of purchase, once the requester's identity has been confirmed using the approved verification steps.
 Account changes, data exports and deletions require identity verification before any action is taken.
@@ -27,6 +28,7 @@ export function PolicyEditor({
   history: Array<{ version: number; createdAt: string }>;
 }) {
   const [state, submit] = useActionState<FormState, FormData>(savePolicyVersion, {});
+  const keepValues = useKeepValuesOnError(state);
   // The first version starts empty. It used to start filled with the example below as
   // real text, so "Save version 1" pressed without reading saved someone else's rules
   // as this agent's policy — and every verdict is judged against that text. The example
@@ -36,7 +38,7 @@ export function PolicyEditor({
   const isExample = body.trim() === STARTER.trim();
 
   return (
-    <form action={submit} className="mt-4">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-4">
       <input type="hidden" name="agentId" value={agentId} />
       {/* The label is visually redundant beside the section heading and not remotely
           redundant to a screen reader, which otherwise announces "edit text, blank"
@@ -128,9 +130,10 @@ export function VerificationEndpoint({
   current: { url?: string; authHeaderName?: string } | null;
 }) {
   const [state, submit] = useActionState<FormState, FormData>(saveVerificationEndpoint, {});
+  const keepValues = useKeepValuesOnError(state);
 
   return (
-    <form action={submit} className="mt-4">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-4">
       <input type="hidden" name="agentId" value={agentId} />
 
       <p className="text-sm leading-relaxed text-ink-soft">

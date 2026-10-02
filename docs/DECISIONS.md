@@ -3705,3 +3705,18 @@ Production, after the deploy:
 - **Measured:** axe clean at 390 and 1440 on dashboard, review, run, scenarios, regressions, agent,
   connect, settings, guide and docs (docs needed a settle wait — axe caught a reveal mid-fade); every
   tile and finding link resolves; 615 tests.
+
+## 2026-10-02 — Redesign, milestone 3: forms keep what was typed; one public header
+
+- **Found, measured:** React 19 resets an uncontrolled form when its action finishes, refused or not.
+  On the connect form an unresolvable host came back with every field empty, the edited request body
+  included. `useKeepValuesOnError` (src/components/ui/keep-values.ts) copies a form's fields as it
+  submits and restores them when the action returns an `error`; password-type fields and files are
+  never copied. Applied to every form a person types into (19, from sign-in to the inbox draft).
+  Proven: a refused sign-in keeps the email and not the password; a refused connection keeps name,
+  URL, edited body, header name and the attestation, and not the secret.
+- **Connect form, progressively disclosed:** name and endpoint first; the request/reply format behind
+  a disclosure whose summary states the defaults; authentication behind another, saying it is
+  encrypted and never shown again; the effort stated ("about two minutes").
+- **One public header** on the home page, docs, guide, support and apply — before, a visitor who left
+  the home page lost all navigation. The skip link moved into it, so every public page has one.

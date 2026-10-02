@@ -5,6 +5,7 @@ import { submitSupportRequest, submitTrialApplication, type InboundState } from 
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { Field, inputClass } from "@/components/ui/primitives.tsx";
 import { MESSAGE_MAX, EMAIL_MAX, ORGANISATION_MAX } from "@/lib/support/limits.ts";
+import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 /**
  * The two public forms.
@@ -29,6 +30,7 @@ export function InboundForm({
 }) {
   const action = kind === "support" ? submitSupportRequest : submitTrialApplication;
   const [state, submit] = useActionState<InboundState, FormData>(action, {});
+  const keepValues = useKeepValuesOnError(state);
   const [length, setLength] = useState(0);
   const confirmation = useRef<HTMLDivElement>(null);
 
@@ -55,7 +57,7 @@ export function InboundForm({
   const remaining = MESSAGE_MAX - length;
 
   return (
-    <form action={submit} className="mt-8 space-y-5">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-8 space-y-5">
       <Field label="Email address" htmlFor="email" hint="So we can reply. Nothing else is done with it, and your message is erased 90 days after the conversation last moved.">
         <input
           id="email"

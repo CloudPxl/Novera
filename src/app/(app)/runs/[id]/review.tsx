@@ -5,6 +5,7 @@ import { reissueReport, reviewVerdict, type FormState } from "@/lib/workflow/act
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { Badge, Field, inputClass } from "@/components/ui/primitives.tsx";
 import { REVIEW_NOTE_MAX, REVIEW_NOTE_MIN } from "@/lib/evidence/reviews.ts";
+import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 export interface ReviewEntry {
   id: string;
@@ -27,6 +28,7 @@ const label = (s: "pass" | "fail" | "error") => (s === "error" ? "no result" : s
  */
 export function ReviewVerdict({ runCaseId, status }: { runCaseId: string; status: "pass" | "fail" | "error" }) {
   const [state, submit] = useActionState<FormState, FormData>(reviewVerdict, {});
+  const keepValues = useKeepValuesOnError(state);
   const [open, setOpen] = useState(false);
 
   if (!open) {
@@ -42,7 +44,7 @@ export function ReviewVerdict({ runCaseId, status }: { runCaseId: string; status
   }
 
   return (
-    <form action={submit} className="mt-3 space-y-3 rounded-lg border border-line p-3">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-3 space-y-3 rounded-lg border border-line p-3">
       <input type="hidden" name="runCaseId" value={runCaseId} />
       <p className="text-xs leading-relaxed text-ink-soft">
         The automated verdict here is <strong className="font-semibold text-ink">{label(status)}</strong> and
@@ -138,9 +140,10 @@ export function ReviewHistory({ reviews }: { reviews: ReviewEntry[] }) {
  */
 export function ReissueReport({ runId, pending }: { runId: string; pending: number }) {
   const [state, submit] = useActionState<FormState, FormData>(reissueReport, {});
+  const keepValues = useKeepValuesOnError(state);
 
   return (
-    <form action={submit} className="mt-3 rounded-lg border border-line p-3">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-3 rounded-lg border border-line p-3">
       <input type="hidden" name="runId" value={runId} />
       <p className="text-sm leading-relaxed text-ink-soft">
         {pending} {pending === 1 ? "review was" : "reviews were"} recorded after this run&rsquo;s report was

@@ -292,6 +292,12 @@ they drive the scripted fixture at `/api/test-agent`.
 - **The service role bypasses RLS, so tenant isolation cannot rest on it.** `createRun` read
   an agent by id alone, and another workspace's agent could be run against its own policy.
   Every reference between tenant tables is now checked in the database (0034).
+- **React 19 resets a form when its action finishes, refused or not.** The connect form came back
+  empty after "could not be resolved", edited request body and all. Every form a person types into
+  uses `useKeepValuesOnError` (`src/components/ui/keep-values.ts`); passwords are never restored.
+- **Motion is drawn over a finished state, never needed to reach one.** `Reveal` hid every block at
+  opacity 0 with JavaScript off. Server-render the end state; `useMotion()` only replays it, and
+  `docs/DESIGN.md` holds the layout, accent and motion system.
 - **A page must not render a sentence a stranger supplied.** `/sign-in?problem=` printed
   whatever arrived inside Novera's own alert box, on the page that asks for a password.
 

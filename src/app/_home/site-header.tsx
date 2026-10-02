@@ -18,6 +18,11 @@ const LINKS = [
  */
 export function SiteHeader({ signedIn }: { signedIn: boolean }) {
   return (
+    <>
+    {/* The first stop for a keyboard user on every public page; each page's <main> is #main. */}
+    <a href="#main" className="sr-only z-50 rounded-control bg-ink px-4 py-2 text-sm font-medium text-on-ink focus:not-sr-only focus:fixed focus:left-4 focus:top-3">
+      Skip to the page
+    </a>
     <header className="sticky top-0 z-40 border-b border-line/80 bg-surface/85 backdrop-blur">
       <div className="wrap-wide flex h-16 items-center gap-6">
         <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded-control">
@@ -75,5 +80,6 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
         </details>
       </div>
     </header>
+    </>
   );
 }

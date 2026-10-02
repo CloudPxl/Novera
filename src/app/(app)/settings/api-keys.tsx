@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { Field, inputClass } from "@/components/ui/primitives.tsx";
 import { createApiKey, revokeApiKey, type KeyFormState } from "@/lib/workflow/api-keys.ts";
+import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 /**
  * Creating a key. The key appears once, in this component's state, and is gone on the
@@ -11,11 +12,12 @@ import { createApiKey, revokeApiKey, type KeyFormState } from "@/lib/workflow/ap
  */
 export function CreateApiKey() {
   const [state, submit] = useActionState<KeyFormState, FormData>(createApiKey, {});
+  const keepValues = useKeepValuesOnError(state);
   const [copied, setCopied] = useState(false);
 
   return (
     <div className="mt-4">
-      <form action={submit} className="flex flex-wrap items-end gap-3">
+      <form onSubmitCapture={keepValues} action={submit} className="flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1">
           <Field label="Name" htmlFor="api-key-name" hint="Where it will be used, so you know which one to revoke.">
             <input id="api-key-name" name="name" required maxLength={80} placeholder="e.g. GitHub Actions" className={inputClass} />

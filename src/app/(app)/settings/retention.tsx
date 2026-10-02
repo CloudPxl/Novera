@@ -5,15 +5,17 @@ import { SubmitButton } from "@/components/ui/button.tsx";
 import { Field, inputClass } from "@/components/ui/primitives.tsx";
 import { RETENTION_CHOICES } from "@/lib/privacy/retention.ts";
 import { setRetention, type RetentionFormState } from "@/lib/workflow/retention.ts";
+import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 /** Choosing the period. A shorter one is said to be irreversible before it is saved. */
 export function RetentionForm({ current, isOwner }: { current: number; isOwner: boolean }) {
   const [state, submit] = useActionState<RetentionFormState, FormData>(setRetention, {});
+  const keepValues = useKeepValuesOnError(state);
   const [days, setDays] = useState(current);
   const shorter = days < current;
 
   return (
-    <form action={submit} className="space-y-3">
+    <form onSubmitCapture={keepValues} action={submit} className="space-y-3">
       <Field label="Keep raw replies for" htmlFor="retention-days">
         <select
           id="retention-days" name="days" value={days} disabled={!isOwner}

@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { Field, inputClass } from "@/components/ui/primitives.tsx";
 import { createWebhook, revokeWebhook, sendTestWebhook, type WebhookFormState } from "@/lib/workflow/webhooks.ts";
+import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 const EVENTS = [
   { key: "run.completed", label: "A run finished", hint: "with its counts, outcome and report link" },
@@ -13,10 +14,11 @@ const EVENTS = [
 
 export function CreateWebhook() {
   const [state, submit] = useActionState<WebhookFormState, FormData>(createWebhook, {});
+  const keepValues = useKeepValuesOnError(state);
   const [copied, setCopied] = useState(false);
   return (
     <div className="mt-4">
-      <form action={submit} className="space-y-3">
+      <form onSubmitCapture={keepValues} action={submit} className="space-y-3">
         <Field label="Endpoint address" htmlFor="webhook-url" hint="An https address on the public internet. Novera signs every delivery.">
           <input id="webhook-url" name="url" type="url" required maxLength={500} placeholder="https://hooks.example.com/novera" className={inputClass} />
         </Field>

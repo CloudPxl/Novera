@@ -10,6 +10,7 @@ import {
 import {
   cancelSchedule, createSchedule, pauseSchedule, resumeSchedule, type ScheduleFormState,
 } from "@/lib/workflow/schedules.ts";
+import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 export interface ScheduleView {
   id: string;
@@ -42,6 +43,7 @@ export function ScheduleForm({
   costNote: string;
 }) {
   const [state, submit] = useActionState<ScheduleFormState, FormData>(createSchedule, {});
+  const keepValues = useKeepValuesOnError(state);
   const [cadence, setCadence] = useState<Cadence>("weekly");
   const [hourUtc, setHourUtc] = useState(6);
   const [weekday, setWeekday] = useState(1);
@@ -51,7 +53,7 @@ export function ScheduleForm({
   const suite = suites.find((s) => s.id === suiteId);
 
   return (
-    <form action={submit} className="mt-3 space-y-3">
+    <form onSubmitCapture={keepValues} action={submit} className="mt-3 space-y-3">
       <input type="hidden" name="agentId" value={agentId} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Suite" htmlFor="schedule-suite">

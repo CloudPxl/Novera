@@ -3628,3 +3628,38 @@ exemption; `erase()` throws when erasure fails; `verify:db` checks that a worksp
 still erases; `verify:access` tests expiry before withdrawal, because a withdrawal can no longer be undone,
 and checks that it cannot. `verify:free` 15/15 from an empty database (53 migrations); every walk and both
 n8n proofs re-run on it.
+
+## 2026-10-02 — Deployed: C1 first, then 0046–0053 and the code; production checked
+
+In this order, with the user's authorisation:
+1. **C1**, from `security/c1-migration-ledger`:
+   - `migrate --check` said EXPOSED, 0045 pending;
+   - `--harden-ledger` closed the ledger and ran 0045;
+   - `--check` now says protected; an anonymous REST read of the ledger answers 42501;
+   - the branch was pushed.
+2. **The rest of the database**, from `security/remediation`:
+   - 0046–0053, 8 applied, 0 disagreements;
+   - `verify:cron` 4 ok;
+   - `schedules:clock -- install`, for 0051's wake-up condition;
+   - `seed:docs`, 14 pages.
+3. **The code.**
+   - A command chain hid a merge conflict, so `main` was first pushed at the audit-docs commit alone. That
+     changed no code, and the deployed code ran unchanged against the new migrations.
+   - The conflict was resolved: both entries kept in `DECISIONS.md`.
+   - Merged as `cc498d5` and pushed. Live within about two minutes.
+
+Production, after the deploy:
+- **Homepage:** "Forty-nine scenarios" and the v5 sample, graded Withheld.
+- **API:** unauthenticated `/api/v1/runs` answers 401 JSON.
+- **Sealed reports:** all 18 open and export with the CI code they were sealed with; expired and withdrawn
+  ones refuse.
+- **Two smoke runs in throwaway workspaces, erased afterwards.** No agent was reached and no model asked.
+  In each:
+  - `Idempotency-Key` replayed the same run;
+  - the run advanced under the lease token (0047) and completed with both scenarios recorded;
+  - the API said `incomplete` with its reason;
+  - a key without `responses` was refused the replies.
+- **C12 on Vercel, partly proven.** An agent named `localtest.me`, which resolves to 127.0.0.1, was refused
+  before any connection: "Not sent: … points to a private or internal address". That shows the address
+  guard runs on Vercel. It does not prove the connect-time pinning against a name whose answer changes
+  between check and connect, which a static name cannot exercise. That stays a documented boundary.

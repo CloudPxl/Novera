@@ -80,8 +80,15 @@ try {
   const detail = await call(`/api/v1/runs/${a.run}`, minted.key);
   report(detail.status === 200 && detail.body.run.cases.length === 2 && !("response" in detail.body.run.cases[0]),
     "a run's scenarios are listed without the agent's words unless asked");
-  const withResponses = await call(`/api/v1/runs/${a.run}?include=responses`, minted.key);
-  report(withResponses.body.run?.cases?.[0]?.response === "reply a", "and with them when asked");
+  const withoutScope = await call(`/api/v1/runs/${a.run}?include=responses`, minted.key);
+  report(withoutScope.status === 403 && /responses scope/.test(String(withoutScope.body.error)),
+    "a key without the responses scope is refused the agent's words (0052)", `${withoutScope.status}`);
+  const replyKey = mintKey();
+  await db.from("api_keys").insert({ workspace_id: a.ws, name: "replies", prefix: replyKey.prefix, key_hash: replyKey.hash, scopes: ["read", "responses"], created_by: a.user.id });
+  const withResponses = await call(`/api/v1/runs/${a.run}?include=responses`, replyKey.key);
+  report(withResponses.body.run?.cases?.[0]?.response === "reply a", "and a key with it gets them when it asks");
+  const { error: responsesAlone } = await db.from("api_keys").insert({ workspace_id: a.ws, name: "r", prefix: "nvk_r", key_hash: "rr", scopes: ["responses"], created_by: a.user.id });
+  report(Boolean(responsesAlone), "a key cannot have responses without read", responsesAlone?.message.slice(0, 60));
 
   // Row-level security through a real session: members read keys, never their hash.
   const member = createClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
@@ -193,7 +200,7 @@ try {
     const other = await makeWorkspace("raw-other");
     try {
       const k = mintKey();
-      const { data: keyRow } = await db.from("api_keys").insert({ workspace_id: w.ws, name: "raw", prefix: k.prefix, key_hash: k.hash, scopes: ["read"], created_by: w.user.id }).select("id").single();
+      const { data: keyRow } = await db.from("api_keys").insert({ workspace_id: w.ws, name: "raw", prefix: k.prefix, key_hash: k.hash, scopes: ["read", "responses"], created_by: w.user.id }).select("id").single();
       const EMAIL = "quoted.person@example.test";
       const { data: pol } = await db.from("policies").select("id").eq("agent_id", w.agent).single();
       const { data: suite } = await db.from("suites").select("id").is("workspace_id", null).limit(1).single();

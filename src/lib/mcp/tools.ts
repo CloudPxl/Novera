@@ -114,14 +114,21 @@ export function buildTools(db: SupabaseClient, caller: McpCaller, origin: string
     {
       name: "get_run",
       title: "Get a run",
-      description: "One run and every scenario's verdict (pass, fail or no_result), the reason, how it was settled and whether the graders agreed. A scenario whose verdict has moved before under the same policy version carries `stability`, saying whether the graders or the agent moved. Set include_responses to also get what each scenario sent and the agent's replies.",
+      description: "One run and every scenario's verdict (pass, fail or no_result), the reason, how it was settled and whether the graders agreed, and the run's outcome for a release gate. A scenario whose verdict has moved before under the same policy version carries `stability`, saying whether the graders or the agent moved."
+        + (caller.scopes.includes("responses") ? " Set include_responses to also get what each scenario sent and the agent's replies; each such read is recorded." : ""),
       inputSchema: {
         type: "object",
-        properties: { run_id: { type: "string" }, include_responses: { type: "boolean", default: false } },
+        // Offered only to a key that may read the agent's replies (0052).
+        properties: caller.scopes.includes("responses")
+          ? { run_id: { type: "string" }, include_responses: { type: "boolean", default: false } }
+          : { run_id: { type: "string" } },
         required: ["run_id"],
         additionalProperties: false,
       },
       run: async (args) => {
+        if (args.include_responses === true && !caller.scopes.includes("responses")) {
+          throw new ToolRefusal("This key does not have the responses scope, so the agent's replies are not available through it.");
+        }
         const found = await run(uuid(args, "run_id"), args.include_responses === true);
         return { run: { ...found, report: reportLink(found.report) } };
       },

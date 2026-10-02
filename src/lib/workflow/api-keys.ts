@@ -44,7 +44,12 @@ export async function createApiKey(_prev: KeyFormState, form: FormData): Promise
     name,
     prefix: minted.prefix,
     key_hash: minted.hash,
-    scopes: ["read", ...(form.get("canRun") === "on" ? ["run"] : []), ...(form.get("canWrite") === "on" ? ["write"] : [])],
+    scopes: [
+      "read",
+      ...(form.get("canRun") === "on" ? ["run"] : []),
+      ...(form.get("canWrite") === "on" ? ["write"] : []),
+      ...(form.get("canReadResponses") === "on" ? ["responses"] : []),
+    ],
     created_by: user.id,
   });
   if (error) return { error: `The key could not be created: ${error.message}` };

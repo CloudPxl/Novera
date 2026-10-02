@@ -3471,3 +3471,25 @@ outranks it: it is a finding.
 - the API says `incomplete` with the same reason.
 
 `verify:webhooks` checks that the API and webhook outcomes agree on a real run. 583 tests.
+
+## 2026-10-01 — G6: reading the agent's replies needs its own key scope (0052)
+
+**Before.** Any `read` key could ask for `include=responses`; 0050 only recorded that it had. A key handed
+to a CI pipeline needs verdicts and counts, never conversations.
+
+**Now.**
+- A fourth scope, `responses`, is allowed only with `read`.
+- REST answers `403` without it, before anything is read or logged.
+- MCP does not offer `include_responses` to such a key, and refuses it if it is sent anyway.
+- Settings has a tick-box for it.
+
+**Not migrated.** Scopes are frozen at creation (0033), and production holds no API keys (read-only check),
+so no key loses access it was given.
+
+`verify:api` 48:
+- a read key gets 403;
+- a `responses` key gets the exact words, and the read is logged;
+- `responses` without `read` is refused by the database.
+
+`verify:mcp` 33: the parameter is not offered to a read key, which is refused it with nothing logged; a
+`responses` key reads.

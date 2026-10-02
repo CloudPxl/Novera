@@ -37,6 +37,14 @@ export function CreateApiKey() {
             to approve or reject here; no key can approve, publish or change anything.
           </span>
         </label>
+        <label className="flex w-full items-start gap-2 text-sm text-ink-soft">
+          <input type="checkbox" name="canReadResponses" className="mt-0.5 size-4 accent-ink" />
+          <span>
+            Can also read your agent&apos;s replies and what each scenario sent, through the API and MCP.
+            Without it, a key sees verdicts, reasons and counts, with personal data shown as placeholders.
+            Every read of the replies is listed below.
+          </span>
+        </label>
       </form>
 
       {state.error && <p role="status" className="mt-3 text-sm text-fail-text">{state.error}</p>}

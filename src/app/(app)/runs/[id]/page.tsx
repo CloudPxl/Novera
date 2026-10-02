@@ -6,6 +6,9 @@ import { requireWorkspace } from "@/lib/auth/session.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { rerunFrom } from "@/lib/workflow/actions.ts";
 import { noVerdictRow, repairFor } from "@/lib/evidence/repair.ts";
+import { readinessOf, READINESS_LABEL } from "@/lib/report/readiness.ts";
+import type { ReportPayload } from "@/lib/report/payload.ts";
+import { ReadinessPanel } from "./readiness.tsx";
 import { compareRuns } from "@/lib/evidence/compare.ts";
 import { loadStability } from "@/lib/evidence/stability-history.ts";
 import { alignment, latestReviews, withFindingsApplied, type VerdictReview } from "@/lib/evidence/reviews.ts";
@@ -73,7 +76,7 @@ export default async function RunPage({
     db.from("suites").select("name, version, cases").eq("id", run.suite_id).maybeSingle(),
     // Newest first: a run can carry a reissue that discloses human review, and a
     // single-row read of more than one report returns nothing at all.
-    db.from("reports").select("token, created_at, revoked_at, disclosed:payload->human_review->>as_of").eq("run_id", id)
+    db.from("reports").select("token, created_at, revoked_at, expires_at, content_hash, payload, disclosed:payload->human_review->>as_of").eq("run_id", id)
       .order("created_at", { ascending: false }),
     run.schedule_id
       ? db.from("run_schedules").select("cadence, hour_utc, weekday").eq("id", run.schedule_id).maybeSingle()
@@ -158,6 +161,16 @@ export default async function RunPage({
   const undisclosedReviews = report && !report.revoked_at
     ? reviews.filter((r) => r.createdAt > (report.created_at as string)).length
     : 0;
+  // Whether the newest report is something to hand a client, from what is stored.
+  const readiness = report?.payload
+    ? readinessOf({
+        report: {
+          payload: report.payload as unknown as ReportPayload, content_hash: report.content_hash as string,
+          expires_at: report.expires_at as string, revoked_at: (report.revoked_at as string | null) ?? null,
+        },
+        undisclosedReviews,
+      })
+    : null;
   const applied = withFindingsApplied(
     rows.map((c) => ({ runCaseId: c.id as string, status: c.status as "pass" | "fail" | "error" })),
     currentReviews,
@@ -577,6 +590,10 @@ export default async function RunPage({
               ))}
               .
             </p>
+          )}
+
+          {readiness && report?.token && (
+            <ReadinessPanel state={readiness.state} label={READINESS_LABEL[readiness.state]} checks={readiness.checks} token={report.token as string} />
           )}
 
           <div className="mt-4 flex flex-wrap items-center gap-3">

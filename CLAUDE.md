@@ -49,6 +49,7 @@ someone with the service role, not merely someone using the application.
 | An errored case cannot be a pass; an evidence gap cannot sit on a verdict; a rule-settled case cannot name a judge | 0019 |
 | A run's inputs were declared *before* it executed — suite version and case ids in order, policy version, agent host, judge plan, pass mark, runner version, rubric digest — and its evidence is only those scenarios, each recorded once, while it runs: a completed run takes no new row, and a run is marked completed only when every declared scenario has one | 0016, frozen by trigger; 0043; 0048 |
 | A report was not edited after sealing, and chains to the previous report for that agent | SHA-256 content hash + `previous_report_hash` |
+| A withdrawn report stays withdrawn, its link and exports refuse at once, and the row names who withdrew it; whether a report is ready to send is computed from the sealed document and never raised because someone wants to share it | 0053, `src/lib/report/readiness.ts`, `verify:db` |
 | A policy version is immutable; editing creates a new one | 0001 + append-only trigger |
 | A diagnosis is a proposal: the model cannot quote policy text that is not in the policy, and a proposal whose target moved is refused rather than applied nearby | 0007 |
 | A drafted or imported scenario cannot enter a suite without a named approval, and cannot be withdrawn once it has; an import carries its file and item hashes, a policy draft its quoted passage, each frozen | 0022 + 0030 |
@@ -207,7 +208,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 592 unit tests | free |
+| `npm test` | 598 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |

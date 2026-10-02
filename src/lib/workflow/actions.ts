@@ -588,6 +588,28 @@ export async function reissueReport(_prev: FormState, form: FormData): Promise<F
  * it does not consume one of the trial's runs: a retest is not a run, produces no
  * report, and must not be priced as though it were.
  */
+/**
+ * Withdraws a sealed report: its link and every download stop working, for everyone, at
+ * once, and the database keeps it withdrawn and records who did it (0053). The evidence and
+ * its hash are untouched — a withdrawn report is not a deleted one.
+ */
+export async function withdrawReport(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const token = String(form.get("token") ?? "");
+  if (form.get("confirm") !== "on") {
+    return { error: "Tick the box to confirm: the link stops working for everyone who has it." };
+  }
+  const admin = await assertMembership(user.id, workspace.id);
+  const { data, error } = await admin.from("reports")
+    .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
+    .eq("workspace_id", workspace.id).eq("token", token).is("revoked_at", null)
+    .select("run_id").maybeSingle();
+  if (error) return { error: `The report could not be withdrawn: ${error.message}` };
+  if (!data) return { error: "That report is not open in this workspace; it may already be withdrawn." };
+  revalidatePath(`/runs/${data.run_id}`);
+  return { notice: "Withdrawn. The link and its downloads stopped working, for everyone." };
+}
+
 export async function retestOneCase(_prev: FormState, form: FormData): Promise<FormState> {
   const { user, workspace } = await requireWorkspace();
   const runCaseId = String(form.get("runCaseId") ?? "").trim();

@@ -3533,3 +3533,26 @@ run: no metadata channel 1, for your configuration" with the next step; the link
 to that one scenario; it says the agent never received it, a retest alone will not help, and editing the
 policy will not change it; no diagnosis offered; axe clean, no overflow at 390 and 1440. 9 classifier
 tests; 592 tests.
+
+## 2026-10-02 — Before you send it: report readiness from stored rows, and a withdrawal that stays withdrawn (0053)
+
+A report is sealed whenever a run finishes, so "there is a link" never meant "this is ready for a client".
+`src/lib/report/readiness.ts` states which, from the sealed document and the run: READY_TO_SHARE,
+READY_FOR_INTERNAL_REVIEW (passes one model gave alone, reviews recorded after sealing, or no recorded
+authorisation), INCOMPLETE / WITHHELD (as the sealed grade says), BLOCKED_BY_EVIDENCE (the hash does not
+match, the counts do not cover the plan, or the limitations block is missing), REVOKED, EXPIRED — with the
+checks behind it: integrity, inputs declared, authorisation, every scenario accounted for, no-verdict
+scenarios disclosed, corroboration, what was tested, limitations, no conversations or keys (by
+construction), reviews disclosed, link open. Failures never lower the state: a report showing them is the
+evidence a client is owed. Older reports are judged on what they hold, with notes rather than gaps.
+
+The operator could not withdraw a report at all; the database allowed it, and also allowed un-withdrawing
+it with no record of who did either. Now the run page has **Withdraw this report** (with a confirmation
+that the link stops working for everyone), and 0053 makes a withdrawal permanent: `revoked_by` is set
+with `revoked_at`, once; a withdrawn report cannot be reopened, re-attributed or have its expiry moved.
+
+`verify:db` 68 (six new: attribution without withdrawal refused; withdrawal allowed; reopen, expiry and
+re-attribution refused; the row holds who). Walked on the isolated app: a real run's report shows "Review
+before sharing — no authorisation recorded", 2 planned / 2 failed, intact; withdraw → the panel says
+withdrawn and offers no second withdrawal, the link says withdrawn, the JSON export answers 410, the row
+names the user. axe clean, no overflow at 390 and 1440. 6 readiness tests; 598 tests.

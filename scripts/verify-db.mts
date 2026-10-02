@@ -464,5 +464,30 @@ console.log("\nThe migration ledger");
   }
 }
 
+// ------------------------------------------------------------------ withdrawing a report (0053)
+console.log("\nWithdrawing a report");
+{
+  const { sealThrowawayReport } = await import("./verify-fixtures.mts");
+  const sealed = await sealThrowawayReport(db, "withdraw");
+  try {
+    const owner = (await db.from("workspaces").select("owner_id").eq("id", sealed.workspaceId).single()).data!.owner_id as string;
+    const { error: attributedOnly } = await db.from("reports").update({ revoked_by: owner }).eq("token", sealed.token);
+    report(/only when the report is withdrawn/.test(attributedOnly?.message ?? ""), "who withdrew it cannot be set without withdrawing it", attributedOnly?.message.slice(0, 70) ?? "accepted");
+    const when = new Date().toISOString();
+    const { error: withdraw } = await db.from("reports").update({ revoked_at: when, revoked_by: owner }).eq("token", sealed.token);
+    report(!withdraw, "a report can be withdrawn, naming who did it", withdraw?.message ?? "");
+    const { error: undo } = await db.from("reports").update({ revoked_at: null }).eq("token", sealed.token);
+    report(/stays withdrawn/.test(undo?.message ?? ""), "a withdrawn report cannot be reopened", undo?.message.slice(0, 70) ?? "it was reopened");
+    const { error: extend } = await db.from("reports").update({ expires_at: "2099-01-01T00:00:00Z" }).eq("token", sealed.token);
+    report(/stays withdrawn/.test(extend?.message ?? ""), "nor its expiry moved", extend?.message.slice(0, 70) ?? "moved");
+    const { error: rename } = await db.from("reports").update({ revoked_by: null }).eq("token", sealed.token);
+    report(/stays withdrawn/.test(rename?.message ?? ""), "nor who withdrew it rewritten", rename?.message.slice(0, 70) ?? "rewritten");
+    const { data: row } = await db.from("reports").select("revoked_at, revoked_by, content_hash").eq("token", sealed.token).single();
+    report(row?.revoked_by === owner && Boolean(row?.revoked_at), "the row holds when and who", JSON.stringify({ by: row?.revoked_by === owner }));
+  } finally {
+    await sealed.erase();
+  }
+}
+
 console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) failed.\n`);
 process.exit(failures === 0 ? 0 : 1);

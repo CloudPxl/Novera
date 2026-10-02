@@ -2,26 +2,8 @@ import Link from "next/link";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { Badge, Card } from "@/components/ui/primitives.tsx";
 import { switchWorkspace } from "@/lib/workflow/identity.ts";
-import { ROLE_LABEL, type Role } from "@/lib/auth/permissions.ts";
 import { AUDIT_LABEL, type AuditAction } from "@/lib/audit/record.ts";
 import type { PortfolioRow } from "@/lib/workspaces/portfolio.ts";
-import type { NextAction } from "./next-action.ts";
-
-/** The personal dashboard's lead: one next step, computed (next-action.ts). */
-export function NextCard({ action }: { action: NextAction }) {
-  return (
-    <section aria-labelledby="next-heading" className="mt-6 overflow-hidden rounded-shell border border-ink bg-surface shadow-card">
-      <div className="grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-6">
-        <div>
-          <p className="type-eyebrow text-ink-faint">Next</p>
-          <h2 id="next-heading" className="mt-1.5 type-h2">{action.title}</h2>
-          <p className="mt-1 max-w-2xl type-body text-ink-soft">{action.body}</p>
-        </div>
-        <ButtonLink href={action.href} className="justify-self-start sm:justify-self-end">{action.label} →</ButtonLink>
-      </div>
-    </section>
-  );
-}
 
 /**
  * The honest answer to the onboarding channels question: Novera tests an agent over HTTP.
@@ -37,21 +19,6 @@ export function ChannelNote({ channels }: { channels: string[] }) {
       {voice ? " Calls themselves — speech, latency, interruptions — are not tested." : ""}{" "}
       <Link href="/docs/connecting-an-agent" className="font-medium underline underline-offset-2">Connecting an agent</Link>
     </p>
-  );
-}
-
-/** For one person in personal mode: the way to a team or clients, stated plainly. */
-export function UpgradeCard() {
-  return (
-    <section aria-labelledby="upgrade-heading" className="rounded-shell border border-dashed border-line-strong bg-surface/60 p-4">
-      <h2 id="upgrade-heading" className="type-h3">Working with a team, or for clients?</h2>
-      <p className="mt-1 text-sm leading-relaxed text-ink-soft">
-        Agency mode adds a workspace per client, a switcher and members with roles. Nothing you have now moves or changes.
-      </p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <ButtonLink href="/settings/profile#mode-heading" size="sm" variant="secondary">Change how you use Novera</ButtonLink>
-      </div>
-    </section>
   );
 }
 
@@ -94,24 +61,6 @@ export function ClientStrip({ rows, currentId, label }: { rows: PortfolioRow[]; 
           </li>
         ))}
       </ul>
-    </section>
-  );
-}
-
-/** Agency and enterprise: who is in this workspace, and the way to add someone. */
-export function TeamCard({ byRole, canInvite, invitesOpen }: { byRole: Array<[Role, number]>; canInvite: boolean; invitesOpen: number }) {
-  const total = byRole.reduce((n, [, c]) => n + c, 0);
-  return (
-    <section aria-labelledby="team-heading" className="rounded-shell border border-line bg-surface p-4 shadow-card">
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 id="team-heading" className="type-h3">Team · {total}</h2>
-        <Link href="/settings/members" className="text-xs font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">Members →</Link>
-      </div>
-      <p className="mt-2 flex flex-wrap gap-1.5">
-        {byRole.map(([r, n]) => <Badge key={r} tone="neutral">{n} {ROLE_LABEL[r].toLowerCase()}{n === 1 ? "" : "s"}</Badge>)}
-      </p>
-      {invitesOpen > 0 && <p className="mt-2 text-xs text-ink-soft">{invitesOpen} invitation{invitesOpen === 1 ? "" : "s"} waiting to be accepted.</p>}
-      {canInvite && total === 1 && <ButtonLink href="/settings/members" size="sm" variant="secondary" className="mt-3">Invite a teammate</ButtonLink>}
     </section>
   );
 }

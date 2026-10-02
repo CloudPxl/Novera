@@ -37,10 +37,10 @@ export function nextAction(s: NextInput): NextAction {
   if (!s.hasAgent) {
     return s.may.connect
       ? { title: "Connect your agent", body: "Its address and your confirmation that you may test it. Novera sends one harmless message first, so you see the reply before anything else.", href: "/agents/new", label: "Connect an agent" }
-      : { title: "Nothing connected yet", body: "Someone with the operator, admin or owner role connects the agent. Once there is a run, its findings come to you.", href: "/guide", label: "Read the guide" };
+      : { title: "Nothing connected yet", body: "Someone with the operator, admin or owner role connects the agent. Once there is a run, its findings come to you.", href: "/guide", label: "Read how Novera works" };
   }
   if (s.runInFlight) {
-    return { title: "A run is in progress", body: "Scenarios are being sent and graded. The result appears when every scenario is recorded — never before.", href: `/runs/${s.runInFlight}`, label: "Watch it" };
+    return { title: "A run is in progress", body: "Scenarios are being sent and graded. The result appears when every scenario is recorded — never before.", href: `/runs/${s.runInFlight}`, label: "Open the run in progress" };
   }
   if (!s.hasPolicy && s.may.connect) {
     return { title: "Write the policy your agent should keep", body: "Every verdict is judged against this text, and each saved version is kept.", href: `/agents/${s.firstAgentId}`, label: "Write the policy" };
@@ -52,10 +52,10 @@ export function nextAction(s: NextInput): NextAction {
       : { title: "Waiting for the first run", body: "An operator, admin or owner starts runs. Its findings come to you for review.", href: "/review", label: "Open review" };
   }
   if (s.topFinding && s.may.review) {
-    return { title: `Look at ${s.topFinding.caseId}`, body: s.topFinding.label, href: s.topFinding.href, label: "Open the finding" };
+    return { title: `Look at ${s.topFinding.caseId}`, body: s.topFinding.label, href: s.topFinding.href, label: `Review ${s.topFinding.caseId}` };
   }
   if (s.noVerdict > 0) {
-    return { title: `${s.noVerdict} ${s.noVerdict === 1 ? "scenario has" : "scenarios have"} no verdict`, body: "Each says why and whether retrying is safe. None is counted as a pass, so the report stays withheld until they are settled.", href: "/review#repair", label: "See why" };
+    return { title: `${s.noVerdict} ${s.noVerdict === 1 ? "scenario has" : "scenarios have"} no verdict`, body: "Each says why and whether retrying is safe. None is counted as a pass, so the report stays withheld until they are settled.", href: "/review#repair", label: "See what has no verdict" };
   }
   if (s.readyRunId) {
     return { title: "Your report is ready to share", body: "Sealed, intact, every scenario with a verdict. Send the private link or export it.", href: `/runs/${s.readyRunId}#report`, label: "Open the report" };

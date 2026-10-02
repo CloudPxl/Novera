@@ -89,3 +89,32 @@ gradients, glow blobs, particles and dark-mode-for-fashion.
   figures follow the product's real rules (no letter beside a missing verdict, read-back
   contradictions settled without a model, no-verdict cases named and never counted). The
   tamper module hashes with real SHA-256 in the browser.
+
+## The 2026-10-02 information architecture: calm control over complex evidence
+
+**Why.** Every page showed everything at once — the Overview held ten containers (a next-step
+card, five tiles, four attention rows, agent cards, a findings column, runs, an upgrade card, a
+guide); a run page put a fourteen-line readiness checklist, ten category cards, a 49-row table and
+a comparison on one screen. Polished, and crowded.
+
+**Three levels, never mixed on one screen.**
+- *Decide* — page header (where, what, one primary action), one health sentence, three metrics,
+  at most five attention items, five recent rows. The Overview and every list page.
+- *Investigate* — filters, lenses, comparisons, finding summaries. Review, a run's cases.
+- *Prove* — a case's evidence chain, model provenance, hashes, policy passages, audit detail.
+  Behind a tab, a dedicated page or an explicit disclosure; never on a Level-1 page.
+
+**Primitives** (`src/components/ui/page.tsx`): `PageHeader`, `Section` + `ViewAll`, `Panel` +
+`Rows` (one border per group, dividers between rows — not a card per row), `Metrics` (three or
+four figures, each optionally one link), `AttentionList` (five at most, tone as a word and a dot),
+`HealthLine`, `TabNav` (tabs as addresses, rendered on the server), `Disclosure` (one level).
+
+**Navigation by account mode.** Personal: Overview · My agent · My runs · My reports · Settings.
+Agency: Overview · Work (Review, Runs, Regressions) · Reports · Library (Agents, Scenarios) ·
+Settings. Enterprise adds Workspaces and Audit. Every existing URL still resolves. The bar's run
+control is quiet (outlined) so a page's own primary action is the only filled button on it.
+
+**Without JavaScript.** A signed-in page streams inside a Suspense boundary that only a script
+swaps in; with scripting off it stayed on "Loading…". The streamed block is shown and the fallback
+hidden under `@media (scripting: none)`, inside the base layer (Tailwind's `[hidden]` rule is
+`!important` there).

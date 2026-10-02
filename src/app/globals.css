@@ -534,3 +534,24 @@ body {
   transition: none !important;
   scroll-behavior: auto !important;
 }
+
+/* Without JavaScript, a streamed page never replaces its loading fallback: React's swap is an
+   inline script. The page's HTML is already there, in a hidden block React marks with an id
+   beginning "S:". With scripting off, show that block and hide the fallback, so a signed-in page
+   reads completely with JavaScript disabled (found 2026-10-02). */
+@layer base {
+  /* In the base layer on purpose: Tailwind's preflight hides [hidden] with !important there,
+     and an important rule in an earlier layer beats any unlayered one. */
+  @media (scripting: none) {
+    div[hidden][id^="S:"] {
+      display: block !important;
+      /* It lands after the shell, so it gets the shell's frame back. */
+      max-width: 80rem;
+      margin-inline: auto;
+      padding: 0 1.5rem 5rem;
+    }
+    .novera-loading {
+      display: none !important;
+    }
+  }
+}

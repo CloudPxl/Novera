@@ -1,27 +1,24 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { ReactNode } from "react";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
-import { Reveal } from "@/components/ui/reveal.tsx";
-import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
+import { Badge } from "@/components/ui/primitives.tsx";
 import { buildAttention } from "./attention.ts";
 import { summariseRun } from "./summary.ts";
 import { readinessOf, READINESS_LABEL, type Readiness } from "@/lib/report/readiness.ts";
 import { OBLIGATION_LABELS, type ReportPayload } from "@/lib/report/payload.ts";
 import { DEFAULT_RETENTION_DAYS } from "@/lib/privacy/retention.ts";
-import { testFindings, FINDING_STATE_LABEL, type FindingRun, type Followup, type CaseStatus } from "@/lib/review/findings.ts";
-import { Help } from "@/components/ui/help.tsx";
-import { GuidePanel } from "./guide-panel.tsx";
+import { testFindings, type FindingRun, type Followup, type CaseStatus } from "@/lib/review/findings.ts";
 import { redirect } from "next/navigation";
-import { can, ROLES, type Role } from "@/lib/auth/permissions.ts";
+import { can } from "@/lib/auth/permissions.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { portfolio } from "@/lib/workspaces/portfolio.ts";
 import { formatWhen, zoneLabel } from "@/lib/format/when.ts";
 import { nextAction } from "./next-action.ts";
-import { ChannelNote, ClientStrip, GovernancePanel, NextCard, TeamCard, UpgradeCard } from "./mode-panels.tsx";
+import { ChannelNote, ClientStrip, GovernancePanel } from "./mode-panels.tsx";
+import { AttentionList, HealthLine, Metrics, PageHeader, Panel, Rows, Section, ViewAll } from "@/components/ui/page.tsx";
 
 export const metadata: Metadata = { title: "Dashboard · Novera" };
 export const dynamic = "force-dynamic";
@@ -34,13 +31,6 @@ function daysAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString();
 }
 
-
-/** An endpoint's host: what identifies an agent to an operator in a hurry. */
-function hostOf(config: unknown): string {
-  const url = (config as { url?: unknown } | null)?.url;
-  if (typeof url !== "string") return "no endpoint";
-  try { return new URL(url).host; } catch { return "no endpoint"; }
-}
 
 /**
  * The first screen after signing in: what needs attention now, then what exists.
@@ -150,7 +140,6 @@ export default async function DashboardPage() {
     });
     readinessByAgent.set(agentId, { state: r.state, runId, gap: r.checks.find((c) => c.result === "gap")?.detail ?? null });
   }
-  const scheduleByAgent = new Map((schedules ?? []).map((s) => [s.agent_id as string, s]));
 
   // The existing, tested "needs you" sentences.
   const retentionDays = (wsRow?.raw_evidence_days as number | null) ?? DEFAULT_RETENTION_DAYS;
@@ -193,24 +182,13 @@ export default async function DashboardPage() {
   const newestPerAgent = agentList.map((a) => findingRuns.find((r) => r.agentId === a.id)).filter(Boolean) as FindingRun[];
   const noVerdictNow = newestPerAgent.reduce((n, r) => n + [...r.cases.values()].filter((c) => c.status === "error").length, 0);
   const newRegressions = open.filter((f) => f.state === "new").length;
-  const pausedCount = (schedules ?? []).filter((s) => s.paused_at).length;
-  const firstPaused = (schedules ?? []).find((s) => s.paused_at)?.agent_id as string | undefined;
-  const pendingProposals = (proposals ?? []).filter((p) => p.status === "proposed").length;
   const readyCount = [...readinessByAgent.values()].filter((r) => r.state === "READY_TO_SHARE").length;
   const firstReady = [...readinessByAgent.values()].find((r) => r.state === "READY_TO_SHARE");
-  const answering = agentList.filter((a) => latestProbe.has(a.id as string) && !latestProbe.get(a.id as string)!.error).length;
-  const checked = agentList.filter((a) => latestProbe.has(a.id as string)).length;
-  const unreachable = agentList.filter((a) => latestProbe.get(a.id as string)?.error).length;
-  const activeRuns = runList.filter((r) => r.status === "queued" || r.status === "running").length;
 
   // Mode-specific reads, each scoped to this person's own memberships or this workspace.
   const svc = serviceClient();
-  const [rows, { data: memberRows }, { count: invitesOpen }, { data: auditRows }, { count: rawReads }] = await Promise.all([
+  const [rows, { data: auditRows }, { count: rawReads }] = await Promise.all([
     personal && context.memberships.length === 1 ? Promise.resolve([]) : portfolio(svc, context.memberships),
-    personal ? Promise.resolve({ data: null }) : svc.from("workspace_members").select("role").eq("workspace_id", workspace.id),
-    personal || !can(role, "member.invite") ? Promise.resolve({ count: 0 })
-      : svc.from("workspace_invitations").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id)
-        .is("accepted_at", null).is("revoked_at", null).gt("expires_at", new Date().toISOString()),
     mode === "enterprise" && can(role, "audit.view")
       ? svc.from("audit_events").select("id, action, created_at, actor_id").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(5)
       : Promise.resolve({ data: [] as Array<{ id: string; action: string; created_at: string; actor_id: string | null }> }),
@@ -218,7 +196,6 @@ export default async function DashboardPage() {
       ? svc.from("raw_evidence_reads").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id).gt("read_at", daysAgo(30))
       : Promise.resolve({ count: 0 }),
   ]);
-  const byRole = ROLES.map((r) => [r, (memberRows ?? []).filter((m) => m.role === r).length] as [Role, number]).filter(([, n]) => n > 0);
   const actorNames = new Map<string, string>();
   for (const id of new Set((auditRows ?? []).map((e) => e.actor_id).filter(Boolean) as string[])) {
     const { data: p } = await svc.from("user_profiles").select("display_name").eq("user_id", id).maybeSingle();
@@ -236,123 +213,64 @@ export default async function DashboardPage() {
     may: { connect: can(role, "agent.write"), run: can(role, "run.start"), review: can(role, "workspace.view") },
   });
 
-  const tiles: Tile[] = [
-    { label: "Needs review", value: open.length, unit: open.length === 1 ? "open finding" : "open findings", href: "/review#findings", tone: open.length ? "high" : "quiet", note: newestPerAgent.length ? "Failed scenarios in each agent's newest run" : "No completed run yet" },
-    { label: "Evidence incomplete", value: noVerdictNow, unit: noVerdictNow === 1 ? "scenario without a verdict" : "scenarios without a verdict", href: "/review#repair", tone: noVerdictNow ? "medium" : "quiet", note: "Never counted as passes" },
-    { label: "New regressions", value: newRegressions, unit: "newly broken", href: "/review?state=new#findings", tone: newRegressions ? "fail" : "quiet", note: "Passed in the previous comparable run" },
-    { label: "Awaiting approval", value: (draftCount ?? 0) + pendingProposals, unit: `${draftCount ?? 0} ${draftCount === 1 ? "draft" : "drafts"} · ${pendingProposals} ${pendingProposals === 1 ? "proposal" : "proposals"}`, href: (draftCount ?? 0) > 0 ? "/scenarios" : "/review#decisions", tone: (draftCount ?? 0) + pendingProposals ? "medium" : "quiet", note: "Nothing enters a suite or policy unapproved" },
-    { label: "Schedules paused", value: pausedCount, unit: pausedCount === 1 ? "schedule" : "schedules", href: firstPaused ? `/agents/${firstPaused}` : "/agents/new", tone: pausedCount ? "high" : "quiet", note: (schedules ?? []).length ? `${(schedules ?? []).length} active in total` : "No schedules set" },
-    { label: "Reports ready", value: readyCount, unit: `of ${readinessByAgent.size} newest ${readinessByAgent.size === 1 ? "report" : "reports"}`, href: firstReady ? `/runs/${firstReady.runId}#report` : "/review", tone: "quiet", note: "Computed from the sealed document", ratio: true },
-    { label: "Connections", value: answering, unit: `of ${agentList.length} answered their last check`, href: unreachable ? `/agents/${agentList.find((a) => latestProbe.get(a.id as string)?.error)?.id}` : "/settings", tone: unreachable ? "fail" : "quiet", ratio: true, note: `${checked < agentList.length ? `${agentList.length - checked} never checked · ` : ""}${entitlement.ownKey ? `grading on your ${entitlement.provider} key` : `trial grading, ${Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed)} of ${TRIAL_RUN_LIMIT} runs left`}` },
+  // ------------------------------------------------------------------ Decide
+  // One sentence for the workspace's state, from its stored rows, worst first.
+  const latestOutcomes = newestPerAgent.map((r) => summariseRun({ status: "completed", payload: (reportByRun.get(r.id)?.payload as never) ?? null, scheduleId: null, apiKeyName: null }));
+  const health: { tone: "pass" | "fail" | "warning" | "neutral" | "info"; title: string; detail: string } =
+    runList.length === 0
+      ? { tone: "neutral", title: "No runs yet", detail: agentList.length ? "Run the suite against your agent to get its first verdicts." : "Connect an agent and run the suite to get its first verdicts." }
+      : open.length > 0 || latestOutcomes.some((o) => o.state === "fail")
+        ? { tone: "fail", title: "Findings need review", detail: `${open.length} failed ${open.length === 1 ? "scenario" : "scenarios"} in ${newestPerAgent.length === 1 ? "the latest run" : "the latest runs"}${newRegressions ? `, ${newRegressions} newly broken` : ""}.` }
+        : noVerdictNow > 0 || latestOutcomes.some((o) => o.state === "incomplete")
+          ? { tone: "warning", title: "Evidence incomplete", detail: `${noVerdictNow} ${noVerdictNow === 1 ? "scenario has" : "scenarios have"} no verdict. None is counted as a pass, so no grade is given until they are settled.` }
+          : newestPerAgent.length === 0
+            ? { tone: "info", title: "A run is in progress", detail: "Its result appears when every scenario is recorded — never before." }
+            : readyCount > 0
+              ? { tone: "pass", title: "All comparable checks passed", detail: `${readyCount === 1 ? "The newest report is" : `${readyCount} newest reports are`} ready to share.` }
+              : { tone: "pass", title: "All comparable checks passed", detail: "The newest report is ready for internal review before it is shared." };
+  const latestRun = runList.find((r) => r.status === "completed");
+  const latestSum = latestRun ? summariseRun({ status: "completed", payload: (reportByRun.get(latestRun.id as string)?.payload as never) ?? null, scheduleId: null, apiKeyName: null }) : null;
+
+  // At most five things that need someone, each linking to where it is resolved.
+  const attentionItems = [
+    ...(!entitlement.canRun ? [{ text: entitlement.blockedReason ?? "Runs cannot start.", href: "/settings", action: "Connect a key", tone: "fail" as const }] : []),
+    ...attention.map((i) => ({ text: i.text, href: i.href, action: i.action, tone: i.tone })),
   ];
 
-  const CORE = new Set(["Needs review", "Evidence incomplete", "New regressions", "Reports ready"]);
-  const shownTiles = personal ? tiles.filter((t) => CORE.has(t.label) || (t.value > 0 && !t.ratio) || (t.label === "Connections" && t.tone === "fail")) : tiles;
-
   return (
-    <main className="w-full py-8 text-ink">
-      <header className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4 border-b border-line pb-6">
-        <div className="min-w-0">
-          <p className="type-eyebrow text-ink-faint">{personal ? (context.profile.display_name ? `Hello, ${context.profile.display_name}` : "Your workspace") : mode === "agency" ? "Client workspace" : "Workspace"}</p>
-          <h1 className="mt-2 type-h1 [overflow-wrap:anywhere]">{workspace.name}</h1>
-          <p className="mt-1 type-body text-ink-soft">
-            {user.email} · times in {zoneLabel(context.profile.timezone)} ·{" "}
-            {entitlement.ownKey
-              ? `Graded on your own ${entitlement.provider} key`
-              : `Trial · ${Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed)} of ${TRIAL_RUN_LIMIT} runs left`}
-          </p>
-        </div>
-        {/* History is secondary to the work: small, on the right, never the headline. */}
-        <dl className="flex gap-6 text-sm">
-          {([["Agents", agentList.length], ["Completed runs", runList.filter((r) => r.status === "completed").length], ["Reports issued", reportCount ?? 0], ["In flight", activeRuns]] as const).map(([k, v]) => (
-            <div key={k}>
-              <dd className="text-lg font-semibold tnum">{v}</dd>
-              <dt className="text-xs text-ink-faint">{k}</dt>
-            </div>
-          ))}
-        </dl>
-      </header>
+    <main className="w-full pb-10 text-ink">
+      <PageHeader
+        eyebrow={personal ? workspace.name : mode === "agency" ? "Client workspace" : "Workspace"}
+        title={personal ? (context.profile.display_name ? `Hello, ${context.profile.display_name}` : "Overview") : workspace.name}
+        description={<>Times in {zoneLabel(context.profile.timezone)} · {entitlement.ownKey ? `graded on your ${entitlement.provider} key` : `trial, ${Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed)} of ${TRIAL_RUN_LIMIT} runs left`}</>}
+        action={<ButtonLink href={action.href}>{action.label}</ButtonLink>}
+      />
 
-      {!entitlement.canRun && (
-        <div role="status" className="mt-6 rounded-panel border border-warning-border bg-warning-surface px-4 py-3 text-sm leading-relaxed text-warning-text">
-          {entitlement.blockedReason}{" "}
-          <Link href="/settings" className="font-medium underline underline-offset-2">Connect your key</Link>.
-        </div>
-      )}
-
-      {personal && <NextCard action={action} />}
       <ChannelNote channels={context.profile.channels} />
 
-      {setupDone < setup.length && (
-        <section aria-labelledby="setup-heading" className="mt-6 rounded-shell border border-line bg-surface p-5 shadow-card">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 id="setup-heading" className="type-h3">
-              Getting started · {setupDone} of {setup.length}
-              <Help label="Getting started">
-                Four steps from nothing to a report you can hand over. Each ticks itself when it has
-                actually happened. The <Link href="/guide" className="underline underline-offset-2">step-by-step guide</Link> explains each one.
-              </Help>
-            </h2>
-            <div aria-hidden className="h-1.5 w-40 overflow-hidden rounded-full bg-sunken">
-              <div className="novera-bar h-full rounded-full bg-ink" style={{ width: `${(setupDone / setup.length) * 100}%` }} />
-            </div>
-          </div>
-          <ol className="mt-4 grid gap-2 sm:grid-cols-4">
-            {setup.map((step, i) => {
-              const next = !step.done && setup.slice(0, i).every((s) => s.done);
-              return (
-                <li key={step.label}>
-                  {step.done ? (
-                    <span className="flex items-center gap-2 rounded-panel border border-line bg-ground px-3 py-2.5 text-sm text-ink-faint">
-                      <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded-full bg-pass-surface text-[11px] text-pass-text">✓</span>
-                      <span className="line-through">{step.label}</span><span className="sr-only"> — done</span>
-                    </span>
-                  ) : (
-                    <Link href={step.href} className={`novera-press flex items-center gap-2 rounded-panel border px-3 py-2.5 text-sm ${next ? "border-ink bg-surface font-medium text-ink shadow-card" : "border-line text-ink-soft hover:border-line-strong hover:text-ink"}`}>
-                      <span aria-hidden className={`grid size-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold ${next ? "bg-ink text-on-ink" : "border border-line-strong text-ink-faint"}`}>{i + 1}</span>
-                      {step.label}{next && <span className="sr-only"> — next</span>}
-                    </Link>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-      )}
-
-      {/* ------------------------------------------------------------ status board */}
-      <section aria-labelledby="board-heading" className="mt-8">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 id="board-heading" className="type-h2">Attention</h2>
-          <Link href="/review" className="text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">Open the review queue →</Link>
+      <Panel className="mt-2">
+        <HealthLine tone={health.tone} title={health.title} detail={health.detail} />
+        <div className="border-t border-line">
+          <Metrics items={[
+            {
+              label: "Latest run",
+              value: latestSum ? <Badge tone={latestSum.tone}>{latestSum.stateLabel}</Badge> : <span className="text-ink-faint">None yet</span>,
+              note: latestRun ? `${agentName.get(latestRun.agent_id as string) ?? "Agent"} · ${day(latestRun.created_at as string)}${latestSum?.band && latestSum.state !== "pass" ? ` · ${latestSum.band}` : ""}` : undefined,
+              href: latestRun ? `/runs/${latestRun.id}` : undefined,
+            },
+            { label: "Open findings", value: open.length, note: newRegressions ? `${newRegressions} newly broken` : open.length ? "None new since last run" : "Nothing failing", href: open.length ? "/review#findings" : undefined },
+            { label: "Reports ready", value: <>{readyCount}<span className="text-sm font-normal text-ink-faint"> of {readinessByAgent.size}</span></>, note: "Computed from each sealed report", href: "/reports" },
+          ]} />
         </div>
-        <ul className={`novera-stagger mt-3 grid grid-cols-2 gap-2.5 md:grid-cols-4 ${shownTiles.length > 4 ? "xl:grid-cols-7" : ""}`} data-shown="true">
-          {shownTiles.map((t, i) => (
-            <li key={t.label} style={{ ["--i" as string]: i }}>
-              <TileLink tile={t} />
-            </li>
-          ))}
-        </ul>
-      </section>
+      </Panel>
 
-      {attention.length > 0 && (
-        <Reveal className="mt-8">
-          <section aria-labelledby="attention-heading">
-            <h2 id="attention-heading" className="type-h3">Needs you</h2>
-            <ul className="mt-3 divide-y divide-line overflow-hidden rounded-shell border border-line bg-surface shadow-card">
-              {attention.map((item) => (
-                <li key={`${item.href}-${item.text}`} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:flex-nowrap">
-                  <Badge tone={item.tone}>{item.tone === "fail" ? "broken" : item.tone === "high" ? "open" : "waiting"}</Badge>
-                  <p className="min-w-0 flex-1 basis-56 type-body">{item.text}</p>
-                  <Link href={item.href} className="ml-auto shrink-0 text-sm font-medium text-ink underline-offset-2 hover:underline">
-                    {item.action} →
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </Reveal>
-      )}
+      <Section id="attention" title="Needs attention" action={attentionItems.length ? <ViewAll href="/review">Review queue</ViewAll> : undefined}>
+        {attentionItems.length ? (
+          <AttentionList items={attentionItems} more={{ href: "/review", count: attentionItems.length }} />
+        ) : (
+          <p className="rounded-shell border border-line bg-surface px-5 py-4 text-sm text-ink-soft">Nothing needs you right now.</p>
+        )}
+      </Section>
 
       {mode === "agency" && <ClientStrip rows={rows} currentId={workspace.id} label="Clients" />}
       {mode === "enterprise" && (
@@ -364,254 +282,79 @@ export default async function DashboardPage() {
           canAudit={can(role, "audit.view")}
         />
       )}
-      {mode === "enterprise" && context.memberships.length > 1 && <ClientStrip rows={rows} currentId={workspace.id} label="Workspaces" />}
 
-      <div className="mt-10 grid gap-10 xl:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
-        <div className="min-w-0 space-y-10">
-          {/* ------------------------------------------------------------- agents */}
-          <Reveal>
-            <section aria-labelledby="agents-heading">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center"><h2 id="agents-heading" className="type-h2">{personal ? (agentList.length === 1 ? "My agent" : "My agents") : "Agents"}</h2><Help label="Agents">
-                  The support agents you have connected. Open one to write its policy, check its
-                  connection and run the suite against it. Only test agents you own or are authorised to test.
-                </Help></div>
-                {can(role, "agent.write") && <Link href="/agents/new" className="text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">Connect another</Link>}
-              </div>
-              {agentList.length > 0 ? (
-                <ul className="mt-3 grid gap-3 lg:grid-cols-2">
-                  {agentList.map((a) => {
-                    const id = a.id as string;
-                    const latest = findingRuns.find((r) => r.agentId === id);
-                    const latestRow = latest ? runList.find((r) => r.id === latest.id) : undefined;
-                    const summary = latestRow ? summariseRun({ status: "completed", payload: (reportByRun.get(latest!.id)?.payload as never) ?? null, scheduleId: null, apiKeyName: null }) : null;
-                    const prev = latest ? findingRuns.find((r) => r.agentId === id && r.id !== latest.id && r.suiteId === latest.suiteId) : undefined;
-                    const mine = findings.filter((f) => f.agentId === id);
-                    const fixed = mine.filter((f) => f.state === "resolved").length;
-                    const broke = mine.filter((f) => f.state === "new").length;
-                    const openHere = mine.filter((f) => f.state !== "resolved").length;
-                    const readiness = readinessByAgent.get(id);
-                    const sched = scheduleByAgent.get(id);
-                    const probe = latestProbe.get(id);
-                    return (
-                      <li key={id}>
-                        <Card className="flex h-full flex-col p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <Link href={`/agents/${id}`} className="block truncate font-semibold underline-offset-2 hover:underline">{a.name as string}</Link>
-                              <p className="truncate type-mono text-xs text-ink-faint">{hostOf(a.config)}</p>
-                            </div>
-                            <div className="flex shrink-0 flex-wrap justify-end gap-1">
-                              {probe?.error && <Badge tone="fail">Not answering</Badge>}
-                              {a.attested_at ? <Badge tone="pass">Authorised</Badge> : <Badge tone="error">No authorisation</Badge>}
-                            </div>
-                          </div>
-
-                          <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                            <Fact label="Evidence">
-                              {summary ? (
-                                <span className="flex flex-wrap items-center gap-1.5">
-                                  <Badge tone={summary.tone}>{summary.stateLabel}</Badge>
-                                  {summary.band && summary.state !== "pass" && <span className="text-xs text-ink-soft">{summary.band}</span>}
-                                </span>
-                              ) : <span className="text-ink-faint">No completed run</span>}
-                            </Fact>
-                            <Fact label="Last run">
-                              {latest && summary?.counts ? (
-                                <Link href={`/runs/${latest.id}`} className="tnum underline-offset-2 hover:underline">
-                                  {day(latest.createdAt)} · <span className="text-pass-text">{summary.counts.passed}</span>/<span className="text-fail-text">{summary.counts.failed}</span>/<span className="text-warning-text">{summary.counts.noVerdict}</span>
-                                  <span className="sr-only"> passed, failed, no verdict</span>
-                                </Link>
-                              ) : <span className="text-ink-faint">—</span>}
-                            </Fact>
-                            <Fact label="Against baseline">
-                              {prev ? (
-                                <span className="tnum">{day(prev.createdAt)}: <span className={broke ? "font-medium text-fail-text" : ""}>{broke} new</span>, {fixed} fixed</span>
-                              ) : <span className="text-ink-faint">Nothing comparable yet</span>}
-                            </Fact>
-                            <Fact label="Open findings">
-                              {openHere ? <Link href={`/review?agent=${id}#findings`} className="tnum font-medium underline-offset-2 hover:underline">{openHere}</Link> : <span className="text-ink-faint">None</span>}
-                            </Fact>
-                            <Fact label="Next scheduled run">
-                              {sched ? (sched.paused_at
-                                ? <span className="text-high-text">Paused{sched.paused_reason ? ` — ${sched.paused_reason as string}` : ""}</span>
-                                : <span className="tnum">{when(sched.next_run_at as string)} UTC</span>)
-                                : <span className="text-ink-faint">No schedule</span>}
-                            </Fact>
-                            <Fact label="Newest report">
-                              {readiness ? (
-                                <Link href={`/runs/${readiness.runId}#report`} className={`underline-offset-2 hover:underline ${readiness.state === "READY_TO_SHARE" ? "text-pass-text" : "text-ink"}`}>{READINESS_LABEL[readiness.state]}</Link>
-                              ) : <span className="text-ink-faint">None yet</span>}
-                            </Fact>
-                          </dl>
-
-                          <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                            {openHere > 0 && latest && <ButtonLink href={`/runs/${latest.id}?verdict=fail`} size="sm">Review findings</ButtonLink>}
-                            <ButtonLink href={`/agents/${id}`} size="sm" variant="secondary">{latest ? "Run again" : "Write policy and run"}</ButtonLink>
-                          </div>
-                        </Card>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <div className="mt-3">
-                  <EmptyState title="No agents yet" action={<ButtonLink href="/agents/new">Connect an agent</ButtonLink>}>
-                    Connect an agent you own, or one you have permission to test. Novera makes one
-                    harmless request first so you can see the answer before running anything.
-                  </EmptyState>
-                </div>
-              )}
-            </section>
-          </Reveal>
-
-          {/* --------------------------------------------------------------- runs */}
-          <Reveal>
-            <section aria-labelledby="runs-heading">
-              <div className="flex items-center"><h2 id="runs-heading" className="type-h2">{personal ? "My runs" : "Recent runs"}</h2><Help label="Runs">
-                A run sends every scenario in a suite to one agent and grades each answer against its
-                policy. The outcome is the release gate&apos;s: pass, fail, or evidence incomplete.
-              </Help></div>
-              {runList.length > 0 ? (
-                <ul className="mt-3 divide-y divide-line overflow-hidden rounded-shell border border-line bg-surface shadow-card">
-                  {runList.slice(0, 8).map((r) => {
-                    const s = summariseRun({
-                      status: r.status as string,
-                      payload: (reportByRun.get(r.id as string)?.payload as never) ?? null,
-                      scheduleId: (r.schedule_id as string | null) ?? null,
-                      apiKeyName: r.api_key_id ? keyName.get(r.api_key_id as string) ?? "key" : null,
-                    });
-                    const regressions = regressionsOf.get(r.id as string);
-                    return (
-                      <li key={r.id as string} className="grid gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-ground sm:grid-cols-[minmax(0,1fr)_auto]">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Link href={`/runs/${r.id}`} className="font-medium underline-offset-2 hover:underline">{agentName.get(r.agent_id as string) ?? "Agent"}</Link>
-                            <Badge tone={s.tone} pulse={s.state === "running"}>{s.stateLabel}</Badge>
-                            {s.band && s.state !== "pass" && s.state !== "running" && <span className="text-xs text-ink-soft">{s.band}</span>}
-                            {(regressions ?? 0) > 0 && <Badge tone="fail">{regressions} newly broken</Badge>}
-                          </div>
-                          <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-ink-faint">
-                            <span className="tnum">{when(r.created_at as string)} UTC</span>
-                            <span>{s.startedBy}</span>
-                            {s.coverage && <span className="tnum">Ran {s.coverage.ran}/{s.coverage.planned} · verdict {s.coverage.verdict}/{s.coverage.planned}</span>}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3 sm:justify-end">
-                          {s.counts && (
-                            <span className="tnum text-xs text-ink-soft">
-                              {s.counts.passed} passed
-                              {s.counts.failed > 0 && <span className="text-fail-text"> · {s.counts.failed} failed</span>}
-                              {s.counts.noVerdict > 0 && <span className="text-warning-text"> · {s.counts.noVerdict} no verdict</span>}
-                            </span>
-                          )}
-                          {s.counts && s.counts.failed + s.counts.noVerdict > 0 ? (
-                            <Link href={`/runs/${r.id}?verdict=${s.counts.failed ? "fail" : "error"}`} className="shrink-0 text-sm font-medium underline-offset-2 hover:underline">Review findings →</Link>
-                          ) : (
-                            <Link href={`/runs/${r.id}`} className="shrink-0 text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">Open →</Link>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <div className="mt-3">
-                  <EmptyState title="No runs yet">
-                    Once an agent is connected and a policy version is saved, run the suite to produce a report.
-                  </EmptyState>
-                </div>
-              )}
-            </section>
-          </Reveal>
-        </div>
-
-        {/* ------------------------------------------------------------- side column */}
-        <aside aria-label="Findings and guide" className="min-w-0 space-y-6">
-          <section aria-labelledby="findings-heading" className="rounded-shell border border-line bg-surface p-4 shadow-card">
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 id="findings-heading" className="type-h3">{personal ? "My findings" : "Open findings"}</h2>
-              {open.length > 0 && <Link href="/review#findings" className="text-xs font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">All {open.length} →</Link>}
-            </div>
-            {open.length === 0 ? (
-              <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-                {findingRuns.length ? "No failed scenario in any agent's newest run." : "Findings appear here once a run completes."}
-              </p>
-            ) : (
-              <ul className="mt-3 space-y-2">
-                {open.slice(0, 5).map((f) => (
-                  <li key={f.runCaseId}>
-                    <Link href={f.next.href} className="novera-lift block rounded-panel border border-line px-3 py-2.5">
-                      <span className="flex flex-wrap items-center gap-1.5">
-                        <Badge tone={f.severity as "critical"}>{f.severity}</Badge>
-                        <span className="type-mono text-xs text-ink-faint">{f.caseId}</span>
-                        <span className={`text-xs font-medium ${f.state === "new" ? "text-fail-text" : "text-ink-soft"}`}>
-                          {FINDING_STATE_LABEL[f.state]}{f.state === "recurring" && f.streak > 1 ? ` · ${f.streak} runs` : ""}
+      <Section id="recent" title="Recent activity" action={runList.length > 5 ? <ViewAll href="/runs">All runs</ViewAll> : undefined}>
+        {runList.length === 0 ? (
+          <p className="rounded-shell border border-line bg-surface px-5 py-4 text-sm text-ink-soft">No runs yet.</p>
+        ) : (
+          <Panel>
+            <Rows label="Recent runs">
+              {runList.slice(0, 5).map((r) => {
+                const s = summariseRun({
+                  status: r.status as string,
+                  payload: (reportByRun.get(r.id as string)?.payload as never) ?? null,
+                  scheduleId: (r.schedule_id as string | null) ?? null,
+                  apiKeyName: r.api_key_id ? keyName.get(r.api_key_id as string) ?? "key" : null,
+                });
+                const regressions = regressionsOf.get(r.id as string);
+                return (
+                  <li key={r.id as string}>
+                    <Link href={`/runs/${r.id}`} className="grid gap-x-4 gap-y-1 px-5 py-3 transition-colors hover:bg-ground sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                      <span className="min-w-0">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{agentName.get(r.agent_id as string) ?? "Agent"}</span>
+                          <Badge tone={s.tone} pulse={s.state === "running"}>{s.stateLabel}</Badge>
+                          {(regressions ?? 0) > 0 && <span className="text-xs font-medium text-fail-text">{regressions} newly broken</span>}
                         </span>
+                        <span className="mt-0.5 block text-xs text-ink-faint">{when(r.created_at as string)} · {s.startedBy}</span>
                       </span>
-                      <span className="mt-1 block truncate text-sm">{f.obligation ? (OBLIGATION_LABELS as Record<string, string>)[f.obligation] ?? f.obligation : f.agentName}</span>
-                      <span className="mt-0.5 block text-xs text-ink-soft">{f.agentName} · {f.next.label} →</span>
+                      {s.counts ? (
+                        <span className="text-xs text-ink-soft tnum">
+                          {s.counts.passed} passed{s.counts.failed > 0 && <span className="text-fail-text"> · {s.counts.failed} failed</span>}
+                          {s.counts.noVerdict > 0 && <span className="text-warning-text"> · {s.counts.noVerdict} no verdict</span>}
+                        </span>
+                      ) : <span className="text-xs text-ink-faint">{s.state === "running" ? "In progress" : "Not sealed"}</span>}
                     </Link>
                   </li>
-                ))}
-              </ul>
-            )}
-          </section>
+                );
+              })}
+            </Rows>
+          </Panel>
+        )}
+      </Section>
 
-          {!personal && <TeamCard byRole={byRole} canInvite={can(role, "member.invite")} invitesOpen={invitesOpen ?? 0} />}
-          {personal && context.memberships.length === 1 && setupDone === setup.length && <UpgradeCard />}
-          <GuidePanel
-            open={setupDone < setup.length}
-            firstAgentId={firstAgent}
-            latestRunId={runList[0]?.id as string | undefined}
-          />
-        </aside>
-      </div>
-    </main>
-  );
-}
-
-interface Tile {
-  label: string;
-  value: number;
-  unit: string;
-  href: string;
-  tone: "fail" | "high" | "medium" | "quiet";
-  note: string;
-  /** A ratio ("1 of 2") rather than a count: its zero is a figure, not "none". */
-  ratio?: boolean;
-}
-
-const TILE_TONE: Record<Tile["tone"], string> = {
-  fail: "border-fail-border bg-fail-surface/60",
-  high: "border-high-border bg-high-surface/60",
-  medium: "border-warning-border bg-warning-surface/60",
-  quiet: "border-line bg-surface",
-};
-const VALUE_TONE: Record<Tile["tone"], string> = { fail: "text-fail-text", high: "text-high-text", medium: "text-warning-text", quiet: "text-ink" };
-
-function TileLink({ tile }: { tile: Tile }) {
-  return (
-    <Link href={tile.href} className={`novera-lift flex h-full flex-col rounded-panel border p-3 ${TILE_TONE[tile.tone]}`}>
-      <span className="text-xs font-medium text-ink-soft">{tile.label}</span>
-      {tile.value === 0 && !tile.ratio ? (
-        <span className="mt-1.5 text-2xl font-semibold text-ink-faint">None</span>
-      ) : (
-        <>
-          <span className={`mt-1.5 text-2xl font-semibold tnum ${VALUE_TONE[tile.tone]}`}>{tile.value}</span>
-          <span className="text-xs text-ink-soft">{tile.unit}</span>
-        </>
+      {setupDone < setup.length && (
+        <Section id="setup" title="Continue setup" action={<ViewAll href="/guide">How Novera works</ViewAll>}>
+          <Panel>
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+              <p className="text-sm text-ink-soft"><span className="font-medium text-ink">{setupDone} of {setup.length} done.</span> Each step ticks itself when it has actually happened.</p>
+              <div aria-hidden className="h-1.5 w-40 overflow-hidden rounded-full bg-sunken">
+                <div className="novera-bar h-full rounded-full bg-ink" style={{ width: `${(setupDone / setup.length) * 100}%` }} />
+              </div>
+            </div>
+            <ol className="grid border-t border-line sm:grid-cols-4">
+              {setup.map((step, i) => {
+                const next = !step.done && setup.slice(0, i).every((x) => x.done);
+                return (
+                  <li key={step.label} className="border-line px-5 py-3 text-sm sm:border-l sm:first:border-l-0">
+                    {step.done ? (
+                      <span className="text-ink-faint"><span aria-hidden>✓ </span><span className="line-through">{step.label}</span><span className="sr-only"> — done</span></span>
+                    ) : (
+                      <Link href={step.href} className={next ? "font-medium text-ink underline underline-offset-2" : "text-ink-soft hover:text-ink"}>{i + 1}. {step.label}{next && <span className="sr-only"> — next</span>}</Link>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </Panel>
+        </Section>
       )}
-      <span className="mt-auto pt-2 text-[11px] leading-snug text-ink-faint">{tile.note}</span>
-    </Link>
-  );
-}
 
-function Fact({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">{label}</dt>
-      <dd className="mt-0.5 min-w-0 [overflow-wrap:anywhere]">{children}</dd>
-    </div>
+      {personal && context.memberships.length === 1 && setupDone === setup.length && (
+        <p className="mt-10 text-sm text-ink-soft">
+          Working with a team, or for clients? <Link href="/settings/profile#mode-heading" className="font-medium text-ink underline underline-offset-2">Change how you use Novera</Link> — nothing you have moves.
+        </p>
+      )}
+    </main>
   );
 }

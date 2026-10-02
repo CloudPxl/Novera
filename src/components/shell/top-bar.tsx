@@ -5,14 +5,13 @@ import { isStaff } from "@/lib/auth/staff.ts";
 import { can, ROLE_LABEL } from "@/lib/auth/permissions.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { createRun } from "@/lib/workflow/actions.ts";
-import { switchWorkspace } from "@/lib/workflow/identity.ts";
+import { WorkspaceSwitcher } from "./workspace-switcher.tsx";
 import { signOut } from "@/app/sign-in/actions.ts";
 import { Badge } from "@/components/ui/primitives.tsx";
 import { Menu } from "@/components/ui/menu.tsx";
 import { menuItemClass } from "@/components/ui/menu-item.ts";
-import { NavLinks, type NavItem } from "./nav-links.tsx";
+import { NavLinks, type NavEntry } from "./nav-links.tsx";
 import { RunLauncher, type LaunchAgent, type LaunchSuite } from "./run-launcher.tsx";
-import { ImportSuite } from "./import-suite.tsx";
 
 /** An endpoint's host, which is what identifies an agent to an operator in a hurry. */
 function hostOf(config: unknown): string {
@@ -56,14 +55,29 @@ export async function TopBar() {
   }));
 
   const runsLeft = Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed);
-  const nav: NavItem[] = [
-    { href: "/dashboard", label: mode === "personal" ? "Home" : "Overview" },
-    ...(mode !== "personal" || multi ? [{ href: "/workspaces", label: mode === "agency" ? "Clients" : "Workspaces" }] : []),
-    { href: "/review", label: "Review" },
-    { href: "/scenarios", label: "Scenarios" },
-    { href: "/regressions", label: "Regressions" },
-    ...(isStaff(user.email) ? [{ href: "/inbox", label: "Inbox" }] : []),
-  ];
+  // Navigation by account mode (2026-10-02 IA refactor). Personal: five plain places.
+  // Agency: work grouped by what you do with it. Enterprise: agency plus workspaces and audit.
+  // Every existing URL still resolves; this only decides what is offered first.
+  const work: NavEntry = { label: "Work", items: [{ href: "/review", label: "Review queue" }, { href: "/runs", label: "Runs" }, { href: "/regressions", label: "Regressions" }] };
+  const library: NavEntry = { label: "Library", items: [{ href: "/agents", label: "Agents and policies" }, { href: "/scenarios", label: "Scenarios" }] };
+  const nav: NavEntry[] = mode === "personal" && !multi
+    ? [
+        { href: "/dashboard", label: "Overview" },
+        { href: "/agents", label: agents.length === 1 ? "My agent" : "My agents" },
+        { href: "/runs", label: "My runs" },
+        { href: "/reports", label: "My reports" },
+        { href: "/settings", label: "Settings" },
+      ]
+    : [
+        { href: "/dashboard", label: "Overview" },
+        ...(mode === "enterprise" ? [{ href: "/workspaces", label: "Workspaces" }] : []),
+        work,
+        { href: "/reports", label: "Reports" },
+        library,
+        ...(mode === "enterprise" && can(role, "audit.view") ? [{ href: "/settings/audit", label: "Audit" }] : []),
+        { href: "/settings", label: "Settings" },
+      ];
+  if (isStaff(user.email)) nav.push({ href: "/inbox", label: "Inbox" });
   const funding = entitlement.ownKey ? `Own key · ${entitlement.provider}` : `Trial · ${runsLeft} of ${TRIAL_RUN_LIMIT} runs left`;
 
   return (
@@ -78,26 +92,12 @@ export async function TopBar() {
         </Link>
 
         {(multi || mode !== "personal") && (
-          <Menu
-            label={<span className="flex max-w-24 items-center gap-1.5 truncate sm:max-w-40"><span aria-hidden className="size-1.5 shrink-0 rounded-full bg-trace" /><span className="truncate">{workspace.name}</span></span>}
-            align="left"
-            triggerClassName="border border-line px-2.5 py-1.5 text-ink hover:bg-sunken"
-            panelClassName="w-72"
-          >
-            <p className="px-3 pb-1 pt-2 type-eyebrow text-ink-faint">{mode === "agency" ? "Clients" : "Workspaces"}</p>
-            {context.memberships.map((m) => (
-              <form key={m.workspace.id} action={switchWorkspace}>
-                <input type="hidden" name="workspaceId" value={m.workspace.id} />
-                <button type="submit" aria-current={m.workspace.id === workspace.id ? "true" : undefined} className={`${menuItemClass} flex items-center justify-between gap-2`}>
-                  <span className="min-w-0 truncate font-medium">{m.workspace.name}</span>
-                  <span className="shrink-0 text-xs text-ink-faint">{m.workspace.id === workspace.id ? "open · " : ""}{ROLE_LABEL[m.role].toLowerCase()}</span>
-                </button>
-              </form>
-            ))}
-            <Link href="/workspaces" className={`${menuItemClass} border-t border-line text-ink-soft`}>
-              {mode === "agency" ? "All clients, and add one…" : "All workspaces, and add one…"}
-            </Link>
-          </Menu>
+          <WorkspaceSwitcher
+            current={{ id: workspace.id, name: workspace.name }}
+            workspaces={context.memberships.map((m) => ({ id: m.workspace.id, name: m.workspace.name, role: ROLE_LABEL[m.role].toLowerCase() }))}
+            heading={mode === "agency" ? "Clients" : "Workspaces"}
+            allLabel={mode === "agency" ? "All clients, and add one…" : "All workspaces, and add one…"}
+          />
         )}
 
         <span aria-hidden className="hidden h-5 w-px bg-line lg:block" />
@@ -108,31 +108,6 @@ export async function TopBar() {
           <NavLinks items={nav} variant="bar" />
         </nav>
 
-        {/* The agent selector. A list of endpoints rather than names alone: two agents
-            called "Support" pointing at staging and production are indistinguishable by
-            name, and that mistake costs a whole run. */}
-        <Menu
-          label={<span className="max-w-32 truncate">{agents.length ? (mode === "personal" && agents.length === 1 ? "My agent" : "Agents") : "No agents"}</span>}
-          align="left"
-          className="hidden md:block"
-          triggerClassName="px-2.5 py-1.5 text-ink-soft hover:bg-sunken"
-          panelClassName="w-72"
-        >
-          {agents.length === 0 ? (
-            <p className="px-3 py-2 text-sm leading-relaxed text-ink-soft">Nothing connected yet.</p>
-          ) : (
-            agents.map((a) => (
-              <Link key={a.id} href={`/agents/${a.id}`} className={menuItemClass}>
-                <span className="block truncate font-medium">{a.name}</span>
-                <span className="block truncate type-mono text-xs text-ink-faint">{a.host}</span>
-              </Link>
-            ))
-          )}
-          {can(role, "agent.write") && (
-            <Link href="/agents/new" className={`${menuItemClass} border-t border-line text-ink-soft`}>Connect an agent…</Link>
-          )}
-        </Menu>
-
         <div className="ml-auto flex items-center gap-2">
           <span className="hidden xl:inline">
             {/* What is really stored, not an invented environment label: a report has
@@ -140,8 +115,6 @@ export async function TopBar() {
             <Badge tone={entitlement.ownKey ? "pass" : "neutral"}>{funding}</Badge>
           </span>
           {role !== "owner" && <span className="hidden xl:inline"><Badge tone="neutral">{ROLE_LABEL[role]}</Badge></span>}
-
-          {can(role, "suite.import") && <span className="hidden sm:inline"><ImportSuite /></span>}
 
           {can(role, "run.start") && (
             <RunLauncher

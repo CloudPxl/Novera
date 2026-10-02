@@ -3753,3 +3753,18 @@ Production, after the deploy:
 - **Measured**: `verify:identity` 37/37 as real users; `verify:free` every verifier passing on a database migrated
   from zero (55 migrations; exit 2 only for the local stack's missing pg_cron); identity browser walk 51/51 twice,
   axe clean at 390/1440 on every new page; 629 tests.
+
+## 2026-10-02 — IA refactor, milestones 1–2: primitives, navigation by mode, a calm Overview
+
+- **Primitives** in `src/components/ui/page.tsx`; the density model (Decide / Investigate / Prove) in
+  `docs/DESIGN.md`. **Navigation** by account mode; new list pages `/runs`, `/reports`, `/agents` (a single
+  agent in personal mode opens directly). Import moved off the bar; the bar's run control is outlined.
+- **Overview**: header with the computed next step as its one action; one health sentence and three
+  metrics in one panel; at most five attention items; five recent runs; one "Continue setup" panel while
+  unfinished. Agent cards, the findings column, tiles, the team card and the guide moved to their own pages.
+- **Found**: a definition list wrapped in links (axe), React key warnings on every switcher open (server-built
+  form elements passed through a client menu — now a client switcher with plain data; this warning also
+  shipped in the identity release), and every signed-in page stuck on "Loading…" without JavaScript.
+- **Measured**: operator walk (axe 390/1440 on 15 pages, links, filters, deep links) and identity walk 51/51
+  pass; keyboard reaches the primary action right after the skip link; complete with reduced motion and with
+  JavaScript off; 629 tests.

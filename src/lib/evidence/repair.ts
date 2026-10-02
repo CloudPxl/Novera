@@ -75,14 +75,13 @@ export interface NoVerdictRow {
   toolCalls: number;
 }
 
-const RETRY_WORDS: Record<Repair["retry"], string> = {
-  safe: "Safe to retest: your agent did not receive it, so nothing is repeated.",
-  check_first: "Retesting sends the scenario to your agent again. Check your system first: the first attempt may already have acted.",
-  fix_first: "Retesting will give the same answer until the cause is fixed.",
-};
-
-export function retryWords(r: Repair["retry"]): string {
-  return RETRY_WORDS[r];
+/** What a retest would do, said for this scenario: who received it decides the sentence. */
+export function retryWords(r: Pick<Repair, "retry" | "agentReceived">): string {
+  if (r.retry === "fix_first") return "Retesting will give the same answer until the cause is fixed.";
+  if (r.retry === "check_first") return "Retesting sends the scenario to your agent again. Check your system first: the first attempt may already have acted.";
+  return r.agentReceived === "no"
+    ? "Retest freely: your agent never received it, so nothing is repeated."
+    : "Retest freely: this scenario asks your agent to take no action, and it reported none.";
 }
 
 export function repairFor(row: NoVerdictRow): Repair | null {

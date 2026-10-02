@@ -184,7 +184,7 @@ export default async function ReviewPage() {
                   </p>
                   <p className="mt-1 text-sm text-ink-soft">{repair.happened}</p>
                   <p className="mt-2 text-sm"><span className="font-medium">Next:</span> {repair.next}</p>
-                  <p className="mt-1 text-xs text-ink-faint">{retryWords(repair.retry)}</p>
+                  <p className="mt-1 text-xs text-ink-faint">{retryWords(repair)}</p>
                   <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm">
                     {items.slice(0, 12).map((i) => (
                       <li key={`${i.runId}-${i.caseId}`}>

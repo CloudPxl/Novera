@@ -85,3 +85,11 @@ test("anything else is unclassified, never a guess", () => {
   assert.equal(r.reason, "unclassified");
   assert.match(r.happened, /did not store in a form it can classify/);
 });
+
+test("the retest sentence follows who received the scenario", async () => {
+  const { retryWords } = await import("../src/lib/evidence/repair.ts");
+  assert.match(retryWords({ retry: "safe", agentReceived: "no" }), /never received it/);
+  assert.match(retryWords({ retry: "safe", agentReceived: "yes" }), /asks your agent to take no action/);
+  assert.doesNotMatch(retryWords({ retry: "safe", agentReceived: "yes" }), /never received/);
+  assert.match(retryWords({ retry: "check_first", agentReceived: "yes" }), /Check your system first/);
+});

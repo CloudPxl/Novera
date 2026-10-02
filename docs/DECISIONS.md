@@ -3590,3 +3590,13 @@ partial comparison now begins "Not fully comparable".
 Walked with two planted runs (no model): X1 moved on an identical reply → graders; X2 fixed with a new
 reply → the agent's reply changed; X3 lost its reply → cannot be compared; the policy line v1 → v2. axe
 clean, no overflow at 390 and 1440. 601 tests.
+
+## 2026-10-02 — The docs say what the workflow pages now do; the retest sentence follows who received the scenario
+
+`/docs/how-a-run-works` gains the approved change's next steps, the no-verdict explanation and Review →
+Evidence needing repair, and a "Comparing two runs" section; `/docs/what-the-report-contains` gains
+withdrawal (permanent, attributed) and report readiness with its states. The language rule caught "whether
+retesting is safe" in the first draft; the docs now say "whether a retest could repeat something your agent
+did". Writing that found a wrong sentence in the product: a scenario the agent *received* but that asks for
+no action was told "your agent did not receive it". `retryWords` now takes who received it. 602 tests.
+**Production needs `npm run seed:docs`** for the support agent to answer from these pages.

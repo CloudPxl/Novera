@@ -738,7 +738,7 @@ function RepairNote({ repair }: { repair: Repair }) {
         </div>
         <div>
           <dt className="type-pill text-ink-faint">Retesting</dt>
-          <dd className="mt-0.5 text-ink-soft">{retryWords(repair.retry)}</dd>
+          <dd className="mt-0.5 text-ink-soft">{retryWords(repair)}</dd>
         </div>
       </dl>
       <p className="mt-3 text-sm leading-relaxed text-ink"><span className="font-medium">Next:</span> {repair.next}</p>

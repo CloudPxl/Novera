@@ -66,7 +66,7 @@ export default async function RunPage({
     .maybeSingle();
   if (!run) notFound();
 
-  const [{ data: agent }, { data: policy }, { data: suite }, { data: reportRows }, { data: schedule }, { data: apiKey }] = await Promise.all([
+  const [{ data: agent }, { data: policy }, { data: suite }, { data: reportRows }, { data: schedule }, { data: apiKey }, { data: newestPolicy }] = await Promise.all([
     db.from("agents").select("name").eq("id", run.agent_id).maybeSingle(),
     db.from("policies").select("version").eq("id", run.policy_id).maybeSingle(),
     db.from("suites").select("name, version, cases").eq("id", run.suite_id).maybeSingle(),
@@ -80,6 +80,8 @@ export default async function RunPage({
     run.api_key_id
       ? db.from("api_keys").select("name").eq("id", run.api_key_id).maybeSingle()
       : Promise.resolve({ data: null }),
+    // What a retest would run against now, so the button can name it.
+    db.from("policies").select("version").eq("agent_id", run.agent_id).order("version", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const startedBy = schedule
     ? `started by the schedule “${describeTiming({
@@ -392,6 +394,7 @@ export default async function RunPage({
 
   // The diagnosis controls are server-rendered per case and handed to the client
   // matrix as slots, so the server actions they submit to stay server actions.
+  const newestVersion = (newestPolicy?.version as number | undefined) ?? null;
   const diagnosis: Record<string, React.ReactNode> = {};
   for (const c of rows) {
     const forCase = proposalsByCase.get(c.id as string) ?? [];
@@ -401,6 +404,13 @@ export default async function RunPage({
     // Review is offered on passes too: a false pass is the verdict a person most needs
     // to be able to dispute. Retest stays on the ones that did not pass; diagnosis only
     // on failures — a scenario with no result has no failure for a model to explain.
+    // The newest approved change for this scenario carries the steps that test it, so the
+    // retest and the rerun appear where the decision was made, with this case and run.
+    const approvedLast = forCase.filter((p) => p.status === "approved")
+      .sort((a, b) => (b.decidedAt ?? "").localeCompare(a.decidedAt ?? ""))[0];
+    const retestedSince = approvedLast?.resultingPolicyVersion
+      ? (retestsByCase.get(c.id as string) ?? []).find((r) => (r.policyVersion ?? 0) >= approvedLast.resultingPolicyVersion!)
+      : undefined;
     diagnosis[c.id as string] = (
       <>
         {c.status !== "pass" && (
@@ -415,9 +425,30 @@ export default async function RunPage({
               <DiagnoseButton runCaseId={c.id as string} hasProposal={forCase.length > 0} />
             )}
             {forCase.map((p) => (
-              <ProposalCard key={p.id} proposal={p} />
+              <ProposalCard
+                key={p.id}
+                proposal={p}
+                next={p.id === approvedLast?.id ? (
+                  <>
+                    <RetestButton runCaseId={c.id as string} newestPolicyVersion={newestVersion} />
+                    {retestedSince && (
+                      <p className="mt-2 text-xs text-ink-soft">
+                        Retested against policy v{retestedSince.policyVersion}:{" "}
+                        {retestedSince.status === "pass" ? "it now passes." : retestedSince.status === "fail" ? "it still fails." : "no verdict."}
+                      </p>
+                    )}
+                    <form action={rerunFrom} className="mt-3 flex flex-wrap items-center gap-3">
+                      <input type="hidden" name="runId" value={run.id} />
+                      <SubmitButton variant="secondary" size="sm" pendingLabel="Starting…">
+                        Rerun the suite and compare with this run
+                      </SubmitButton>
+                      <span className="text-xs text-ink-faint">A new run of every scenario under the newest policy; it uses one run.</span>
+                    </form>
+                  </>
+                ) : undefined}
+              />
             ))}
-            <RetestButton runCaseId={c.id as string} />
+            {!approvedLast && <RetestButton runCaseId={c.id as string} newestPolicyVersion={newestVersion} />}
             <RetestHistory retests={retestsByCase.get(c.id as string) ?? []} />
           </>
         )}

@@ -46,7 +46,11 @@ export function DiagnoseButton({ runCaseId, hasProposal }: { runCaseId: string; 
  * policy: a person approving this is agreeing to a specific edit, and should be able
  * to see exactly which words leave and which arrive.
  */
-export function ProposalCard({ proposal }: { proposal: Proposal }) {
+export function ProposalCard({ proposal, next }: {
+  proposal: Proposal;
+  /** For the approved change: the steps that show whether it worked, carrying this scenario and run. */
+  next?: React.ReactNode;
+}) {
   const [state, submit] = useActionState<FormState, FormData>(decideDiagnosis, {});
   const open = proposal.status === "proposed";
 
@@ -90,6 +94,17 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
             ))}
           </ul>
         </div>
+      )}
+
+      {proposal.status === "approved" && next && (
+        <section aria-label="Next: check the change worked" className="mt-4 border-t border-line pt-4">
+          <p className="text-sm font-medium text-ink">Next: check that it worked</p>
+          <p className="mt-1 text-xs leading-relaxed text-ink-faint">
+            Approving changed the policy, not this run: its verdicts and its report stay as they were.
+            Retest this scenario first, then rerun the suite so a fix here is not a break somewhere else.
+          </p>
+          {next}
+        </section>
       )}
 
       {open && (
@@ -191,7 +206,7 @@ function DiffView({ quotedOld, proposedNew }: { quotedOld: string | null; propos
  * version does that. Saying so on the button is cheaper than explaining later why a
  * green retest did not change the report the client is holding.
  */
-export function RetestButton({ runCaseId }: { runCaseId: string }) {
+export function RetestButton({ runCaseId, newestPolicyVersion }: { runCaseId: string; newestPolicyVersion?: number | null }) {
   const [state, submit] = useActionState<FormState, FormData>(retestOneCase, {});
 
   return (
@@ -202,7 +217,7 @@ export function RetestButton({ runCaseId }: { runCaseId: string }) {
           Retest this scenario only
         </SubmitButton>
         <span className="text-xs text-ink-faint">
-          Against the newest policy version. Not counted in any score or report.
+          Against {newestPolicyVersion ? `policy v${newestPolicyVersion}, the newest` : "the newest policy version"}. Not counted in any score or report.
         </span>
       </div>
       {state.notice && <p className="mt-2 text-xs font-medium text-pass-text">{state.notice}</p>}

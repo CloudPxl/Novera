@@ -3493,3 +3493,19 @@ so no key loses access it was given.
 
 `verify:mcp` 33: the parameter is not offered to a read key, which is refused it with nothing logged; a
 `responses` key reads.
+
+## 2026-10-02 — An approved change carries its own proof: retest and rerun where the decision was made
+
+The remediation chain existed in pieces — Ask why → proposal → approve (a new policy version) → retest →
+rerun and compare — but approving ended with "Policy version N created." and nothing else: the operator
+had to know that a retest uses the newest policy, find the retest button below, then scroll to the run's
+toolbar for "Rerun and compare". Now the newest approved change on a scenario shows **Next: check that it
+worked**: it says approving changed the policy, not this run or its report; the retest (naming the policy
+it will use, v2) moves inside it, so there is one; the latest retest's result is stated there; and
+"Rerun the suite and compare with this run" starts a run under the newest policy with this run as the
+baseline. The retest button everywhere now names the version it runs against.
+
+Walked on the isolated app with a real rule-settled run and a planted proposal (no model call): approve →
+the block appears with one retest naming v2 → retest → "Retested against policy v2: it still fails", one
+retest row → rerun → a run with `baseline_run_id` = this run and policy v2, nothing chosen by hand. axe
+clean, no overflow at 390 and 1440, no console errors.

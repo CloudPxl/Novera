@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth/session.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { rerunFrom } from "@/lib/workflow/actions.ts";
+import { noVerdictRow, repairFor } from "@/lib/evidence/repair.ts";
 import { compareRuns } from "@/lib/evidence/compare.ts";
 import { loadStability } from "@/lib/evidence/stability-history.ts";
 import { alignment, latestReviews, withFindingsApplied, type VerdictReview } from "@/lib/evidence/reviews.ts";
@@ -338,6 +339,7 @@ export default async function RunPage({
     { agreed: 0, sameVendor: 0, settled: 0, unconfirmed: 0, unresolved: 0, rules: 0, readBack: 0 },
   );
 
+  const scenarioById = new Map(suiteCases.map((c) => [c.id as string, c]));
   const dutyRefsByCase = new Map(suiteCases.map((c) => [
     c.id as string,
     Array.isArray(c.duty_refs) ? (c.duty_refs as unknown[]).filter((d): d is string => typeof d === "string") : [],
@@ -390,6 +392,12 @@ export default async function RunPage({
     instability: stability.get(c.case_id as string) ?? null,
     settledBy: (c.settled_by as string | null) ?? null,
     ruleCount: ruleCountByCase.get(c.case_id as string) ?? 0,
+    // Why there is no verdict, and whether a retest could repeat something the agent did.
+    repair: repairFor(noVerdictRow(c, {
+      observationStatus: observationByCase.get(c.id as string)?.status ?? null,
+      scenario: scenarioById.get(c.case_id as string) ?? null,
+      toolCalls: normaliseTrajectory(c.tool_activity).filter((e) => e.type === "tool_call").length,
+    })),
   }));
 
   // The diagnosis controls are server-rendered per case and handed to the client

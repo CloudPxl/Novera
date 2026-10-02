@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import { retryWords, type Repair } from "@/lib/evidence/repair.ts";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Badge, ProgressBar, inputClass } from "@/components/ui/primitives.tsx";
 import { gradingNote } from "./grading-note.ts";
@@ -53,6 +54,8 @@ export interface CaseRow {
   latencyMs: number | null;
   /** The duties the scenario maps to, from the suite — e.g. "GDPR Art. 18". */
   dutyRefs: string[];
+  /** For a scenario with no verdict: why, who acts, whether a retest is safe, what to do. */
+  repair?: Repair | null;
   /** Set when this scenario's verdict has moved before under an unchanged policy. */
   instability: { passes: number; fails: number; runs: number; cause?: "graders" | "agent" } | null;
 }
@@ -655,6 +658,7 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
   return (
     <div className="novera-panel-in border-t border-line bg-ground px-3 py-4 sm:px-4">
       <p className="sr-only">The evidence for this scenario, in the order Novera gathered it.</p>
+      {row.repair && <RepairNote repair={row.repair} />}
       <div className="grid gap-4 lg:grid-cols-2">
         <ol className="min-w-0 space-y-4">
           {sent}
@@ -709,5 +713,40 @@ export function CategoryCard({
       />
       <p className="mt-2 text-xs leading-relaxed text-ink-soft">{description}</p>
     </div>
+  );
+}
+
+const RECEIVED = { yes: "received it", no: "never received it", unknown: "not known" } as const;
+
+/**
+ * Why a scenario has no verdict, from what was stored (src/lib/evidence/repair.ts): who
+ * acts on it, whether a retest could repeat something the agent did, and the next step.
+ */
+function RepairNote({ repair }: { repair: Repair }) {
+  return (
+    <section aria-label="Why there is no verdict" className="mb-4 rounded-control bg-surface p-3 ring-1 ring-line">
+      <p className="text-sm font-medium text-ink">Why there is no verdict: {repair.label}</p>
+      <p className="mt-1 text-sm leading-relaxed text-ink-soft">{repair.happened}</p>
+      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+        <div>
+          <dt className="type-pill text-ink-faint">Your agent</dt>
+          <dd className="mt-0.5 text-ink">{RECEIVED[repair.agentReceived]}</dd>
+        </div>
+        <div>
+          <dt className="type-pill text-ink-faint">Who acts</dt>
+          <dd className="mt-0.5 text-ink">{repair.owner}</dd>
+        </div>
+        <div>
+          <dt className="type-pill text-ink-faint">Retesting</dt>
+          <dd className="mt-0.5 text-ink-soft">{retryWords(repair.retry)}</dd>
+        </div>
+      </dl>
+      <p className="mt-3 text-sm leading-relaxed text-ink"><span className="font-medium">Next:</span> {repair.next}</p>
+      {!repair.policyCanHelp && (
+        <p className="mt-1 text-xs leading-relaxed text-ink-faint">
+          Editing the policy will not change this: no verdict was reached, so there is nothing for a policy to explain.
+        </p>
+      )}
+    </section>
   );
 }

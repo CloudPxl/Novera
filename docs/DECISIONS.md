@@ -3509,3 +3509,27 @@ Walked on the isolated app with a real rule-settled run and a planted proposal (
 the block appears with one retest naming v2 → retest → "Retested against policy v2: it still fails", one
 retest row → rerun → a run with `baseline_run_id` = this run and policy v2, nothing chosen by hand. axe
 clean, no overflow at 390 and 1440, no console errors.
+
+## 2026-10-02 — Evidence needing repair: every scenario with no verdict says why, who acts, and whether a retest is safe
+
+"No result" covered a dozen facts that need different people. `src/lib/evidence/repair.ts` classifies a
+no-verdict scenario from stored fields — typed ones first (evidence gap, read-back observation, judge
+agreement, the router's attempt reasons), then the runner's own fixed sentences — into twenty reasons:
+not run (production guard, no metadata slot, no conversation slot, address refused), cut by Novera's
+slice, the agent's failures (timeout, too large, HTTP status, not JSON, reply not at the path,
+unreachable), unchecked actions (read-back unavailable, action not verified), graders (rate-limited,
+timed out, refused by data class, unreadable verdict, unavailable), an unsettled disagreement, and
+`unclassified` — never a guess. Each states whether the agent received the scenario, who acts, whether
+a retest is safe (`safe`, `check_first` when the agent received it and can act — the first attempt may
+already have acted — or `fix_first`), the next step, and whether a policy edit could help (only for an
+unsettled disagreement). Diagnosis stays off these scenarios, as before.
+
+Shown on the scenario ("Why there is no verdict") and on /review as **Evidence needing repair**, grouped
+by reason with counts and links to the run under a new `noverdict` lens. One constructor
+(`noVerdictRow`) feeds both, so they cannot read a row two ways.
+
+Walked on the isolated app with a real run against an agent with no {{context}} slot: /review shows "Not
+run: no metadata channel 1, for your configuration" with the next step; the link opens the run filtered
+to that one scenario; it says the agent never received it, a retest alone will not help, and editing the
+policy will not change it; no diagnosis offered; axe clean, no overflow at 390 and 1440. 9 classifier
+tests; 592 tests.

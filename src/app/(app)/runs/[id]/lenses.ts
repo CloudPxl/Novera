@@ -64,6 +64,12 @@ export const LENSES = [
     match: (c: CaseRow) => c.regression === true,
   },
   {
+    key: "noverdict",
+    label: "No verdict",
+    hint: "No verdict was reached. Each one says why, whether your agent received it, and what to do.",
+    match: (c: CaseRow) => c.status === "error",
+  },
+  {
     key: "review",
     label: "Needs a person",
     hint: "Critical or high severity, and not a pass.",

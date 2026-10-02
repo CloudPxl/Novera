@@ -48,3 +48,44 @@ All of it lives in `src/app/globals.css`. One light theme everywhere — white p
 faint warm-white ground. An operator dark mode existed briefly and was removed at the
 user's request (2026-09-26): signed-in pages turning dark beside a white home page read
 as two different products.
+
+## The 2026-10-02 redesign: Swiss editorial assurance + evidence instrument
+
+**Why.** Measured at 1440: the home page was a 1024 px text column and the dashboard a
+896 px column inside a 1200 px shell — Novera read as an article, and a smaller product
+than it is. The report preview was a passive picture of a document.
+
+**What was looked at** (fetched 2026-10-02): Superdesign's SaaS library — its one useful
+constraint is *show the real product or an interactive demo, never an abstract blob*;
+21st.dev's landing components (feature tab switchers, how-it-works timelines, bento
+grids — taken as patterns, not code); Braintrust (alternating text + product rows);
+Vanta (an animated product mock in the hero). Declined from all of them: logo walls and
+testimonials (we have none, and inventing them is the first dishonest thing on a page),
+certification badge grids (we certify nothing), pricing (not decided), purple-blue
+gradients, glow blobs, particles and dark-mode-for-fashion.
+
+**The system.**
+- *Composition.* `wrap` (1280) and `wrap-wide` (1440) frames with 16/24/40 px gutters;
+  text held to `measure` (62ch) inside them. Asymmetric 5:7 / 6:7 columns, full-width
+  paper bands (`bg-paper`) for process sections, numbered section heads (`01 ——`) with
+  the lede beside the heading on wide screens.
+- *Type.* Geist and JetBrains Mono kept — one face across the public page and the app.
+  The public page gets a larger voice (`type-display`, `type-section`, `type-lede`); mono
+  `type-eyebrow` carries section numbers, versions, hashes and evidence ids.
+- *Colour.* The warm neutral ground is unchanged. One accent, `trace` (the existing
+  live/info hue), means *evidence moving or selected* — an active trace stage, a selected
+  cell, a run in flight — never a button. Verdict colours stay reserved for verdicts.
+  Blueprint grid lines (`bg-blueprint`) sit behind the hero and the closing CTA only;
+  they are static.
+- *Motion.* Four durations (140/220/420/700 ms), two curves, transform and opacity
+  only. The vocabulary: line draw, node pop, staggered rise, cell flip, drawer, hash
+  scan, refusal nudge, card lift, press. Every animated thing is server-rendered in its
+  finished state; motion replays how the state was reached. `useMotion()` reads the
+  system setting through `useSyncExternalStore` (server snapshot: still), and the hero
+  preview offers its own "Pause motion" switch. Nothing loops. Reveal hides content only
+  under `@media (scripting: enabled)` — with JavaScript off every block used to stay at
+  opacity 0.
+- *Truth.* Every product picture on the public page is labelled illustrative, and its
+  figures follow the product's real rules (no letter beside a missing verdict, read-back
+  contradictions settled without a model, no-verdict cases named and never counted). The
+  tamper module hashes with real SHA-256 in the browser.

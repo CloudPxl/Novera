@@ -75,6 +75,28 @@
   --radius-panel: 0.75rem;
   --radius-shell: 1rem;
 
+  /* --- trace -------------------------------------------------------------
+     The one accent (2026-10-02 redesign). It marks evidence *moving* — a stage of the
+     trace that is active, a selected cell, a run in flight — and nothing else. It is
+     the existing live/info hue, so "something is happening here" has one colour across
+     the marketing page and the app. Never on a primary action: actions are ink. */
+  --color-trace: #0369a1;
+  --color-trace-soft: #e0f2fe;
+  /* A paper band: one step warmer than ground, for full-width sections. */
+  --color-paper: #f6f4ef;
+  /* Blueprint lines behind the hero and the evidence stage. Decoration, so never text. */
+  --color-grid: rgb(28 25 23 / 0.055);
+
+  /* --- motion -------------------------------------------------------------
+     Four durations and two curves. Anything that moves uses these, so the product
+     moves at one speed. Transform and opacity only. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-quick: 140ms;
+  --duration-base: 220ms;
+  --duration-slow: 420ms;
+  --duration-stage: 700ms;
+
   /* --- type ------------------------------------------------------------- */
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", SFMono-Regular,
@@ -126,6 +148,67 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Marketing scale (2026-10-02). The operator pages keep the compact scale above; the
+   public page has room for a larger voice, but the same face and the same tracking rule. */
+@utility type-display {
+  font-size: clamp(2.375rem, 1.7rem + 2.6vw, 4rem);
+  line-height: 1.02;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+@utility type-section {
+  font-size: clamp(1.75rem, 1.35rem + 1.6vw, 2.75rem);
+  line-height: 1.08;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+@utility type-lede {
+  font-size: clamp(1.0625rem, 1rem + 0.3vw, 1.25rem);
+  line-height: 1.55;
+}
+/* A technical label: section numbers, versions, hashes, evidence ids. */
+@utility type-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------- layout
+   One composition system for every page. `wrap` is the frame (1280, or 1440 for the
+   wide stages), and text inside it keeps a reading measure of about 62 characters —
+   the page gets wider, the lines do not. */
+@utility wrap {
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+  @media (width >= 40rem) { padding-inline: 1.5rem; }
+  @media (width >= 64rem) { padding-inline: 2.5rem; }
+}
+@utility wrap-wide {
+  width: 100%;
+  max-width: 90rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+  @media (width >= 40rem) { padding-inline: 1.5rem; }
+  @media (width >= 64rem) { padding-inline: 2.5rem; }
+}
+@utility measure {
+  max-width: 62ch;
+}
+/* Blueprint lines: a 48px grid that fades out towards the edges, so it reads as the
+   paper the evidence is drawn on rather than as a pattern. Static; it never moves. */
+@utility bg-blueprint {
+  background-image:
+    linear-gradient(to right, var(--color-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 40%, transparent 100%);
+}
+
 /* Numbers that change in place — scores, counts, durations — must not reflow
    as they tick. Anywhere a value updates live, this goes on it. */
 @utility tnum {
@@ -164,9 +247,13 @@ body {
   to   { opacity: 1; transform: translateX(0); }
 }
 
-/* Applied by the Reveal component once an element scrolls into view. */
-.novera-reveal {
-  opacity: 0;
+/* Applied by the Reveal component once an element scrolls into view. Hidden only where
+   scripts run: with JavaScript off nothing would ever set `data-shown`, and every
+   revealed block on the page stayed at opacity 0 (found 2026-10-02 with JS disabled). */
+@media (scripting: enabled) {
+  .novera-reveal {
+    opacity: 0;
+  }
 }
 .novera-reveal[data-shown="true"] {
   animation: novera-rise 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -211,6 +298,89 @@ body {
   animation: novera-slide-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* ------------------------------------------------- evidence motion (2026-10-02)
+   The vocabulary of the redesign. Each one shows a fact changing state — a line drawn
+   between two stages, a node becoming active, a cell flipping verdict, a hash being
+   checked — and each ends in a state that is complete on its own. Under reduced motion
+   every one of them is the end state, immediately. */
+
+@keyframes novera-draw-x {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+@keyframes novera-draw-y {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+@keyframes novera-pop {
+  0%   { transform: scale(0.6); opacity: 0; }
+  60%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes novera-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes novera-drawer {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes novera-scan {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+@keyframes novera-flip {
+  0%   { transform: rotateX(0deg); }
+  50%  { transform: rotateX(90deg); }
+  100% { transform: rotateX(0deg); }
+}
+@keyframes novera-nudge {
+  0%, 100% { transform: translateX(0); }
+  30%      { transform: translateX(-3px); }
+  60%      { transform: translateX(2px); }
+}
+
+/* A connector drawn from its start once its parent has `data-shown="true"` (Reveal). */
+.novera-line-x { transform-origin: left center; transform: scaleX(1); }
+.novera-line-y { transform-origin: top center; transform: scaleY(1); }
+[data-shown="true"] .novera-line-x,
+.novera-line-x[data-play="true"] {
+  animation: novera-draw-x var(--duration-stage) var(--ease-out) both;
+  animation-delay: var(--delay, 0ms);
+}
+[data-shown="true"] .novera-line-y,
+.novera-line-y[data-play="true"] {
+  animation: novera-draw-y var(--duration-stage) var(--ease-out) both;
+  animation-delay: var(--delay, 0ms);
+}
+/* Children of a revealed group step in one after another; `--i` is set inline. */
+[data-shown="true"] .novera-stagger > * {
+  animation: novera-rise var(--duration-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+.novera-pop { animation: novera-pop var(--duration-slow) var(--ease-out) both; animation-delay: var(--delay, 0ms); }
+.novera-fade { animation: novera-fade var(--duration-base) var(--ease-out) both; }
+.novera-drawer { animation: novera-drawer var(--duration-base) var(--ease-out) both; }
+.novera-flip { animation: novera-flip var(--duration-slow) var(--ease-in-out) both; animation-delay: var(--delay, 0ms); }
+.novera-nudge { animation: novera-nudge 360ms var(--ease-out) 1; }
+/* A light passing over a hash while it is being re-computed. */
+.novera-scan { position: relative; overflow: hidden; }
+.novera-scan::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--color-trace-soft), transparent);
+  animation: novera-scan 900ms var(--ease-in-out) 1 both;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+/* Tactile press on anything clickable that is not already a Button. */
+.novera-press { transition: transform var(--duration-quick) var(--ease-out), box-shadow var(--duration-base) var(--ease-out), border-color var(--duration-base) var(--ease-out), background-color var(--duration-base) var(--ease-out); }
+.novera-press:active { transform: scale(0.98); }
+/* A card that lifts a hair on hover and says it can be opened. */
+.novera-lift { transition: transform var(--duration-base) var(--ease-out), box-shadow var(--duration-base) var(--ease-out), border-color var(--duration-base) var(--ease-out); }
+.novera-lift:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--color-line-strong); }
+
 /* ---------------------------------------------------------------- diff
    A proposal is already a diff — `quotedOld` and `proposedNew` are exactly the
    two sides — so it is rendered as one rather than as two paragraphs. */
@@ -241,8 +411,27 @@ body {
   .novera-shimmer,
   .novera-progress,
   .novera-live,
-  .novera-panel-in {
+  .novera-panel-in,
+  .novera-line-x,
+  .novera-line-y,
+  [data-shown="true"] .novera-line-x,
+  [data-shown="true"] .novera-line-y,
+  .novera-line-x[data-play="true"],
+  .novera-line-y[data-play="true"],
+  [data-shown="true"] .novera-stagger > *,
+  .novera-pop,
+  .novera-fade,
+  .novera-drawer,
+  .novera-flip,
+  .novera-nudge {
     animation: none;
+  }
+  .novera-scan::after {
+    display: none;
+  }
+  .novera-lift:hover,
+  .novera-press:active {
+    transform: none;
   }
   .novera-progress {
     background: var(--color-slate-700);

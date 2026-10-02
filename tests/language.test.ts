@@ -68,6 +68,7 @@ const SURFACES = [
   "src/lib/evidence/coverage.ts",
   "src/app/page.tsx",
   "src/app/sample-report.tsx",
+  ...readdirSync("src/app/_home").filter((f) => f.endsWith(".tsx")).map((f) => `src/app/_home/${f}`),
   "src/app/support/page.tsx",
   "src/app/apply/page.tsx",
   ...readdirSync("data/docs").filter((f) => f.endsWith(".md")).map((f) => `data/docs/${f}`),

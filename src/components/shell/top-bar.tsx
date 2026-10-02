@@ -2,8 +2,10 @@ import Link from "next/link";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
 import { isStaff } from "@/lib/auth/staff.ts";
+import { can, ROLE_LABEL } from "@/lib/auth/permissions.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { createRun } from "@/lib/workflow/actions.ts";
+import { switchWorkspace } from "@/lib/workflow/identity.ts";
 import { signOut } from "@/app/sign-in/actions.ts";
 import { Badge } from "@/components/ui/primitives.tsx";
 import { Menu } from "@/components/ui/menu.tsx";
@@ -11,13 +13,6 @@ import { menuItemClass } from "@/components/ui/menu-item.ts";
 import { NavLinks, type NavItem } from "./nav-links.tsx";
 import { RunLauncher, type LaunchAgent, type LaunchSuite } from "./run-launcher.tsx";
 import { ImportSuite } from "./import-suite.tsx";
-
-const NAV: NavItem[] = [
-  { href: "/dashboard", label: "Overview" },
-  { href: "/review", label: "Review" },
-  { href: "/scenarios", label: "Scenarios" },
-  { href: "/regressions", label: "Regressions" },
-];
 
 /** An endpoint's host, which is what identifies an agent to an operator in a hurry. */
 function hostOf(config: unknown): string {
@@ -31,39 +26,45 @@ function hostOf(config: unknown): string {
 }
 
 /**
- * The chrome every operator page now shares.
+ * The chrome every operator page shares.
  *
- * Before this, each page rendered its own header and its own set of buttons, so
- * "where am I and what can I do" was answered differently on every screen and
- * starting a run meant navigating to the right agent first.
+ * Everything it lists belongs to the active workspace: the agents, the suites, the trial
+ * count. A person in several workspaces sees which one is active and switches here; a person
+ * in one, in personal mode, never sees a switcher at all. Controls a role cannot use are not
+ * drawn — the server refuses them regardless.
  */
 export async function TopBar() {
-  const { user, workspace } = await requireWorkspace();
+  const { user, workspace, role, context } = await requireWorkspace();
   const db = await sessionClient();
+  const mode = context.accountMode;
+  const multi = context.memberships.length > 1;
 
   const [{ data: agentRows }, { data: suiteRows }] = await Promise.all([
-    db.from("agents").select("id, name, config").order("created_at"),
-    db.from("suites").select("id, key, name, version, cases").order("key").order("version", { ascending: false }),
+    db.from("agents").select("id, name, config").eq("workspace_id", workspace.id).order("created_at"),
+    // Built-in suites (no workspace) and this workspace's own; never another membership's.
+    db.from("suites").select("id, key, name, version, cases").or(`workspace_id.is.null,workspace_id.eq.${workspace.id}`)
+      .order("key").order("version", { ascending: false }),
   ]);
 
   const admin = await assertMembership(user.id, workspace.id);
   const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
 
-  const agents: LaunchAgent[] = (agentRows ?? []).map((a) => ({
-    id: a.id as string,
-    name: a.name as string,
-    host: hostOf(a.config),
-  }));
+  const agents: LaunchAgent[] = (agentRows ?? []).map((a) => ({ id: a.id as string, name: a.name as string, host: hostOf(a.config) }));
   const suites: LaunchSuite[] = (suiteRows ?? []).map((s) => ({
-    id: s.id as string,
-    key: s.key as string,
-    name: s.name as string,
-    version: s.version as number,
+    id: s.id as string, key: s.key as string, name: s.name as string, version: s.version as number,
     caseCount: Array.isArray(s.cases) ? s.cases.length : 0,
   }));
 
   const runsLeft = Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed);
-  const nav = isStaff(user.email) ? [...NAV, { href: "/inbox", label: "Inbox" }] : NAV;
+  const nav: NavItem[] = [
+    { href: "/dashboard", label: mode === "personal" ? "Home" : "Overview" },
+    ...(mode !== "personal" || multi ? [{ href: "/workspaces", label: mode === "agency" ? "Clients" : "Workspaces" }] : []),
+    { href: "/review", label: "Review" },
+    { href: "/scenarios", label: "Scenarios" },
+    { href: "/regressions", label: "Regressions" },
+    ...(isStaff(user.email) ? [{ href: "/inbox", label: "Inbox" }] : []),
+  ];
+  const funding = entitlement.ownKey ? `Own key · ${entitlement.provider}` : `Trial · ${runsLeft} of ${TRIAL_RUN_LIMIT} runs left`;
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur">
@@ -76,29 +77,49 @@ export async function TopBar() {
           <span aria-hidden className="hidden text-sm font-semibold tracking-tight sm:inline">Novera</span>
         </Link>
 
+        {(multi || mode !== "personal") && (
+          <Menu
+            label={<span className="flex max-w-24 items-center gap-1.5 truncate sm:max-w-40"><span aria-hidden className="size-1.5 shrink-0 rounded-full bg-trace" /><span className="truncate">{workspace.name}</span></span>}
+            align="left"
+            triggerClassName="border border-line px-2.5 py-1.5 text-ink hover:bg-sunken"
+            panelClassName="w-72"
+          >
+            <p className="px-3 pb-1 pt-2 type-eyebrow text-ink-faint">{mode === "agency" ? "Clients" : "Workspaces"}</p>
+            {context.memberships.map((m) => (
+              <form key={m.workspace.id} action={switchWorkspace}>
+                <input type="hidden" name="workspaceId" value={m.workspace.id} />
+                <button type="submit" aria-current={m.workspace.id === workspace.id ? "true" : undefined} className={`${menuItemClass} flex items-center justify-between gap-2`}>
+                  <span className="min-w-0 truncate font-medium">{m.workspace.name}</span>
+                  <span className="shrink-0 text-xs text-ink-faint">{m.workspace.id === workspace.id ? "open · " : ""}{ROLE_LABEL[m.role].toLowerCase()}</span>
+                </button>
+              </form>
+            ))}
+            <Link href="/workspaces" className={`${menuItemClass} border-t border-line text-ink-soft`}>
+              {mode === "agency" ? "All clients, and add one…" : "All workspaces, and add one…"}
+            </Link>
+          </Menu>
+        )}
+
         <span aria-hidden className="hidden h-5 w-px bg-line lg:block" />
 
-        {/* From lg only. At md the four links, the agent menu, Import, Run and Menu came
-            to 785 px in a 720 px bar — 41 px past the edge on every page at 768 — and
-            staff get a fifth link. Below lg they are in the menu, as on a phone. */}
+        {/* From lg only. At md the links, the agent menu, Import, Run and Menu came to
+            785 px in a 720 px bar; below lg they are in the menu, as on a phone. */}
         <nav aria-label="Primary" className="hidden items-center gap-0.5 lg:flex">
           <NavLinks items={nav} variant="bar" />
         </nav>
 
-        {/* The agent selector. Deliberately a list of endpoints rather than names
-            alone: two agents called "Support" pointing at staging and production
-            are indistinguishable by name, and that mistake costs a whole run. */}
+        {/* The agent selector. A list of endpoints rather than names alone: two agents
+            called "Support" pointing at staging and production are indistinguishable by
+            name, and that mistake costs a whole run. */}
         <Menu
-          label={<span className="max-w-32 truncate">{agents.length ? "Agents" : "No agents"}</span>}
+          label={<span className="max-w-32 truncate">{agents.length ? (mode === "personal" && agents.length === 1 ? "My agent" : "Agents") : "No agents"}</span>}
           align="left"
           className="hidden md:block"
           triggerClassName="px-2.5 py-1.5 text-ink-soft hover:bg-sunken"
           panelClassName="w-72"
         >
           {agents.length === 0 ? (
-            <p className="px-3 py-2 text-sm leading-relaxed text-ink-soft">
-              Nothing connected yet.
-            </p>
+            <p className="px-3 py-2 text-sm leading-relaxed text-ink-soft">Nothing connected yet.</p>
           ) : (
             agents.map((a) => (
               <Link key={a.id} href={`/agents/${a.id}`} className={menuItemClass}>
@@ -107,23 +128,30 @@ export async function TopBar() {
               </Link>
             ))
           )}
-          <Link href="/agents/new" className={`${menuItemClass} border-t border-line text-ink-soft`}>
-            Connect an agent…
-          </Link>
+          {can(role, "agent.write") && (
+            <Link href="/agents/new" className={`${menuItemClass} border-t border-line text-ink-soft`}>Connect an agent…</Link>
+          )}
         </Menu>
 
         <div className="ml-auto flex items-center gap-2">
           <span className="hidden xl:inline">
             {/* What is really stored, not an invented environment label: a report has
                 to say who funded the grading, so the bar says it too. */}
-            <Badge tone={entitlement.ownKey ? "pass" : "neutral"}>
-              {entitlement.ownKey ? `Own key · ${entitlement.provider}` : `Trial · ${runsLeft} of ${TRIAL_RUN_LIMIT} runs left`}
-            </Badge>
+            <Badge tone={entitlement.ownKey ? "pass" : "neutral"}>{funding}</Badge>
           </span>
+          {role !== "owner" && <span className="hidden xl:inline"><Badge tone="neutral">{ROLE_LABEL[role]}</Badge></span>}
 
-          <span className="hidden sm:inline"><ImportSuite /></span>
+          {can(role, "suite.import") && <span className="hidden sm:inline"><ImportSuite /></span>}
 
-          <RunLauncher agents={agents} suites={suites} action={createRun} />
+          {can(role, "run.start") && (
+            <RunLauncher
+              agents={agents}
+              suites={suites}
+              action={createRun}
+              defaultAgentId={context.profile.default_agent_id ?? undefined}
+              defaultSuiteKey={context.profile.preferred_suite_key}
+            />
+          )}
 
           <Menu
             label={<span className="sr-only">Menu</span>}
@@ -131,11 +159,9 @@ export async function TopBar() {
             panelClassName="w-60"
           >
             <div className="border-b border-line px-3 py-2">
-              <p className="truncate text-sm font-medium text-ink">{workspace.name}</p>
-              <p className="truncate text-xs text-ink-faint">{user.email}</p>
-              <p className="mt-1.5 text-xs text-ink-soft xl:hidden">
-                {entitlement.ownKey ? `Own key · ${entitlement.provider}` : `Trial · ${runsLeft} of ${TRIAL_RUN_LIMIT} runs left`}
-              </p>
+              <p className="truncate text-sm font-medium text-ink">{context.profile.display_name ?? user.email}</p>
+              <p className="truncate text-xs text-ink-faint">{workspace.name} · {ROLE_LABEL[role].toLowerCase()}</p>
+              <p className="mt-1.5 text-xs text-ink-soft xl:hidden">{funding}</p>
             </div>
 
             <div className="py-1 lg:hidden">
@@ -143,8 +169,11 @@ export async function TopBar() {
             </div>
 
             <div className="border-t border-line py-1 lg:border-t-0">
-              <Link href="/agents/new" className={menuItemClass}>Connect an agent</Link>
-              <Link href="/settings" className={menuItemClass}>Settings</Link>
+              {can(role, "agent.write") && <Link href="/agents/new" className={menuItemClass}>Connect an agent</Link>}
+              <Link href="/settings" className={menuItemClass}>Workspace settings</Link>
+              {(mode !== "personal" || multi) && <Link href="/settings/members" className={menuItemClass}>Members</Link>}
+              {can(role, "audit.view") && mode !== "personal" && <Link href="/settings/audit" className={menuItemClass}>Audit log</Link>}
+              <Link href="/settings/profile" className={menuItemClass}>Your profile</Link>
               <Link href="/guide" className={menuItemClass}>Step-by-step guide</Link>
               <Link href="/docs" className={menuItemClass}>Documentation</Link>
               <Link href="/" className={menuItemClass}>Home page</Link>

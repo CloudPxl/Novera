@@ -3720,3 +3720,36 @@ Production, after the deploy:
   encrypted and never shown again; the effort stated ("about two minutes").
 - **One public header** on the home page, docs, guide, support and apply — before, a visitor who left
   the home page lost all navigation. The skip link moved into it, so every public page has one.
+
+## 2026-10-02 — Identity: roles, invitations, profiles, account modes, assistant history and memory
+
+- **Audit first** (`docs/audits/2026-10-02-identity-and-tenancy.md`, committed before any code): isolation was
+  strong; everything above it was schema-only or missing. The blocked buyer workflow: a sealed report is named
+  after the workspace, so an agency could not hand each client its own report — and could not have a second
+  workspace, because the session never chose between them. Chosen: multi-member, multi-workspace with roles and
+  account modes (personal / agency / enterprise as presentation only). Declined for now: an organization layer
+  (no buyer has asked for org-wide admin, SSO or consolidated billing), an in-app client-viewer role (clients get
+  the sealed report link), notification preferences (Novera sends none — a preference with no effect is not offered).
+- **0054**: roles owner/admin/operator/reviewer/auditor ('member' → operator; zero production rows), role-aware
+  RLS on the three client-writable tables (drafting and approving held by different roles), one owner per
+  workspace enforced by trigger, invitations (hashed token, single use, address-bound, forward-only), removal that
+  revokes the member's keys in one step, an append-only audit trail, profiles (own-row RLS, lazy creation that
+  infers personal vs agency from data, never from an email domain), private assistant threads and frozen messages,
+  explicit memory with a database refusal of key-shaped values, memory candidates, erasure of all of it with the
+  workspace, `erase_account` (pseudonymised sign-in so evidence elsewhere keeps an id without personal data), and
+  assistant retention in the existing daily pass. **0055**: the trial's three runs follow the owner across every
+  workspace they own — otherwise "New workspace" is three free runs per click.
+- **App**: one `UserContext` per request; the active workspace is a cookie checked against live membership; every
+  server action gated by capability (`src/lib/auth/permissions.ts`, held to the audit's matrix and to the RLS
+  policies by a test); every session read filtered to the active workspace (the dashboard, top bar and assistant
+  read all memberships before); a record from another of your workspaces offers a switch rather than mixing them.
+  Onboarding asks three questions, each with a stored effect; personal / agency / enterprise dashboards; members,
+  audit log, profile, portfolio and invitation pages; self-service workspace erasure, data export and account
+  deletion; Ask Novera keeps private threads and suggests memories only from what the person typed.
+- **Found by the checks**: my first `erase_workspace` was copied from an older body and dropped 0042's schedule and
+  webhook steps (`verify:schedules` failed; corrected before anything shipped). Next memoizes identical GET
+  requests within a render, so the membership read after creating a workspace returned the earlier empty answer —
+  every new account failed (`walk-identity` caught it; fixed by a distinct request).
+- **Measured**: `verify:identity` 37/37 as real users; `verify:free` every verifier passing on a database migrated
+  from zero (55 migrations; exit 2 only for the local stack's missing pg_cron); identity browser walk 51/51 twice,
+  axe clean at 390/1440 on every new page; 629 tests.

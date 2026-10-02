@@ -26,8 +26,11 @@ function subscribe(onChange: () => void) {
   };
 }
 
+/** The person's own "Reduce motion" in their profile, set on the app shell. */
+const profileReduces = () => document.querySelector('[data-motion="reduce"]') !== null;
+
 function read(): boolean {
-  if (window.matchMedia?.(QUERY).matches) return false;
+  if (window.matchMedia?.(QUERY).matches || profileReduces()) return false;
   if (override !== null) return override;
   try {
     return window.localStorage.getItem(KEY) !== "off";
@@ -54,7 +57,7 @@ export function useMotion(): [boolean, (on: boolean) => void] {
 export function useSystemMotion(): boolean {
   return useSyncExternalStore(
     subscribe,
-    () => !window.matchMedia?.(QUERY).matches,
+    () => !window.matchMedia?.(QUERY).matches && !profileReduces(),
     () => false,
   );
 }

@@ -15,6 +15,13 @@ import { DEFAULT_RETENTION_DAYS } from "@/lib/privacy/retention.ts";
 import { testFindings, FINDING_STATE_LABEL, type FindingRun, type Followup, type CaseStatus } from "@/lib/review/findings.ts";
 import { Help } from "@/components/ui/help.tsx";
 import { GuidePanel } from "./guide-panel.tsx";
+import { redirect } from "next/navigation";
+import { can, ROLES, type Role } from "@/lib/auth/permissions.ts";
+import { serviceClient } from "@/lib/supabase/service.ts";
+import { portfolio } from "@/lib/workspaces/portfolio.ts";
+import { formatWhen, zoneLabel } from "@/lib/format/when.ts";
+import { nextAction } from "./next-action.ts";
+import { ChannelNote, ClientStrip, GovernancePanel, NextCard, TeamCard, UpgradeCard } from "./mode-panels.tsx";
 
 export const metadata: Metadata = { title: "Dashboard · Novera" };
 export const dynamic = "force-dynamic";
@@ -27,8 +34,6 @@ function daysAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString();
 }
 
-const when = (iso: string) => new Date(iso).toISOString().slice(0, 16).replace("T", " ");
-const day = (iso: string) => new Date(iso).toISOString().slice(0, 10);
 
 /** An endpoint's host: what identifies an agent to an operator in a hurry. */
 function hostOf(config: unknown): string {
@@ -46,7 +51,13 @@ function hostOf(config: unknown): string {
  * to be read at a glance, and a missing tile reads as "unknown", not "clear".
  */
 export default async function DashboardPage() {
-  const { user, workspace } = await requireWorkspace();
+  const { user, workspace, role, context } = await requireWorkspace();
+  // A first visit answers three questions first; skipping them is one click (/welcome).
+  if (context.profile.onboarding_status === "not_started") redirect("/welcome");
+  const mode = context.accountMode;
+  const personal = mode === "personal";
+  const when = (iso: string) => formatWhen(iso, context.profile);
+  const day = (iso: string) => formatWhen(iso, context.profile, { date: true });
   const db = await sessionClient();
 
   // Read through the user's own client: whatever comes back, RLS allowed.
@@ -56,19 +67,19 @@ export default async function DashboardPage() {
     { count: policyCount }, { data: reports }, { data: schedules }, { data: keys }, { data: proposals },
     { data: wsRow }, { count: failedDeliveries },
   ] = await Promise.all([
-    db.from("agents").select("id, name, config, attested_at, is_production").order("created_at"),
-    db.from("runs").select("id, status, created_at, agent_id, suite_id, schedule_id, api_key_id").order("created_at", { ascending: false }).limit(30),
-    db.from("reports").select("*", { count: "exact", head: true }),
+    db.from("agents").select("id, name, config, attested_at, is_production").eq("workspace_id", workspace.id).order("created_at"),
+    db.from("runs").select("id, status, created_at, agent_id, suite_id, schedule_id, api_key_id").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
+    db.from("reports").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id),
     // Enough recent receipts to find the latest for each agent, in one query.
-    db.from("probes").select("agent_id, error, created_at").order("created_at", { ascending: false }).limit(60),
-    db.from("scenario_drafts").select("*", { count: "exact", head: true }).eq("status", "draft"),
-    db.from("policies").select("*", { count: "exact", head: true }),
-    db.from("reports").select("run_id, payload, content_hash, expires_at, revoked_at, created_at").order("created_at", { ascending: false }).limit(40),
-    db.from("run_schedules").select("agent_id, next_run_at, paused_at, paused_reason").is("cancelled_at", null),
-    db.from("api_keys").select("id, name"),
-    db.from("diagnoses").select("run_case_id, status").in("status", ["proposed", "approved", "rejected"]).order("created_at", { ascending: false }).limit(200),
+    db.from("probes").select("agent_id, error, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(60),
+    db.from("scenario_drafts").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("status", "draft"),
+    db.from("policies").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id),
+    db.from("reports").select("run_id, payload, content_hash, expires_at, revoked_at, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(40),
+    db.from("run_schedules").select("agent_id, next_run_at, paused_at, paused_reason").eq("workspace_id", workspace.id).is("cancelled_at", null),
+    db.from("api_keys").select("id, name").eq("workspace_id", workspace.id),
+    db.from("diagnoses").select("run_case_id, status").eq("workspace_id", workspace.id).in("status", ["proposed", "approved", "rejected"]).order("created_at", { ascending: false }).limit(200),
     db.from("workspaces").select("raw_evidence_days").eq("id", workspace.id).maybeSingle(),
-    db.from("webhook_deliveries").select("*", { count: "exact", head: true }).eq("status", "failed").gt("created_at", weekAgo),
+    db.from("webhook_deliveries").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("status", "failed").gt("created_at", weekAgo),
   ]);
 
   const agentList = agents ?? [];
@@ -84,8 +95,8 @@ export default async function DashboardPage() {
     comparedIds.length
       ? db.from("run_cases").select("id, run_id, case_id, status, severity, obligation").in("run_id", comparedIds)
       : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
-    db.from("case_retests").select("run_case_id, status, created_at").order("created_at", { ascending: false }).limit(200),
-    db.from("verdict_reviews").select("run_case_id, finding, created_at").order("created_at", { ascending: false }).limit(200),
+    db.from("case_retests").select("run_case_id, status, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(200),
+    db.from("verdict_reviews").select("run_case_id, finding, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(200),
   ]);
 
   const findingRuns: FindingRun[] = compared.map((r) => ({
@@ -143,7 +154,7 @@ export default async function DashboardPage() {
 
   // The existing, tested "needs you" sentences.
   const retentionDays = (wsRow?.raw_evidence_days as number | null) ?? DEFAULT_RETENTION_DAYS;
-  const { count: expiringSoon } = await db.from("run_cases").select("*", { count: "exact", head: true })
+  const { count: expiringSoon } = await db.from("run_cases").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id)
     .not("response_text", "is", null).is("raw_expired_at", null).lt("created_at", daysAgo(retentionDays - 7));
   const outcomes = new Map<string, { pass: number; fail: number; error: number }>();
   for (const r of findingRuns) {
@@ -192,6 +203,39 @@ export default async function DashboardPage() {
   const unreachable = agentList.filter((a) => latestProbe.get(a.id as string)?.error).length;
   const activeRuns = runList.filter((r) => r.status === "queued" || r.status === "running").length;
 
+  // Mode-specific reads, each scoped to this person's own memberships or this workspace.
+  const svc = serviceClient();
+  const [rows, { data: memberRows }, { count: invitesOpen }, { data: auditRows }, { count: rawReads }] = await Promise.all([
+    personal && context.memberships.length === 1 ? Promise.resolve([]) : portfolio(svc, context.memberships),
+    personal ? Promise.resolve({ data: null }) : svc.from("workspace_members").select("role").eq("workspace_id", workspace.id),
+    personal || !can(role, "member.invite") ? Promise.resolve({ count: 0 })
+      : svc.from("workspace_invitations").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id)
+        .is("accepted_at", null).is("revoked_at", null).gt("expires_at", new Date().toISOString()),
+    mode === "enterprise" && can(role, "audit.view")
+      ? svc.from("audit_events").select("id, action, created_at, actor_id").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(5)
+      : Promise.resolve({ data: [] as Array<{ id: string; action: string; created_at: string; actor_id: string | null }> }),
+    mode === "enterprise"
+      ? svc.from("raw_evidence_reads").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id).gt("read_at", daysAgo(30))
+      : Promise.resolve({ count: 0 }),
+  ]);
+  const byRole = ROLES.map((r) => [r, (memberRows ?? []).filter((m) => m.role === r).length] as [Role, number]).filter(([, n]) => n > 0);
+  const actorNames = new Map<string, string>();
+  for (const id of new Set((auditRows ?? []).map((e) => e.actor_id).filter(Boolean) as string[])) {
+    const { data: p } = await svc.from("user_profiles").select("display_name").eq("user_id", id).maybeSingle();
+    actorNames.set(id, (p?.display_name as string | null) ?? (id === user.id ? "You" : "A member"));
+  }
+  const top = open[0];
+  const action = nextAction({
+    goal: context.profile.primary_goal, accountMode: mode, workspaces: context.memberships.length,
+    hasAgent: agentList.length > 0, firstAgentId: (agentList[0]?.id as string | undefined) ?? null,
+    hasPolicy: (policyCount ?? 0) > 0, hasRun: runList.length > 0,
+    runInFlight: (runList.find((r) => r.status === "queued" || r.status === "running")?.id as string | undefined) ?? null,
+    topFinding: top ? { href: top.next.href, caseId: top.caseId, label: `${top.obligation ? (OBLIGATION_LABELS as Record<string, string>)[top.obligation] ?? top.obligation : "A scenario"} failed on ${top.agentName}. ${top.next.label}.` } : null,
+    noVerdict: noVerdictNow, readyRunId: firstReady?.runId ?? null,
+    blockedReason: entitlement.canRun ? null : entitlement.blockedReason,
+    may: { connect: can(role, "agent.write"), run: can(role, "run.start"), review: can(role, "workspace.view") },
+  });
+
   const tiles: Tile[] = [
     { label: "Needs review", value: open.length, unit: open.length === 1 ? "open finding" : "open findings", href: "/review#findings", tone: open.length ? "high" : "quiet", note: newestPerAgent.length ? "Failed scenarios in each agent's newest run" : "No completed run yet" },
     { label: "Evidence incomplete", value: noVerdictNow, unit: noVerdictNow === 1 ? "scenario without a verdict" : "scenarios without a verdict", href: "/review#repair", tone: noVerdictNow ? "medium" : "quiet", note: "Never counted as passes" },
@@ -202,14 +246,17 @@ export default async function DashboardPage() {
     { label: "Connections", value: answering, unit: `of ${agentList.length} answered their last check`, href: unreachable ? `/agents/${agentList.find((a) => latestProbe.get(a.id as string)?.error)?.id}` : "/settings", tone: unreachable ? "fail" : "quiet", ratio: true, note: `${checked < agentList.length ? `${agentList.length - checked} never checked · ` : ""}${entitlement.ownKey ? `grading on your ${entitlement.provider} key` : `trial grading, ${Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed)} of ${TRIAL_RUN_LIMIT} runs left`}` },
   ];
 
+  const CORE = new Set(["Needs review", "Evidence incomplete", "New regressions", "Reports ready"]);
+  const shownTiles = personal ? tiles.filter((t) => CORE.has(t.label) || (t.value > 0 && !t.ratio) || (t.label === "Connections" && t.tone === "fail")) : tiles;
+
   return (
     <main className="w-full py-8 text-ink">
       <header className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4 border-b border-line pb-6">
         <div className="min-w-0">
-          <p className="type-eyebrow text-ink-faint">Workspace</p>
+          <p className="type-eyebrow text-ink-faint">{personal ? (context.profile.display_name ? `Hello, ${context.profile.display_name}` : "Your workspace") : mode === "agency" ? "Client workspace" : "Workspace"}</p>
           <h1 className="mt-2 type-h1 [overflow-wrap:anywhere]">{workspace.name}</h1>
           <p className="mt-1 type-body text-ink-soft">
-            {user.email} ·{" "}
+            {user.email} · times in {zoneLabel(context.profile.timezone)} ·{" "}
             {entitlement.ownKey
               ? `Graded on your own ${entitlement.provider} key`
               : `Trial · ${Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed)} of ${TRIAL_RUN_LIMIT} runs left`}
@@ -232,6 +279,9 @@ export default async function DashboardPage() {
           <Link href="/settings" className="font-medium underline underline-offset-2">Connect your key</Link>.
         </div>
       )}
+
+      {personal && <NextCard action={action} />}
+      <ChannelNote channels={context.profile.channels} />
 
       {setupDone < setup.length && (
         <section aria-labelledby="setup-heading" className="mt-6 rounded-shell border border-line bg-surface p-5 shadow-card">
@@ -276,8 +326,8 @@ export default async function DashboardPage() {
           <h2 id="board-heading" className="type-h2">Attention</h2>
           <Link href="/review" className="text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">Open the review queue →</Link>
         </div>
-        <ul className="novera-stagger mt-3 grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-7" data-shown="true">
-          {tiles.map((t, i) => (
+        <ul className={`novera-stagger mt-3 grid grid-cols-2 gap-2.5 md:grid-cols-4 ${shownTiles.length > 4 ? "xl:grid-cols-7" : ""}`} data-shown="true">
+          {shownTiles.map((t, i) => (
             <li key={t.label} style={{ ["--i" as string]: i }}>
               <TileLink tile={t} />
             </li>
@@ -304,17 +354,29 @@ export default async function DashboardPage() {
         </Reveal>
       )}
 
+      {mode === "agency" && <ClientStrip rows={rows} currentId={workspace.id} label="Clients" />}
+      {mode === "enterprise" && (
+        <GovernancePanel
+          events={(auditRows ?? []).map((e) => ({ id: e.id as string, action: e.action as string, created_at: e.created_at as string, who: e.actor_id ? actorNames.get(e.actor_id as string) ?? "A member" : "Novera" }))}
+          retentionDays={retentionDays}
+          rawReads={rawReads ?? 0}
+          funding={entitlement.ownKey ? `The workspace's own ${entitlement.provider} key` : "Novera's trial allowance"}
+          canAudit={can(role, "audit.view")}
+        />
+      )}
+      {mode === "enterprise" && context.memberships.length > 1 && <ClientStrip rows={rows} currentId={workspace.id} label="Workspaces" />}
+
       <div className="mt-10 grid gap-10 xl:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
         <div className="min-w-0 space-y-10">
           {/* ------------------------------------------------------------- agents */}
           <Reveal>
             <section aria-labelledby="agents-heading">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center"><h2 id="agents-heading" className="type-h2">Agents</h2><Help label="Agents">
+                <div className="flex items-center"><h2 id="agents-heading" className="type-h2">{personal ? (agentList.length === 1 ? "My agent" : "My agents") : "Agents"}</h2><Help label="Agents">
                   The support agents you have connected. Open one to write its policy, check its
                   connection and run the suite against it. Only test agents you own or are authorised to test.
                 </Help></div>
-                <Link href="/agents/new" className="text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">Connect another</Link>
+                {can(role, "agent.write") && <Link href="/agents/new" className="text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">Connect another</Link>}
               </div>
               {agentList.length > 0 ? (
                 <ul className="mt-3 grid gap-3 lg:grid-cols-2">
@@ -406,7 +468,7 @@ export default async function DashboardPage() {
           {/* --------------------------------------------------------------- runs */}
           <Reveal>
             <section aria-labelledby="runs-heading">
-              <div className="flex items-center"><h2 id="runs-heading" className="type-h2">Recent runs</h2><Help label="Runs">
+              <div className="flex items-center"><h2 id="runs-heading" className="type-h2">{personal ? "My runs" : "Recent runs"}</h2><Help label="Runs">
                 A run sends every scenario in a suite to one agent and grades each answer against its
                 policy. The outcome is the release gate&apos;s: pass, fail, or evidence incomplete.
               </Help></div>
@@ -468,7 +530,7 @@ export default async function DashboardPage() {
         <aside aria-label="Findings and guide" className="min-w-0 space-y-6">
           <section aria-labelledby="findings-heading" className="rounded-shell border border-line bg-surface p-4 shadow-card">
             <div className="flex items-baseline justify-between gap-2">
-              <h2 id="findings-heading" className="type-h3">Open findings</h2>
+              <h2 id="findings-heading" className="type-h3">{personal ? "My findings" : "Open findings"}</h2>
               {open.length > 0 && <Link href="/review#findings" className="text-xs font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">All {open.length} →</Link>}
             </div>
             {open.length === 0 ? (
@@ -496,6 +558,8 @@ export default async function DashboardPage() {
             )}
           </section>
 
+          {!personal && <TeamCard byRole={byRole} canInvite={can(role, "member.invite")} invitesOpen={invitesOpen ?? 0} />}
+          {personal && context.memberships.length === 1 && setupDone === setup.length && <UpgradeCard />}
           <GuidePanel
             open={setupDone < setup.length}
             firstAgentId={firstAgent}

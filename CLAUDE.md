@@ -57,8 +57,13 @@ someone with the service role, not merely someone using the application.
 | A support reply goes draft → approved → sent, forward only; editing writes a new draft | 0009 |
 | A public form cannot be made free | 0024, counted in Postgres |
 | Raw evidence — inputs, replies, transcripts — reaches an API or MCP caller only with the `responses` scope and when asked for, exactly as stored, and each such read is recorded with its key and route where members can see it; otherwise personal data a grader quoted is a placeholder, as in a report | 0050, `src/lib/api/read.ts`, `verify:api`, `verify:mcp` |
-| The trial funds three runs per workspace however many starts arrive at once, and a run start retried with the same `Idempotency-Key` returns the run it started instead of a second one | 0049, `src/lib/api/idempotency.ts`, `verify:api` |
-| A person gets one workspace on first use, however many page loads race to create it | 0029, advisory lock per user |
+| The trial funds three runs per owner across every workspace they own, however many starts arrive at once, and a run start retried with the same `Idempotency-Key` returns the run it started instead of a second one | 0049, 0055, `src/lib/api/idempotency.ts`, `verify:api`, `verify:identity` |
+| A person gets one workspace on first use, however many page loads race to create it, and may belong to several; the active one is a cookie checked against live membership on every request, never trusted, and every page reads only the active workspace | 0029, `src/lib/auth/session.ts` (`requireContext`), `verify:identity` |
+| A member's role decides what they may do — owner, admin, operator, reviewer, auditor — checked against the live row by every server action, and by RLS on the three tables a client may write; drafting and approving are different roles; the owner cannot be removed or demoted, and nobody else is made owner | 0054, `src/lib/auth/permissions.ts`, `tests/permissions.test.ts`, `verify:identity` |
+| An invitation works once, for its address only, for seven days, and stays revoked once revoked; removing a member takes effect on their next request and revokes the API keys they created there | 0054 `accept_invitation`, `remove_workspace_member`, `verify:identity` |
+| Who changed who may do what — members, roles, keys, webhooks, retention, withdrawal, account mode, memory — is an append-only audit trail, read by owner, admins and auditors | 0054 `audit_events`, `src/lib/audit/record.ts` |
+| A person's profile and preferences never reach grading, suites, policies or reports; assistant conversations are private to their person and expire after 180 idle days; assistant memory exists only by a person's action, refuses key-, link- and instruction-shaped values (also in the database), and a model's suggestion is stored only as a candidate the person accepts | 0054, `src/lib/assistant/memory.ts`, `tests/memory.test.ts`, `verify:identity` |
+| Deleting an account erases the workspaces it owns, ends its memberships and keys elsewhere, deletes its profile, conversations and memory, and pseudonymises the sign-in so evidence elsewhere stays attributed to an id without personal data | 0054 `erase_account`, `src/lib/workflow/identity.ts` |
 | A row can refer only to rows in its own workspace — agents, policies, runs, cases, failures, suites (built-ins shared) — even for the service role | 0034 `refuse_cross_workspace()`, `verify:tenancy` |
 | An API key is stored only as an HMAC, reads by default, and starts runs or reads the agent's replies only if its creator chose that (never `run` or `responses` without `read`), cannot be altered, and once revoked stays revoked; a key reads only its own workspace, and a run it starts names it | 0033 + 0035 + 0052 + `src/lib/api/`, `verify:api` |
 | An assistant on MCP is offered only its key's scopes; with `write` it can ask for scenario drafts and diagnoses, which land as drafts and proposals naming the key — no scope approves, publishes, revokes, changes a policy or sends | 0039, `src/lib/mcp/tools.ts`, `src/lib/workflow/propose.ts`, `verify:mcp` |
@@ -182,6 +187,9 @@ src/lib/mcp/          the MCP server: JSON-RPC protocol; seven read tools, run a
 src/lib/schedules/    scheduled re-evaluations: UTC cadence, the clock's secret, the tick
 src/lib/webhooks/     outbound webhooks: signing, queueing, delivery with backoff
 src/lib/net/          the public-address guard every outbound request goes through
+src/lib/auth/         the request's context (user, profile, active workspace, role) and the permission matrix
+src/lib/audit/        the audit trail of access changes
+src/lib/review/       failed scenarios as findings (new, recurring, resolved), derived from stored rows
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites + calibration labels
 data/docs/            the published documentation, seeded into the database
@@ -208,10 +216,11 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 615 unit tests | free |
+| `npm test` | 629 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
+| `verify:identity` | profiles, roles in RLS, invitations, removal revoking keys, the audit trail, private conversations, memory isolation, trial per owner, retention, account and workspace erasure — as real signed-in users (needs `npm run dev`) | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
 | `verify:effect` · `verify:channel` · `verify:compiler` · `verify:conversation` | evidence rules, the metadata channel, the compiler's refusals, multi-turn scenarios | a few model calls |
 | `verify:throttle` | the public forms cannot be made free | free |

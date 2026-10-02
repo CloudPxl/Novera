@@ -32,14 +32,17 @@ export function RunLauncher({
   suites,
   action,
   defaultAgentId,
+  defaultSuiteKey,
 }: {
   agents: LaunchAgent[];
   suites: LaunchSuite[];
   action: (formData: FormData) => void | Promise<void>;
   defaultAgentId?: string;
+  /** The suite the person chose in their profile — their decision, so it may be preselected. */
+  defaultSuiteKey?: string | null;
 }) {
-  const [agentId, setAgentId] = useState(defaultAgentId ?? "");
-  const [suiteId, setSuiteId] = useState("");
+  const [agentId, setAgentId] = useState(defaultAgentId && agents.some((a) => a.id === defaultAgentId) ? defaultAgentId : "");
+  const [suiteId, setSuiteId] = useState(() => suites.find((s) => s.key === defaultSuiteKey)?.id ?? "");
 
   const agent = agents.find((a) => a.id === agentId);
   const suite = suites.find((s) => s.id === suiteId);

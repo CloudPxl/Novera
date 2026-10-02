@@ -18,6 +18,7 @@
     "demo:run": "node --conditions=react-server --env-file=.env.local scripts/demo-run.mts",
     "verify:access": "node --conditions=react-server --env-file=.env.local scripts/verify-access.mts",
     "verify:tenancy": "node --conditions=react-server --env-file=.env.local scripts/verify-tenancy.mts",
+    "verify:identity": "node --conditions=react-server --env-file=.env.local scripts/verify-identity.mts",
     "measure:stability": "node --conditions=react-server --env-file=.env.local scripts/measure-judge-stability.mts",
     "verify:effect": "node --conditions=react-server --env-file=.env.local scripts/verify-effect.mts",
     "verify:channel": "node --conditions=react-server --env-file=.env.local scripts/verify-channel.mts",

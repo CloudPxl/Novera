@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
+import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import { assertPublicUrl, PrivateAddressError } from "@/lib/net/public-url.ts";
 import { createEndpoint, deliverDue, enqueue, WEBHOOK_EVENTS, appOrigin, type WebhookEvent } from "@/lib/webhooks/deliver.ts";
+import { recordAudit } from "@/lib/audit/record.ts";
 
 export interface WebhookFormState {
   error?: string;
@@ -32,7 +33,9 @@ export async function createWebhook(_prev: WebhookFormState, form: FormData): Pr
     return { error: "Use https. A webhook carries a signature and links to your reports." };
   }
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "webhook.manage");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
   const { count } = await admin.from("webhook_endpoints").select("id", { count: "exact", head: true })
     .eq("workspace_id", workspace.id).is("revoked_at", null);
   if ((count ?? 0) >= MAX_ACTIVE_ENDPOINTS) {
@@ -41,6 +44,7 @@ export async function createWebhook(_prev: WebhookFormState, form: FormData): Pr
 
   try {
     const { secret } = await createEndpoint({ db: admin, workspaceId: workspace.id, url: parsed.toString(), events, createdBy: user.id });
+    await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "webhook.created", detail: {} });
     revalidatePath("/settings");
     return { secret, notice: "Copy the signing secret now. Novera keeps it sealed and cannot show it again." };
   } catch (e) {
@@ -52,13 +56,16 @@ export async function createWebhook(_prev: WebhookFormState, form: FormData): Pr
 export async function revokeWebhook(_prev: WebhookFormState, form: FormData): Promise<WebhookFormState> {
   const { user, workspace } = await requireWorkspace();
   const endpointId = String(form.get("endpointId") ?? "");
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "webhook.manage");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
   const { data, error } = await admin.from("webhook_endpoints")
     .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
     .eq("id", endpointId).eq("workspace_id", workspace.id).is("revoked_at", null)
     .select("id");
   if (error) return { error: `The endpoint could not be revoked: ${error.message}` };
   if (!data?.length) return { error: "That endpoint was not found, or is already revoked." };
+  await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "webhook.revoked", detail: {} });
   revalidatePath("/settings");
   return { notice: "Revoked. Nothing more is sent to it." };
 }
@@ -67,7 +74,9 @@ export async function revokeWebhook(_prev: WebhookFormState, form: FormData): Pr
 export async function sendTestWebhook(_prev: WebhookFormState, form: FormData): Promise<WebhookFormState> {
   const { user, workspace } = await requireWorkspace();
   const endpointId = String(form.get("endpointId") ?? "");
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "webhook.manage");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
   const ids = await enqueue({
     db: admin, workspaceId: workspace.id, event: "test", subjectId: null, onlyEndpoint: endpointId,
     body: { test: true, note: "A test event from Novera. Check the signature, then ignore it.", workspace_url: `${appOrigin()}/settings` },

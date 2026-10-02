@@ -12,6 +12,7 @@ import { SubmitButton } from "@/components/ui/button.tsx";
 import { PolicyEditor, ReprobeButton, VerificationEndpoint, ResponsePathPicker } from "./client.tsx";
 import { ScheduleCard, ScheduleForm, type ScheduleView } from "./schedules.tsx";
 import { summariseRun } from "../../dashboard/summary.ts";
+import { OtherWorkspace } from "@/components/shell/other-workspace.tsx";
 import { scheduleState } from "@/lib/schedules/cadence.ts";
 
 export const metadata: Metadata = { title: "Agent · Novera" };
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AgentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { user, workspace } = await requireWorkspace();
+  const { user, workspace, context } = await requireWorkspace();
   const db = await sessionClient();
   const entitlement = await workspaceEntitlement({
     client: await assertMembership(user.id, workspace.id),
@@ -27,8 +28,13 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
   });
 
   const { data: agent } = await db
-    .from("agents").select("id, name, kind, config, verification, attestation_text, attested_at").eq("id", id).maybeSingle();
+    .from("agents").select("id, workspace_id, name, kind, config, verification, attestation_text, attested_at").eq("id", id).maybeSingle();
   if (!agent) notFound();
+  if (agent.workspace_id !== workspace.id) {
+    const there = context.memberships.find((m) => m.workspace.id === agent.workspace_id);
+    if (!there) notFound();
+    return <OtherWorkspace thing="agent" workspace={there.workspace.name} workspaceId={there.workspace.id} next={`/agents/${id}`} />;
+  }
 
   const [{ data: probes }, { data: policies }, { data: runs }, { data: suites }, { data: schedules }] = await Promise.all([
     db.from("probes").select("id, status_code, response_body, response_shape, latency_ms, error, created_at, content_expired_at")

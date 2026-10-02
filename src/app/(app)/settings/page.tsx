@@ -2,6 +2,9 @@ import { Help } from "@/components/ui/help.tsx";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
+import { can, ROLE_LABEL } from "@/lib/auth/permissions.ts";
+import { SettingsNav } from "./nav.tsx";
+import { EraseWorkspaceForm, LeaveWorkspaceForm, RenameWorkspaceForm } from "./identity-forms.tsx";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
 import { suggestedModelsFor } from "@/lib/router/routes.ts";
 import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/providers/anthropic.ts";
@@ -32,13 +35,16 @@ const PROVIDERS: ProviderChoice[] = [
 ];
 
 export default async function SettingsPage() {
-  const { user, workspace } = await requireWorkspace();
+  const { user, workspace, role, context } = await requireWorkspace();
   const admin = await assertMembership(user.id, workspace.id);
   const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
   const [{ data: retention }, { data: membership }] = await Promise.all([
     admin.from("workspaces").select("raw_evidence_days").eq("id", workspace.id).maybeSingle(),
     admin.from("workspace_members").select("role").eq("workspace_id", workspace.id).eq("user_id", user.id).maybeSingle(),
   ]);
+  const { count: memberCount } = await admin.from("workspace_members").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id);
+  // Shown in place of a control this role may not use, so a reviewer sees why there is no button.
+  const onlyFor = (who: string) => <p className="mt-4 rounded-control bg-sunken px-3 py-2 text-xs text-ink-soft">Your role ({ROLE_LABEL[role].toLowerCase()}) can see this. {who} manage it.</p>;
   const [{ data: apiKeys }, { data: endpoints }, { data: deliveries }, { data: rawReads }] = await Promise.all([
     admin.from("api_keys")
       .select("id, name, prefix, scopes, created_at, revoked_at")
@@ -67,13 +73,8 @@ export default async function SettingsPage() {
   const trialLeft = TRIAL_RUN_LIMIT - entitlement.runsUsed;
 
   return (
-    <main className="w-full max-w-3xl py-8 text-ink">
-      <Link href="/dashboard" className="text-sm text-ink-faint underline-offset-2 hover:underline">
-        ← Dashboard
-      </Link>
-
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight">Settings</h1>
-      <p className="mt-1 text-sm text-ink-soft">{workspace.name}</p>
+    <main className="w-full max-w-4xl py-8 text-ink">
+      <SettingsNav current="workspace" role={role} mode={context.accountMode} members={memberCount ?? 1} workspace={workspace.name} />
 
       <Reveal className="mt-8">
         <section>
@@ -158,10 +159,10 @@ export default async function SettingsPage() {
                     old one is deleted only once that has happened, and a key that fails its test
                     changes nothing.
                   </p>
-                  <JudgeKeyForm providers={PROVIDERS} replacing />
+                  {can(role, "judgekey.manage") ? <JudgeKeyForm providers={PROVIDERS} replacing /> : onlyFor("The owner and admins")}
                 </details>
 
-                <div className="mt-4 border-t border-line pt-4">
+                {can(role, "judgekey.manage") && <div className="mt-4 border-t border-line pt-4">
                   <RemoveKeyButton
                     consequence={
                       trialLeft > 0
@@ -169,7 +170,7 @@ export default async function SettingsPage() {
                         : `This workspace has run ${entitlement.runsUsed} suites and the trial covers ${TRIAL_RUN_LIMIT}, so no further run could start until a key is connected.`
                     }
                   />
-                </div>
+                </div>}
               </>
             ) : (
               <>
@@ -194,7 +195,7 @@ export default async function SettingsPage() {
                     aria-label="Trial runs used"
                   />
                 </div>
-                <JudgeKeyForm providers={PROVIDERS} />
+                {can(role, "judgekey.manage") ? <JudgeKeyForm providers={PROVIDERS} /> : onlyFor("The owner and admins")}
               </>
             )}
           </Card>
@@ -237,13 +238,13 @@ export default async function SettingsPage() {
                     {k.revoked_at ? (
                       <Badge tone="neutral">revoked</Badge>
                     ) : (
-                      <RevokeApiKey keyId={k.id as string} name={k.name as string} />
+                      can(role, "apikey.manage") && <RevokeApiKey keyId={k.id as string} name={k.name as string} />
                     )}
                   </li>
                 ))}
               </ul>
             )}
-            <CreateApiKey />
+            {can(role, "apikey.manage") ? <CreateApiKey /> : onlyFor("The owner and admins")}
           </Card>
           <h3 className="mt-6 text-sm font-semibold">Replies read through a key</h3>
           <p className="mt-1 text-xs leading-relaxed text-ink-faint">
@@ -307,7 +308,7 @@ export default async function SettingsPage() {
                             {e.revoked_at ? ` · revoked ${(e.revoked_at as string).slice(0, 10)}` : ""}
                           </span>
                         </div>
-                        {e.revoked_at ? <Badge tone="neutral">revoked</Badge> : <WebhookActions endpointId={e.id as string} url={e.url as string} />}
+                        {e.revoked_at ? <Badge tone="neutral">revoked</Badge> : can(role, "webhook.manage") && <WebhookActions endpointId={e.id as string} url={e.url as string} />}
                       </div>
                       {recent.length > 0 && (
                         <ul className="mt-2 space-y-0.5 text-xs text-ink-soft">
@@ -328,7 +329,7 @@ export default async function SettingsPage() {
                 })}
               </ul>
             )}
-            <CreateWebhook />
+            {can(role, "webhook.manage") ? <CreateWebhook /> : onlyFor("The owner and admins")}
           </Card>
           <p className="mt-3 text-xs leading-relaxed text-ink-faint">
             Every delivery carries a <span className="type-mono">Novera-Signature</span> header: an HMAC of the
@@ -353,7 +354,7 @@ export default async function SettingsPage() {
           <Card className="mt-3 p-5">
             <RetentionForm
               current={(retention?.raw_evidence_days as number | undefined) ?? DEFAULT_RETENTION_DAYS}
-              isOwner={membership?.role === "owner"}
+              isOwner={can(role, "retention.change") && membership?.role === "owner"}
             />
           </Card>
           <p className="mt-3 text-xs leading-relaxed text-ink-faint">
@@ -361,6 +362,27 @@ export default async function SettingsPage() {
             contained replies, so none changes.{" "}
             <Link href="/docs/data-and-privacy" className="underline underline-offset-2 hover:text-ink">Data and privacy</Link>
           </p>
+        </section>
+      </Reveal>
+      <Reveal className="mt-10">
+        <section aria-labelledby="ws-heading">
+          <h2 id="ws-heading" className="text-lg font-semibold tracking-tight">Workspace</h2>
+          <Card className="mt-3 divide-y divide-line p-0">
+            <div className="p-5">
+              {can(role, "workspace.rename") ? <RenameWorkspaceForm name={workspace.name} /> : <p className="text-sm text-ink-soft">{workspace.name}</p>}
+            </div>
+            {can(role, "workspace.erase") ? (
+              <div className="p-5">
+                <h3 className="text-sm font-semibold text-fail-text">Erase this workspace</h3>
+                <div className="mt-2"><EraseWorkspaceForm name={workspace.name} members={memberCount ?? 1} /></div>
+              </div>
+            ) : (
+              <div className="p-5">
+                <h3 className="text-sm font-semibold">Leave this workspace</h3>
+                <div className="mt-2"><LeaveWorkspaceForm name={workspace.name} /></div>
+              </div>
+            )}
+          </Card>
         </section>
       </Reveal>
     </main>

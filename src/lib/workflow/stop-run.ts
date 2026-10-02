@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
+import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
 import { notifyRunFinished } from "@/lib/webhooks/deliver.ts";
 
@@ -14,7 +14,9 @@ import { notifyRunFinished } from "@/lib/webhooks/deliver.ts";
 export async function stopRun(_prev: FormState, form: FormData): Promise<FormState> {
   const { user, workspace } = await requireWorkspace();
   const runId = String(form.get("runId") ?? "");
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "run.stop");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const who = user.email ?? "a member of this workspace";
   const { data, error } = await admin.from("runs")

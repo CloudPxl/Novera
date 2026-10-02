@@ -170,7 +170,7 @@ try {
 
   const { error: stealErr } = await bob.client
     .from("workspace_members")
-    .insert({ workspace_id: aliceWs.id, user_id: bob.userId, role: "member" });
+    .insert({ workspace_id: aliceWs.id, user_id: bob.userId, role: "operator" });
   check(!!stealErr, "a second account cannot add itself to another workspace", stealErr?.message.slice(0, 60));
 
   // Two page loads arriving together used to create two workspaces for one person.

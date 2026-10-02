@@ -32,6 +32,7 @@ import { LiveRun } from "./live.tsx";
 import { Scorecard, type Corroboration } from "./scorecard.tsx";
 import { CaseTable, CategoryCard, type CaseRow } from "./case-table.tsx";
 import { BaselinePicker } from "./baseline-picker.tsx";
+import { OtherWorkspace } from "@/components/shell/other-workspace.tsx";
 import { DiagnoseButton, ProposalCard, RetestButton, RetestHistory, type Proposal, type Retest } from "./diagnose.tsx";
 
 export const metadata: Metadata = { title: "Run · Novera" };
@@ -57,18 +58,23 @@ export default async function RunPage({
 }) {
   const { id } = await params;
   const { compare } = await searchParams;
-  const { user: viewer } = await requireWorkspace();
+  const { user: viewer, workspace: activeWorkspace, context } = await requireWorkspace();
   const viewerId = viewer.id;
   const db = await sessionClient();
 
   const { data: run } = await db
     .from("runs")
     .select(
-      "id, status, agent_id, policy_id, suite_id, baseline_run_id, error, created_at, started_at, finished_at, pass_threshold, judge_model, schedule_id, api_key_id, manifest",
+      "id, workspace_id, status, agent_id, policy_id, suite_id, baseline_run_id, error, created_at, started_at, finished_at, pass_threshold, judge_model, schedule_id, api_key_id, manifest",
     )
     .eq("id", id)
     .maybeSingle();
   if (!run) notFound();
+  if (run.workspace_id !== activeWorkspace.id) {
+    const there = context.memberships.find((m) => m.workspace.id === run.workspace_id);
+    if (!there) notFound();
+    return <OtherWorkspace thing="run" workspace={there.workspace.name} workspaceId={there.workspace.id} next={`/runs/${id}`} />;
+  }
 
   const [{ data: agent }, { data: policy }, { data: suite }, { data: reportRows }, { data: schedule }, { data: apiKey }, { data: newestPolicy }] = await Promise.all([
     db.from("agents").select("name").eq("id", run.agent_id).maybeSingle(),

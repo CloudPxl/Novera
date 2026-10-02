@@ -520,3 +520,17 @@ body {
   /* Native controls, scrollbars and autofill stay light on a machine set to dark. */
   color-scheme: light;
 }
+
+/* The person's own "Reduce motion" (their profile), for the signed-in app: the same end
+   state as the system setting, whatever the operating system says. */
+[data-motion="reduce"] .novera-reveal,
+[data-motion="reduce"] .novera-reveal[data-shown="true"] {
+  opacity: 1;
+}
+[data-motion="reduce"] *,
+[data-motion="reduce"] *::before,
+[data-motion="reduce"] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}

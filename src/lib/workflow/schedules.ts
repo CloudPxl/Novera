@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
+import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import {
   MAX_ACTIVE_SCHEDULES, describeTiming, formatUtc, nextOccurrence, validTiming,
 } from "@/lib/schedules/cadence.ts";
@@ -25,7 +25,9 @@ export async function createSchedule(_prev: ScheduleFormState, form: FormData): 
   const timing = { cadence, hourUtc, weekday };
   if (!validTiming(timing)) return { error: "Choose how often, and at what hour." };
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "schedule.write");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const { data: agent } = await admin.from("agents").select("id")
     .eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
@@ -70,7 +72,9 @@ async function changeSchedule(
 ): Promise<ScheduleFormState> {
   const { user, workspace } = await requireWorkspace();
   const scheduleId = String(form.get("scheduleId") ?? "");
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "schedule.write");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const { data: s } = await admin.from("run_schedules")
     .select("id, agent_id, cadence, hour_utc, weekday, paused_at, cancelled_at")

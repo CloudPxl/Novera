@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
-import { askAssistant, type AssistantResult } from "@/lib/assistant/actions.ts";
-import type { AssistantAction, AssistantTurn } from "@/lib/assistant/core.ts";
+import { askAssistant, decideSuggestion, deleteThread, listThreads, loadThread, type AssistantResult, type AssistantSuggestion, type ThreadSummary } from "@/lib/assistant/actions.ts";
+import type { AssistantAction } from "@/lib/assistant/core.ts";
 import { MESSAGE_MAX, SECRET_REFUSAL, looksLikeSecret } from "@/lib/assistant/core.ts";
 import { createRun } from "@/lib/workflow/actions.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
@@ -15,6 +15,7 @@ interface Entry {
   actions?: AssistantAction[];
   fundedBy?: string;
   error?: boolean;
+  suggestion?: AssistantSuggestion & { decided?: "remembered" | "dismissed" };
 }
 
 const SUGGESTIONS = [
@@ -28,10 +29,17 @@ const SUGGESTIONS = [
  *
  * Replies are rendered as plain text, never as HTML: they come from a model. A proposed
  * action is a button the person presses; nothing happens because the model said so.
+ *
+ * Conversations are stored (0054) — private to the person, in this workspace — so they survive
+ * a reload and can be reopened or deleted from History. A suggestion to remember something is
+ * a card with two buttons; it becomes memory only through "Remember".
  */
 export function Assistant() {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [view, setView] = useState<"chat" | "history">("chat");
+  const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
   const [draft, setDraft] = useState("");
   const [pending, startTransition] = useTransition();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -57,18 +65,16 @@ export function Assistant() {
       setEntries((prev) => [...prev, { role: "assistant", content: SECRET_REFUSAL, error: true }]);
       return;
     }
-    const history: AssistantTurn[] = entries
-      .filter((e) => !e.error)
-      .map((e) => ({ role: e.role, content: e.content }));
     setEntries((prev) => [...prev, { role: "user", content: text }]);
     setDraft("");
     startTransition(async () => {
       let result: AssistantResult;
       try {
-        result = await askAssistant(history, text);
+        result = await askAssistant(threadId, text);
       } catch {
         result = { error: "The assistant could not be reached. Check your connection and try again." };
       }
+      if (result.threadId) setThreadId(result.threadId);
       setEntries((prev) => [
         ...prev,
         result.error
@@ -79,8 +85,43 @@ export function Assistant() {
               citations: result.citations,
               actions: result.actions,
               fundedBy: result.fundedBy,
+              suggestion: result.suggestion,
             },
       ]);
+    });
+  }
+
+  function showHistory() {
+    setView("history");
+    startTransition(async () => setThreads(await listThreads().catch(() => [])));
+  }
+  function openThread(id: string) {
+    startTransition(async () => {
+      const messages = await loadThread(id).catch(() => []);
+      setThreadId(id);
+      setEntries(messages.map((m) => ({ role: m.role, content: m.content, citations: m.citations, fundedBy: m.fundedBy ?? undefined })));
+      setView("chat");
+    });
+  }
+  function newConversation() {
+    setThreadId(null);
+    setEntries([]);
+    setView("chat");
+    input.current?.focus();
+  }
+  function removeThread(id: string) {
+    startTransition(async () => {
+      await deleteThread(id).catch(() => undefined);
+      setThreads((t) => (t ?? []).filter((x) => x.id !== id));
+      if (id === threadId) newConversation();
+    });
+  }
+  function decide(index: number, accept: boolean) {
+    const s = entries[index]?.suggestion;
+    if (!s) return;
+    startTransition(async () => {
+      const r = await decideSuggestion(s.id, accept).catch(() => ({ ok: false }));
+      if (r.ok) setEntries((prev) => prev.map((e, i) => (i === index && e.suggestion ? { ...e, suggestion: { ...e.suggestion, decided: accept ? "remembered" : "dismissed" } } : e)));
     });
   }
 
@@ -109,13 +150,43 @@ export function Assistant() {
           className="fixed bottom-20 right-4 z-40 flex h-[min(34rem,calc(100dvh-7rem))] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-panel border border-line bg-surface/95 shadow-modal backdrop-blur"
         >
           <div className="border-b border-line px-4 py-3">
-            <h2 id={titleId} className="font-semibold text-ink">Ask Novera</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 id={titleId} className="font-semibold text-ink">Ask Novera</h2>
+              <div className="flex gap-1">
+                <button type="button" onClick={view === "history" ? () => setView("chat") : showHistory} className="rounded-control px-2 py-1 text-xs font-medium text-ink-soft hover:bg-sunken hover:text-ink">
+                  {view === "history" ? "Back" : "History"}
+                </button>
+                <button type="button" onClick={newConversation} className="rounded-control px-2 py-1 text-xs font-medium text-ink-soft hover:bg-sunken hover:text-ink">New</button>
+              </div>
+            </div>
             <p className="text-xs leading-relaxed text-ink-soft">
               Knows your workspace and the documentation. It can take you anywhere and offer to start a
               run — you press the button. It cannot change settings, keys, policies or verdicts.
             </p>
           </div>
 
+          {view === "history" ? (
+            <div className="flex-1 overflow-y-auto px-4 py-3 text-sm">
+              <p className="text-xs text-ink-faint">Your conversations in this workspace. Only you can see them; each is deleted after 180 days without a message.</p>
+              {threads === null ? (
+                <p role="status" className="mt-3 text-ink-soft">Loading…</p>
+              ) : threads.length === 0 ? (
+                <p className="mt-3 text-ink-soft">No saved conversations yet.</p>
+              ) : (
+                <ul className="mt-3 divide-y divide-line">
+                  {threads.map((t) => (
+                    <li key={t.id} className="flex items-center gap-2 py-2">
+                      <button type="button" onClick={() => openThread(t.id)} className="min-w-0 flex-1 text-left">
+                        <span className="block truncate font-medium text-ink">{t.title}</span>
+                        <span className="block text-xs text-ink-faint">{t.lastMessageAt.slice(0, 16).replace("T", " ")} UTC</span>
+                      </button>
+                      <button type="button" onClick={() => removeThread(t.id)} aria-label={`Delete conversation: ${t.title}`} className="rounded-control px-2 py-1 text-xs text-ink-soft hover:bg-fail-surface hover:text-fail-text">Delete</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
           <div aria-live="polite" className="flex-1 space-y-3 overflow-y-auto px-4 py-3 text-sm">
             {entries.length === 0 && (
               <div className="space-y-2">
@@ -187,6 +258,23 @@ export function Assistant() {
                     </div>
                   )}
 
+                  {e.suggestion && (
+                    <div className="mt-3 rounded-control border border-line bg-surface p-2.5">
+                      {e.suggestion.decided ? (
+                        <p className="text-xs text-ink-soft">{e.suggestion.decided === "remembered" ? "Remembered. Change or delete it in your profile." : "Not remembered."}</p>
+                      ) : (
+                        <>
+                          <p className="text-xs text-ink-soft">Remember this for next time?</p>
+                          <p className="mt-0.5 text-sm font-medium text-ink">{e.suggestion.label}: {e.suggestion.value}</p>
+                          <div className="mt-2 flex gap-2">
+                            <button type="button" onClick={() => decide(i, true)} className="rounded-control bg-ink px-2.5 py-1 text-xs font-medium text-on-ink hover:bg-ink-hover">Remember</button>
+                            <button type="button" onClick={() => decide(i, false)} className="rounded-control border border-line-strong px-2.5 py-1 text-xs font-medium text-ink-soft hover:bg-sunken">Don&apos;t remember</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
                   {e.role === "assistant" && e.fundedBy && (
                     <p className="mt-2 text-[11px] text-ink-faint">Answered on {e.fundedBy}.</p>
                   )}
@@ -200,6 +288,7 @@ export function Assistant() {
               </p>
             )}
           </div>
+          )}
 
           <form
             onSubmit={(e) => {

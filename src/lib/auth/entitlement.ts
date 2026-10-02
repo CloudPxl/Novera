@@ -45,11 +45,16 @@ export async function workspaceEntitlement(args: {
   const key = await revealSecret({ client, workspaceId, scope: "judge_key" });
 
   // Counted from stored rows, like every other number in this product. Queued and
-  // running rows count too: three runs started in parallel is still three runs.
+  // running rows count too: three runs started in parallel is still three runs. The trial
+  // belongs to the owner across every workspace they own (0055), so the count does too.
+  const { data: ws } = await client.from("workspaces").select("owner_id").eq("id", workspaceId).maybeSingle();
+  const { data: owned } = ws
+    ? await client.from("workspaces").select("id").eq("owner_id", ws.owner_id as string)
+    : { data: [{ id: workspaceId }] };
   const { count } = await client
     .from("runs")
     .select("id", { count: "exact", head: true })
-    .eq("workspace_id", workspaceId);
+    .in("workspace_id", (owned ?? []).map((w) => w.id as string));
 
   const runsUsed = count ?? 0;
 

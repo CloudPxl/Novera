@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
+import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import { mintKey } from "@/lib/api/keys.ts";
+import { recordAudit } from "@/lib/audit/record.ts";
 
 export interface KeyFormState {
   error?: string;
@@ -25,7 +26,9 @@ export async function createApiKey(_prev: KeyFormState, form: FormData): Promise
   if (!name) return { error: "Name the key after where it will be used, e.g. “GitHub Actions”." };
   if (name.length > 80) return { error: "Keep the name under 80 characters." };
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "apikey.manage");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
   const { count } = await admin.from("api_keys").select("id", { count: "exact", head: true })
     .eq("workspace_id", workspace.id).is("revoked_at", null);
   if ((count ?? 0) >= MAX_ACTIVE_KEYS) {
@@ -54,6 +57,7 @@ export async function createApiKey(_prev: KeyFormState, form: FormData): Promise
   });
   if (error) return { error: `The key could not be created: ${error.message}` };
 
+  await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "apikey.created", detail: {} });
   revalidatePath("/settings");
   return {
     key: minted.key,
@@ -65,7 +69,9 @@ export async function createApiKey(_prev: KeyFormState, form: FormData): Promise
 export async function revokeApiKey(_prev: KeyFormState, form: FormData): Promise<KeyFormState> {
   const { user, workspace } = await requireWorkspace();
   const keyId = String(form.get("keyId") ?? "");
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "apikey.manage");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const { data, error } = await admin.from("api_keys")
     .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
@@ -74,6 +80,7 @@ export async function revokeApiKey(_prev: KeyFormState, form: FormData): Promise
   if (error) return { error: `The key could not be revoked: ${error.message}` };
   if (!data?.length) return { error: "That key was not found, or is already revoked." };
 
+  await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "apikey.revoked", detail: {} });
   revalidatePath("/settings");
   return { notice: "Revoked. Any request using it is refused from now on." };
 }

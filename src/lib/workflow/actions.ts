@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
+import { requireWorkspace, assertMembership, gate } from "@/lib/auth/session.ts";
 import { storeSecret } from "@/lib/store/secrets.ts";
 import { probeAgent, reissueReportWithReview } from "@/lib/workflow/run.ts";
 import { NothingToDisclose } from "@/lib/report/reissue.ts";
@@ -21,6 +21,7 @@ import { diagnoseRunCase } from "./propose.ts";
 import { httpVerificationConnector } from "../evidence/connectors/http.ts";
 import { connectionFor } from "@/lib/providers/workspace-connections.ts";
 import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
+import { recordAudit } from "@/lib/audit/record.ts";
 
 export interface FormState {
   error?: string;
@@ -79,7 +80,9 @@ export async function connectAgent(_prev: FormState, form: FormData): Promise<Fo
     ...(authHeaderName ? { authHeaderName } : {}),
   };
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "agent.write");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const { data: agent, error } = await admin
     .from("agents")
@@ -122,7 +125,9 @@ export async function savePolicyVersion(_prev: FormState, form: FormData): Promi
 
   if (!body) return { error: "A policy version cannot be empty." };
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "policy.write");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   // The agent must be this workspace's before anything about it is read. 0034 refuses
   // the insert regardless; this turns that into a sentence.
@@ -156,7 +161,9 @@ export async function savePolicyVersion(_prev: FormState, form: FormData): Promi
 export async function reprobeAgent(_prev: FormState, form: FormData): Promise<FormState> {
   const { user, workspace } = await requireWorkspace();
   const agentId = String(form.get("agentId") ?? "");
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "agent.write");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const { data: agent, error } = await admin
     .from("agents").select("config").eq("id", agentId).eq("workspace_id", workspace.id).single();
@@ -175,7 +182,7 @@ export async function reprobeAgent(_prev: FormState, form: FormData): Promise<Fo
 /** Creates a queued run; execution is started by the run page. */
 export async function createRun(formData: FormData): Promise<void> {
   const { user, workspace } = await requireWorkspace();
-  const admin = await assertMembership(user.id, workspace.id);
+  const admin = await assertMembership(user.id, workspace.id, "run.start");
 
   // Optional, and stated on the report as declared by the person, never as observed.
   const customerDeclared = cleanDeclared({
@@ -211,7 +218,9 @@ export async function createRun(formData: FormData): Promise<void> {
 export async function requestDiagnosis(_prev: FormState, form: FormData): Promise<FormState> {
   const { user, workspace } = await requireWorkspace();
   const runCaseId = String(form.get("runCaseId") ?? "");
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "diagnosis.request");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const proposed = await diagnoseRunCase({ db: admin, workspaceId: workspace.id, runCaseId, by: { userId: user.id } });
   if (!proposed.ok) return { error: proposed.error };
@@ -234,7 +243,9 @@ export async function decideDiagnosis(_prev: FormState, form: FormData): Promise
   const decision = String(form.get("decision") ?? "");
   if (decision !== "approved" && decision !== "rejected") return { error: "Unknown decision." };
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "diagnosis.decide");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const { data: diagnosis, error } = await admin
     .from("diagnoses")
@@ -337,7 +348,7 @@ export async function decideDiagnosis(_prev: FormState, form: FormData): Promise
 export async function rerunFrom(formData: FormData): Promise<void> {
   const { user, workspace } = await requireWorkspace();
   const baselineRunId = String(formData.get("runId") ?? "");
-  const admin = await assertMembership(user.id, workspace.id);
+  const admin = await assertMembership(user.id, workspace.id, "run.start");
 
   const { data: baseline } = await admin
     .from("runs").select("agent_id, suite_id").eq("id", baselineRunId).eq("workspace_id", workspace.id).maybeSingle();
@@ -437,7 +448,9 @@ export async function saveJudgeKey(_prev: FormState, form: FormData): Promise<Fo
     }
   }
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "judgekey.manage");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const { data: superseded } = await admin
     .from("secrets").select("id").eq("workspace_id", workspace.id).eq("scope", "judge_key");
@@ -457,6 +470,7 @@ export async function saveJudgeKey(_prev: FormState, form: FormData): Promise<Fo
     await admin.from("secrets").delete().in("id", superseded.map((row) => row.id));
   }
 
+  await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "judgekey.connected", detail: {} });
   revalidatePath("/settings");
   revalidatePath("/dashboard");
 
@@ -474,7 +488,9 @@ export async function removeJudgeKey(_prev: FormState, form: FormData): Promise<
   const { user, workspace } = await requireWorkspace();
   if (String(form.get("confirm")) !== "remove") return { error: "Not removed." };
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "judgekey.manage");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
   const { error } = await admin
     .from("secrets").delete().eq("workspace_id", workspace.id).eq("scope", "judge_key");
 
@@ -486,6 +502,7 @@ export async function removeJudgeKey(_prev: FormState, form: FormData): Promise<
   // allowance, it ends the ability to run at all until another key is connected.
   const after = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
 
+  await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "judgekey.removed", detail: {} });
   revalidatePath("/settings");
   revalidatePath("/dashboard");
   return {
@@ -521,7 +538,9 @@ export async function reviewVerdict(_prev: FormState, form: FormData): Promise<F
     return { error: `Keep the reason under ${REVIEW_NOTE_MAX.toLocaleString("en-GB")} characters.` };
   }
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "finding.record");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
   const { data: runCase } = await admin
     .from("run_cases")
     .select("id, run_id, status")
@@ -561,7 +580,9 @@ export async function reissueReport(_prev: FormState, form: FormData): Promise<F
   const runId = String(form.get("runId") ?? "").trim();
   if (!runId) return { error: "No run was named." };
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "report.reissue");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
   const { data: run } = await admin
     .from("runs").select("id").eq("id", runId).eq("workspace_id", workspace.id).maybeSingle();
   if (!run) return { error: "That run could not be found." };
@@ -599,13 +620,16 @@ export async function withdrawReport(_prev: FormState, form: FormData): Promise<
   if (form.get("confirm") !== "on") {
     return { error: "Tick the box to confirm: the link stops working for everyone who has it." };
   }
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "report.withdraw");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
   const { data, error } = await admin.from("reports")
     .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
     .eq("workspace_id", workspace.id).eq("token", token).is("revoked_at", null)
     .select("run_id").maybeSingle();
   if (error) return { error: `The report could not be withdrawn: ${error.message}` };
   if (!data) return { error: "That report is not open in this workspace; it may already be withdrawn." };
+  await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "report.withdrawn", detail: {} });
   revalidatePath(`/runs/${data.run_id}`);
   return { notice: "Withdrawn. The link and its downloads stopped working, for everyone." };
 }
@@ -615,7 +639,9 @@ export async function retestOneCase(_prev: FormState, form: FormData): Promise<F
   const runCaseId = String(form.get("runCaseId") ?? "").trim();
   if (!runCaseId) return { error: "No scenario was named." };
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "case.retest");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
   if (!entitlement.canRun) {
@@ -704,7 +730,9 @@ export async function importSuite(_prev: FormState, form: FormData): Promise<For
   }
 
   const suite = result.suite;
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "suite.import");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   // A suite decides what every future score is out of, so where it came from is part of
   // the evidence rather than metadata. The hash is of the bytes as uploaded, so the file
@@ -765,7 +793,9 @@ export async function saveVerificationEndpoint(_prev: FormState, form: FormData)
   const authHeaderName = String(form.get("authHeaderName") ?? "").trim();
   const credential = String(form.get("credential") ?? "").trim();
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "agent.write");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   if (!url) {
     // Removing it is a real choice, and it has to be as easy as adding it.
@@ -847,7 +877,9 @@ export async function applyResponsePath(_prev: FormState, form: FormData): Promi
   if (!path) return { error: "Choose a path." };
   if (field !== "reply" && field !== "tools") return { error: "Unknown field." };
 
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "agent.write");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const { data: agent } = await admin
     .from("agents").select("config").eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();

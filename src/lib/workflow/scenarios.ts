@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
+import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import { buildPromotedSuite } from "@/lib/scenarios/promote.ts";
 import { importDataset, SOURCE_LABELS } from "@/lib/imports/datasets.ts";
 import { recordProductionFailure } from "@/lib/regressions/record.ts";
@@ -29,7 +29,9 @@ export async function draftScenarios(_prev: FormState, form: FormData): Promise<
   const { user, workspace } = await requireWorkspace();
   const agentId = String(form.get("agentId") ?? "").trim();
   const wanted = Number(form.get("count") ?? 6);
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "scenario.draft");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const drafted = await draftScenariosFromPolicy({ db: admin, workspaceId: workspace.id, agentId, wanted, by: { userId: user.id } });
   if (!drafted.ok) return { error: drafted.error };
@@ -63,7 +65,9 @@ export async function importScenarioDrafts(_prev: FormState, form: FormData): Pr
   if (file.size > MAX_IMPORT_BYTES) {
     return { error: `That file is ${Math.round(file.size / 1024)} KB; the limit is ${MAX_IMPORT_BYTES / 1000} KB.` };
   }
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "scenario.draft");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   // Every id already used by a draft, so an imported case never shares a name with one.
   const { data: existing } = await admin.from("scenario_drafts").select("scenario").eq("workspace_id", workspace.id);
@@ -114,7 +118,9 @@ export async function importScenarioDrafts(_prev: FormState, form: FormData): Pr
 export async function submitProductionFailure(_prev: FormState, form: FormData): Promise<FormState> {
   const { user, workspace } = await requireWorkspace();
   const text = (name: string) => String(form.get(name) ?? "").trim();
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "regression.record");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const result = await recordProductionFailure({
     db: admin,
@@ -166,7 +172,9 @@ export async function decideScenarioDraft(_prev: FormState, form: FormData): Pro
   const draftId = String(form.get("draftId") ?? "");
   const decision = String(form.get("decision") ?? "");
   const reason = String(form.get("reason") ?? "").trim();
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "scenario.decide");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   if (decision !== "approve" && decision !== "reject") {
     return { error: "A draft is approved or rejected; there is no third option." };
@@ -201,7 +209,9 @@ export async function promoteApprovedScenarios(_prev: FormState, form: FormData)
   const key = String(form.get("key") ?? "").trim().toLowerCase();
   const name = String(form.get("name") ?? "").trim();
   const extendId = String(form.get("extend") ?? "").trim();
-  const admin = await assertMembership(user.id, workspace.id);
+  const gated = await gate(user.id, workspace.id, "scenario.promote");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   if (!/^[a-z0-9][a-z0-9-]*$/.test(key)) {
     return { error: "A suite key is lowercase letters, digits and hyphens — it identifies the suite across versions." };

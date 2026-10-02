@@ -122,3 +122,21 @@ test("every item can be acted on", () => {
     assert.ok(item.text.endsWith("."));
   }
 });
+
+test("each new fact is an item only when it is true, and links to where it is resolved", () => {
+  const base = { ...empty, agents: [agent] };
+  assert.deepEqual(buildAttention({ ...base, pausedSchedules: [], proposalCount: 0, reportNotReady: null, repliesExpiringSoon: 0, failedDeliveries: 0 }), []);
+  const items = buildAttention({
+    ...base,
+    pausedSchedules: [{ agent_id: "a1", reason: "The trial covers 3 runs and this workspace has used them." }],
+    proposalCount: 2,
+    reportNotReady: { runId: "r9", agentId: "a1", label: "Review before sharing", gap: "1 pass(es) rest on one model's verdict." },
+    repliesExpiringSoon: 4,
+    failedDeliveries: 1,
+  });
+  const by = (href: string) => items.filter((i) => i.href === href).map((i) => i.text);
+  assert.match(by("/agents/a1")[0], /schedule for Support bot paused: The trial covers 3 runs/);
+  assert.match(by("/review")[0], /2 proposed policy changes waiting/);
+  assert.match(by("/runs/r9")[0], /newest report for Support bot: review before sharing — 1 pass\(es\) rest on one model's verdict\./);
+  assert.equal(by("/settings").length, 2);
+});

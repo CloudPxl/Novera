@@ -3556,3 +3556,18 @@ re-attribution refused; the row holds who). Walked on the isolated app: a real r
 before sharing — no authorisation recorded", 2 planned / 2 failed, intact; withdraw → the panel says
 withdrawn and offers no second withdrawal, the link says withdrawn, the JSON export answers 410, the row
 names the user. axe clean, no overflow at 390 and 1440. 6 readiness tests; 598 tests.
+
+## 2026-10-02 — The dashboard says what else is waiting: paused schedules, undecided proposals, report readiness, expiring replies, failed webhooks
+
+The attention block named an unfinished run, a broken connection, a missing authorisation, waiting drafts
+and the last run's failures. Five facts that also need a person were only visible on the page that held
+them; each is now an item when it is true, from its own rows, linking to where it is resolved:
+- a schedule that paused, with its stored reason → the agent;
+- proposed policy changes nobody has decided → /review;
+- the newest report, when it is not ready to send — its readiness label and the first gap
+  (src/lib/report/readiness.ts, the same function as the run page) → the run;
+- scenarios whose stored reply retention empties within a week (verdicts and fingerprints stay) → Settings;
+- webhook deliveries that gave up in the last week → Settings.
+Nothing renders when nothing is true, as before. The dashboard costs seven more requests (two parallel
+batches). Walked: a paused schedule, a planted proposal and a real report with no recorded authorisation
+each appear with the right link; axe clean, no overflow at 390 and 1440. 599 tests.

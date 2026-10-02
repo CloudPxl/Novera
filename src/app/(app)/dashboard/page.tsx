@@ -7,11 +7,19 @@ import { sessionClient } from "@/lib/supabase/server.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { buildAttention } from "./attention.ts";
+import { readinessOf, READINESS_LABEL } from "@/lib/report/readiness.ts";
+import type { ReportPayload } from "@/lib/report/payload.ts";
+import { DEFAULT_RETENTION_DAYS } from "@/lib/privacy/retention.ts";
 import { Help } from "@/components/ui/help.tsx";
 import { GuidePanel } from "./guide-panel.tsx";
 
 export const metadata: Metadata = { title: "Dashboard · Novera" };
 export const dynamic = "force-dynamic";
+
+/** A moment `days` ago, for a query's cut-off; read once per request. */
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString();
+}
 
 export default async function DashboardPage() {
   const { user, workspace } = await requireWorkspace();
@@ -68,6 +76,46 @@ export default async function DashboardPage() {
     }
   }
 
+  // What else is waiting, each from its own rows: schedules that paused, proposals nobody
+  // decided, the newest report's readiness, replies retention will empty within a week, and
+  // webhook deliveries that gave up.
+  const weekAgo = daysAgo(7);
+  const [{ data: paused }, { count: proposalCount }, { data: newestReport }, { data: wsRow }, { count: failedDeliveries }] = await Promise.all([
+    db.from("run_schedules").select("agent_id, paused_reason").not("paused_at", "is", null).is("cancelled_at", null),
+    db.from("diagnoses").select("*", { count: "exact", head: true }).eq("status", "proposed"),
+    db.from("reports").select("run_id, payload, content_hash, expires_at, revoked_at, created_at, runs(agent_id)")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    db.from("workspaces").select("raw_evidence_days").eq("id", workspace.id).maybeSingle(),
+    db.from("webhook_deliveries").select("*", { count: "exact", head: true }).eq("status", "failed").gt("created_at", weekAgo),
+  ]);
+  const retentionDays = (wsRow?.raw_evidence_days as number | null) ?? DEFAULT_RETENTION_DAYS;
+  const [{ count: expiringSoon }, { count: newerReviews }] = await Promise.all([
+    db.from("run_cases").select("*", { count: "exact", head: true })
+      .not("response_text", "is", null).is("raw_expired_at", null)
+      .lt("created_at", daysAgo(retentionDays - 7)),
+    newestReport
+      ? db.from("verdict_reviews").select("id, run_cases!inner(run_id)", { count: "exact", head: true })
+        .eq("run_cases.run_id", newestReport.run_id as string).gt("created_at", newestReport.created_at as string)
+      : Promise.resolve({ count: 0 }),
+  ]);
+  const readiness = newestReport && !newestReport.revoked_at
+    ? readinessOf({
+        report: {
+          payload: newestReport.payload as unknown as ReportPayload, content_hash: newestReport.content_hash as string,
+          expires_at: newestReport.expires_at as string, revoked_at: null,
+        },
+        undisclosedReviews: newerReviews ?? 0,
+      })
+    : null;
+  const reportNotReady = readiness && readiness.state !== "READY_TO_SHARE" && readiness.state !== "EXPIRED"
+    ? {
+        runId: newestReport!.run_id as string,
+        agentId: (newestReport!.runs as unknown as { agent_id: string } | null)?.agent_id ?? "",
+        label: READINESS_LABEL[readiness.state],
+        gap: readiness.checks.find((c) => c.result === "gap")?.detail ?? null,
+      }
+    : null;
+
   // Extracted so it can be tested: the rules about what deserves someone's attention
   // are the valuable part, and inside a server component nothing could reach them.
   const attention = buildAttention({
@@ -84,6 +132,11 @@ export default async function DashboardPage() {
     outcomes,
     latestProbe,
     draftCount: draftCount ?? 0,
+    pausedSchedules: (paused ?? []).map((s) => ({ agent_id: s.agent_id as string, reason: (s.paused_reason as string | null) ?? null })),
+    proposalCount: proposalCount ?? 0,
+    reportNotReady,
+    repliesExpiringSoon: expiringSoon ?? 0,
+    failedDeliveries: failedDeliveries ?? 0,
   });
 
   const admin = await assertMembership(user.id, workspace.id);

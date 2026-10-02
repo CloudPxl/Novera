@@ -35,6 +35,16 @@ export interface AttentionInput {
   /** The most recent probe for each agent, by agent id. */
   latestProbe: Map<string, { error: string | null }>;
   draftCount: number;
+  /** Schedules that stopped themselves, with the reason they stored. */
+  pausedSchedules?: Array<{ agent_id: string; reason: string | null }>;
+  /** Proposed policy changes nobody has decided on. */
+  proposalCount?: number;
+  /** The newest sealed report, when it is not ready to send — its state and its first gap. */
+  reportNotReady?: { runId: string; agentId: string; label: string; gap: string | null } | null;
+  /** Scenarios whose stored reply is emptied by retention within the next week. */
+  repliesExpiringSoon?: number;
+  /** Webhook deliveries that gave up in the last week. */
+  failedDeliveries?: number;
 }
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
@@ -101,6 +111,58 @@ export function buildAttention(input: AttentionInput): AttentionItem[] {
       text: `The last completed run found ${[failed, errored].filter(Boolean).join(" and ")}.`,
       href: `/runs/${lastCompleted.id}`,
       action: "Inspect",
+      tone: "high",
+    });
+  }
+
+  // A schedule that paused will not run again until someone acts; its reason says why.
+  for (const s of input.pausedSchedules ?? []) {
+    items.push({
+      text: `The schedule for ${nameOf.get(s.agent_id) ?? "an agent"} paused${s.reason ? `: ${s.reason}` : "."}`,
+      href: `/agents/${s.agent_id}`,
+      action: "Open",
+      tone: "high",
+    });
+  }
+
+  if ((input.proposalCount ?? 0) > 0) {
+    const n = input.proposalCount!;
+    items.push({
+      text: `${n} proposed policy ${plural(n, "change", "changes")} waiting for a decision.`,
+      href: "/review",
+      action: "Review",
+      tone: "medium",
+    });
+  }
+
+  // Readiness is computed from the sealed report (src/lib/report/readiness.ts); only a
+  // report that is not ready to send is mentioned, with the first thing in its way.
+  if (input.reportNotReady) {
+    const r = input.reportNotReady;
+    items.push({
+      text: `The newest report for ${nameOf.get(r.agentId) ?? "an agent"}: ${r.label.toLowerCase()}${r.gap ? ` — ${r.gap.replace(/\.$/, "")}` : ""}.`,
+      href: `/runs/${r.runId}`,
+      action: "Check it",
+      tone: "medium",
+    });
+  }
+
+  if ((input.repliesExpiringSoon ?? 0) > 0) {
+    const n = input.repliesExpiringSoon!;
+    items.push({
+      text: `Your agent's replies in ${n} ${plural(n, "scenario", "scenarios")} reach the end of their retention period within a week; verdicts and fingerprints stay.`,
+      href: "/settings",
+      action: "Retention",
+      tone: "medium",
+    });
+  }
+
+  if ((input.failedDeliveries ?? 0) > 0) {
+    const n = input.failedDeliveries!;
+    items.push({
+      text: `${n} webhook ${plural(n, "delivery", "deliveries")} gave up in the last week.`,
+      href: "/settings",
+      action: "See which",
       tone: "high",
     });
   }

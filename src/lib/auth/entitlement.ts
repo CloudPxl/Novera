@@ -15,7 +15,9 @@ import { DEFAULT_ROUTES, routesForConnection, type RouteTable } from "../router/
  * that is the whole of the "BYOK to leave trial" rule, and it is deliberately not a
  * payment wall: nothing is charged by us at any point.
  */
-export const TRIAL_RUN_LIMIT = 3;
+export const TRIAL_RUN_LIMIT = 3; // also in 0049's runs_trial_cap, which enforces it under concurrency
+
+export const TRIAL_EXHAUSTED = `The trial covers ${TRIAL_RUN_LIMIT} runs and you have used all of them. Connect your own model key to keep running the suite — there is nothing to pay us, the grading simply runs on your key from then on.`;
 
 export interface Entitlement {
   /** True once the workspace has supplied its own model key. */
@@ -84,9 +86,7 @@ export async function workspaceEntitlement(args: {
     runsUsed,
     runsAllowed: TRIAL_RUN_LIMIT,
     canRun: !exhausted,
-    blockedReason: exhausted
-      ? `The trial covers ${TRIAL_RUN_LIMIT} runs and you have used all of them. Connect your own model key to keep running the suite — there is nothing to pay us, the grading simply runs on your key from then on.`
-      : null,
+    blockedReason: exhausted ? TRIAL_EXHAUSTED : null,
     judgeSource: "trial_free",
     judgeModels: [],
     keyStoredAt: null,

@@ -56,6 +56,12 @@
               "name": "suite_id",
               "type": "string",
               "value": "REPLACE_WITH_SUITE_ID"
+            },
+            {
+              "id": "a3",
+              "name": "idempotency_key",
+              "type": "string",
+              "value": "={{ 'n8n-' + $execution.id + '-' + $now.toMillis() }}"
             }
           ]
         },
@@ -79,6 +85,15 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ agent_id: $('Configure').item.json.agent_id, suite_id: $('Configure').item.json.suite_id }) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $('Configure').item.json.idempotency_key }}"
+            }
+          ]
+        },
         "options": {
           "response": {
             "response": {
@@ -101,7 +116,10 @@
           "id": "REPLACE_WITH_YOUR_CREDENTIAL",
           "name": "Novera API key"
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
     },
     {
       "parameters": {
@@ -114,11 +132,12 @@
           "conditions": [
             {
               "id": "c0",
-              "leftValue": "={{ $json.statusCode }}",
-              "rightValue": 201,
+              "leftValue": "={{ $json.statusCode === 201 || ($json.statusCode === 200 && $json.body?.replayed === true) }}",
+              "rightValue": true,
               "operator": {
-                "type": "number",
-                "operation": "equals"
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
               }
             }
           ],
@@ -378,7 +397,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Compares this run with the last completed run of the same suite for the same agent.\n// Every number comes from Novera's stored verdicts; nothing is estimated here.\nconst run = $('Get result').first().json.run;\nconst base = $('Get baseline').isExecuted ? $('Get baseline').first().json.run : null;\nconst before = new Map((base?.cases ?? []).map((c) => [c.id, c.verdict]));\nconst newlyFailing = run.cases.filter((c) => c.verdict === 'fail' && before.get(c.id) === 'pass');\nconst lostVerdict = run.cases.filter((c) => c.verdict === 'no_result' && before.has(c.id) && before.get(c.id) !== 'no_result').map((c) => c.id);\nconst fixed = run.cases.filter((c) => c.verdict === 'pass' && before.get(c.id) === 'fail').map((c) => c.id);\n// A newly failing scenario whose identical reply was graded both ways before is the\n// graders moving, not the agent. It is still listed; it is labelled.\nconst gradersMoved = newlyFailing.filter((c) => c.stability?.moved === 'graders').map((c) => c.id);\nconst regressions = newlyFailing.map((c) => c.id);\nconst incomplete = run.status !== 'completed' || !run.report || run.counts.no_result > 0;\nconst report = run.report ? run.report.url : null;\nconst lines = [\n  `Novera weekly check: ${run.agent.name} (${run.suite}) — ${run.counts.passed} passed, ${run.counts.failed} failed, ${run.counts.no_result} with no result.`,\n  base ? `Compared with the run of ${base.created_at.slice(0, 10)}.` : 'No earlier completed run of this suite to compare with.',\n  regressions.length ? `Newly failing: ${regressions.join(', ')}.` + (gradersMoved.length ? ` Of these, ${gradersMoved.join(', ')} had an identical reply graded both ways before — the graders moved, not necessarily the agent.` : '') : '',\n  lostVerdict.length ? `No verdict this time: ${lostVerdict.join(', ')}.` : '',\n  incomplete ? 'The evidence is incomplete: a scenario with no result is not a pass.' : '',\n  fixed.length ? `Fixed since then: ${fixed.join(', ')}.` : '',\n  report ? `Report: ${report}` : `No report was sealed${run.error ? ': ' + run.error : '.'}`,\n].filter(Boolean);\nreturn [{ json: {\n  open_ticket: incomplete || regressions.length > 0,\n  outcome: regressions.length ? 'regression' : incomplete ? 'incomplete' : 'no_change',\n  baseline_run_id: base ? base.id : null,\n  regressions, graders_moved: gradersMoved, lost_verdict: lostVerdict, fixed,\n  report_url: report,\n  title: regressions.length ? `Novera: ${regressions.length} scenario(s) newly failing for ${run.agent.name}` : `Novera: incomplete evidence for ${run.agent.name}`,\n  message: lines.join('\\n'),\n} }];"
+        "jsCode": "// Compares this run with the last completed run of the same suite for the same agent.\n// Every number comes from Novera's stored verdicts; nothing is estimated here.\nconst run = $('Get result').first().json.run;\nconst base = $('Get baseline').isExecuted ? $('Get baseline').first().json.run : null;\nconst before = new Map((base?.cases ?? []).map((c) => [c.id, c.verdict]));\nconst newlyFailing = run.cases.filter((c) => c.verdict === 'fail' && before.get(c.id) === 'pass');\nconst lostVerdict = run.cases.filter((c) => c.verdict === 'no_result' && before.has(c.id) && before.get(c.id) !== 'no_result').map((c) => c.id);\nconst fixed = run.cases.filter((c) => c.verdict === 'pass' && before.get(c.id) === 'fail').map((c) => c.id);\n// A newly failing scenario whose identical reply was graded both ways before is the\n// graders moving, not the agent. It is still listed; it is labelled.\nconst gradersMoved = newlyFailing.filter((c) => c.stability?.moved === 'graders').map((c) => c.id);\nconst regressions = newlyFailing.map((c) => c.id);\nconst incomplete = run.status !== 'completed' || !run.report || run.counts.no_result > 0 || run.outcome === 'incomplete';\nconst report = run.report ? run.report.url : null;\nconst lines = [\n  `Novera weekly check: ${run.agent.name} (${run.suite}) — ${run.counts.passed} passed, ${run.counts.failed} failed, ${run.counts.no_result} with no result.`,\n  base ? `Compared with the run of ${base.created_at.slice(0, 10)}.` : 'No earlier completed run of this suite to compare with.',\n  regressions.length ? `Newly failing: ${regressions.join(', ')}.` + (gradersMoved.length ? ` Of these, ${gradersMoved.join(', ')} had an identical reply graded both ways before — the graders moved, not necessarily the agent.` : '') : '',\n  lostVerdict.length ? `No verdict this time: ${lostVerdict.join(', ')}.` : '',\n  incomplete ? `The evidence is incomplete: ${run.outcome_reason ?? 'a scenario with no result is not a pass.'}` : '',\n  fixed.length ? `Fixed since then: ${fixed.join(', ')}.` : '',\n  report ? `Report: ${report}` : `No report was sealed${run.error ? ': ' + run.error : '.'}`,\n].filter(Boolean);\nreturn [{ json: {\n  open_ticket: incomplete || regressions.length > 0,\n  outcome: regressions.length ? 'regression' : incomplete ? 'incomplete' : 'no_change',\n  baseline_run_id: base ? base.id : null,\n  regressions, graders_moved: gradersMoved, lost_verdict: lostVerdict, fixed,\n  report_url: report,\n  title: regressions.length ? `Novera: ${regressions.length} scenario(s) newly failing for ${run.agent.name}` : `Novera: incomplete evidence for ${run.agent.name}`,\n  message: lines.join('\\n'),\n} }];"
       },
       "name": "Compare",
       "type": "n8n-nodes-base.code",

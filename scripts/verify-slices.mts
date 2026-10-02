@@ -2,18 +2,23 @@
  * Proves a run against a slow agent stays inside the platform's 60 s function limit.
  *
  * Starts a real run through the public API against an agent that takes ten seconds per
- * reply (httpbin's /delay/10), drives it slice by slice with the execute endpoint, and
+ * reply (a deterministic slow server on loopback, scripts/verify-fixtures.mts — httpbin.org
+ * used to stand in, and its 502s failed this check without saying anything about Novera),
+ * drives it slice by slice with the execute endpoint, and
  * times every call. A slice must hand back well before 60 s, the run must finish, and
  * every scenario must be recorded — none lost to a killed function, none cut short by
  * Novera's own budget. Then the shared grading slots (0041): a third concurrent trial
  * run waits rather than being refused; and a run stopped mid-slice stays stopped.
  *
  * The agent's replies are deliberately unreadable (wrong response path), so no model is
- * called: this measures time, not grading. Needs `npm run dev` and network access.
+ * called: this measures time, not grading. Needs `npm run dev`; no external network.
  * Run: npm run verify:slices
  */
 import { createClient } from "@supabase/supabase-js";
 import { mintKey } from "../src/lib/api/keys.ts";
+import { startLocalSlowAgent } from "./verify-fixtures.mts";
+
+const slowAgent = await startLocalSlowAgent(10_000);
 
 const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -35,7 +40,7 @@ try {
   await db.from("workspace_members").insert({ workspace_id: ws!.id, user_id: user.id, role: "owner" });
   const { data: agent } = await db.from("agents").insert({
     workspace_id: ws!.id, name: "ten-second agent", kind: "http", is_production: false,
-    config: { kind: "http", url: "https://httpbin.org/delay/10", bodyTemplate: { message: "{{input}}" }, responsePath: "reply" },
+    config: { kind: "http", url: slowAgent.url, bodyTemplate: { message: "{{input}}" }, responsePath: "reply" },
   }).select("id").single();
   await db.from("policies").insert({ workspace_id: ws!.id, agent_id: agent!.id, version: 1, body: "Answer from the documentation only." });
   const { data: builtIn } = await db.from("suites").select("cases").eq("key", "eu-support").eq("version", 4).is("workspace_id", null).single();
@@ -84,7 +89,7 @@ try {
     made.push({ ws: w!.id, user: u.id });
     await db.from("workspace_members").insert({ workspace_id: w!.id, user_id: u.id, role: "owner" });
     const { data: a } = await db.from("agents").insert({ workspace_id: w!.id, name: "slow", kind: "http", is_production: false,
-      config: { kind: "http", url: "https://httpbin.org/delay/10", bodyTemplate: { message: "{{input}}" }, responsePath: "reply" } }).select("id").single();
+      config: { kind: "http", url: slowAgent.url, bodyTemplate: { message: "{{input}}" }, responsePath: "reply" } }).select("id").single();
     await db.from("policies").insert({ workspace_id: w!.id, agent_id: a!.id, version: 1, body: "x" });
     const { data: su } = await db.from("suites").insert({ workspace_id: w!.id, key: "slices", version: 1, name: "slices", cases: cases.slice(0, 3) }).select("id").single();
     const k = mintKey();
@@ -130,6 +135,7 @@ try {
     await db.auth.admin.deleteUser(m.user);
   }
   console.log(`  removed ${1 + made.length} verification workspace(s) and their users`);
+  await slowAgent.close();
 }
 
 console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) failed.\n`);

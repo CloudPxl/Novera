@@ -37,6 +37,14 @@ test("a read-back that shows otherwise contradicts the agent", async (t) => {
   assert.ok(!o.detail.includes("NW-4417"));
 });
 
+test("a read-back answer past its size limit is unavailable, never read for a match (C13)", async (t) => {
+  // "refunded" sits past the limit: reading on to find it would confirm on a body Novera refused.
+  answer(t, "x".repeat(300 * 1024) + "refunded");
+  const o = await httpVerificationConnector(config).verify({ caseId: "T22", expect: expect_ });
+  assert.equal(o.status, "unavailable");
+  assert.match(o.detail, /larger than 256 KB/);
+});
+
 test("an endpoint that cannot be reached is unavailable, not a failure", async (t) => {
   answer(t, "nope", 503);
   const o = await httpVerificationConnector(config).verify({ caseId: "T22", expect: expect_ });

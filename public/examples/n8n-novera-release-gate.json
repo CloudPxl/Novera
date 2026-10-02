@@ -58,6 +58,12 @@
               "name": "knowledge_base_revision",
               "type": "string",
               "value": "={{ $json.body?.knowledge_base_revision ?? '' }}"
+            },
+            {
+              "id": "a5",
+              "name": "idempotency_key",
+              "type": "string",
+              "value": "={{ 'n8n-' + $execution.id + '-' + $now.toMillis() }}"
             }
           ]
         },
@@ -81,6 +87,15 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify(Object.assign({ agent_id: $('Configure').item.json.agent_id, suite_id: $('Configure').item.json.suite_id }, $('Configure').item.json.release_id ? { release_id: $('Configure').item.json.release_id } : {}, $('Configure').item.json.knowledge_base_revision ? { knowledge_base_revision: $('Configure').item.json.knowledge_base_revision } : {})) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $('Configure').item.json.idempotency_key }}"
+            }
+          ]
+        },
         "options": {
           "response": {
             "response": {
@@ -103,7 +118,10 @@
           "id": "REPLACE_WITH_YOUR_CREDENTIAL",
           "name": "Novera API key"
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
     },
     {
       "parameters": {
@@ -116,11 +134,12 @@
           "conditions": [
             {
               "id": "c0",
-              "leftValue": "={{ $json.statusCode }}",
-              "rightValue": 201,
+              "leftValue": "={{ $json.statusCode === 201 || ($json.statusCode === 200 && $json.body?.replayed === true) }}",
+              "rightValue": true,
               "operator": {
-                "type": "number",
-                "operation": "equals"
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
               }
             }
           ],
@@ -273,6 +292,15 @@
           "conditions": [
             {
               "id": "c0",
+              "leftValue": "={{ $json.run.outcome }}",
+              "rightValue": "pass",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "c1",
               "leftValue": "={{ $json.run.status }}",
               "rightValue": "completed",
               "operator": {
@@ -281,7 +309,7 @@
               }
             },
             {
-              "id": "c1",
+              "id": "c2",
               "leftValue": "={{ $json.run.counts.failed }}",
               "rightValue": 0,
               "operator": {
@@ -290,7 +318,7 @@
               }
             },
             {
-              "id": "c2",
+              "id": "c3",
               "leftValue": "={{ $json.run.counts.no_result }}",
               "rightValue": 0,
               "operator": {
@@ -299,7 +327,7 @@
               }
             },
             {
-              "id": "c3",
+              "id": "c4",
               "leftValue": "={{ $json.run.report }}",
               "rightValue": "",
               "operator": {
@@ -342,7 +370,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ outcome: $json.run.status !== 'completed' || !$json.run.report ? 'incomplete' : $json.run.counts.failed > 0 ? 'fail' : 'incomplete', release_id: $('Configure').item.json.release_id || null, counts: $json.run.counts, report_url: $json.run.report ? $json.run.report.url : null, message: 'Novera: ' + $json.run.counts.failed + ' failed, ' + $json.run.counts.no_result + ' with no result, ' + $json.run.counts.passed + ' passed. A scenario with no result is not a pass. ' + ($json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + ($json.run.error || ($json.run.status === 'completed' ? 'no scenario produced a verdict, so there was nothing to seal.' : 'the run did not finish (status: ' + $json.run.status + ').'))) }) }}",
+        "responseBody": "={{ JSON.stringify({ outcome: $json.run.status !== 'completed' || !$json.run.report ? 'incomplete' : $json.run.counts.failed > 0 ? 'fail' : 'incomplete', release_id: $('Configure').item.json.release_id || null, counts: $json.run.counts, report_url: $json.run.report ? $json.run.report.url : null, message: 'Novera: ' + $json.run.counts.failed + ' failed, ' + $json.run.counts.no_result + ' with no result, ' + $json.run.counts.passed + ' passed. A scenario with no result is not a pass. ' + ($json.run.outcome_reason ? $json.run.outcome_reason + ' ' : '') + ($json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + ($json.run.error || ($json.run.status === 'completed' ? 'no scenario produced a verdict, so there was nothing to seal.' : 'the run did not finish (status: ' + $json.run.status + ').'))) }) }}",
         "options": {
           "responseCode": 409
         }

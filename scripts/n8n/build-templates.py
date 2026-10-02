@@ -40,6 +40,20 @@ def cond(*items, combinator="and"):
 FULL = {"response": {"response": {"fullResponse": True, "neverError": True}}}
 URL = "={{ $('Configure').item.json.novera_url }}"
 
+# Starting a run is retried when the request itself fails (a timeout, a dropped
+# connection), and the Idempotency-Key — one per execution — makes the retry return the
+# run the first attempt started instead of starting, and paying for, a second.
+# The key is made once, in Configure, from the execution id and the moment it ran: a retry
+# re-reads Configure's output, so it repeats the key, while a reinstalled n8n (whose
+# execution ids start again at 1) or a second instance never reuses one.
+KEY = ("idempotency_key", "string", "={{ 'n8n-' + $execution.id + '-' + $now.toMillis() }}")
+IDEMPOTENT = {"sendHeaders": True, "headerParameters": {"parameters": [
+    {"name": "Idempotency-Key", "value": "={{ $('Configure').item.json.idempotency_key }}"}]}}
+RETRY = {"retryOnFail": True, "maxTries": 3, "waitBetweenTries": 2000}
+# 201 is a new run; 200 with `replayed` is the same run, answered again to a retry.
+STARTED = {"leftValue": "={{ $json.statusCode === 201 || ($json.statusCode === 200 && $json.body?.replayed === true) }}",
+           "rightValue": True, "operator": {"type": "boolean", "operation": "true", "singleValue": True}}
+
 
 def advance_loop(x, y, run_id_expr):
     """Advance → Finished? → (Wait 10 seconds → Advance) | Get result."""
@@ -66,8 +80,11 @@ LOOP_CONNECTIONS = {
     "Wait 10 seconds": [["Advance run"]],
 }
 
-# Passed means: finished, sealed, nothing failed, nothing without a verdict.
+# Passed means: finished, sealed, nothing failed, nothing without a verdict — and Novera's
+# own decision over the sealed report says pass (`run.outcome`, the one the CLI and the
+# webhook use), which also refuses a pass one model gave alone (G5).
 ALL_PASSED = [
+    {"leftValue": "={{ $json.run.outcome }}", "rightValue": "pass", "operator": {"type": "string", "operation": "equals"}},
     {"leftValue": "={{ $json.run.status }}", "rightValue": "completed", "operator": {"type": "string", "operation": "equals"}},
     {"leftValue": "={{ $json.run.counts.failed }}", "rightValue": 0, "operator": {"type": "number", "operation": "equals"}},
     {"leftValue": "={{ $json.run.counts.no_result }}", "rightValue": 0, "operator": {"type": "number", "operation": "equals"}},
@@ -100,14 +117,14 @@ gate = workflow("Novera — pre-release gate", [
         ("suite_id", "string", "REPLACE_WITH_SUITE_ID"),
         ("release_id", "string", "={{ $json.body?.release_id ?? '' }}"),
         ("knowledge_base_revision", "string", "={{ $json.body?.knowledge_base_revision ?? '' }}"),
+        KEY,
     ), [220, 100], SET_V),
     node("Start run", "httpRequest", {
         "method": "POST", "url": f"{URL}/api/v1/runs", "authentication": "genericCredentialType", "genericAuthType": "httpHeaderAuth",
         "sendBody": True, "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify(Object.assign({ agent_id: $('Configure').item.json.agent_id, suite_id: $('Configure').item.json.suite_id }, $('Configure').item.json.release_id ? { release_id: $('Configure').item.json.release_id } : {}, $('Configure').item.json.knowledge_base_revision ? { knowledge_base_revision: $('Configure').item.json.knowledge_base_revision } : {})) }}",
-        "options": FULL}, [440, 100], HTTP_V, credentials=NOVERA_KEY),
-    node("Run started?", "if", cond(
-        {"leftValue": "={{ $json.statusCode }}", "rightValue": 201, "operator": {"type": "number", "operation": "equals"}}), [660, 100], IF_V),
+        **IDEMPOTENT, "options": FULL}, [440, 100], HTTP_V, credentials=NOVERA_KEY, **RETRY),
+    node("Run started?", "if", cond(STARTED), [660, 100], IF_V),
     node("Respond: could not start", "respondToWebhook", {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify({ outcome: 'blocked', release_id: $('Configure').item.json.release_id || null, reason: 'The Novera run could not start: ' + ($json.body?.error ?? 'HTTP ' + $json.statusCode) }) }}",
@@ -120,7 +137,7 @@ gate = workflow("Novera — pre-release gate", [
         "options": {"responseCode": 200}}, [1540, 0], 1.1),
     node("Respond: blocked", "respondToWebhook", {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ outcome: " + OUTCOME[4:-3] + ", release_id: $('Configure').item.json.release_id || null, counts: $json.run.counts, report_url: $json.run.report ? $json.run.report.url : null, message: 'Novera: ' + $json.run.counts.failed + ' failed, ' + $json.run.counts.no_result + ' with no result, ' + $json.run.counts.passed + ' passed. A scenario with no result is not a pass. ' + ($json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + " + WHY_NO_REPORT + ") }) }}",
+        "responseBody": "={{ JSON.stringify({ outcome: " + OUTCOME[4:-3] + ", release_id: $('Configure').item.json.release_id || null, counts: $json.run.counts, report_url: $json.run.report ? $json.run.report.url : null, message: 'Novera: ' + $json.run.counts.failed + ' failed, ' + $json.run.counts.no_result + ' with no result, ' + $json.run.counts.passed + ' passed. A scenario with no result is not a pass. ' + ($json.run.outcome_reason ? $json.run.outcome_reason + ' ' : '') + ($json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + " + WHY_NO_REPORT + ") }) }}",
         "options": {"responseCode": 409}}, [1540, 200], 1.1),
 ], {
     "Release pipeline calls": [["Configure"]],
@@ -146,14 +163,14 @@ const fixed = run.cases.filter((c) => c.verdict === 'pass' && before.get(c.id) =
 // graders moving, not the agent. It is still listed; it is labelled.
 const gradersMoved = newlyFailing.filter((c) => c.stability?.moved === 'graders').map((c) => c.id);
 const regressions = newlyFailing.map((c) => c.id);
-const incomplete = run.status !== 'completed' || !run.report || run.counts.no_result > 0;
+const incomplete = run.status !== 'completed' || !run.report || run.counts.no_result > 0 || run.outcome === 'incomplete';
 const report = run.report ? run.report.url : null;
 const lines = [
   `Novera weekly check: ${run.agent.name} (${run.suite}) — ${run.counts.passed} passed, ${run.counts.failed} failed, ${run.counts.no_result} with no result.`,
   base ? `Compared with the run of ${base.created_at.slice(0, 10)}.` : 'No earlier completed run of this suite to compare with.',
   regressions.length ? `Newly failing: ${regressions.join(', ')}.` + (gradersMoved.length ? ` Of these, ${gradersMoved.join(', ')} had an identical reply graded both ways before — the graders moved, not necessarily the agent.` : '') : '',
   lostVerdict.length ? `No verdict this time: ${lostVerdict.join(', ')}.` : '',
-  incomplete ? 'The evidence is incomplete: a scenario with no result is not a pass.' : '',
+  incomplete ? `The evidence is incomplete: ${run.outcome_reason ?? 'a scenario with no result is not a pass.'}` : '',
   fixed.length ? `Fixed since then: ${fixed.join(', ')}.` : '',
   report ? `Report: ${report}` : `No report was sealed${run.error ? ': ' + run.error : '.'}`,
 ].filter(Boolean);
@@ -183,14 +200,14 @@ weekly = workflow("Novera — weekly assurance against the last run", [
         ("novera_url", "string", "https://www.nover.space"),
         ("agent_id", "string", "REPLACE_WITH_AGENT_ID"),
         ("suite_id", "string", "REPLACE_WITH_SUITE_ID"),
+        KEY,
     ), [220, 100], SET_V),
     node("Start run", "httpRequest", {
         "method": "POST", "url": f"{URL}/api/v1/runs", "authentication": "genericCredentialType", "genericAuthType": "httpHeaderAuth",
         "sendBody": True, "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ agent_id: $('Configure').item.json.agent_id, suite_id: $('Configure').item.json.suite_id }) }}",
-        "options": FULL}, [440, 100], HTTP_V, credentials=NOVERA_KEY),
-    node("Run started?", "if", cond(
-        {"leftValue": "={{ $json.statusCode }}", "rightValue": 201, "operator": {"type": "number", "operation": "equals"}}), [660, 100], IF_V),
+        **IDEMPOTENT, "options": FULL}, [440, 100], HTTP_V, credentials=NOVERA_KEY, **RETRY),
+    node("Run started?", "if", cond(STARTED), [660, 100], IF_V),
     node("Could not start", "set", assign(
         ("open_ticket", "boolean", "={{ true }}"),
         ("outcome", "string", "not_started"),

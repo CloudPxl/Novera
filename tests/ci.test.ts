@@ -115,3 +115,26 @@ test("JUnit never carries the report's access token", () => {
   assert.ok(!xml.includes(token));
   assert.match(xml, /name="novera.report" value="https:\/\/www.nover.space\/report\/TeSt…"/);
 });
+
+test("G5: from format 13, a pass resting on one model's verdict is incomplete evidence, never a green build", () => {
+  const lone = { ...CLEAN, novera: { format: 13 }, run: { ...CLEAN.run, corroboration: { method: "m", agreed: 3, majority: 0, uncorroborated: 1, unresolved: 0, uncorroborated_passes: 1, independent: 3, single_vendor: 0 } } };
+  const out = ciOutcome(lone);
+  assert.equal(out.code, 2);
+  assert.match(out.reason, /1 pass rests on one model's verdict/);
+  // A failure still outranks it: what one model found wrong is a finding.
+  assert.equal(ciOutcome({ ...lone, coverage: { ...lone.coverage, passed: 3, failed: 1 } }).code, 1);
+  // Uncorroborated failures alone do not hold back a run that has no such pass.
+  assert.equal(ciOutcome({ ...lone, run: { ...lone.run, corroboration: { ...lone.run.corroboration, uncorroborated_passes: 0 } } }).code, 0);
+});
+
+test("G5 leaves sealed reports alone: a payload without the count keeps the code it was sealed with", () => {
+  const old = { ...CLEAN, run: { ...CLEAN.run, corroboration: { method: "m", agreed: 0, majority: 0, uncorroborated: 4, unresolved: 0 } } };
+  assert.equal(ciOutcome(old).code, 0);
+});
+
+test("two models of one vendor still pass, and the reason says so", () => {
+  const sv = { ...CLEAN, novera: { format: 13 }, run: { ...CLEAN.run, corroboration: { method: "m", agreed: 4, majority: 0, uncorroborated: 0, unresolved: 0, uncorroborated_passes: 0, independent: 1, single_vendor: 3 } } };
+  const out = ciOutcome(sv);
+  assert.equal(out.code, 0);
+  assert.match(out.reason, /3 of the verdicts were corroborated by two models from one vendor/);
+});

@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { mintKey } from "../src/lib/api/keys.ts";
+import { sealThrowawayReport } from "./verify-fixtures.mts";
 
 const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -72,6 +73,27 @@ try {
   const theirs = await call("get_run", { run_id: b.runs[0] });
   report(theirs.isError === true && /No such run in this workspace/.test(theirs.content[0].text), "another workspace's run is refused as a tool error");
 
+  // Raw evidence through MCP lands in an assistant's context. A key without the `responses`
+  // scope is not offered it and is refused it (0052); one with it is recorded (0050).
+  const before = (await db.from("raw_evidence_reads").select("id").eq("run_id", a.runs[0])).data?.length ?? 0;
+  await call("get_run", { run_id: a.runs[0] });
+  const plainReads = (await db.from("raw_evidence_reads").select("id").eq("run_id", a.runs[0])).data?.length ?? 0;
+  const offered = (await client.listTools()).tools.find((t) => t.name === "get_run")?.inputSchema as { properties?: Record<string, unknown> };
+  const refused = await call("get_run", { run_id: a.runs[0], include_responses: true });
+  const afterRefusal = (await db.from("raw_evidence_reads").select("id").eq("run_id", a.runs[0])).data?.length ?? 0;
+  report(!("include_responses" in (offered?.properties ?? {})) && refused.isError === true && afterRefusal === before,
+    "a read key is not offered the agent's replies, is refused them, and nothing is recorded (0052)", JSON.stringify({ offered: Object.keys(offered?.properties ?? {}), refused: refused.isError, afterRefusal }));
+  const reader = mintKey();
+  await db.from("api_keys").insert({ workspace_id: a.ws, name: "mcp-responses", prefix: reader.prefix, key_hash: reader.hash, scopes: ["read", "responses"], created_by: a.user.id });
+  const rawClient = new Client({ name: "novera-verify", version: "1.0.0" });
+  await rawClient.connect(new StreamableHTTPClientTransport(new URL(`${base}/api/mcp`), { requestInit: { headers: { authorization: `Bearer ${reader.key}` } } }));
+  const rawCall = (await rawClient.callTool({ name: "get_run", arguments: { run_id: a.runs[0], include_responses: true } })) as { isError?: boolean };
+  await rawClient.close();
+  report(rawCall.isError !== true, "a key with the responses scope reads them through MCP");
+  const { data: mcpReads } = await db.from("raw_evidence_reads").select("via").eq("run_id", a.runs[0]);
+  report(plainReads === before && mcpReads?.length === before + 1 && mcpReads.at(-1)?.via === "mcp",
+    "get_run records a read only when it returns raw evidence, and says it was MCP", JSON.stringify({ before, plainReads, after: mcpReads?.length }));
+
   const gaps = await call("get_evidence_gaps", { run_id: a.runs[0] });
   const gapList = gaps.structuredContent?.gaps as Array<{ id: string; verdict: string }>;
   report(gapList.length === 1 && gapList[0].verdict === "no_result", "get_evidence_gaps names the scenario with no verdict", JSON.stringify(gapList));
@@ -81,9 +103,14 @@ try {
   report(JSON.stringify(c.fixed) === '["T01"]' && JSON.stringify(c.regained_verdict) === '["T02"]',
     "compare_runs: T01 fixed; T02 regained a verdict (as a failure), which is not a fix", JSON.stringify({ fixed: c.fixed, newly_broken: c.newly_broken, regained: c.regained_verdict }));
 
-  const { data: real } = await db.from("reports").select("token").is("revoked_at", null).limit(1).single();
-  const verified = await call("verify_report", { report: `${base}/report/${real!.token}` });
-  report(verified.structuredContent?.verified === true, "verify_report recomputes a sealed report's hash", String(verified.structuredContent?.content_hash).slice(0, 16));
+  // A report it seals itself, rather than whichever happens to exist (scripts/verify-fixtures.mts).
+  const sealed = await sealThrowawayReport(db, "mcp");
+  try {
+    const verified = await call("verify_report", { report: `${base}/report/${sealed.token}` });
+    report(verified.structuredContent?.verified === true, "verify_report recomputes a sealed report's hash", String(verified.structuredContent?.content_hash).slice(0, 16));
+  } finally {
+    await sealed.erase();
+  }
 
   const unknownTool = await client.callTool({ name: "start_run", arguments: {} }).then(() => "answered", (e) => String(e.message ?? e));
   report(/Unknown tool|-32602/.test(unknownTool), "a read key is offered no tool that starts anything", unknownTool.slice(0, 60));

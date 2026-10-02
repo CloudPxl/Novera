@@ -51,3 +51,29 @@ test("changing the suite between runs makes the comparison partial and says so",
   assert.deepEqual(diff.missingFromCurrent, ["T02"]);
   assert.equal(diff.comparable, false);
 });
+
+test("a moved verdict is the agent only when its reply changed", async () => {
+  const { causeOfMove } = await import("../src/lib/evidence/compare.ts");
+  const e = (status: "pass" | "fail" | "error", replySha: string | null, extra: Partial<{ replied: boolean; observation: string | null }> = {}) =>
+    ({ status, replySha, replied: true, observation: null, ...extra });
+  assert.equal(causeOfMove(e("pass", "aaa"), e("fail", "aaa")), "graders_changed");
+  assert.equal(causeOfMove(e("pass", "aaa"), e("fail", "bbb")), "agent_changed");
+  assert.equal(causeOfMove(e("pass", null), e("fail", "bbb")), "unknown");
+  assert.equal(causeOfMove(e("pass", "aaa"), e("error", null, { replied: false })), "no_reply");
+  assert.equal(causeOfMove(e("pass", "aaa", { observation: "confirmed" }), e("error", "aaa", { observation: "unavailable" })), "readback_unavailable");
+});
+
+test("what else changed between two runs is read from their manifests", async () => {
+  const { contextChanges } = await import("../src/lib/evidence/compare.ts");
+  const m = (over: Record<string, unknown> = {}) => ({ rubric_hash: "r1", judge_plan: [{ connection: "groq", model: "groq/a", task: "judge" }], agent: { config_hash: "c1" }, ...over });
+  assert.deepEqual(contextChanges({ policyVersion: 2, manifest: m() }, { policyVersion: 2, manifest: m() }), []);
+  const changed = contextChanges(
+    { policyVersion: 2, manifest: m() },
+    { policyVersion: 3, manifest: m({ rubric_hash: "r2", judge_plan: [{ connection: "mistral", model: "mistral/b", task: "judge" }], agent: { config_hash: "c2" }, declared: { release_id: "v9" } }) },
+  );
+  assert.equal(changed.length, 5);
+  assert.match(changed[0], /v2 → v3/);
+  assert.match(changed.join(" "), /rubric, not the agent/);
+  assert.match(changed.join(" "), /groq\/a → mistral\/b/);
+  assert.match(contextChanges({ policyVersion: 1, manifest: null }, { policyVersion: 1, manifest: m() })[0], /predates the declared manifest/);
+});

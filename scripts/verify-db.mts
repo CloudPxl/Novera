@@ -172,11 +172,26 @@ if (userErr || !created?.user) {
     report(/duplicate key/.test(twice?.message ?? ""), "a scenario is recorded once per run (0001)", twice?.message.slice(0, 70) ?? "the second row was accepted");
     const { error: undeclared } = await db.from("run_cases").insert(scenario("Z9"));
     report(/not in the manifest/.test(undeclared?.message ?? ""), "a scenario the manifest did not declare is refused", undeclared?.message.slice(0, 70) ?? "the row was accepted");
-    await db.from("runs").update({ status: "completed" }).eq("id", declaredRun!.id);
+    // A completed run holds every scenario it declared (0048): marking one completed while a
+    // declared scenario has no row is how a pipeline once read "pass" off a report that
+    // said INCOMPLETE (audit R2, planted).
+    const { error: early } = await db.from("runs").update({ status: "completed" }).eq("id", declaredRun!.id);
+    report(/no recorded result/.test(early?.message ?? ""), "a run cannot be marked completed while a declared scenario has no row",
+      early?.message.slice(0, 80) ?? "the run was marked completed with A2 missing");
+    const { error: secondRow } = await db.from("run_cases").insert(scenario("A2"));
+    const { error: done } = await db.from("runs").update({ status: "completed" }).eq("id", declaredRun!.id);
+    report(!secondRow && !done, "once every declared scenario is recorded, it can be", (secondRow ?? done)?.message ?? "");
     const { error: late } = await db.from("run_cases").insert(scenario("A2"));
     report(/is completed/.test(late?.message ?? ""), "a completed run takes no new evidence, even a declared scenario", late?.message.slice(0, 70) ?? "the row was accepted");
     const { count: kept } = await db.from("run_cases").select("id", { count: "exact", head: true }).eq("run_id", declaredRun!.id);
-    report(kept === 1, "and the run holds exactly the one row it recorded", String(kept));
+    report(kept === 2, "and the run holds exactly the two rows it recorded", String(kept));
+    const { data: partRun } = await db.from("runs").insert({
+      workspace_id: ws.id, agent_id: agent.id, policy_id: policy!.id, suite_id: suiteId, status: "running",
+      manifest: { novera_manifest: 1, suite: { id: suiteId, key: "k", version: 1, case_ids: ["B1", "B2"] } }, manifest_hash: "h2",
+    }).select("id").single();
+    await db.from("run_cases").insert({ ...scenario("B1"), run_id: partRun!.id });
+    const { error: abortPart } = await db.from("runs").update({ status: "aborted" }).eq("id", partRun!.id);
+    report(!abortPart, "an aborted run may end with declared scenarios missing — it is never sealed", abortPart?.message ?? "");
 
     const { data: diagnosis } = await db
       .from("diagnoses")
@@ -394,6 +409,87 @@ if (userErr || !created?.user) {
   } finally {
     await db.auth.admin.deleteUser(userId);
     console.log("  removed the verification user");
+  }
+}
+
+// The migration ledger decides which migrations run, so no API role may reach it (0045).
+// Every probe is built so that it cannot change anything even where access is open: the
+// read asks for no rows, the insert sends a name that can never be stored, and the update
+// and delete target a name no migration has. A refusal is told apart from success by
+// Postgres's own code, 42501, so this is safe against any database, production included.
+console.log("\nThe migration ledger");
+{
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const ledgerUser = `verify-ledger+${Date.now()}@novera.invalid`;
+  const ledgerPassword = crypto.randomUUID();
+  const { data: made } = await db.auth.admin.createUser({ email: ledgerUser, password: ledgerPassword, email_confirm: true });
+  try {
+    const signedIn = anonKey
+      ? await createClient(url, anonKey, { auth: { persistSession: false } }).auth.signInWithPassword({ email: ledgerUser, password: ledgerPassword })
+      : null;
+    const callers: Array<[string, string | undefined]> = [
+      ["anon", anonKey],
+      ["authenticated", signedIn?.data.session?.access_token],
+      ["service_role", key],
+    ];
+    const NEVER = "__never_a_migration__";
+    for (const [role, token] of callers) {
+      if (!token || !anonKey) {
+        report(false, `${role}: could not get a token to probe with`);
+        continue;
+      }
+      const probe = async (method: string, query: string, body?: unknown) => {
+        const res = await fetch(`${url}/rest/v1/novera_migrations${query}`, {
+          method,
+          headers: { apikey: role === "service_role" ? key : anonKey, authorization: `Bearer ${token}`, "content-type": "application/json" },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+        const text = await res.text();
+        let code: string | undefined;
+        try { code = (JSON.parse(text) as { code?: string }).code; } catch { /* not JSON */ }
+        return { status: res.status, code };
+      };
+      const results = {
+        SELECT: await probe("GET", "?select=name&limit=0"),
+        INSERT: await probe("POST", "", { name: null, checksum: null }),
+        UPDATE: await probe("PATCH", `?name=eq.${NEVER}`, { checksum: "x" }),
+        DELETE: await probe("DELETE", `?name=eq.${NEVER}`),
+      };
+      const open = Object.entries(results).filter(([, r]) => r.code !== "42501");
+      report(open.length === 0, `${role} is refused SELECT, INSERT, UPDATE and DELETE on the ledger`,
+        open.length ? open.map(([verb, r]) => `${verb} answered ${r.status}${r.code ? ` (${r.code})` : ""}`).join(", ") : "42501 each time");
+    }
+  } finally {
+    if (made?.user) await db.auth.admin.deleteUser(made.user.id);
+  }
+}
+
+// ------------------------------------------------------------------ withdrawing a report (0053)
+console.log("\nWithdrawing a report");
+{
+  const { sealThrowawayReport } = await import("./verify-fixtures.mts");
+  const sealed = await sealThrowawayReport(db, "withdraw");
+  try {
+    const owner = (await db.from("workspaces").select("owner_id").eq("id", sealed.workspaceId).single()).data!.owner_id as string;
+    const { error: attributedOnly } = await db.from("reports").update({ revoked_by: owner }).eq("token", sealed.token);
+    report(/only when the report is withdrawn/.test(attributedOnly?.message ?? ""), "who withdrew it cannot be set without withdrawing it", attributedOnly?.message.slice(0, 70) ?? "accepted");
+    const when = new Date().toISOString();
+    const { error: withdraw } = await db.from("reports").update({ revoked_at: when, revoked_by: owner }).eq("token", sealed.token);
+    report(!withdraw, "a report can be withdrawn, naming who did it", withdraw?.message ?? "");
+    const { error: undo } = await db.from("reports").update({ revoked_at: null }).eq("token", sealed.token);
+    report(/stays withdrawn/.test(undo?.message ?? ""), "a withdrawn report cannot be reopened", undo?.message.slice(0, 70) ?? "it was reopened");
+    const { error: extend } = await db.from("reports").update({ expires_at: "2099-01-01T00:00:00Z" }).eq("token", sealed.token);
+    report(/stays withdrawn/.test(extend?.message ?? ""), "nor its expiry moved", extend?.message.slice(0, 70) ?? "moved");
+    const { error: rename } = await db.from("reports").update({ revoked_by: null }).eq("token", sealed.token);
+    report(/stays withdrawn/.test(rename?.message ?? ""), "nor who withdrew it rewritten", rename?.message.slice(0, 70) ?? "rewritten");
+    const { data: row } = await db.from("reports").select("revoked_at, revoked_by, content_hash").eq("token", sealed.token).single();
+    report(row?.revoked_by === owner && Boolean(row?.revoked_at), "the row holds when and who", JSON.stringify({ by: row?.revoked_by === owner }));
+    const erased = await sealed.erase().then(() => null, (e: Error) => e.message);
+    const { count: left } = await db.from("reports").select("*", { count: "exact", head: true }).eq("token", sealed.token);
+    report(erased === null && left === 0, "erasure still removes a withdrawn report with its workspace", erased ?? `${left} left`);
+  } catch (e) {
+    await sealed.erase().catch(() => {});
+    throw e;
   }
 }
 

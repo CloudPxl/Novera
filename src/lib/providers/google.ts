@@ -1,4 +1,4 @@
-import { isTimeout, PROVIDER_TIMEOUT_MS, ProviderError, redactCredentials, retryAfterMs, type ChatRequest, type ChatResponse, type Provider } from "./types.ts";
+import { isTimeout, PROVIDER_TIMEOUT_MS, ProviderError, readProviderJson, redactCredentials, retryAfterMs, type ChatRequest, type ChatResponse, type Provider } from "./types.ts";
 
 /**
  * Google Generative Language REST API.
@@ -51,7 +51,7 @@ export const googleProvider: Provider = {
       throw new ProviderError("google", error instanceof Error ? error.message : String(error));
     }
 
-    const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+    const payload = await readProviderJson("google", response, request.timeoutMs ?? PROVIDER_TIMEOUT_MS);
 
     if (!response.ok) {
       const detail =

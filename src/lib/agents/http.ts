@@ -2,7 +2,8 @@ import type { AgentAdapter, AgentInvocation, AgentResult, HttpAgentConfig } from
 import { PROBE_INPUT } from "./types.ts";
 import { fillTemplate, readPath } from "./template.ts";
 import { suggestPathHint } from "./discover.ts";
-import { assertPublicUrl } from "../net/public-url.ts";
+import { assertPublicUrl, publicOnlyDispatcher, refusedAddress } from "../net/public-url.ts";
+import { BodyTooLarge, readTextLimited } from "../net/read-body.ts";
 
 /**
  * Calls a customer's deployed agent over HTTP.
@@ -37,6 +38,14 @@ function chatHistory(history: AgentInvocation["history"]): Array<{ role: "user" 
  * patient setting — it is a case the platform kills halfway through.
  */
 export const AGENT_TIMEOUT_MAX_MS = 30_000;
+
+/**
+ * The most of an agent's reply Novera reads. A support reply is a few kilobytes; past this
+ * it is an attachment or a fault, and reading it whole cost minutes of CPU in redaction
+ * and could keep a slice past the platform's limit (audit 2026-10-01, C6).
+ */
+export const MAX_REPLY_BYTES = 256 * 1024;
+
 /** Below this, a message is not sent at all: the answer could not be waited for. */
 const MIN_AGENT_WAIT_MS = 2_000;
 
@@ -101,7 +110,9 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
         // to an address the check above never saw.
         redirect: "manual",
         signal: AbortSignal.timeout(wait),
-      });
+        // The address connected to is checked when the connection opens, not only above.
+        dispatcher: publicOnlyDispatcher(),
+      } as RequestInit);
     } catch (error) {
       if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
         const cut = wait < own;
@@ -113,17 +124,39 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
             : `The agent did not answer within ${Math.round(own / 1000)} s.`,
         };
       }
+      const refused = refusedAddress(error);
       return {
         ok: false,
         responseText: null,
         toolActivity: null,
         latencyMs: Date.now() - started,
-        error: `Request failed: ${error instanceof Error ? error.message : String(error)}`,
+        error: refused ? `Not sent: ${refused}` : `Request failed: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
 
     const latencyMs = Date.now() - started;
-    const text = await response.text();
+    // The headers arriving is not the reply arriving: the body is read under the same
+    // deadline, and a body that stalls is this scenario's timeout, not an exception that
+    // ends the run (audit 2026-10-01, C5).
+    let text: string;
+    try {
+      text = await readTextLimited(response, MAX_REPLY_BYTES);
+    } catch (error) {
+      const base = { ok: false as const, responseText: null, toolActivity: null, statusCode: response.status, latencyMs: Date.now() - started };
+      if (error instanceof BodyTooLarge) {
+        return { ...base, error: `The agent's reply was larger than ${MAX_REPLY_BYTES / 1024} KB, so Novera stopped reading it. Nothing was graded; this says nothing about whether the reply was right.` };
+      }
+      if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+        const cut = wait < own;
+        return {
+          ...base, timedOut: true, ...(cut ? { cutByNovera: true } : {}),
+          error: cut
+            ? `Novera stopped waiting after ${Math.round(wait / 1000)} s because this run's time slice was ending. This says nothing about the agent; retest the scenario.`
+            : `The agent's reply did not finish arriving within ${Math.round(own / 1000)} s.`,
+        };
+      }
+      return { ...base, error: `The agent's reply could not be read: ${error instanceof Error ? error.message : String(error)}` };
+    }
 
     let parsed: unknown = null;
     try {

@@ -2,34 +2,27 @@
  * Verifies the two things a shared report must never get wrong: who can read it,
  * and whether its evidence can be rewritten after the fact.
  *
- * Runs against the most recent stored report. Temporarily revokes and expires it,
- * then restores the original values.
+ * Runs against a report it seals itself from a small planted run (scripts/verify-fixtures.mts),
+ * so it needs nothing left behind by anything else and never touches a customer's report.
+ * Revokes and expires it, restores it, and erases it at the end.
  *
  * Needs the dev server running.
  * Run: npm run verify:access
  */
 import { createClient } from "@supabase/supabase-js";
+import { sealThrowawayReport } from "./verify-fixtures.mts";
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
   auth: { persistSession: false },
 });
 const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
+const sealed = await sealThrowawayReport(db, "access");
 const { data: report, error } = await db
-  .from("reports")
-  .select("token, expires_at, revoked_at, run_id")
-  // Must be a LIVE report. This script drives the live -> revoked -> expired ->
-  // restored cycle, so it needs one that starts live; picking the newest regardless
-  // of state made it fail whenever the newest report had been legitimately revoked,
-  // reporting a product defect where there was only a stale assumption.
-  .is("revoked_at", null)
-  .gt("expires_at", new Date().toISOString())
-  .order("created_at", { ascending: false })
-  .limit(1)
-  .maybeSingle();
-
+  .from("reports").select("token, expires_at, revoked_at, run_id").eq("token", sealed.token).single();
 if (error || !report) {
-  console.error("No report found. Run npm run demo:run first.");
+  await sealed.erase();
+  console.error(`The verification report could not be read back: ${error?.message ?? "no row"}`);
   process.exit(1);
 }
 
@@ -48,25 +41,22 @@ const FINDINGS = "Findings (";
 console.log("\nAccess control");
 check(has(await body(), FINDINGS), "a live link renders the report");
 
-await db.from("reports").update({ revoked_at: new Date().toISOString() }).eq("token", report.token);
+// Expiry first, and restored: a withdrawal is permanent (0053), so it comes last.
+await db.from("reports").update({ expires_at: new Date(Date.now() - 86_400_000).toISOString() }).eq("token", report.token);
 let page = await body();
-check(has(page, "no longer shared") && !has(page, FINDINGS), "a revoked link refuses and shows nothing");
-
-await db
-  .from("reports")
-  .update({ revoked_at: null, expires_at: new Date(Date.now() - 86_400_000).toISOString() })
-  .eq("token", report.token);
-page = await body();
 check(has(page, "no longer available") && !has(page, FINDINGS), "an expired link refuses and shows nothing");
 
 const unknown = await fetch(`${appUrl}/report/this-token-does-not-exist-000000000000`);
 check(unknown.status === 404, "an unknown token is a 404", `got ${unknown.status}`);
 
-await db
-  .from("reports")
-  .update({ revoked_at: report.revoked_at, expires_at: report.expires_at })
-  .eq("token", report.token);
-check(has(await body(), FINDINGS), "the report is restored");
+await db.from("reports").update({ expires_at: report.expires_at }).eq("token", report.token);
+check(has(await body(), FINDINGS), "the report opens again once its expiry is restored");
+
+await db.from("reports").update({ revoked_at: new Date().toISOString() }).eq("token", report.token);
+page = await body();
+check(has(page, "no longer shared") && !has(page, FINDINGS), "a revoked link refuses and shows nothing");
+const { error: reopen } = await db.from("reports").update({ revoked_at: null }).eq("token", report.token);
+check(Boolean(reopen) && !has(await body(), FINDINGS), "and a revoked link cannot be reopened (0053)", reopen?.message.slice(0, 60));
 
 console.log("\nEvidence immutability, attempted with the service role");
 const { error: payloadErr } = await db.from("reports").update({ payload: { tampered: true } }).eq("token", report.token);
@@ -125,6 +115,8 @@ const { error: afterErr } = await db.from("run_cases").delete().eq("run_id", rep
 check(!!afterErr, "piecemeal deletion is refused again once the erasure is over", afterErr?.message.slice(0, 64));
 
 await db.auth.admin.deleteUser(owner.id);
+await sealed.erase();
+console.log("  removed the verification report's workspace");
 
 console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) failed.\n`);
 process.exit(failures === 0 ? 0 : 1);

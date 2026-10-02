@@ -1,3 +1,4 @@
+import { BodyTooLarge, formatLimit, readJsonLimited } from "../net/read-body.ts";
 /**
  * A minimal chat surface shared by every provider Novera can call.
  *
@@ -105,4 +106,29 @@ export function retryAfterMs(header: string | null | undefined, now = Date.now()
   if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
   const at = Date.parse(header);
   return Number.isNaN(at) ? undefined : Math.max(0, at - now);
+}
+
+/**
+ * The most of a model's answer Novera reads. A verdict or a draft is a few kilobytes even
+ * at the largest max_tokens asked for; past this the answer is not the one requested.
+ */
+export const MAX_PROVIDER_BYTES = 1024 * 1024;
+
+/**
+ * A provider's JSON body, read under the request's own deadline and never past
+ * MAX_PROVIDER_BYTES (audit C13). A body that is not JSON is null, as before; one that is
+ * too large, or stops arriving, is a provider failure of the matching kind.
+ */
+export async function readProviderJson(provider: string, response: Response, timeoutMs: number): Promise<Record<string, unknown> | null> {
+  try {
+    return await readJsonLimited(response, MAX_PROVIDER_BYTES);
+  } catch (error) {
+    if (error instanceof BodyTooLarge) {
+      throw new ProviderError(provider, `the answer was larger than ${formatLimit(MAX_PROVIDER_BYTES)}, so it was not read`, response.status);
+    }
+    if (isTimeout(error)) {
+      throw new ProviderError(provider, `the answer did not finish arriving within ${Math.round(timeoutMs / 1000)} s`, undefined, { timedOut: true });
+    }
+    return null;
+  }
 }

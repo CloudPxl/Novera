@@ -5,6 +5,7 @@ import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { LENSES, type Lens } from "../runs/[id]/lenses.ts";
 import type { CaseRow } from "../runs/[id]/case-table.tsx";
+import { noVerdictRow, repairFor, retryWords, type Repair } from "@/lib/evidence/repair.ts";
 
 export const metadata: Metadata = { title: "Review · Novera" };
 export const dynamic = "force-dynamic";
@@ -42,8 +43,8 @@ export default async function ReviewPage() {
     db.from("runs").select("id, status, created_at, agents(name)")
       .eq("workspace_id", workspace.id).in("status", ["queued", "running"])
       .order("created_at", { ascending: false }),
-    db.from("evidence_observations").select("run_case_id")
-      .eq("workspace_id", workspace.id).eq("status", "contradicted"),
+    db.from("evidence_observations").select("run_case_id, status")
+      .eq("workspace_id", workspace.id).in("status", ["contradicted", "unavailable"]),
   ]);
 
   const runIds = (runs ?? []).map((r) => r.id as string);
@@ -53,7 +54,27 @@ export default async function ReviewPage() {
       .in("run_id", runIds)
     : { data: [] };
 
-  const contradictedIds = new Set((contradicted ?? []).map((o) => o.run_case_id as string));
+  const contradictedIds = new Set((contradicted ?? []).filter((o) => o.status === "contradicted").map((o) => o.run_case_id as string));
+  const unavailableIds = new Set((contradicted ?? []).filter((o) => o.status === "unavailable").map((o) => o.run_case_id as string));
+
+  // Every scenario with no verdict in these runs, grouped by why — the same classifier
+  // as the run page, over the same stored fields.
+  const { data: noVerdictRows } = runIds.length
+    ? await db.from("run_cases")
+      .select("id, run_id, case_id, status, error, response_text, raw_expired_at, transcript, evidence_gap, judge_agreement, judge_attempts")
+      .in("run_id", runIds).eq("status", "error")
+    : { data: [] };
+  const repairs = new Map<string, { repair: Repair; items: Array<{ runId: string; caseId: string; agent: string }> }>();
+  for (const c of noVerdictRows ?? []) {
+    const run = (runs ?? []).find((r) => r.id === c.run_id);
+    const scenario = (run?.suites as unknown as { cases?: Array<{ id: string; effect?: unknown; destructive?: unknown }> } | null)?.cases?.find((s) => s.id === c.case_id) ?? null;
+    const repair = repairFor(noVerdictRow(c, { observationStatus: unavailableIds.has(c.id as string) ? "unavailable" : null, scenario }));
+    if (!repair) continue;
+    const group = repairs.get(repair.reason) ?? { repair, items: [] };
+    group.items.push({ runId: c.run_id as string, caseId: c.case_id as string, agent: (run?.agents as unknown as { name: string } | null)?.name ?? "agent" });
+    repairs.set(repair.reason, group);
+  }
+  const repairGroups = [...repairs.values()].sort((a, b) => b.items.length - a.items.length);
 
   const perRun = (runs ?? []).map((run) => {
     const suite = run.suites as unknown as { key: string; version: number; name: string; cases: Array<{ id: string; duty_refs?: string[] }> } | null;
@@ -139,6 +160,47 @@ export default async function ReviewPage() {
             )}
           </Card>
         </div>
+      </Reveal>
+
+      <Reveal className="mt-10">
+        <h2 className="type-h3">Evidence needing repair</h2>
+        <p className="mt-1 max-w-2xl text-sm text-ink-soft">
+          Scenarios with no verdict, grouped by why. None is a failure of your agent&apos;s behaviour, and none is
+          fixed by editing the policy unless it says so.
+        </p>
+        {!repairGroups.length ? (
+          <p className="mt-3 text-sm text-ink-soft">
+            {runs?.length ? `Every scenario in the last ${perRun.length} completed run${perRun.length === 1 ? "" : "s"} reached a verdict.` : "Nothing yet: no completed runs."}
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-3">
+            {repairGroups.map(({ repair, items }) => (
+              <li key={repair.reason}>
+                <Card className="p-4">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                    {repair.label}
+                    <Badge tone="error">{items.length}</Badge>
+                    <span className="text-xs font-normal text-ink-faint">for {repair.owner}</span>
+                  </p>
+                  <p className="mt-1 text-sm text-ink-soft">{repair.happened}</p>
+                  <p className="mt-2 text-sm"><span className="font-medium">Next:</span> {repair.next}</p>
+                  <p className="mt-1 text-xs text-ink-faint">{retryWords(repair)}</p>
+                  <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                    {items.slice(0, 12).map((i) => (
+                      <li key={`${i.runId}-${i.caseId}`}>
+                        <Link href={`/runs/${i.runId}?lens=noverdict`} className="underline underline-offset-2">
+                          {i.caseId}
+                        </Link>
+                        <span className="text-ink-faint"> · {i.agent}</span>
+                      </li>
+                    ))}
+                    {items.length > 12 && <li className="text-ink-faint">and {items.length - 12} more</li>}
+                  </ul>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        )}
       </Reveal>
 
       <Reveal className="mt-10">

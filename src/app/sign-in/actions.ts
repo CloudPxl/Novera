@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { sessionClient } from "@/lib/supabase/server.ts";
-import { rateLimit } from "@/lib/support/rate-limit.ts";
+import { COUNT_UNAVAILABLE_MESSAGE, rateLimit } from "@/lib/support/rate-limit.ts";
 import { fingerprint, refusalMessage, type Limit } from "@/lib/support/throttle.ts";
 import { callerAddress } from "@/lib/support/rate-limit.ts";
 
@@ -63,7 +63,9 @@ async function signIn(_prev: AuthState, form: FormData): Promise<AuthState> {
   if (typeof credentials === "string") return { error: credentials };
 
   const who = fingerprint(["signin", credentials.email, await callerAddress()]);
-  const limit = await rateLimit(who, SIGN_IN_LIMIT, { peek: true });
+  // Allowed when the count cannot be read: refusing would lock everyone out, the operator
+  // included, and Supabase Auth limits password attempts per address on its own.
+  const limit = await rateLimit(who, SIGN_IN_LIMIT, { peek: true, onError: "allow" });
   if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
 
   const { error } = await (await sessionClient()).auth.signInWithPassword(credentials);
@@ -73,7 +75,7 @@ async function signIn(_prev: AuthState, form: FormData): Promise<AuthState> {
   if (error) {
     // Counted only on failure: a person who mistypes once and then signs in has spent
     // nothing, and the limit is about guessing rather than about signing in.
-    await rateLimit(who, SIGN_IN_LIMIT);
+    await rateLimit(who, SIGN_IN_LIMIT, { onError: "allow" });
     return { error: "That email address and password do not match an account." };
   }
 
@@ -124,7 +126,10 @@ async function requestPasswordReset(_prev: AuthState, form: FormData): Promise<A
   const email = String(form.get("email") ?? "").trim();
   if (!email) return { error: "Enter the email address you signed up with." };
 
-  const limit = await rateLimit(fingerprint(["reset", email, await callerAddress()]), RESET_LIMIT);
+  // Refused when the count cannot be read: each request sends an email to whatever
+  // address was typed, and an uncounted form is a way to send a great many.
+  const limit = await rateLimit(fingerprint(["reset", email, await callerAddress()]), RESET_LIMIT, { onError: "refuse" });
+  if (!limit.counted) return { error: COUNT_UNAVAILABLE_MESSAGE };
   if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
 
   const origin = (await headers()).get("origin") ?? process.env.NEXT_PUBLIC_SITE_URL ?? "";

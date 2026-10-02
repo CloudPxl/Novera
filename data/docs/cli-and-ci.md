@@ -10,7 +10,7 @@ A pass/fail answer would hide the difference between an agent that failed and a 
 
 - `0` — every scenario in the suite ran and passed.
 - `1` — at least one scenario failed. This outranks missing evidence: a failure is a finding whatever else is missing.
-- `2` — the evidence is incomplete: a scenario produced no result, did not run, the grade was withheld, or a copy could not be verified.
+- `2` — the evidence is incomplete: a scenario produced no result, did not run, the grade was withheld, or a copy could not be verified. On reports in format 13 or later (`novera.format` in the JSON), also when a scenario passed on one model's verdict because the second model it was put to could not be reached: Novera grades with two models so that no single model's reading decides, and a pass only one gave is not corroborated. Rerun the suite; with your own model key, connect a second model. Reports sealed earlier keep the code they always had.
 - `3` — configuration or authorisation: the link is wrong, the report was withdrawn, or its link expired.
 - `4` — infrastructure: the report could not be fetched.
 
@@ -56,7 +56,9 @@ With a workspace API key that can start runs (**Settings → API keys**, tick *C
     api="https://www.nover.space/api/v1"
     auth="Authorization: Bearer $NOVERA_API_KEY"
     body="{\"agent_id\":\"$NOVERA_AGENT_ID\",\"release_id\":\"$GITHUB_SHA\"}"
-    run=$(curl -fsS -X POST "$api/runs" -H "$auth" -H 'content-type: application/json' -d "$body" | jq -r .run.id) || exit 3
+    # One key per attempt of this job: a retried request returns the run it started, not a second one.
+    key="github-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+    run=$(curl -fsS --retry 3 --retry-all-errors -X POST "$api/runs" -H "$auth" -H "Idempotency-Key: $key" -H 'content-type: application/json' -d "$body" | jq -r .run.id) || exit 3
     for i in $(seq 1 120); do
       finished=$(curl -fsS -X POST "$api/runs/$run/execute" -H "$auth" | jq -r .done) || exit 4
       [ "$finished" = "true" ] && break
@@ -69,6 +71,8 @@ With a workspace API key that can start runs (**Settings → API keys**, tick *C
     jq -r '.ci.reason' novera.json
     exit "$(jq -r '.ci.code' novera.json)"
 ```
+
+The `Idempotency-Key` makes the retries safe: a request that timed out after the run started returns that same run instead of starting and paying for another. Re-running the job is a new attempt, so it starts a new run.
 
 Exit code `2` — evidence incomplete — fails the job exactly as a failed scenario does: a release does not go out because nothing was found wrong in a run that did not finish. The commit is recorded on the report as the release you declared, labelled as declared by you. To be told about runs rather than waiting for them, add a webhook (**Settings → Webhooks**; see [the API](/docs/api)).
 

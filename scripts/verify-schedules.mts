@@ -13,6 +13,7 @@
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { tickSecret } from "../src/lib/schedules/secret.ts";
+import { sslFor } from "./db-ssl.mts";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -37,7 +38,7 @@ if (real.length) {
 // The production clock watches this same database. Left running, it would claim these
 // throwaway schedules too — racing the local ticks, and driving the runs from a server
 // that cannot reach this machine. It is paused for the duration and restored after.
-const pgc = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+const pgc = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: sslFor(process.env.SUPABASE_DB_URL!) });
 await pgc.connect();
 const { rows: clock } = await pgc.query(
   "select jobid from cron.job where jobname = 'novera-schedule-tick' and active",

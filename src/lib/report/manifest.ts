@@ -225,8 +225,10 @@ export async function manifestForNewRun(args: {
   passThreshold?: number;
   runnerVersion?: string;
   declared?: Declared;
+  /** The id the run will have, when the caller chose it first (an Idempotency-Key claim). */
+  runId?: string;
 }): Promise<{ id: string; manifest: RunManifest | null; manifest_hash: string | null }> {
-  const id = randomUUID();
+  const id = args.runId ?? randomUUID();
 
   try {
     const [{ data: agent }, { data: policy }, { data: suite }] = await Promise.all([

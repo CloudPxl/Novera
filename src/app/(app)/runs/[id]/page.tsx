@@ -5,7 +5,11 @@ import { notFound } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth/session.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { rerunFrom } from "@/lib/workflow/actions.ts";
-import { compareRuns } from "@/lib/evidence/compare.ts";
+import { noVerdictRow, repairFor } from "@/lib/evidence/repair.ts";
+import { readinessOf, READINESS_LABEL } from "@/lib/report/readiness.ts";
+import type { ReportPayload } from "@/lib/report/payload.ts";
+import { ReadinessPanel } from "./readiness.tsx";
+import { causeOfMove, compareRuns, contextChanges, MOVE_SENTENCE, type MoveCause } from "@/lib/evidence/compare.ts";
 import { loadStability } from "@/lib/evidence/stability-history.ts";
 import { alignment, latestReviews, withFindingsApplied, type VerdictReview } from "@/lib/evidence/reviews.ts";
 import { ReviewVerdict, ReviewHistory, ReissueReport, type ReviewEntry } from "./review.tsx";
@@ -60,19 +64,19 @@ export default async function RunPage({
   const { data: run } = await db
     .from("runs")
     .select(
-      "id, status, agent_id, policy_id, suite_id, baseline_run_id, error, created_at, started_at, finished_at, pass_threshold, judge_model, schedule_id, api_key_id",
+      "id, status, agent_id, policy_id, suite_id, baseline_run_id, error, created_at, started_at, finished_at, pass_threshold, judge_model, schedule_id, api_key_id, manifest",
     )
     .eq("id", id)
     .maybeSingle();
   if (!run) notFound();
 
-  const [{ data: agent }, { data: policy }, { data: suite }, { data: reportRows }, { data: schedule }, { data: apiKey }] = await Promise.all([
+  const [{ data: agent }, { data: policy }, { data: suite }, { data: reportRows }, { data: schedule }, { data: apiKey }, { data: newestPolicy }] = await Promise.all([
     db.from("agents").select("name").eq("id", run.agent_id).maybeSingle(),
     db.from("policies").select("version").eq("id", run.policy_id).maybeSingle(),
     db.from("suites").select("name, version, cases").eq("id", run.suite_id).maybeSingle(),
     // Newest first: a run can carry a reissue that discloses human review, and a
     // single-row read of more than one report returns nothing at all.
-    db.from("reports").select("token, created_at, revoked_at, disclosed:payload->human_review->>as_of").eq("run_id", id)
+    db.from("reports").select("token, created_at, revoked_at, expires_at, content_hash, payload, disclosed:payload->human_review->>as_of").eq("run_id", id)
       .order("created_at", { ascending: false }),
     run.schedule_id
       ? db.from("run_schedules").select("cadence, hour_utc, weekday").eq("id", run.schedule_id).maybeSingle()
@@ -80,6 +84,8 @@ export default async function RunPage({
     run.api_key_id
       ? db.from("api_keys").select("name").eq("id", run.api_key_id).maybeSingle()
       : Promise.resolve({ data: null }),
+    // What a retest would run against now, so the button can name it.
+    db.from("policies").select("version").eq("agent_id", run.agent_id).order("version", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const startedBy = schedule
     ? `started by the schedule “${describeTiming({
@@ -155,6 +161,16 @@ export default async function RunPage({
   const undisclosedReviews = report && !report.revoked_at
     ? reviews.filter((r) => r.createdAt > (report.created_at as string)).length
     : 0;
+  // Whether the newest report is something to hand a client, from what is stored.
+  const readiness = report?.payload
+    ? readinessOf({
+        report: {
+          payload: report.payload as unknown as ReportPayload, content_hash: report.content_hash as string,
+          expires_at: report.expires_at as string, revoked_at: (report.revoked_at as string | null) ?? null,
+        },
+        undisclosedReviews,
+      })
+    : null;
   const applied = withFindingsApplied(
     rows.map((c) => ({ runCaseId: c.id as string, status: c.status as "pass" | "fail" | "error" })),
     currentReviews,
@@ -227,16 +243,26 @@ export default async function RunPage({
 
   let comparison: ReturnType<typeof compareRuns> | null = null;
   let baselinePolicyVersion: number | null = null;
+  let baselineManifest: Record<string, unknown> | null = null;
+  // The baseline's evidence per scenario, for saying why a verdict moved.
+  const baselineEvidence = new Map<string, { status: "pass" | "fail" | "error"; replySha: string | null; replied: boolean; runCaseId: string }>();
   if (settled && baselineRunId && rows.length) {
     const { data: before } = await db
-      .from("run_cases").select("case_id, status").eq("run_id", baselineRunId);
+      .from("run_cases").select("id, case_id, status, raw_sha256, raw_expired_at, response_text, transcript").eq("run_id", baselineRunId);
+    for (const c of before ?? []) {
+      baselineEvidence.set(c.case_id as string, {
+        status: c.status as "pass" | "fail" | "error", replySha: (c.raw_sha256 as string | null) ?? null, runCaseId: c.id as string,
+        replied: Boolean(c.response_text) || Boolean(c.raw_expired_at) || (Array.isArray(c.transcript) && c.transcript.some((t) => (t as { role?: string }).role === "agent")),
+      });
+    }
     if (before?.length) {
       comparison = compareRuns(
         before.map((c) => ({ caseId: c.case_id as string, status: c.status as "pass" | "fail" | "error" })),
         rows.map((c) => ({ caseId: c.case_id as string, status: c.status as "pass" | "fail" | "error" })),
       );
       const { data: beforeRun } = await db
-        .from("runs").select("policy_id").eq("id", baselineRunId).maybeSingle();
+        .from("runs").select("policy_id, manifest").eq("id", baselineRunId).maybeSingle();
+      baselineManifest = (beforeRun?.manifest as Record<string, unknown> | null) ?? null;
       const { data: beforePolicy } = beforeRun
         ? await db.from("policies").select("version").eq("id", beforeRun.policy_id).maybeSingle()
         : { data: null };
@@ -279,6 +305,41 @@ export default async function RunPage({
       },
     ]),
   );
+  // Why each moved scenario moved, and what else differed between the two runs.
+  let moves: Array<{ caseId: string; change: string; cause: MoveCause }> = [];
+  let otherChanges: string[] = [];
+  if (comparison) {
+    const { data: baselineObs } = baselineEvidence.size
+      ? await db.from("evidence_observations").select("run_case_id, status").in("run_case_id", [...baselineEvidence.values()].map((e) => e.runCaseId))
+      : { data: [] };
+    const beforeObs = new Map((baselineObs ?? []).map((o) => [o.run_case_id as string, o.status as string]));
+    const nowRow = new Map(rows.map((c) => [c.case_id as string, c]));
+    const moved: Array<[string, string]> = [
+      ...comparison.fixed.map((id) => [id, "fixed"] as [string, string]),
+      ...comparison.newFailures.map((id) => [id, "newly broken"] as [string, string]),
+      ...comparison.nowErrored.map((id) => [id, "no result this time"] as [string, string]),
+      ...comparison.errorResolved.filter((id) => !comparison!.fixed.includes(id)).map((id) => [id, "has a verdict again"] as [string, string]),
+    ];
+    moves = moved.flatMap(([caseId, change]) => {
+      const b = baselineEvidence.get(caseId);
+      const a = nowRow.get(caseId);
+      if (!b || !a) return [];
+      const cause = causeOfMove(
+        { status: b.status, replySha: b.replySha, replied: b.replied, observation: beforeObs.get(b.runCaseId) ?? null },
+        {
+          status: a.status as "pass" | "fail" | "error", replySha: (a.raw_sha256 as string | null) ?? null,
+          replied: Boolean(a.response_text) || Boolean(a.raw_expired_at) || (Array.isArray(a.transcript) && (a.transcript as Array<{ role?: string }>).some((t) => t.role === "agent")),
+          observation: observationByCase.get(a.id as string)?.status ?? null,
+        },
+      );
+      return [{ caseId, change, cause }];
+    });
+    otherChanges = contextChanges(
+      { policyVersion: baselinePolicyVersion, manifest: baselineManifest },
+      { policyVersion: (policy?.version as number | undefined) ?? null, manifest: (run.manifest as Record<string, unknown> | null) ?? null },
+    );
+  }
+
 
   // From the suite, so a scenario that never ran still counts as having asked for proof.
   const requiresEvidence = new Set(
@@ -336,6 +397,7 @@ export default async function RunPage({
     { agreed: 0, sameVendor: 0, settled: 0, unconfirmed: 0, unresolved: 0, rules: 0, readBack: 0 },
   );
 
+  const scenarioById = new Map(suiteCases.map((c) => [c.id as string, c]));
   const dutyRefsByCase = new Map(suiteCases.map((c) => [
     c.id as string,
     Array.isArray(c.duty_refs) ? (c.duty_refs as unknown[]).filter((d): d is string => typeof d === "string") : [],
@@ -388,10 +450,17 @@ export default async function RunPage({
     instability: stability.get(c.case_id as string) ?? null,
     settledBy: (c.settled_by as string | null) ?? null,
     ruleCount: ruleCountByCase.get(c.case_id as string) ?? 0,
+    // Why there is no verdict, and whether a retest could repeat something the agent did.
+    repair: repairFor(noVerdictRow(c, {
+      observationStatus: observationByCase.get(c.id as string)?.status ?? null,
+      scenario: scenarioById.get(c.case_id as string) ?? null,
+      toolCalls: normaliseTrajectory(c.tool_activity).filter((e) => e.type === "tool_call").length,
+    })),
   }));
 
   // The diagnosis controls are server-rendered per case and handed to the client
   // matrix as slots, so the server actions they submit to stay server actions.
+  const newestVersion = (newestPolicy?.version as number | undefined) ?? null;
   const diagnosis: Record<string, React.ReactNode> = {};
   for (const c of rows) {
     const forCase = proposalsByCase.get(c.id as string) ?? [];
@@ -401,6 +470,13 @@ export default async function RunPage({
     // Review is offered on passes too: a false pass is the verdict a person most needs
     // to be able to dispute. Retest stays on the ones that did not pass; diagnosis only
     // on failures — a scenario with no result has no failure for a model to explain.
+    // The newest approved change for this scenario carries the steps that test it, so the
+    // retest and the rerun appear where the decision was made, with this case and run.
+    const approvedLast = forCase.filter((p) => p.status === "approved")
+      .sort((a, b) => (b.decidedAt ?? "").localeCompare(a.decidedAt ?? ""))[0];
+    const retestedSince = approvedLast?.resultingPolicyVersion
+      ? (retestsByCase.get(c.id as string) ?? []).find((r) => (r.policyVersion ?? 0) >= approvedLast.resultingPolicyVersion!)
+      : undefined;
     diagnosis[c.id as string] = (
       <>
         {c.status !== "pass" && (
@@ -415,9 +491,30 @@ export default async function RunPage({
               <DiagnoseButton runCaseId={c.id as string} hasProposal={forCase.length > 0} />
             )}
             {forCase.map((p) => (
-              <ProposalCard key={p.id} proposal={p} />
+              <ProposalCard
+                key={p.id}
+                proposal={p}
+                next={p.id === approvedLast?.id ? (
+                  <>
+                    <RetestButton runCaseId={c.id as string} newestPolicyVersion={newestVersion} />
+                    {retestedSince && (
+                      <p className="mt-2 text-xs text-ink-soft">
+                        Retested against policy v{retestedSince.policyVersion}:{" "}
+                        {retestedSince.status === "pass" ? "it now passes." : retestedSince.status === "fail" ? "it still fails." : "no verdict."}
+                      </p>
+                    )}
+                    <form action={rerunFrom} className="mt-3 flex flex-wrap items-center gap-3">
+                      <input type="hidden" name="runId" value={run.id} />
+                      <SubmitButton variant="secondary" size="sm" pendingLabel="Starting…">
+                        Rerun the suite and compare with this run
+                      </SubmitButton>
+                      <span className="text-xs text-ink-faint">A new run of every scenario under the newest policy; it uses one run.</span>
+                    </form>
+                  </>
+                ) : undefined}
+              />
             ))}
-            <RetestButton runCaseId={c.id as string} />
+            {!approvedLast && <RetestButton runCaseId={c.id as string} newestPolicyVersion={newestVersion} />}
             <RetestHistory retests={retestsByCase.get(c.id as string) ?? []} />
           </>
         )}
@@ -538,6 +635,10 @@ export default async function RunPage({
               ))}
               .
             </p>
+          )}
+
+          {readiness && report?.token && (
+            <ReadinessPanel state={readiness.state} label={READINESS_LABEL[readiness.state]} checks={readiness.checks} token={report.token as string} />
           )}
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -685,11 +786,16 @@ export default async function RunPage({
                 {comparison ? (
                   <>
                     <p className="mt-1 type-body text-ink-soft">
-                      Policy v{baselinePolicyVersion ?? "?"} → v{policy?.version}.{" "}
                       {comparison.comparable
                         ? "Both runs covered the same scenarios."
-                        : "The two runs did not cover exactly the same scenarios, so this comparison is partial."}
+                        : "Not fully comparable: the two runs did not cover exactly the same scenarios, so this comparison is partial."}
+                      {otherChanges.length === 0 && ` Same policy (v${policy?.version ?? "?"}), graders, rubric and agent configuration.`}
                     </p>
+                    {otherChanges.length > 0 && (
+                      <ul className="mt-1 space-y-0.5 text-sm text-ink-soft">
+                        {otherChanges.map((c) => <li key={c}>{c}</li>)}
+                      </ul>
+                    )}
 
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <ChangeGroup title="Fixed" tone={CHANGE_TONES.fixed} ids={comparison.fixed}
@@ -725,6 +831,23 @@ export default async function RunPage({
                               </li>
                             );
                           })}
+                        </ul>
+                      </div>
+                    )}
+
+                    {moves.length > 0 && (
+                      <div className="mt-4">
+                        <h3 className="text-sm font-medium">Why each one moved</h3>
+                        <p className="mt-0.5 text-xs text-ink-faint">
+                          From the fingerprints of the agent&apos;s replies in both runs: a verdict that moved on an identical reply
+                          is the graders, never an agent improvement or regression.
+                        </p>
+                        <ul className="mt-2 space-y-1 text-sm">
+                          {moves.map((m) => (
+                            <li key={m.caseId}>
+                              <span className="type-mono">{m.caseId}</span> <span className="text-ink-faint">{m.change}</span> — {MOVE_SENTENCE[m.cause]}
+                            </li>
+                          ))}
                         </ul>
                       </div>
                     )}

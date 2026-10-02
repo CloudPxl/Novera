@@ -39,7 +39,10 @@
     "cli:pack": "npm run cli:build && npm pack ./packages/cli --dry-run",
     "verify:slices": "node --conditions=react-server --env-file=.env.local scripts/verify-slices.mts",
     "measure:throughput": "node --conditions=react-server --env-file=.env.local scripts/measure-throughput.mts",
-    "verify:webhooks": "node --conditions=react-server --env-file=.env.local scripts/verify-webhooks.mts"
+    "verify:webhooks": "node --conditions=react-server --env-file=.env.local scripts/verify-webhooks.mts",
+    "verify:leases": "node --conditions=react-server --env-file=.env.local scripts/verify-leases.mts",
+    "verify:cron": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/verify-cron.mts",
+    "verify:free": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/verify-free.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
@@ -50,6 +53,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",
+    "undici": "^7.30.0",
     "yaml": "2.9.1"
   },
   "devDependencies": {

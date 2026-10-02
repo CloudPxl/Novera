@@ -8,12 +8,14 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
+import { sslFor } from "./db-ssl.mts";
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
-const sql = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+const sql = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: sslFor(process.env.SUPABASE_DB_URL!) });
 await sql.connect();
 
 let failures = 0;
+const unchecked: string[] = [];
 function report(ok: boolean, label: string, detail = "") {
   console.log(`${ok ? "  ok  " : " FAIL "} ${label}${detail ? ` — ${detail}` : ""}`);
   if (!ok) failures++;
@@ -111,8 +113,14 @@ try {
   const { error: badDays } = await db.from("workspaces").update({ raw_evidence_days: 7 }).eq("id", a.ws);
   report(!!badDays, "a period outside the offered choices is refused", badDays?.message.slice(0, 60) ?? "SUCCEEDED");
 
-  const { rows: job } = await sql.query("select schedule, active from cron.job where jobname = 'novera-raw-evidence-expiry'");
-  report(job.length === 1 && job[0].active, "the daily pass is scheduled", job[0] ? `${job[0].schedule}` : "missing");
+  // The schedule is pg_cron's; a local stack usually has no pg_cron. Said, and not passed.
+  const { rows: cron } = await sql.query("select 1 from pg_extension where extname = 'pg_cron'");
+  const scheduled = async (name: string, label: string) => {
+    if (!cron.length) { unchecked.push(label); return; }
+    const { rows: job } = await sql.query("select schedule, active from cron.job where jobname = $1", [name]);
+    report(job.length === 1 && job[0].active, label, job[0] ? `${job[0].schedule}` : "missing");
+  };
+  await scheduled("novera-raw-evidence-expiry", "the daily pass is scheduled");
 
   // --- support messages and probe receipts: 90 days (0038) ---------------------------
   const tag = `verify-retention-${Date.now()}`;
@@ -143,8 +151,7 @@ try {
     && probesAfter![0].status_code === 200 && probesAfter![0].latency_ms === 120,
     "a 95-day-old probe loses its reply and keeps when, the status and the latency");
   report(probesAfter![1].response_body === "recent reply" && !probesAfter![1].content_expired_at, "a recent probe is untouched");
-  const { rows: job2 } = await sql.query("select schedule, active from cron.job where jobname = 'novera-inbound-probe-expiry'");
-  report(job2.length === 1 && job2[0].active, "the 90-day pass is scheduled", job2[0]?.schedule ?? "missing");
+  await scheduled("novera-inbound-probe-expiry", "the 90-day pass is scheduled");
   await sql.query("select erase_inbound_request($1)", [liveReq!.id]);
 
   const { error: eraseErr } = await db.rpc("erase_workspace", { target: a.ws });
@@ -158,5 +165,10 @@ try {
   await sql.end();
 }
 
+if (unchecked.length && !failures) {
+  console.log(`\npg_cron is not installed here, so these were not checked: ${unchecked.join("; ")}.`);
+  console.log("Everything else passed. Run `npm run verify:cron` against the deployed database for the schedules.");
+  process.exit(2);
+}
 console.log(failures ? `\n${failures} check(s) failed.` : "\nAll retention checks passed.");
 process.exit(failures ? 1 : 0);

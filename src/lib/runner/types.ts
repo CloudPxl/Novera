@@ -158,9 +158,20 @@ export interface RunCaseRecord extends CaseOutcome {
  * storage bug cannot quietly change a verdict.
  */
 export interface RunStore {
-  saveCase(record: RunCaseRecord): Promise<void>;
+  /**
+   * `already_recorded` when the scenario was saved for this run before (by the slice that
+   * took the run over, say): not an error, and never a second row. `not_holder` when this
+   * slice no longer holds the run's lease: nothing was saved, and it must stop.
+   */
+  saveCase(record: RunCaseRecord): Promise<void | "saved" | "already_recorded" | "not_holder">;
   markRunning(runId: string): Promise<void>;
-  finishRun(runId: string, outcome: { status: "completed" | "aborted"; error?: string }): Promise<void>;
+  /** False when nothing was written because this slice no longer holds the run. */
+  finishRun(runId: string, outcome: { status: "completed" | "aborted"; error?: string }): Promise<void | boolean>;
   /** Whether someone stopped the run since this slice began. Checked before each case. */
   isStopped?(runId: string): Promise<boolean>;
+  /**
+   * Whether this slice still holds the run's lease (0047). Checked before each scenario is
+   * sent: a slice that lost it sends nothing more, because the slice that took over will.
+   */
+  holdsRun?(runId: string): Promise<boolean>;
 }

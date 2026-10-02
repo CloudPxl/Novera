@@ -26,8 +26,10 @@ export async function startRunExecution(args: {
   runId: string;
   /** How long this invocation may spend before handing back a resumable result. */
   budgetMs?: number;
+  /** The token this slice's claim wrote (0047); fences every write the slice makes. */
+  leaseToken?: string;
 }): Promise<RunSummary> {
-  const { client, workspaceId, runId, budgetMs } = args;
+  const { client, workspaceId, runId, budgetMs, leaseToken } = args;
   const deadline = budgetMs === undefined ? undefined : Date.now() + budgetMs;
 
   // Separate reads rather than one embedded select: without generated database
@@ -79,7 +81,7 @@ export async function startRunExecution(args: {
     agent: adapter,
     policy: policy.body,
     judge,
-    store: supabaseRunStore(client, workspaceId),
+    store: supabaseRunStore(client, workspaceId, { leaseToken }),
     skipCaseIds: (existing ?? []).map((c) => c.case_id as string),
     // Null for every agent without a read-back endpoint, which is the normal case:
     // a scenario expecting a change of state then reports it as unverified rather
@@ -159,7 +161,7 @@ export async function startRunExecution(args: {
  * once a run can be executed across more than one invocation it is also the only way
  * to get the right answer.
  */
-async function summaryFromStoredRows(args: {
+export async function summaryFromStoredRows(args: {
   client: SupabaseClient;
   runId: string;
   suite: Suite;

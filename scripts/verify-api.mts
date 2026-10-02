@@ -80,8 +80,15 @@ try {
   const detail = await call(`/api/v1/runs/${a.run}`, minted.key);
   report(detail.status === 200 && detail.body.run.cases.length === 2 && !("response" in detail.body.run.cases[0]),
     "a run's scenarios are listed without the agent's words unless asked");
-  const withResponses = await call(`/api/v1/runs/${a.run}?include=responses`, minted.key);
-  report(withResponses.body.run?.cases?.[0]?.response === "reply a", "and with them when asked");
+  const withoutScope = await call(`/api/v1/runs/${a.run}?include=responses`, minted.key);
+  report(withoutScope.status === 403 && /responses scope/.test(String(withoutScope.body.error)),
+    "a key without the responses scope is refused the agent's words (0052)", `${withoutScope.status}`);
+  const replyKey = mintKey();
+  await db.from("api_keys").insert({ workspace_id: a.ws, name: "replies", prefix: replyKey.prefix, key_hash: replyKey.hash, scopes: ["read", "responses"], created_by: a.user.id });
+  const withResponses = await call(`/api/v1/runs/${a.run}?include=responses`, replyKey.key);
+  report(withResponses.body.run?.cases?.[0]?.response === "reply a", "and a key with it gets them when it asks");
+  const { error: responsesAlone } = await db.from("api_keys").insert({ workspace_id: a.ws, name: "r", prefix: "nvk_r", key_hash: "rr", scopes: ["responses"], created_by: a.user.id });
+  report(Boolean(responsesAlone), "a key cannot have responses without read", responsesAlone?.message.slice(0, 60));
 
   // Row-level security through a real session: members read keys, never their hash.
   const member = createClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
@@ -183,6 +190,127 @@ try {
   report(!revokeErr && afterRevoke.status === 401, "a revoked key is refused on the very next request", String(afterRevoke.status));
   const { error: unrevokeErr } = await db.from("api_keys").update({ revoked_at: null, revoked_by: null }).eq("id", keyRow!.id);
   report(!!unrevokeErr, "and stays revoked", unrevokeErr?.message.slice(0, 60) ?? "SUCCEEDED");
+
+  // ------------------------------------------------------------------ raw evidence (privacy review; C9)
+  // A caller that did not ask for conversations gets none of their words, even quoted by a
+  // grading model; a caller that asks gets them exactly, and the read is recorded (0050).
+  console.log("\nRaw evidence");
+  {
+    const w = await makeWorkspace("raw");
+    const other = await makeWorkspace("raw-other");
+    try {
+      const k = mintKey();
+      const { data: keyRow } = await db.from("api_keys").insert({ workspace_id: w.ws, name: "raw", prefix: k.prefix, key_hash: k.hash, scopes: ["read", "responses"], created_by: w.user.id }).select("id").single();
+      const EMAIL = "quoted.person@example.test";
+      const { data: pol } = await db.from("policies").select("id").eq("agent_id", w.agent).single();
+      const { data: suite } = await db.from("suites").select("id").is("workspace_id", null).limit(1).single();
+      const { data: run } = await db.from("runs").insert({ workspace_id: w.ws, agent_id: w.agent, policy_id: pol!.id, suite_id: suite!.id, status: "running" }).select("id").single();
+      await db.from("run_cases").insert({ workspace_id: w.ws, run_id: run!.id, case_id: "T01", category: "c", obligation: "privacy", severity: "high",
+        input: "hi", expected: "x", assertions: ["a"], response_text: `Your email is ${EMAIL}.`, status: "fail", failed_assertions: ["a"],
+        rationale: `The agent disclosed ${EMAIL} without checking identity.`, judge_model: "verify/judge", judge_agreement: "agreed", settled_by: "models" });
+      await db.from("runs").update({ status: "completed" }).eq("id", run!.id);
+      const reads = async () => (await db.from("raw_evidence_reads").select("api_key_id, via").eq("run_id", run!.id)).data ?? [];
+
+      const plain = await call(`/api/v1/runs/${run!.id}`, k.key);
+      const plainText = JSON.stringify(plain.body);
+      report(plain.status === 200 && !plainText.includes(EMAIL) && plainText.includes("[EMAIL_1]") && (await reads()).length === 0,
+        "without include=responses, personal data a grader quoted is a placeholder, and nothing is logged", plainText.includes(EMAIL) ? "the address is in the answer" : `${(await reads()).length} read(s) logged`);
+      const raw = await call(`/api/v1/runs/${run!.id}?include=responses`, k.key);
+      const rawText = JSON.stringify(raw.body);
+      const logged = await reads();
+      report(raw.status === 200 && rawText.includes(EMAIL) && logged.length === 1 && logged[0].api_key_id === keyRow!.id && logged[0].via === "rest",
+        "with include=responses the evidence is exact, and the read is recorded with its key", `${rawText.includes(EMAIL) ? "exact" : "REDACTED"}; ${JSON.stringify(logged)}`);
+
+      const member = createClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
+      await member.auth.signInWithPassword({ email: w.user.email!, password });
+      const { data: mine } = await member.from("raw_evidence_reads").select("id").eq("run_id", run!.id);
+      const outsider = createClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
+      await outsider.auth.signInWithPassword({ email: other.user.email!, password });
+      const { data: theirs } = await outsider.from("raw_evidence_reads").select("id").eq("run_id", run!.id);
+      const { error: forged } = await member.from("raw_evidence_reads").insert({ workspace_id: w.ws, run_id: run!.id, api_key_id: keyRow!.id, via: "rest" });
+      report(mine?.length === 1 && (theirs ?? []).length === 0 && Boolean(forged),
+        "members see who read their raw evidence; another workspace sees nothing; no member can write the log", `${mine?.length} / ${(theirs ?? []).length}; write ${forged ? "refused" : "ACCEPTED"}`);
+    } finally {
+      for (const x of [w, other]) { await db.rpc("erase_workspace", { target: x.ws }); await db.auth.admin.deleteUser(x.user.id); }
+    }
+  }
+
+  // ------------------------------------------------------------------ starting a run, retried (G1, C7)
+  // A pipeline that times out and retries must not start, and spend, a second run; and the
+  // trial's three runs are three however many requests arrive at once. makeWorkspace has
+  // already used one of each workspace's three.
+  console.log("\nStarting a run, retried");
+  const made: Array<{ ws: string; user: { id: string } }> = [];
+  try {
+    const keyed = async (tag: string) => {
+      const w = await makeWorkspace(tag);
+      made.push(w);
+      const k = mintKey();
+      await db.from("api_keys").insert({ workspace_id: w.ws, name: tag, prefix: k.prefix, key_hash: k.hash, scopes: ["read", "run"], created_by: w.user.id });
+      const start = (body: Record<string, unknown>, idempotency?: string) => fetch(`${base}/api/v1/runs`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${k.key}`, "content-type": "application/json", ...(idempotency ? { "idempotency-key": idempotency } : {}) },
+        body: JSON.stringify(body),
+      }).then(async (r) => ({ status: r.status, body: (await r.json().catch(() => ({}))) as { run?: { id: string }; replayed?: boolean; error?: string } }));
+      return { ...w, start };
+    };
+    const runsIn = async (ws: string) => (await db.from("runs").select("id", { count: "exact", head: true }).eq("workspace_id", ws)).count ?? 0;
+    const tally = (rs: Array<{ status: number }>) => JSON.stringify(rs.reduce<Record<number, number>>((m, r) => ({ ...m, [r.status]: (m[r.status] ?? 0) + 1 }), {}));
+
+    const c = await keyed("idem");
+    const request = { agent_id: c.agent };
+    const first = await c.start(request, "release-2026-10-01");
+    const replay = await c.start(request, "release-2026-10-01");
+    report(first.status === 201 && replay.status === 200 && replay.body.run?.id === first.body.run?.id && replay.body.replayed === true && await runsIn(c.ws) === 2,
+      "the same request with the same Idempotency-Key is answered with the first run, not a second", `${first.status} then ${replay.status}; ${await runsIn(c.ws)} run(s)`);
+    const changed = await c.start({ ...request, release_id: "something else" }, "release-2026-10-01");
+    report(changed.status === 409 && await runsIn(c.ws) === 2, "the same key with a different request is refused, not run", `${changed.status}: ${String(changed.body.error).slice(0, 70)}`);
+    const burst = await Promise.all(Array.from({ length: 20 }, () => c.start(request, "release-2026-10-02")));
+    const ids = new Set(burst.filter((r) => r.status < 300).map((r) => r.body.run?.id));
+    report(ids.size === 1 && burst.every((r) => r.status === 200 || r.status === 201) && await runsIn(c.ws) === 3,
+      "twenty identical requests at once with one key start one run, and all twenty are told which", `${tally(burst)}; ${await runsIn(c.ws)} run(s)`);
+    const fourth = await c.start(request, "release-2026-10-03");
+    const { count: claims, error: claimsError } = await db.from("run_requests").select("workspace_id", { count: "exact", head: true }).eq("workspace_id", c.ws).eq("idempotency_key", "release-2026-10-03");
+    report(fourth.status === 409 && await runsIn(c.ws) === 3 && !claimsError && claims === 0,
+      "a new key does not get past the trial's three runs, and a refused start leaves no claim behind", `${fourth.status}: ${String(fourth.body.error ?? claimsError?.message).slice(0, 60)}`);
+
+    const d = await keyed("idem-other");
+    const elsewhere = await d.start({ agent_id: d.agent }, "release-2026-10-01");
+    report(elsewhere.status === 201 && elsewhere.body.run?.id !== first.body.run?.id, "a key is scoped to its workspace: another workspace using the same key starts its own run", String(elsewhere.status));
+    const long = await d.start({ agent_id: d.agent }, "x".repeat(300));
+    report(long.status === 400, "an Idempotency-Key over 200 characters is refused", String(long.status));
+
+    const e = await keyed("cap");
+    const rush = await Promise.all(Array.from({ length: 20 }, () => e.start({ agent_id: e.agent })));
+    report(await runsIn(e.ws) === 3 && rush.filter((r) => r.status === 201).length === 2,
+      "twenty starts at once on a trial with two runs left start exactly two", `${tally(rush)}; ${await runsIn(e.ws)} run(s) in all`);
+  } finally {
+    for (const w of made) {
+      await db.rpc("erase_workspace", { target: w.ws });
+      await db.auth.admin.deleteUser(w.user.id);
+    }
+  }
+
+  // ------------------------------------------------------------------ G5: a pass one model gave
+  console.log("\nA pass one model gave alone (G5)");
+  {
+    const { sealThrowawayReport } = await import("./verify-fixtures.mts");
+    const lone = await sealThrowawayReport(db, "g5", { lonePass: true });
+    try {
+      const k = mintKey();
+      await db.from("api_keys").insert({ workspace_id: lone.workspaceId, name: "g5", prefix: k.prefix, key_hash: k.hash, scopes: ["read"], created_by: (await db.from("workspaces").select("owner_id").eq("id", lone.workspaceId).single()).data!.owner_id });
+      const exported = (await (await fetch(`${base}/api/reports/${lone.token}/export?format=json`)).json()) as { payload?: { novera: { format: number } }; report?: { novera: { format: number } }; ci: { code: number; reason: string } };
+      const viaApi = (await call(`/api/v1/runs/${lone.runId}`, k.key)).body as { run: { counts: { passed: number; failed: number; no_result: number }; outcome: string; outcome_reason: string } };
+      report(viaApi.run.counts.passed === 2 && viaApi.run.counts.failed === 0 && viaApi.run.counts.no_result === 0,
+        "the counts alone read as all passed", JSON.stringify(viaApi.run.counts));
+      report(exported.ci.code === 2 && /one model's verdict/.test(exported.ci.reason),
+        "the sealed report's CI code is 2, evidence incomplete, and says why", `${exported.ci.code}: ${exported.ci.reason}`);
+      report(viaApi.run.outcome === "incomplete" && viaApi.run.outcome_reason === exported.ci.reason,
+        "the API's outcome agrees: incomplete, with the same reason", `${viaApi.run.outcome}: ${viaApi.run.outcome_reason}`);
+    } finally {
+      await lone.erase();
+    }
+  }
 
   const { error: eraseErr } = await db.rpc("erase_workspace", { target: a.ws });
   const { count } = await db.from("api_keys").select("*", { count: "exact", head: true }).eq("workspace_id", a.ws);

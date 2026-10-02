@@ -12,7 +12,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 export const KEY_PREFIX = "nvk_";
 const KEY_PATTERN = /^nvk_[A-Za-z0-9_-]{43}$/;
 
-export const SCOPES = ["read", "run", "write"] as const;
+export const SCOPES = ["read", "run", "write", "responses"] as const;
 export type Scope = (typeof SCOPES)[number];
 
 function secret(raw = process.env.NOVERA_ENCRYPTION_KEY): string {

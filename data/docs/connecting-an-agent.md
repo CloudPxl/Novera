@@ -8,7 +8,7 @@ If your agent also receives data *about* a conversation — account fields, a pr
 
 You can also give Novera a read-only endpoint in your own systems. A scenario that expects something to change then says what must be true there, and Novera checks it independently of what your agent claims. It is GET-only by construction, a scenario cannot point it anywhere but the host you configured, the credential is separate from your agent's, and the response body is never stored.
 
-Your agent has 30 seconds to answer each message — less if you set a shorter timeout. A reply that takes longer is recorded as no answer for that scenario, never as a pass. Novera only calls addresses on the public internet: an endpoint whose name resolves to a private or internal address is refused, and so is a redirect, which is reported rather than followed. The same holds for the read-only endpoint.
+Your agent has 30 seconds to answer each message — less if you set a shorter timeout — and that includes the whole reply arriving, not only its first byte. A reply that takes longer is recorded as no answer for that scenario, never as a pass. Novera reads at most 256 KB of a reply; a longer one is not read, and that scenario is recorded as no answer with the reason, while the rest of the run carries on. The read-only endpoint has the same 256 KB limit, and an answer past it counts as unavailable. Novera only calls addresses on the public internet: an endpoint whose name resolves to a private or internal address is refused, and so is a redirect, which is reported rather than followed. The same holds for the read-only endpoint.
 
 If your endpoint needs an auth header, you name the header and paste the value. The value is encrypted before storage and only ever decrypted on the server.
 

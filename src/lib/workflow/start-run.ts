@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { plannedRoutes, workspaceEntitlement } from "../auth/entitlement.ts";
+import { plannedRoutes, TRIAL_EXHAUSTED, workspaceEntitlement } from "../auth/entitlement.ts";
 import { manifestForNewRun } from "../report/manifest.ts";
 import { startRunExecution } from "./execute-run.ts";
 import { notifyRunFinished } from "../webhooks/deliver.ts";
@@ -38,6 +38,8 @@ export async function startRun(args: {
    * with whatever completed last. Must be this agent's, on this suite, in this workspace.
    */
   baselineRunId?: string | null;
+  /** The id to create the run with, chosen first by an Idempotency-Key claim. */
+  runId?: string;
 }): Promise<{ id: string }> {
   const { client, workspaceId, agentId } = args;
 
@@ -86,6 +88,7 @@ export async function startRun(args: {
     client, agentId, policyId: policy.id, suiteId: suite.id,
     judgeSource: entitlement.judgeSource, routes: plannedRoutes(entitlement),
     declared: args.customerDeclared,
+    runId: args.runId,
   });
 
   const { data: run, error } = await client
@@ -101,6 +104,9 @@ export async function startRun(args: {
       manifest: declared.manifest, manifest_hash: declared.manifest_hash,
     })
     .select("id").single();
+  // The database counts the trial under a lock (0049): of several starts at once, the ones
+  // past the third are refused here even though each passed the check above.
+  if (error && /trial_exhausted/.test(error.message)) throw new RunRefusal(TRIAL_EXHAUSTED);
   if (error || !run) throw new Error(`Could not start the run: ${error?.message ?? "no row returned"}`);
   return { id: run.id as string };
 }
@@ -163,13 +169,17 @@ export async function advanceRun(args: {
 
   // Take the lease in one statement, so of two callers at the same moment exactly one
   // gets it — and, for a run on the shared trial keys, only while a grading slot is
-  // free (0041). Reading the lease and then writing it let both through.
+  // free (0041). Reading the lease and then writing it let both through. The claim names
+  // this slice with a token (0047); every write the slice makes carries it, so a slice
+  // that outlived its lease can no longer send, save, release or abort.
   const now = new Date();
-  const { data: claim, error: claimError } = await client.rpc("claim_run_slice", {
+  const { data: claimed, error: claimError } = await client.rpc("claim_run_slice_fenced", {
     target: runId, ws: workspaceId, lease_ms: LEASE_MS, trial_slots: TRIAL_GRADING_SLOTS,
   });
   if (claimError) throw new Error(`Could not claim the run: ${claimError.message}`);
-  if (claim !== "claimed") {
+  const claim = (claimed as { outcome?: string } | null)?.outcome;
+  const leaseToken = (claimed as { lease_token?: string } | null)?.lease_token;
+  if (claim !== "claimed" || !leaseToken) {
     const { data: after } = await client.from("runs").select("status").eq("id", runId).eq("workspace_id", workspaceId).maybeSingle();
     const status = (after?.status as string | undefined) ?? "running";
     return {
@@ -185,9 +195,11 @@ export async function advanceRun(args: {
     .eq("id", runId).eq("workspace_id", workspaceId).is("started_at", null);
 
   try {
-    const summary = await startRunExecution({ client, workspaceId, runId, budgetMs });
-    // Handing back: the next slice may start now rather than when the lease runs out.
-    await client.from("runs").update({ lease_until: null }).eq("id", runId).eq("workspace_id", workspaceId);
+    const summary = await startRunExecution({ client, workspaceId, runId, budgetMs, leaseToken });
+    // Handing back: the next slice may start now rather than when the lease runs out —
+    // this slice's lease only, never one another slice has since taken.
+    await client.from("runs").update({ lease_until: null, lease_token: null })
+      .eq("id", runId).eq("workspace_id", workspaceId).eq("lease_token", leaseToken);
     if (summary.status !== "incomplete") {
       // Finished (or stopped): tell the workspace's webhooks, briefly, within this call.
       await notifyRunFinished(client, workspaceId, runId, Date.now() + 8_000);
@@ -203,8 +215,24 @@ export async function advanceRun(args: {
     };
   } catch (thrown) {
     const message = thrown instanceof Error ? thrown.message : String(thrown);
-    await client.from("runs").update({ status: "aborted", error: message, finished_at: new Date().toISOString(), lease_until: null })
-      .eq("id", runId).eq("workspace_id", workspaceId);
-    return { status: "aborted", started: true, done: true, error: message };
+    if (await abortHeldRun(client, workspaceId, runId, leaseToken, message)) {
+      return { status: "aborted", started: true, done: true, error: message };
+    }
+    // This slice no longer held the run: its failure is not the run's. The slice that
+    // took it over carries on, so the caller just calls again.
+    return { status: "running", started: true, done: false, error: message };
   }
+}
+
+/**
+ * Ends a run because the slice holding it failed outside any one scenario. Only that
+ * slice can: true when it still held the lease and the run was ended, false when another
+ * slice had taken it over (or it was already over) and nothing changed.
+ */
+export async function abortHeldRun(client: SupabaseClient, workspaceId: string, runId: string, leaseToken: string, message: string): Promise<boolean> {
+  const { data } = await client.from("runs")
+    .update({ status: "aborted", error: message, finished_at: new Date().toISOString(), lease_until: null, lease_token: null })
+    .eq("id", runId).eq("workspace_id", workspaceId).eq("lease_token", leaseToken)
+    .in("status", ["queued", "running"]).select("id");
+  return (data ?? []).length === 1;
 }

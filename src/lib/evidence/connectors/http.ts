@@ -1,9 +1,13 @@
 import { runChecks, describeFailures, type DeterministicCheck } from "../../judge/checks.ts";
 import { redactCredentials } from "../../providers/types.ts";
-import { assertPublicUrl } from "../../net/public-url.ts";
+import { assertPublicUrl, publicOnlyDispatcher, refusedAddress } from "../../net/public-url.ts";
+import { BodyTooLarge, discardBody, formatLimit, readTextLimited } from "../../net/read-body.ts";
 import type {
   ConnectorMode, ValidationResult, VerificationConnector, VerificationInput, VerificationObservation,
 } from "./types.ts";
+
+/** The most of a read-back answer Novera reads; it is parsed for one value and never stored. */
+export const MAX_READBACK_BYTES = 256 * 1024;
 
 /**
  * A read-only HTTP endpoint the customer already has: an order lookup, a status
@@ -65,17 +69,25 @@ export function httpVerificationConnector(
       // Never followed: a redirect would carry the read-back — and its credential —
       // outside the endpoint the customer configured, which this connector promises not
       // to leave.
-      const response = await fetch(url, { method: "GET", headers, signal: controller.signal, redirect: "manual" });
-      const text = await response.text();
+      const response = await fetch(url, { method: "GET", headers, signal: controller.signal, redirect: "manual", dispatcher: publicOnlyDispatcher() } as RequestInit);
       if (response.status >= 300 && response.status < 400) {
+        await discardBody(response);
         return { ok: false, why: `The verification endpoint answered ${response.status} (a redirect), and redirects are not followed.` };
       }
       if (!response.ok) {
+        await discardBody(response);
         return { ok: false, why: `The verification endpoint answered ${response.status}.` };
       }
-      return { ok: true, text };
+      // Read under the same deadline, and only so far: the body is parsed, never stored.
+      return { ok: true, text: await readTextLimited(response, MAX_READBACK_BYTES) };
     } catch (error) {
-      const why = error instanceof Error ? error.message : String(error);
+      if (error instanceof BodyTooLarge) {
+        return { ok: false, why: `The verification endpoint's answer was larger than ${formatLimit(MAX_READBACK_BYTES)}, so it was not read.` };
+      }
+      if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+        return { ok: false, why: `The verification endpoint did not finish answering within ${Math.round((config.timeoutMs ?? 10_000) / 1000)} s.` };
+      }
+      const why = refusedAddress(error) ?? (error instanceof Error ? error.message : String(error));
       return { ok: false, why: `The verification endpoint could not be reached: ${why}` };
     } finally {
       clearTimeout(timer);

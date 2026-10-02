@@ -1,4 +1,7 @@
 import "server-only";
+import { readJsonLimited } from "../net/read-body.ts";
+
+const MAIL_TIMEOUT_MS = 10_000;
 
 /**
  * Sending one email through Resend.
@@ -42,12 +45,24 @@ export async function sendEmail(args: {
         text: args.text,
         ...(args.replyTo ? { reply_to: args.replyTo } : {}),
       }),
+      // Called from a request that has its own platform limit: a mail API that hangs must
+      // not take the request with it.
+      signal: AbortSignal.timeout(MAIL_TIMEOUT_MS),
     });
   } catch (error) {
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      return { ok: false, id: null, error: `The mail service did not answer within ${MAIL_TIMEOUT_MS / 1000} s.` };
+    }
     return { ok: false, id: null, error: error instanceof Error ? error.message : String(error) };
   }
 
-  const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  let payload: Record<string, unknown> | null;
+  try {
+    payload = await readJsonLimited(response, 64 * 1024);
+  } catch {
+    // Too large, or it stopped arriving: the status is still the answer.
+    payload = null;
+  }
 
   if (!response.ok) {
     const detail = (payload?.message as string | undefined) ?? response.statusText;

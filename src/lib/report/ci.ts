@@ -10,7 +10,9 @@ import type { ReportPayload } from "./payload.ts";
  *
  *   0  every scenario ran and passed, and the report is complete
  *   1  at least one scenario failed
- *   2  the evidence is incomplete: errored, disputed, unverifiable, not run, or no grade
+ *   2  the evidence is incomplete: errored, disputed, unverifiable, not run, no grade, or
+ *      (format 13 on) a pass that rests on one model's verdict because the second could
+ *      not be reached
  *   3  configuration or authorisation: no such report, revoked, expired, bad input
  *   4  infrastructure: the report could not be fetched or read
  *
@@ -39,7 +41,12 @@ function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-export function ciOutcome(payload: Pick<ReportPayload, "coverage" | "grade">): CiOutcome {
+/** What the decision reads: the counts and the band, and — from format 4 and 13 — how the verdicts were corroborated. */
+export type CiInput = Pick<ReportPayload, "coverage" | "grade"> & {
+  run?: { corroboration?: ReportPayload["run"]["corroboration"] };
+};
+
+export function ciOutcome(payload: CiInput): CiOutcome {
   const { planned, passed, failed, errored, not_run } = payload.coverage;
   const band = payload.grade?.band;
 
@@ -61,9 +68,19 @@ export function ciOutcome(payload: Pick<ReportPayload, "coverage" | "grade">): C
   if (band === "WITHHELD") gaps.push("the grade was withheld");
   if (band === "INCOMPLETE") gaps.push("the report is incomplete");
   if (passed + failed + errored + not_run < planned) gaps.push("the counts do not cover every planned scenario");
+  // Decision G5, sealed from format 13: a pass one model gave, because the second it was
+  // put to could not be reached, is not corroborated, and a release does not rest on it.
+  // Older reports carry no such count and keep the code they were sealed with.
+  const lonePasses = payload.run?.corroboration?.uncorroborated_passes ?? 0;
+  if (lonePasses > 0) gaps.push(`${plural(lonePasses, "pass", "passes")} rest${lonePasses === 1 ? "s" : ""} on one model's verdict, with no second to corroborate it`);
 
   if (gaps.length > 0) {
     return { code: CI_EXIT.incomplete, reason: `Evidence incomplete: ${gaps.join("; ")}.` };
   }
-  return { code: CI_EXIT.passed, reason: `All ${plural(planned, "scenario")} ran and passed.` };
+  // Two models of one vendor agreeing is corroboration, but not independent: said, not hidden.
+  const sameVendor = payload.run?.corroboration?.single_vendor ?? 0;
+  return {
+    code: CI_EXIT.passed,
+    reason: `All ${plural(planned, "scenario")} ran and passed.` + (sameVendor > 0 ? ` ${sameVendor} of the verdicts were corroborated by two models from one vendor.` : ""),
+  };
 }

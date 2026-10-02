@@ -57,7 +57,9 @@ export async function askAssistant(history: AssistantTurn[], message: string): P
     .filter((t) => (t?.role === "user" || t?.role === "assistant") && typeof t.content === "string")
     .slice(-HISTORY_TURNS);
 
-  const limit = await rateLimit(`assistant:${user.id}`, ASSISTANT_LIMIT);
+  // Refused when the count cannot be read: every answer is a model call on Novera's quota.
+  const limit = await rateLimit(`assistant:${user.id}`, ASSISTANT_LIMIT, { onError: "refuse" });
+  if (!limit.counted) return { error: "The assistant could not check its hourly limit just now. Try again in a minute, or use the guide." };
   if (!limit.allowed) {
     return { error: `That is the hourly limit for the assistant. Try again in about ${limit.retryAfterMinutes} minutes, or use the guide.` };
   }

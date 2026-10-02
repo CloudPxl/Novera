@@ -56,6 +56,12 @@
               "name": "suite_id",
               "type": "string",
               "value": "REPLACE_WITH_SUITE_ID"
+            },
+            {
+              "id": "a-idem",
+              "name": "idempotency_key",
+              "type": "string",
+              "value": "={{ 'n8n-' + $execution.id + '-' + $now.toMillis() }}"
             }
           ]
         },
@@ -79,7 +85,16 @@
         "options": {},
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ agent_id: $('Configure').item.json.agent_id, suite_id: $('Configure').item.json.suite_id }) }}"
+        "jsonBody": "={{ JSON.stringify({ agent_id: $('Configure').item.json.agent_id, suite_id: $('Configure').item.json.suite_id }) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $('Configure').item.json.idempotency_key }}"
+            }
+          ]
+        }
       },
       "name": "Start run",
       "type": "n8n-nodes-base.httpRequest",
@@ -94,7 +109,10 @@
           "name": "Novera API key"
         }
       },
-      "id": "start-run"
+      "id": "start-run",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
     },
     {
       "parameters": {
@@ -214,6 +232,15 @@
           },
           "conditions": [
             {
+              "id": "o",
+              "leftValue": "={{ $json.run.outcome }}",
+              "rightValue": "pass",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
               "id": "st",
               "leftValue": "={{ $json.run.status }}",
               "rightValue": "completed",
@@ -307,7 +334,7 @@
               "id": "m",
               "name": "message",
               "type": "string",
-              "value": "=Novera: {{ $json.run.agent.name }} ({{ $json.run.suite }}) — {{ $json.run.counts.failed }} failed, {{ $json.run.counts.no_result }} with no result, {{ $json.run.counts.passed }} passed. A scenario with no result is not a pass. {{ $json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + ($json.run.error || ($json.run.status === 'completed' ? 'no scenario produced a verdict, so there was nothing to seal.' : 'the run did not finish (status: ' + $json.run.status + ').')) }}"
+              "value": "=Novera: {{ $json.run.agent.name }} ({{ $json.run.suite }}) — {{ $json.run.counts.failed }} failed, {{ $json.run.counts.no_result }} with no result, {{ $json.run.counts.passed }} passed. A scenario with no result is not a pass. {{ $json.run.outcome_reason ? $json.run.outcome_reason + ' ' : '' }}{{ $json.run.report ? 'Report: ' + $json.run.report.url : 'No report was sealed: ' + ($json.run.error || ($json.run.status === 'completed' ? 'no scenario produced a verdict, so there was nothing to seal.' : 'the run did not finish (status: ' + $json.run.status + ').')) }}"
             }
           ]
         },

@@ -384,3 +384,86 @@ test("a case the agent never answered is not put through the rules", async () =>
   assert.equal(saved[0].status, "error");
   assert.equal(saved[0].settledBy, null);
 });
+
+test("a slice that loses its lease sends nothing more, writes nothing, and hands back unfinished (0047)", async () => {
+  const sent: string[] = [];
+  const events: string[] = [];
+  let holds = true;
+  const agent: AgentAdapter = {
+    probe: async () => ({ ok: true, responseText: "probe", toolActivity: null, latencyMs: 1 }),
+    send: async ({ input }) => {
+      sent.push(input);
+      holds = false; // another slice takes the run over while this scenario is in flight
+      return { ok: true, responseText: `reply to ${input}`, toolActivity: null, latencyMs: 1 };
+    },
+    acceptsContext: () => true,
+  };
+  const store: RunStore = {
+    async saveCase() { return holds ? "saved" : "not_holder"; },
+    async markRunning() { events.push("running"); },
+    async finishRun(_id, outcome) { events.push(`finished:${outcome.status}`); return true; },
+    async holdsRun() { return holds; },
+  };
+
+  const summary = await executeRun({
+    runId: "r1", suite, agent, policy: "p", judge: judgeArgs(judgeReturning({})), store, concurrency: 1,
+  });
+
+  assert.deepEqual(sent, ["in1"], "no scenario after the lease was lost");
+  assert.equal(summary.status, "incomplete");
+  assert.equal(summary.cases.length, 0, "the unsaved scenario is not counted as this slice's evidence");
+  assert.match(summary.error ?? "", /Another slice took this run over/);
+  assert.ok(!events.some((e) => e.startsWith("finished")), "it neither finishes nor aborts the run");
+});
+
+test("a scenario the run already holds is 'already recorded', not a failure that aborts the run (0047)", async () => {
+  const events: string[] = [];
+  const store: RunStore = {
+    async saveCase(record) { return record.caseId === "C2" ? "already_recorded" : "saved"; },
+    async markRunning() { events.push("running"); },
+    async finishRun(_id, outcome) { events.push(`finished:${outcome.status}`); return true; },
+  };
+
+  const summary = await executeRun({
+    runId: "r1", suite, agent: agentReturning({}), policy: "p", judge: judgeArgs(judgeReturning({})), store, concurrency: 1,
+  });
+
+  assert.equal(summary.status, "completed");
+  assert.deepEqual(events.filter((e) => e.startsWith("finished")), ["finished:completed"]);
+  assert.deepEqual(summary.cases.map((c) => c.caseId), ["C1", "C3"], "the stored row, not this copy, is C2's record");
+});
+
+test("a finish that writes nothing is not reported as finished (0047)", async () => {
+  let stopped = false;
+  const store: RunStore = {
+    async saveCase() { return "saved"; },
+    async markRunning() {},
+    async finishRun() { return false; },
+    async isStopped() { return stopped; },
+  };
+  const lost = await executeRun({ runId: "r1", suite, agent: agentReturning({}), policy: "p", judge: judgeArgs(judgeReturning({})), store, concurrency: 1 });
+  assert.equal(lost.status, "incomplete", "another slice holds the run");
+
+  const stopping: RunStore = { ...store, async isStopped() { return stopped; } };
+  const run = executeRun({ runId: "r1", suite, agent: agentReturning({}), policy: "p", judge: judgeArgs(judgeReturning({})), store: { ...stopping, async finishRun() { stopped = true; return false; } }, concurrency: 1 });
+  assert.equal((await run).status, "aborted", "a person stopped it between the last scenario and the finish");
+});
+
+test("an agent adapter that throws costs that scenario, not the run (C5)", async () => {
+  const { store, saved, events } = memoryStore();
+  const agent: AgentAdapter = {
+    probe: async () => ({ ok: true, responseText: "probe", toolActivity: null, latencyMs: 1 }),
+    send: async ({ input }) => {
+      if (input === "in2") throw new Error("The operation was aborted due to timeout");
+      return { ok: true, responseText: `reply to ${input}`, toolActivity: null, latencyMs: 1 };
+    },
+    acceptsContext: () => true,
+  };
+  const summary = await executeRun({ runId: "r1", suite, agent, policy: "p", judge: judgeArgs(judgeReturning({})), store, concurrency: 1 });
+  assert.equal(summary.status, "completed");
+  assert.equal(saved.length, 3, "every scenario is recorded");
+  const c2 = saved.find((c) => c.caseId === "C2")!;
+  assert.equal(c2.status, "error");
+  assert.match(c2.error ?? "", /aborted due to timeout/);
+  assert.deepEqual(events, ["running", "finished:completed"]);
+});

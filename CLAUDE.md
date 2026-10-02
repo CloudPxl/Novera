@@ -47,25 +47,29 @@ someone with the service role, not merely someone using the application.
 |---|---|
 | Evidence is append-only — a verdict cannot be edited or deleted | `refuse_mutation()` triggers; erasure only through `erase_workspace()` |
 | An errored case cannot be a pass; an evidence gap cannot sit on a verdict; a rule-settled case cannot name a judge | 0019 |
-| A run's inputs were declared *before* it executed — suite version and case ids in order, policy version, agent host, judge plan, pass mark, runner version, rubric digest — and its evidence is only those scenarios, each recorded once, while it runs: a completed run takes no new row | 0016, frozen by trigger; 0043 |
+| A run's inputs were declared *before* it executed — suite version and case ids in order, policy version, agent host, judge plan, pass mark, runner version, rubric digest — and its evidence is only those scenarios, each recorded once, while it runs: a completed run takes no new row, and a run is marked completed only when every declared scenario has one | 0016, frozen by trigger; 0043; 0048 |
 | A report was not edited after sealing, and chains to the previous report for that agent | SHA-256 content hash + `previous_report_hash` |
+| A withdrawn report stays withdrawn, its link and exports refuse at once, and the row names who withdrew it; whether a report is ready to send is computed from the sealed document and never raised because someone wants to share it | 0053, `src/lib/report/readiness.ts`, `verify:db` |
 | A policy version is immutable; editing creates a new one | 0001 + append-only trigger |
 | A diagnosis is a proposal: the model cannot quote policy text that is not in the policy, and a proposal whose target moved is refused rather than applied nearby | 0007 |
 | A drafted or imported scenario cannot enter a suite without a named approval, and cannot be withdrawn once it has; an import carries its file and item hashes, a policy draft its quoted passage, each frozen | 0022 + 0030 |
 | A destructive or fixture-only scenario never runs against a production agent | `agents.is_production`, checked in the runner |
 | A support reply goes draft → approved → sent, forward only; editing writes a new draft | 0009 |
 | A public form cannot be made free | 0024, counted in Postgres |
+| Raw evidence — inputs, replies, transcripts — reaches an API or MCP caller only with the `responses` scope and when asked for, exactly as stored, and each such read is recorded with its key and route where members can see it; otherwise personal data a grader quoted is a placeholder, as in a report | 0050, `src/lib/api/read.ts`, `verify:api`, `verify:mcp` |
+| The trial funds three runs per workspace however many starts arrive at once, and a run start retried with the same `Idempotency-Key` returns the run it started instead of a second one | 0049, `src/lib/api/idempotency.ts`, `verify:api` |
 | A person gets one workspace on first use, however many page loads race to create it | 0029, advisory lock per user |
 | A row can refer only to rows in its own workspace — agents, policies, runs, cases, failures, suites (built-ins shared) — even for the service role | 0034 `refuse_cross_workspace()`, `verify:tenancy` |
-| An API key is stored only as an HMAC, reads by default and starts runs only if its creator chose that (never `run` without `read`), cannot be altered, and once revoked stays revoked; a key reads only its own workspace, and a run it starts names it | 0033 + 0035 + `src/lib/api/`, `verify:api` |
+| An API key is stored only as an HMAC, reads by default, and starts runs or reads the agent's replies only if its creator chose that (never `run` or `responses` without `read`), cannot be altered, and once revoked stays revoked; a key reads only its own workspace, and a run it starts names it | 0033 + 0035 + 0052 + `src/lib/api/`, `verify:api` |
 | An assistant on MCP is offered only its key's scopes; with `write` it can ask for scenario drafts and diagnoses, which land as drafts and proposals naming the key — no scope approves, publishes, revokes, changes a policy or sends | 0039, `src/lib/mcp/tools.ts`, `src/lib/workflow/propose.ts`, `verify:mcp` |
 | A schedule starts a due run once however many ticks race, runs a pinned suite at a fixed UTC time, pauses with its reason when a run cannot start, and is never deleted — the runs it started name it; who started any run cannot be rewritten | 0036, `src/lib/schedules/`, `verify:schedules` |
 | A model provider receives only the data class its published terms allow: support messages only where identifiable data is allowed, customer content redacted where only that is, nothing of the customer's to free tiers that train on it; where a grader read placeholders, the vote, the case and the report say so | `src/lib/privacy/data-class.ts` in the router, `tests/privacy.test.ts` |
 | An agent's raw replies are kept only for the workspace's retention period (30–365 days, default 180); then the daily pass empties them and nothing else, leaving the verdict and a SHA-256 of the reply; a sealed report shows quoted personal data only as placeholders; a support conversation is erased 90 days after it last moved, and a probe receipt's reply emptied after 90 days | 0037 `expire_raw_evidence()`, 0038 `expire_inbound_and_probes()`, `verify:retention`; `buildReport` scrub |
-| Novera calls only public addresses — an agent or read-back URL resolving to a private, loopback or metadata address is refused when saved and on every call, and redirects are reported, not followed; every agent and model call has a deadline inside the slice, and a run idle for 24 hours is stopped, never sealed | `src/lib/net/public-url.ts`, 0040, `verify:slices` |
+| Novera calls only public addresses — an agent or read-back URL resolving to a private, loopback or metadata address is refused when saved and on every call, and redirects are reported, not followed; every agent and model call has a deadline inside the slice that also bounds reading the answer, every answer read is capped (agent and read-back 256 KB, model 1 MB) and a webhook receiver's is never read, and a run idle for 24 hours is stopped, never sealed | `src/lib/net/public-url.ts`, `src/lib/net/read-body.ts`, 0040, `verify:slices` |
 | An aborted run is never sealed — stopped by a person (even mid-slice), idle for 24 hours, or ended by a failure; a stopped run sends its agent no further scenario; at most two slices grade on the shared trial keys at once, and a third waits rather than degrading everyone's verdicts | 0041 `claim_run_slice`, `src/lib/workflow/stop-run.ts`, `verify:slices` |
-| A webhook is signed (HMAC over timestamp and body), sent only to a public address, never follows a redirect, carries counts and links but no reply, input, policy or key, announces a run once, and cannot be edited after it is queued; an endpoint's secret is sealed and shown once | 0042, `src/lib/webhooks/`, `verify:webhooks` |
+| A webhook is signed (HMAC over timestamp and body), sent only to a public address, never follows a redirect, carries counts and links but no reply, input, policy or key, is queued once per run and endpoint, and cannot be edited after it is queued; each attempt is claimed by one sender and counted, and delivery is at least once (receivers deduplicate by `Novera-Delivery`), one broken endpoint never holding up another; an endpoint's secret is sealed and shown once | 0042, 0046, `src/lib/webhooks/`, `verify:webhooks` |
 | A production failure is stored redacted — the original only as a hash — cannot be edited, and becomes a test only as a draft a person approves, linked to it for good; one sent through the API needs a `write` key, names it, and the same text twice is one record | 0031, 0044, `src/lib/regressions/record.ts` |
+| Only the migration runner can read or change the migration ledger, which decides what runs: it is created closed, and the runner refuses a ledger any API role can reach rather than trust it | 0045, `scripts/migrate.mts`, `verify:db` |
 | A workspace key grades only on models it was proved to reach, and one it cannot reach refuses the run rather than erroring every case | 0025 + 0026, route built from the key |
 | A person's finding sits beside a verdict and never replaces it; it needs a reason, freezes the verdict it read, and cannot be filed against another workspace's case | 0028 |
 | The in-app assistant can link only to this workspace's own paths and offer only a run the person presses; it never attests, never sees keys or policy text, and refuses key-shaped input before any model call | `src/lib/assistant/core.ts`, tested |
@@ -76,7 +80,10 @@ on 25% of scenarios re-grading byte-identical responses, which the comparison re
 the operator as fixes and regressions that never happened. Temperature 0; a third model
 settles a disagreement; an unsettleable disagreement is an error, never a guess. Measured
 25% → 6.3% by `npm run measure:stability`. Independence is derived from `judge_votes`, so
-a same-vendor second opinion is reported as exactly that.
+a same-vendor second opinion is reported as exactly that. A pass only one model gave — the
+second could not be reached — is not corroborated: from format 13 the release gate (CLI,
+exports, API `outcome`, webhooks, n8n) reads it as incomplete evidence, exit 2; older reports
+keep their sealed codes (decision G5).
 
 **The route is ordered by measured false passes, and that order is load-bearing.**
 Consensus takes its second opinion from the first candidate of a *different vendor*, so
@@ -101,8 +108,11 @@ with the run's read-back and production guard — never a reconstruction from th
 **There is one way to start a run.** The button, "rerun and compare", the API and the
 schedule clock all call `startRun`, and the run page, the API and the clock advance runs
 with `advanceRun` (`src/lib/workflow/start-run.ts`). A fifth copy is how the next
-divergence starts. A slice holds `runs.lease_until`, taken in one conditional update and
-released when it hands back; `started_at` is written once.
+divergence starts. A slice holds `runs.lease_until` and a `lease_token`, taken in one conditional update
+(0047). Every write the slice makes — saving a scenario, finishing, releasing, aborting —
+names the token, so a slice that outlived its lease sends and writes nothing more; a
+scenario already in flight at a takeover can still reach the agent twice, because nothing
+can know whether the agent acted on the first. `started_at` is written once.
 
 **Evaluation order is cheapest-sufficient: rules → read-back → models.**
 A scenario's checks (contains, matches, tools allowed/forbidden/required/ordered,
@@ -198,9 +208,9 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 540 unit tests | free |
+| `npm test` | 602 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
-| `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current | free |
+| `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
 | `verify:effect` · `verify:channel` · `verify:compiler` · `verify:conversation` | evidence rules, the metadata channel, the compiler's refusals, multi-turn scenarios | a few model calls |
@@ -209,8 +219,11 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 | `verify:api` | API keys and `/api/v1`: tenant isolation, identical refusals, revocation, rate limit (needs `npm run dev`) | free |
 | `verify:mcp` | the MCP endpoint, driven by the official MCP client: isolation, tools per scope, refusals before any model call, frozen attribution, transport rules (needs `npm run dev`; `VERIFY_MCP_MODEL=1` also drafts and diagnoses for real) | free · two model calls |
 | `verify:retention` | raw evidence past its period is emptied and nothing else changes; the fingerprint still matches; expiry mode opens nothing else | free |
-| `verify:slices` | a run against a 10-second agent stays inside the 60 s function limit: several slices, every scenario recorded, none cut by our budget (needs `npm run dev`, network) | free |
+| `verify:slices` | a run against a 10-second agent stays inside the 60 s function limit: several slices, every scenario recorded, none cut by our budget. The slow agent is a local server, not httpbin.org (needs `npm run dev`; no external network) | free |
 | `measure:throughput` (`THROUGHPUT_LEVELS=1,2,4`) | concurrent trial runs against the fixture: wall time, verdicts without a result, how each was corroborated, per-vendor calls, rate limits and breaker skips | **real quota — one sweep** |
+| `verify:free` | every free verifier in order, with a summary; checks first that the app answers and suites and docs are seeded, and never seeds for you. Each verifier makes what it needs (a sealed report, a slow agent) and erases it. Exit 2 = nothing failed but something could not be checked here | free |
+| `verify:cron` | every scheduled job the guarantees depend on (three daily ones from 0037/0038/0040, the clock from `schedules:clock`) exists, is on, and last succeeded; read-only. `migrate` exits 3 on a deployed database missing one. Exit 2 means "local stack without pg_cron", never a pass | free |
+| `verify:leases` | a slice that lost its run's lease sends no new scenario, saves nothing, and cannot release or abort the run; a takeover still completes the run with every scenario recorded once (needs `npm run dev`) | free |
 | `verify:webhooks` | a real run is announced once to a local receiver, a failed delivery retried, the signature checks, the body carries no reply or policy, private addresses refused, rows frozen, secret unreadable (needs `npm run dev`) | free |
 | `verify:schedules` | a due schedule starts one run however many ticks race; the clock drives it to the end; skip, pause, frozen fields, RLS, erasure (needs `npm run dev`) | free |
 | `schedules:clock -- install \| status \| remove` | installs the pg_cron job that calls `/api/cron/tick`, secret in Vault; `status` shows its last calls | free |
@@ -244,7 +257,7 @@ they drive the scripted fixture at `/api/test-agent`.
 
 - **A report payload change breaks every document already in a client's hands.** An added
   field ships with its absence branch in the same commit. Two reports were returning 500
-  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 12); `novera report verify` re-hashes all of them.
+  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 13); `novera report verify` re-hashes all of them.
 - **A model's rendering of our data is not our data.** The judge echoed assertions back
   with the numbering the prompt added; storing that verbatim made every failed case render
   as fully passing.

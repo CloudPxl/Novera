@@ -28,7 +28,9 @@ Open a scenario on the run page and its evidence is laid out in the order Novera
 
 Under the run's verdict counts, the run page also shows how the grading went: for each model vendor, how many requests were sent and answered, how many were rate-limited, timed out or failed, and the slowest answer. It is counted from what was stored for the run, not estimated.
 
-A failed scenario can be diagnosed: a model reads the stored evidence and proposes a change to the policy version the run used. It is a proposal, and nothing changes until you approve it. A scenario with no result has no failure to explain, so it is not diagnosed — retest it instead.
+A failed scenario can be diagnosed: a model reads the stored evidence and proposes a change to the policy version the run used. It is a proposal, and nothing changes until you approve it. Approving creates a new policy version; it does not change this run or its report. The approved change then shows its next steps in place: retest this scenario against the new version, and rerun the whole suite compared with this run, so a fix here is not a break somewhere else.
+
+A scenario with no result says why: whether your agent received it at all, who acts on it (your agent, your configuration, Novera's graders, or you), whether a retest could repeat something your agent did, and the next step. Retesting sends the scenario to your agent again, so where your agent received it and can act, Novera says to check your own system first. A scenario with no result has no failure to explain, so it is not diagnosed, and editing the policy will not change it. **Review → Evidence needing repair** groups these across your recent runs by reason.
 
 ## When you disagree with a verdict
 
@@ -45,3 +47,7 @@ A report is sealed the moment its run completes, so it cannot contain a review w
 The new report says plainly that the reviewers are members of the workspace whose agent was tested, and that their findings change no verdict, grade or score. That is deliberate. Some testing tools let a reviewer's "false positive" recalculate the grade; that suits an internal risk dashboard, but a report you hand to an auditor would then be one you graded yourself. Showing both readings side by side lets the reader judge the difference.
 
 A reason that quotes your policy text word for word is refused, because a report never contains the policy itself. Reword it and issue again.
+
+## Comparing two runs
+
+A run compared with an earlier run of the same suite lists what was fixed, what newly broke, what still fails and what lost its result — and says why each one moved. Novera keeps a fingerprint of every reply, so it can tell "the agent's reply changed" from "the agent's reply was identical; the graders changed". A verdict that moved on an identical reply is never presented as your agent improving or regressing. Above the lists it states what else differed between the runs: the policy version, the grading instructions, the graders, how Novera calls your agent, or the release you declared.

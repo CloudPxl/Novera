@@ -1,7 +1,7 @@
 import "server-only";
 import { headers } from "next/headers";
 import { serviceClient } from "@/lib/supabase/service.ts";
-import { type Limit, windowResetMinutes } from "./throttle.ts";
+import { decideLimit, type Limit, type LimitDecision, type OnCountFailure } from "./throttle.ts";
 
 /**
  * What it costs a stranger to make Novera do work.
@@ -15,14 +15,16 @@ import { type Limit, windowResetMinutes } from "./throttle.ts";
  * counter limits one lambda for as long as it happens to live — which is to say it
  * limits nothing, while looking exactly like protection.
  *
- * And a failure to count is not a failure to serve. If the throttle itself is broken
- * the request goes through: the cost of being wrong in that direction is some model
- * calls, and the cost of being wrong in the other is turning away the first real
- * customer because a counter table was unreachable.
+ * A failure to count is decided per caller, never by default (audit R3: every limit
+ * once failed open). Where refusing would lock ordinary people out and the request is
+ * cheap or bounded elsewhere — an API read, a sign-in — it goes through. Where an
+ * uncounted request would spend model quota, send an email or write a row that cannot be
+ * deleted, it is refused, or the expensive part is skipped while the person is still
+ * served (the support form keeps the question and drafts nothing).
  */
 
-export { fingerprint, refusalMessage, SUPPORT_LIMIT, APPLY_LIMIT } from "./throttle.ts";
-export type { Limit } from "./throttle.ts";
+export { fingerprint, refusalMessage, SUPPORT_LIMIT, APPLY_LIMIT, COUNT_UNAVAILABLE_MESSAGE } from "./throttle.ts";
+export type { Limit, OnCountFailure } from "./throttle.ts";
 
 /** The caller's address, as coarsely as the platform will give it. Never stored raw. */
 export async function callerAddress(): Promise<string | null> {
@@ -30,12 +32,7 @@ export async function callerAddress(): Promise<string | null> {
   return list.get("x-forwarded-for")?.split(",")[0]?.trim() ?? list.get("x-real-ip") ?? null;
 }
 
-export interface LimitResult {
-  allowed: boolean;
-  /** Whole minutes until the window turns over. Only meaningful when refused. */
-  retryAfterMinutes: number;
-  hits: number;
-}
+export type LimitResult = LimitDecision;
 
 /**
  * Counts one request against a limit.
@@ -47,26 +44,15 @@ export interface LimitResult {
 export async function rateLimit(
   identifier: string,
   limit: Limit,
-  options: { peek?: boolean } = {},
+  options: { peek?: boolean; onError: OnCountFailure },
 ): Promise<LimitResult> {
   try {
-    const { data, error } = await serviceClient().rpc(options.peek ? "throttle_peek" : "throttle_hit", {
+    const answer = await serviceClient().rpc(options.peek ? "throttle_peek" : "throttle_hit", {
       key: identifier,
       window_seconds: limit.windowSeconds,
     });
-
-    if (error || typeof data !== "number") {
-      return { allowed: true, retryAfterMinutes: 0, hits: 0 };
-    }
-
-    return {
-      // A peek asks "is this identifier already over?", so the count it reads has not
-      // been spent on this request and the boundary is one different from a hit.
-      allowed: options.peek ? data < limit.max : data <= limit.max,
-      retryAfterMinutes: windowResetMinutes(limit.windowSeconds),
-      hits: data,
-    };
+    return decideLimit(answer, limit, options);
   } catch {
-    return { allowed: true, retryAfterMinutes: 0, hits: 0 };
+    return decideLimit(null, limit, options);
   }
 }

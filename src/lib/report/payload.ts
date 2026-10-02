@@ -32,6 +32,12 @@ export interface ReportPayload {
       uncorroborated: number;
       unresolved: number;
       /**
+       * Absent before format 13. How many of the `uncorroborated` verdicts are passes: a
+       * second model was planned and could not be reached, so one model's word is all the
+       * pass rests on. A release gate reads any of them as incomplete evidence (G5).
+       */
+      uncorroborated_passes?: number;
+      /**
        * Absent before format 4. Verdicts corroborated by a second model from a
        * *different vendor* — the only kind that is independent in any meaningful
        * sense. Two models from one vendor share a lineage and a serving stack, so

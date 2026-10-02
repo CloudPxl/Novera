@@ -63,7 +63,9 @@ export async function submitSupportRequest(_prev: InboundState, form: FormData):
   // Counted per person and per form: asking a question and applying for a trial are
   // different acts, and one should not spend the other's allowance.
   const who = fingerprint(["support", contact.email, await callerAddress()]);
-  const limit = await rateLimit(who, SUPPORT_LIMIT);
+  // When the count cannot be read the question is still taken — a person reads every one —
+  // but no model is asked to draft an answer, since nothing would bound how many it drafts.
+  const limit = await rateLimit(who, SUPPORT_LIMIT, { onError: "allow" });
   if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
 
   // The same question sent twice is one question. Accepted, acknowledged, and not
@@ -103,7 +105,7 @@ export async function submitSupportRequest(_prev: InboundState, form: FormData):
 
   if (error) return { error: "We could not record that. Try again in a moment." };
 
-  if (!escalation.escalate) {
+  if (!escalation.escalate && limit.counted) {
     // Drafting happens inline so the queue is useful the moment it is opened. A
     // failure here is not the asker's problem: their question is already recorded.
     const { data: pages } = await db
@@ -144,7 +146,9 @@ export async function submitTrialApplication(_prev: InboundState, form: FormData
   if (typeof contact === "string") return { error: contact };
 
   const who = fingerprint(["apply", contact.email, await callerAddress()]);
-  const limit = await rateLimit(who, APPLY_LIMIT);
+  // Allowed when the count cannot be read: an application is stored for a person to read
+  // and calls no model.
+  const limit = await rateLimit(who, APPLY_LIMIT, { onError: "allow" });
   if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
 
   const db = serviceClient();

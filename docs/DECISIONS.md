@@ -2976,3 +2976,655 @@ makes `migrate` skip a migration silently. Free checks: 540 tests, both typechec
 every free verifier green once given the setup it cannot do itself, and `verify:slices` green on a local
 responder with no external network. Model-dependent verifiers were not run.
 `docs/audits/2026-10-01-*.md`, `docs/INVARIANTS.md`. Remediation waits for approval of the order.
+
+## 2026-10-01 — The migration ledger is reachable only by the runner (0045)
+
+The runner created `novera_migrations` in `public` with a plain `create table`. Supabase's default
+privileges grant every new public table to `anon`, `authenticated` and `service_role`, and the table never
+had RLS. So anyone with the public anon key could read, insert, change or delete ledger rows. A row naming
+an unapplied migration, with the checksum anyone can compute from the public repository, made `migrate`
+exit 0 with "0 migration(s) applied" and skip it silently (audit 2026-09-30 C1, reproduced locally).
+
+Production was assessed read-only and needs no reconciliation:
+- RLS is off and both API roles hold all seven privileges.
+- The 44 ledger rows match the 44 files by name and checksum, in file order by `applied_at` and by
+  inserting transaction.
+- Since statistics were reset on 2026-08-25, before the ledger existed: 44 inserts, 0 updates, 0 deletes.
+- The public schema is byte-identical to a database built from zero with the 44 migrations (tables,
+  columns, constraints, indexes, triggers, function bodies, policies, grants).
+- 0037's data backfill left no row without its hash.
+
+The runner connects as `postgres`, the owner, with `rolbypassrls`. RLS without FORCE cannot lock it out;
+this was checked, not assumed. The fix:
+- **0045** enables RLS and revokes everything from `public`, `anon`, `authenticated` and `service_role`.
+  Nothing else reads the ledger.
+- **`migrate.mts`** creates the ledger closed in the same transaction as the table, so a new database is
+  never exposed.
+- It refuses (exit 2) a ledger any API role can reach, and `--harden-ledger` closes it.
+- `--check` is read-only.
+- A ledger row with no file, or a changed checksum, stops it before anything is applied. The message
+  names both checksums and both possible causes.
+- Runners serialise on a per-transaction advisory lock, because the pooler on 6543 makes a session lock
+  unsafe.
+
+Proven locally:
+- exposed ledger: refused, then hardened; the catalogue shows RLS on and no API privilege;
+- `verify:db`: 42501 for all three roles, from probes that cannot write even where access is open;
+- a new migration applies once under two overlapping runners ("by another run, meanwhile");
+- a rerun applies 0;
+- a fresh database gets a closed ledger before its first migration.
+
+540 tests; typecheck, lint, build. Production is not yet changed.
+
+## 2026-10-01 — A webhook attempt is claimed before it is sent (0046)
+
+`deliverDue` read pending rows and then sent them. Reproduced fresh before the fix:
+- 20 concurrent senders on one delivery: 10 POSTs to a receiver answering 2xx, 20 to one answering 500
+  (recorded as 1 attempt), 5 to one too slow.
+- A run's own attempt overlapping a clock sweep sent twice in 10 of 10 trials.
+- One endpoint whose secret could not be opened made every sweep throw, so no workspace's deliveries went
+  out (audit C2, C3, and C8 from 2026-10-01).
+
+The fix:
+- `claim_webhook_deliveries` takes a lease and a token and counts the attempt, in one statement with
+  `for update skip locked`.
+- Only the claimant sends, and it records the outcome only while its token stands.
+- One row at a time, so a sweep out of time never counts an attempt it did not make.
+- A named delivery is attempted at once only the first time, and after that only when due.
+- The secret is opened inside the per-row `try`; one that never opens fails that row alone, for good.
+
+Delivery is **at least once**: a sender that dies after the receiver accepted leaves the row to be retried
+when its 30-second lease runs out, and both attempts are counted. `verify:webhooks` gains 9 checks
+(before: 6 failed; after: 24 ok), and the audit's own race reproduction now reads 1 POST, 1 attempt and
+0 of 20 doubled.
+
+The public docs still say "Each run is announced once" (`data/docs/api.md:73`). That copy changes only
+with approval.
+
+## 2026-10-01 — A run's lease names its holder (0047)
+
+A slice that outlived its 70-second lease went on sending scenarios after another slice took the run over.
+It saved over the newcomer, so the second save of a scenario aborted the run on the unique key, and it
+released the newcomer's lease. Reproduced fresh with the audit's race harness: 9 agent calls for 6
+scenarios, both slices `aborted`, no report; the stale slice set `lease_until = null` (audit C4).
+
+The fix:
+- `claim_run_slice_fenced` writes a fresh `lease_token` and returns it. The old function is kept for any
+  caller still deployed with it.
+- The store fences every write with the token: save, finish, release, and `abortHeldRun`.
+- The runner checks `holdsRun` before each scenario. It stops on `not_holder`, and treats
+  `already_recorded` (23505 on `(run_id, case_id)`, read back) as done.
+- A finish that writes nothing is `incomplete`, or `aborted` if a person stopped the run in between.
+- The fence asks only whose token it is, not whether the run is still running. A first version also
+  required `running`, which made a person's Stop discard the scenarios already in flight;
+  `verify:slices` caught it ("0 recorded of 12" instead of 3).
+
+**The limit, stated rather than hidden:** scenarios already in flight at a takeover (at most the runner's
+concurrency, 3) can reach the agent twice. The agent takes no idempotency key and returns no receipt, so
+nothing can know whether it acted on the first.
+
+Evidence:
+- `verify:leases`, new: 10 ok. A stale slice sent 3 in flight, then 0 more; saved 0; left the other
+  slice's lease alone; a stale abort was not applied. A takeover ran to completion with 6 rows, the 3
+  in-flight scenarios sent twice.
+- The race harness: slice A `incomplete`, slice B `completed`, lease kept.
+- `verify:slices` (local responder) 11, schedules 29, api 33, mcp 30, access 15, tenancy 27, db 59.
+- Three runner unit tests fail on the old runner and pass on the new. 543 tests.
+
+## 2026-10-01 — Scheduled jobs are checked at deployment, not assumed (`verify:cron`)
+
+0037, 0038 and 0040 schedule the daily jobs only when pg_cron is already installed. Without it they apply
+cleanly and create nothing. Reproduced again: a fresh database, 47 migrations, 0 jobs. The clock that
+starts scheduled runs and retries webhooks is installed by a script, never by a migration. Applied
+migrations are not edited, so the check lives at deployment:
+- `scripts/required-jobs.mts` names the four jobs, with schedule, command, freshness window, why each
+  matters and its fix.
+- `npm run verify:cron`, read-only, checks each one exists, is on, is on schedule, calls the right thing
+  and last succeeded in time.
+- `npm run migrate` ends with the structural part, and exits 3 ("every migration is applied, but this
+  database is not ready") on a deployed database missing one.
+- A local stack without pg_cron gets a notice from `migrate` and exit 2 from `verify:cron` ("not
+  applicable here — not a pass"), so local development still works.
+
+Proven against the local database reached as if deployed: no pg_cron gives exit 3 and 1 with every fix
+listed; without the clock, exactly that job is named; with all four, 0. Production, read-only: all four in
+place, the daily ones last succeeded at 03:17, 03:27 and 03:37 today, the clock at 08:33. **Not an
+outage**; a hazard for a new or restored database. 548 tests, 5 new for the job states.
+
+## 2026-10-01 — A completed run holds every declared scenario (0048); the webhook reads the report
+
+Reassessed after 0043. 0043 refuses new rows on a completed run and rows for undeclared scenarios, but
+nothing refused the reverse. `verify:db` reproduced it directly: a run marked `completed` with one of its
+two declared scenarios missing. The runner never does this; it finishes only after every scenario was
+recorded, and C4's fencing keeps it that way. But the service role could, and the webhook, counting rows,
+said `pass` over a report that said INCOMPLETE (audit R2, planted).
+
+**0048** refuses the transition into `completed` while a declared scenario has no row, for every writer.
+Aborting is still allowed: an aborted run is never sealed. Runs completed earlier are not re-examined.
+
+The webhook's outcome now comes from `pipelineOutcome(run, sealed payload)`, which is `ciOutcome`, the
+function behind the CLI's exit codes and the JUnit and JSON exports. It no longer recounts rows. No report,
+a run that did not complete, or a payload without coverage is never a pass.
+
+A property test enumerates every combination of up to three planned scenarios across every band and run
+status: never `pass` with an error, a not-run, a missing scenario, WITHHELD or INCOMPLETE; the webhook and
+the CLI agree everywhere. The audit's harness, with realistic sealed payloads: A→pass, F→fail,
+WITHHELD→incomplete; the planted mismatch is refused by the database. `verify:db` 62, `verify:webhooks` 24.
+
+Not done (customer-facing API, needs approval): an `outcome` and `planned` field on
+`GET /api/v1/runs/<id>`, so n8n and other API consumers stop deriving the outcome from counts. Their
+derivation is now consistent for every state the database allows.
+
+## 2026-10-01 — A rate limit that cannot count does what its caller chose (R3)
+
+Every limit failed open: if the throttle function errored, `rateLimit` answered "allowed". Reproduced on
+the real paths with the old code, with the throttle made unreachable for the service role on the local
+stack:
+- a production failure was stored (201);
+- an MCP drafting call went on to the model;
+- a password-reset email went out.
+
+`onError` is now a required option. It is decided in the pure `decideLimit`, which also reports whether
+the request was `counted`, so no caller can inherit a default.
+
+| Policy | Callers | Why |
+|---|---|---|
+| `allow` | API requests | Authenticated; a run's spend is bounded where runs start |
+| `allow` | Sign-in | Refusing locks everyone out, the operator included; Supabase Auth limits password attempts itself |
+| `allow` | Trial applications | Stored for a person; no model |
+| `allow`, no draft | Support form | Keeps the question; drafts nothing when uncounted |
+| `refuse` | Password reset | It sends email |
+| `refuse` | The in-app assistant and the MCP model tools | Model quota |
+| `refuse` | Production-failure ingestion | Append-only rows; 503 with `retry-after` |
+
+After the fix, with the throttle unreachable: API read 200, sign-in works, production failure 503, MCP
+drafting refused before any model, reset refused, each with a sentence. With it restored, all go through.
+2 new unit tests; 554 tests; `verify:throttle` 12, api 33, mcp 30, regressions 13.
+
+## 2026-10-01 — Starting a run is safe to retry; the trial cap holds under concurrency (0049)
+
+Reproduced fresh: the same `POST /api/v1/runs` sent twice with one `Idempotency-Key` made 2 runs. Twenty
+concurrent starts on a fresh three-run trial made 7, 20 and 15 runs, because the cap was counted in the
+application and then inserted (audit G1; C7 from 2026-10-01).
+
+**0049:**
+- `runs_trial_cap`: inserting a trial-funded run takes a per-workspace lock, counts the workspace's runs as
+  `workspaceEntitlement` does, and refuses a fourth (`trial_exhausted`). `startRun` maps that to the same
+  sentence, so the button, the API, MCP and the clock all get it.
+- `run_requests`: a key is claimed before the run exists, together with the id the run will be created
+  with, so a retry finds that run or proof it never started.
+  - Same key, same request: 200, `replayed: true`, the original run.
+  - Same key, different request: 409.
+  - Concurrent repeats wait up to 10 s for the first.
+  - A claim whose run never appears after 60 s is taken over.
+  - A refused start removes its claim.
+  - Workspace-scoped, 24 hours; cleaned lazily and with the workspace.
+  - RLS on, no policy.
+- `novera run` takes `--idempotency-key` or `NOVERA_IDEMPOTENCY_KEY`.
+
+Evidence:
+- `verify:api`, 7 new checks: replay; conflict; 20 identical requests answered 1×201 and 19×200 with one
+  run; a new key cannot pass an exhausted trial and leaves no claim; per-workspace scope; an over-long key
+  400; 20 starts with two left give exactly 2. 40 ok.
+- The audit's harness now stores exactly 3 runs in each rush, and 1 run on a retry.
+- `verify:byok`, restructured, not weakened: the queued run still counts, and a fourth inserted directly is
+  refused. 21 ok.
+- 556 tests.
+
+**Not changed, needs approval:**
+- The API docs, which must describe `Idempotency-Key`.
+- The n8n templates, which should send `{{$execution.id}}`.
+
+## 2026-10-01 — The free verifiers run from an empty database with nothing left behind (G3, T1, R5 in part)
+
+Reproduced again on an empty, migrated and seeded database:
+- `verify:access` exited "No report found. Run npm run demo:run first." (`demo:run` calls models);
+- `verify:mcp` crashed on a null report;
+- `verify:retention` crashed on `relation "cron.job" does not exist`;
+- the database scripts needed a TLS workaround to reach local Postgres;
+- `verify:slices` depended on httpbin.org, whose 502 failed it on 2026-09-30.
+
+What changed:
+- `scripts/verify-fixtures.mts` seals a throwaway report through the product's own `publishReport`, from
+  planted stored rows: one pass by a grader, one fail by a rule. No agent, no model. `verify:access`
+  (which revokes and expires its report) and `verify:mcp` use it and erase it, so they no longer touch a
+  report someone else depends on.
+- `verify:slices` uses a local slow agent.
+- `verify:retention` says which schedule checks it could not make without pg_cron, and exits 2, not 0.
+- `scripts/db-ssl.mts`: no TLS for a local database. Certificate verification when `SUPABASE_DB_CA` names
+  Supabase's CA. Otherwise unverified as before, which is R5 and stays open until that file is configured.
+- `npm run verify:free` runs the set and never seeds.
+- `summaryFromStoredRows` is exported for the fixture; no behaviour changes.
+
+Evidence from an empty database with no workaround: the first `verify:free` failed only on my fixture's
+own bulk insert (a column one row omitted became NULL); fixed. Then without pg_cron: 13 passed, retention
+and cron exit 2, overall 2. With pg_cron and the four jobs: all 15 passed, exit 0, 106 s, and 0 reports
+left behind.
+
+## 2026-10-01 — Raw evidence on request only, and every such read recorded (0050); quoted personal data scrubbed otherwise
+
+The audit's canary found personal data and key-shaped strings only where an authorised caller asked for raw
+replies (`?include=responses`, MCP `include_responses`). That path is how a customer investigates a
+verdict, so it stays exact. Assessed:
+
+| Aspect | Finding | Action |
+|---|---|---|
+| Cache | Both REST and MCP answer `no-store` | None; verified |
+| Retention | Replies past the workspace's period come back as `raw_expired_at` plus `raw_sha256` (0037) | None |
+| Client reports | Never contain raw replies, and scrub what a grader quoted; canary clean on the page, the payload and all four exports | None |
+| Default (non-raw) mode | Returned graders' rationales and error text verbatim. A planted rationale quoting an email and phone came back through REST and MCP `get_run` (C9, reproduced fresh) | Both now pass through the report's own `redact`, so a caller that did not ask for conversations receives none of their words |
+| Audit trail | None for raw reads | Each raw read, REST or MCP, inserts a `raw_evidence_reads` row (key, run, route) that members can read and nobody can write but the server; the read fails rather than going unrecorded |
+
+`verify:api` 43, with 3 new checks: placeholder by default and nothing logged; exact raw evidence with one
+logged read naming its key; members see the log, another workspace does not, no member can write it.
+`verify:mcp` 31, with 1 new: a plain `get_run` logs nothing, a raw one logs `via: mcp`. Rationale canary
+before: FOUND on both; after: clean on both, raw unchanged.
+
+**Proposed, not done (it changes what existing keys can do, and the docs; needs approval):**
+- A separate `responses` scope, existing keys grandfathered until rotated.
+- A sentence in `/docs/api` and `/docs/data-and-privacy` saying that raw reads are recorded.
+
+## 2026-10-01 — Redaction takes linear time (C6, part one)
+
+The email pattern had no left boundary. On a long unbroken token with no "@", such as a hash dump or a
+base64 attachment, it retried from every position, so the cost grew with the square of the length:
+64 KB 6.9 s, 128 KB 27 s. That ran on every report seal and every redacted model call, and since the
+privacy change it would also run on API answers.
+
+Now the local part may only start where a run of its characters starts, and email and phone repetitions
+are bounded by what the values can be (RFC 5321 lengths; three separator characters between phone
+digits). The key patterns are unchanged: each needs its literal prefix, and bounding them would leave the
+tail of a long key in clear.
+
+New tests cover ten adversarial shapes at 64 and 256 KB, one per pattern family. Before: "64 KB took
+6867 ms", fail. After: all pass in 114 ms. Real values are still found next to 100 KB tokens. Measured
+directly: 64 KB 1 ms, 1 MB 7 ms, 20 MB 118 ms, the email at the end found each time. 558 tests.
+
+## 2026-10-01 — An agent's reply is read under its deadline and to a limit (C5; C6, part two)
+
+The adapter read the reply body outside its error handling and without a limit, and the runner did not
+catch an adapter exception per scenario. Reproduced with the local responder:
+- a reply whose headers arrived and whose body stalled threw "The operation was aborted due to timeout"
+  out of the run: aborted, 0 rows;
+- with one of six stalling, 5 good rows were stranded with no report;
+- a 20 MB reply held a slice past 300 s and the server at 100% CPU.
+
+Now the body is read under the request's own deadline, inside its error handling, and never past 256 KB:
+- a stalled body is that scenario's timeout ("did not finish arriving within N s"), or "cut by Novera" when
+  the slice was ending;
+- an oversized reply is a no-result that says nothing about whether it was right;
+- any exception from an adapter is recorded as that scenario's result.
+
+Evidence:
+- Tests: a stalled body against a real loopback socket, 1 MB refused, 200 KB read as usual, a throwing
+  adapter costing one scenario. They fail 3 of 31 without the fix and pass 31 with it.
+- The harness end to end:
+  - stalled body: completed, 1 row;
+  - first of six stalls: completed, 6 rows;
+  - 20 MB: a 133 ms slice, the server answering in 0.07 s.
+- `verify:slices` 11, leases 10, schedules 29, webhooks 24. 562 tests.
+
+**Customer-visible:** a reply over 256 KB is now a no-result with that sentence. It should be stated in
+`/docs/connecting-an-agent`, which needs approval.
+
+## 2026-10-01 — A connection is opened only to an address the guard approved (R4)
+
+`assertPublicUrl` resolved a customer's hostname and checked every address; the request then resolved the
+name again on its own. What was checked was therefore not necessarily what was reached (audit R4, a
+code-review risk; no attack harness was built, by the constraint this pass works under).
+
+The fix: the agent, read-back and webhook requests now go through one undici `Agent` whose connection
+lookup is the guard itself (`publicOnlyDispatcher`). Every address the name resolves to at the moment of
+connecting is checked, and the socket is opened only to an approved one; TLS still verifies the
+certificate against the hostname. A refusal reads "Not sent: … points to a private or internal address".
+Literal addresses are unchanged: the pre-check judges them, and they cannot change. Node's own fetch
+honours the dispatcher, and Next's fetch wrapper passes it through (it spreads the options). `undici`
+7.30 was added; `npm audit` still finds 0 vulnerabilities.
+
+Tests use a stand-in resolver and a loopback server:
+- an internal answer is refused at connect;
+- one internal answer among public ones refuses the name;
+- an answer that differs from the earlier check is judged at connect;
+- loopback outside production still connects.
+
+Also: numeric spellings (decimal, hex, octal, short) and IPv4-mapped and NAT64 forms of internal
+addresses are refused. Webhooks 24, leases 10, slices 11 end to end. 564 tests.
+
+**Not proven:** that Vercel's network path preserves this. There is no deployment in this pass, and an
+egress proxy or platform DNS behaviour there is unverified. 6to4 and Teredo addresses embedding private
+IPv4 are judged public, unreachable by ordinary routing, noted rather than claimed.
+
+## 2026-10-01 — A webhook says why a run ended in a fixed sentence (R7, now confirmed)
+
+The audit listed the aborted run's raw error in the webhook body as a code-review risk. It is worse than
+that. The Stop button writes "Stopped by <the person's email> …" into the run's error, and the webhook
+forwarded it as `reason`, so a member's email address reached a third party's system. The verifier had
+planted a neutral sentence instead of the real one; with the real one it fails: "the stopper's email
+address is in the body".
+
+`reason` is now one of three fixed sentences: stopped by a member of the workspace; stopped because
+nothing was graded for 24 hours; ended by an error, details on the run page. The run page keeps the full
+text. `verify:webhooks` 25 (the new check fails before and passes after), plus a unit test covering all
+three. 565 tests.
+
+## 2026-10-01 — A finished run nobody announced is found and announced (0051)
+
+A run is announced by the slice that finishes it, just after marking it finished. A slice killed between
+the two left a finished run that no delivery named, and nothing looked for one. Runs ended by the 24-hour
+stalled-run pass, which runs in the database, were never announced at all. Reproduced: a planted finished
+run, then a sweep, gives 0 delivery rows.
+
+`runs_awaiting_announcement()` lists finished runs, with the endpoints that missed them, under three
+conditions:
+- the run finished more than two minutes ago, so its own slice had its chance;
+- it finished less than a day ago;
+- the endpoint already existed when it finished, so adding one does not replay history.
+
+The clock's tick queues those before its delivery sweep (`announceMissedRuns`), one endpoint at a time.
+A first version queued to every endpoint in the workspace; `verify:webhooks` caught it (4 rows for 1). The
+clock's wake-up condition in `schedules:clock` now includes them, so the clock fires for them when
+nothing else is due.
+
+`verify:webhooks` 29, with 4 new checks:
+- the sweep alone does not announce;
+- the clock announces once, only to the endpoint that existed;
+- asking again adds nothing;
+- a run that just finished is left alone.
+
+`verify:schedules` 29. 565 tests.
+
+**Needs action in production:** migration 0051, then `npm run schedules:clock -- install` to replace the
+installed job's condition.
+
+## 2026-10-01 — The rest of the audit's open questions, examined (no code change)
+
+- **Old sealed reports.** All 18 production reports, which span payload formats 1, 2, 4, 5, 7, 9, 10 and
+  11 with one revoked, were read read-only and re-hashed by the current code (18/18 verify). Each renders
+  through all four exports (18/18), and the CLI and webhook decisions agree on every one.
+- **The clock, end to end.** `schedules:clock -- status` (read-only) shows the job succeeding every
+  minute. It fires the app call only when something is due; its last real calls, on 2026-09-29, returned
+  200 and started, advanced and finished a scheduled run. No schedule is active now. Fairness across
+  workspaces is held by `tests/tick-fairness.test.ts`; `verify:schedules` passes 29.
+- **Soft 404s.** Next 16 documents that `notFound()` after streaming has begun keeps the 200 and adds
+  `noindex`; a real 404 needs a lookup in `proxy`, on every operator request. Isolation holds, and API
+  routes return true 404s. Accepted, not changed.
+- **Raw evidence expiry and a report's recipient.** A sealed report carries no reply and no reply
+  fingerprint, so it verifies the same after expiry. What expiry removes is re-checking a verdict against
+  the agent's words. Because the report has no reply fingerprints, a recipient cannot later match a reply
+  presented to them against the sealed run. Proposed, not done: per-scenario `reply_sha256` and the
+  evidence's retention date in a format-13 payload, with its absence branch. That is customer-facing and
+  needs approval.
+- **UI truthfulness**, checked on planted runs in a browser:
+  - withheld: run page and report say "withheld", show no letter, and show only coverage percentages;
+  - never finished: "not graded", no letter;
+  - one-model pass: the run page says "1 could not be corroborated"; the report, "1 graded by one model
+    only".
+  Whether such a pass should count as a pass at all is decision G5.
+
+## 2026-10-01 — R7 re-proved with canaries; a local stack no longer installs the clock against production
+
+- **R7, every way a run ends early.** `verify:webhooks` now plants three aborted runs. Each one's stored
+  error carries an email address, a phone number, a secret-shaped token, policy text, an agent reply and a
+  database error:
+  - stopped by a person;
+  - stopped after 24 idle hours;
+  - ended by a failure outside any scenario.
+
+  For each run, the check reads the body that reached the receiver and the delivery row every retry
+  resends. Both carry only the fixed sentence, and the run itself still holds the full error for the
+  workspace.
+
+  With R7's one line reverted, the three checks fail and name all six canaries. The first version of the
+  check missed the database canary, because JSON escapes its quotes inside a body. The check now matches
+  the escaped form as well.
+
+  A paused schedule's reason is not covered by this check. It comes from a closed set of Novera's own
+  refusal sentences, none of which interpolates customer text.
+- **The clock on a local stack.** `schedules:clock -- install` with no `--url` installed a job that calls
+  `https://www.nover.space/api/cron/tick`, even into a local database. No request left. The local job is
+  idle until something is due, it was removed at once, and pg_net's queue was empty; a call would also
+  have been refused, because the local secret is not production's. A local database now has to name its
+  app, and may use `http`. A deployed database keeps the production default and https only.
+- **`migrate -- --check` exit codes**, stated precisely:
+  - **1:** an exposed ledger, a disagreement between the ledger and the files, or missing jobs on a
+    deployed database;
+  - **0:** a pending migration alone. It is listed and changes nothing.
+
+`verify:free` 15/15 from an empty database (51 migrations). `verify:webhooks` 32. 565 tests.
+
+## 2026-10-01 — C13: every answer Novera reads is capped and read under its deadline
+
+- **The cap.** Agent replies already had a 256 KB cap. The read-back connector, both model providers and
+  the mail sender still read whole bodies, and the webhook sender held the receiver's body unread.
+  `src/lib/net/read-body.ts` now reads a stream to a limit:
+  - a declared Content-Length over the limit is refused before a byte is read;
+  - a Content-Length that lies smaller lets no more through than it declared;
+  - a gzip body is counted at its expanded size;
+  - bytes that are not UTF-8 become U+FFFD and never throw;
+  - a body that stalls ends in the request's own timeout.
+- **The limits.** Agent and read-back: 256 KB. Model answers: 1 MB, a typed provider failure past it. A
+  model answer that stops arriving is now a timeout, not an empty answer. Mail: a 10 s deadline, where
+  there was none. Webhook receivers' bodies are released unread.
+- **Read-back.** A read-back past its limit is `unavailable`. A match that would only be found past the
+  cap never confirms: the new test fails against the old connector, which read on and confirmed.
+
+The CLI's calls to Novera's own API are unchanged: it is the user's tool, reading our server.
+
+`tests/read-body.test.ts` covers all of this against a raw-socket server: 9 tests. `verification.test.ts`
+has 10. 575 tests.
+
+## 2026-10-01 — The customer-facing wording the integrity pass needed, and a stale home page
+
+Approved by the user ("do everything that needs to be done").
+
+- **`/docs/api`:**
+  - `Idempotency-Key`: what a replay answers (200, `replayed`), what conflicts (409), and that it lasts
+    24 hours.
+  - Raw reads are recorded and listed in Settings; without `include=responses`, quoted personal data is a
+    placeholder.
+  - Webhooks are **at least once**, and receivers deduplicate by `Novera-Delivery`. A stopped run's reason
+    is a fixed sentence. A missed announcement is sent by the clock. A receiver's body is never read.
+- **`/docs/connecting-an-agent`:** the 30-second deadline covers the whole reply, and the 256 KB limit
+  applies to replies and read-backs.
+- **`/docs/data-and-privacy`:** the API and MCP redact by default, and raw reads are logged.
+- **`/docs/cli-and-ci`:** the release gate sends `Idempotency-Key: github-<run id>-<attempt>` and retries
+  its start three times.
+- **Settings:** a "Replies read through a key" list, the ten latest (0050). Before this, the log existed
+  but no page showed it.
+- **n8n templates:**
+  - Every template that starts a run sends a key built once per execution in Configure:
+    `n8n-<execution id>-<ms>`. An execution id alone restarts at 1 on a reinstalled n8n, and would have
+    replayed an old run as a new release's.
+  - **Start run** retries a request that fails.
+  - **Run started?** takes a `200 replayed` as started. Before, it was 201 only, so a retried start
+    would have reported `blocked`.
+  - Proven in n8n 2.41.3 (Docker) against the local app: weekly assurance started fresh and then on a
+    replayed key, with no second run; run-suite completed; and the release gate as a running server gave
+    403 without its secret, `fail` fresh, and `fail` on a replay with no second run.
+- **Home page.** "Forty-one scenarios" → "Forty-nine". A new run uses the newest built-in `eu-support`;
+  production has v5 with 49, read-only check.
+- **Sample report.** It was v3, 36 scenarios, and printed "72.7%" beside three scenarios with no
+  verdict, which a real report would withhold. It is now v5 and 49, and its grade is **Withheld** with no
+  percentage. The three no-verdict scenarios are named with their reasons, alongside the counts
+  (ran / have a verdict / claimed actions checked). It includes a read-back contradiction, and its counts
+  agree across every tab (41 / 5 / 3).
+- **`tests/public-claims.test.ts`** pins both to the newest suite file.
+
+Headless walk on the isolated app: axe-clean and no overflow at 390 and 1440, no console errors. 578 tests.
+
+**Production needs `npm run seed:docs`** for the support agent to answer from the new pages.
+
+## 2026-10-01 — G5: a pass one model gave alone does not pass a release gate (format 13)
+
+**Decision.** A verdict is the finding of two models. A pass that rests on one, because the second model it
+was put to could not be reached (rate limit, timeout, or a workspace key with one model), is
+uncorroborated. From report format 13, the release gate reads any such pass as **incomplete evidence**,
+exit 2, with the reason "N pass(es) rest on one model's verdict". A failure one model found still
+outranks it: it is a finding.
+
+**What did not change:**
+- **Two models from one vendor agreeing** is still a pass. The CI reason now names how many verdicts that
+  covers.
+- **Grade.** The letter is unchanged, and the report already labels each uncorroborated verdict.
+- **Sealed reports** carry no `uncorroborated_passes` and keep their codes. Measured read-only over the
+  18 production reports:
+  - 6 hold uncorroborated verdicts;
+  - 2 of those (formats 1 and 2) exit 0;
+  - with the new code, 18/18 CI codes are unchanged and 18/18 hashes verify.
+- **Production rows:** 16 single-model passes across 6 runs.
+
+**One decision everywhere:**
+- The payload counts `corroboration.uncorroborated_passes`, and `ciOutcome` reads it.
+- The API's `/runs` and `/runs/<id>` and MCP `get_run` now carry `outcome` and `outcome_reason` from
+  `pipelineOutcome` over the sealed report, as the webhook already did.
+- The n8n gate, run-suite and weekly-assurance templates require `run.outcome === "pass"` (counts alone
+  read a lone pass as passed).
+- Settings tells a one-model key's owner what this means before they rely on it.
+
+`verify:api` seals a report whose two scenarios both passed, one on a lone verdict:
+- the counts read 2/0/0;
+- the export says exit 2 with the reason;
+- the API says `incomplete` with the same reason.
+
+`verify:webhooks` checks that the API and webhook outcomes agree on a real run. 583 tests.
+
+## 2026-10-01 — G6: reading the agent's replies needs its own key scope (0052)
+
+**Before.** Any `read` key could ask for `include=responses`; 0050 only recorded that it had. A key handed
+to a CI pipeline needs verdicts and counts, never conversations.
+
+**Now.**
+- A fourth scope, `responses`, is allowed only with `read`.
+- REST answers `403` without it, before anything is read or logged.
+- MCP does not offer `include_responses` to such a key, and refuses it if it is sent anyway.
+- Settings has a tick-box for it.
+
+**Not migrated.** Scopes are frozen at creation (0033), and production holds no API keys (read-only check),
+so no key loses access it was given.
+
+`verify:api` 48:
+- a read key gets 403;
+- a `responses` key gets the exact words, and the read is logged;
+- `responses` without `read` is refused by the database.
+
+`verify:mcp` 33: the parameter is not offered to a read key, which is refused it with nothing logged; a
+`responses` key reads.
+
+## 2026-10-02 — An approved change carries its own proof: retest and rerun where the decision was made
+
+The remediation chain existed in pieces — Ask why → proposal → approve (a new policy version) → retest →
+rerun and compare — but approving ended with "Policy version N created." and nothing else: the operator
+had to know that a retest uses the newest policy, find the retest button below, then scroll to the run's
+toolbar for "Rerun and compare". Now the newest approved change on a scenario shows **Next: check that it
+worked**: it says approving changed the policy, not this run or its report; the retest (naming the policy
+it will use, v2) moves inside it, so there is one; the latest retest's result is stated there; and
+"Rerun the suite and compare with this run" starts a run under the newest policy with this run as the
+baseline. The retest button everywhere now names the version it runs against.
+
+Walked on the isolated app with a real rule-settled run and a planted proposal (no model call): approve →
+the block appears with one retest naming v2 → retest → "Retested against policy v2: it still fails", one
+retest row → rerun → a run with `baseline_run_id` = this run and policy v2, nothing chosen by hand. axe
+clean, no overflow at 390 and 1440, no console errors.
+
+## 2026-10-02 — Evidence needing repair: every scenario with no verdict says why, who acts, and whether a retest is safe
+
+"No result" covered a dozen facts that need different people. `src/lib/evidence/repair.ts` classifies a
+no-verdict scenario from stored fields — typed ones first (evidence gap, read-back observation, judge
+agreement, the router's attempt reasons), then the runner's own fixed sentences — into twenty reasons:
+not run (production guard, no metadata slot, no conversation slot, address refused), cut by Novera's
+slice, the agent's failures (timeout, too large, HTTP status, not JSON, reply not at the path,
+unreachable), unchecked actions (read-back unavailable, action not verified), graders (rate-limited,
+timed out, refused by data class, unreadable verdict, unavailable), an unsettled disagreement, and
+`unclassified` — never a guess. Each states whether the agent received the scenario, who acts, whether
+a retest is safe (`safe`, `check_first` when the agent received it and can act — the first attempt may
+already have acted — or `fix_first`), the next step, and whether a policy edit could help (only for an
+unsettled disagreement). Diagnosis stays off these scenarios, as before.
+
+Shown on the scenario ("Why there is no verdict") and on /review as **Evidence needing repair**, grouped
+by reason with counts and links to the run under a new `noverdict` lens. One constructor
+(`noVerdictRow`) feeds both, so they cannot read a row two ways.
+
+Walked on the isolated app with a real run against an agent with no {{context}} slot: /review shows "Not
+run: no metadata channel 1, for your configuration" with the next step; the link opens the run filtered
+to that one scenario; it says the agent never received it, a retest alone will not help, and editing the
+policy will not change it; no diagnosis offered; axe clean, no overflow at 390 and 1440. 9 classifier
+tests; 592 tests.
+
+## 2026-10-02 — Before you send it: report readiness from stored rows, and a withdrawal that stays withdrawn (0053)
+
+A report is sealed whenever a run finishes, so "there is a link" never meant "this is ready for a client".
+`src/lib/report/readiness.ts` states which, from the sealed document and the run: READY_TO_SHARE,
+READY_FOR_INTERNAL_REVIEW (passes one model gave alone, reviews recorded after sealing, or no recorded
+authorisation), INCOMPLETE / WITHHELD (as the sealed grade says), BLOCKED_BY_EVIDENCE (the hash does not
+match, the counts do not cover the plan, or the limitations block is missing), REVOKED, EXPIRED — with the
+checks behind it: integrity, inputs declared, authorisation, every scenario accounted for, no-verdict
+scenarios disclosed, corroboration, what was tested, limitations, no conversations or keys (by
+construction), reviews disclosed, link open. Failures never lower the state: a report showing them is the
+evidence a client is owed. Older reports are judged on what they hold, with notes rather than gaps.
+
+The operator could not withdraw a report at all; the database allowed it, and also allowed un-withdrawing
+it with no record of who did either. Now the run page has **Withdraw this report** (with a confirmation
+that the link stops working for everyone), and 0053 makes a withdrawal permanent: `revoked_by` is set
+with `revoked_at`, once; a withdrawn report cannot be reopened, re-attributed or have its expiry moved.
+
+`verify:db` 68 (six new: attribution without withdrawal refused; withdrawal allowed; reopen, expiry and
+re-attribution refused; the row holds who). Walked on the isolated app: a real run's report shows "Review
+before sharing — no authorisation recorded", 2 planned / 2 failed, intact; withdraw → the panel says
+withdrawn and offers no second withdrawal, the link says withdrawn, the JSON export answers 410, the row
+names the user. axe clean, no overflow at 390 and 1440. 6 readiness tests; 598 tests.
+
+## 2026-10-02 — The dashboard says what else is waiting: paused schedules, undecided proposals, report readiness, expiring replies, failed webhooks
+
+The attention block named an unfinished run, a broken connection, a missing authorisation, waiting drafts
+and the last run's failures. Five facts that also need a person were only visible on the page that held
+them; each is now an item when it is true, from its own rows, linking to where it is resolved:
+- a schedule that paused, with its stored reason → the agent;
+- proposed policy changes nobody has decided → /review;
+- the newest report, when it is not ready to send — its readiness label and the first gap
+  (src/lib/report/readiness.ts, the same function as the run page) → the run;
+- scenarios whose stored reply retention empties within a week (verdicts and fingerprints stay) → Settings;
+- webhook deliveries that gave up in the last week → Settings.
+Nothing renders when nothing is true, as before. The dashboard costs seven more requests (two parallel
+batches). Walked: a paused schedule, a planted proposal and a real report with no recorded authorisation
+each appear with the right link; axe clean, no overflow at 390 and 1440. 599 tests.
+
+## 2026-10-02 — A comparison says why each verdict moved, and what else changed between the runs
+
+The comparison listed fixed, newly broken, still failing and no result, with a note for scenarios that had
+flipped before. It could not say whether a moved verdict was the agent at all. The database stamps every
+row with a SHA-256 of the reply, transcript and tool activity (0037), so it now can:
+- **"The agent's reply changed."** — the fingerprints differ (never "improved" or "regressed": a moved
+  verdict on a changed reply is still only that);
+- **"The agent's reply was identical; the graders changed."** — same fingerprint, different verdict;
+- **"The action could not be independently verified this time."** — the read-back answered before and not now;
+- **"One of the two runs has no reply for it…"** — and **"not known"** when a run predates fingerprints.
+Above the groups, what else differed, from both runs' declared manifests: the policy version, the
+grading instructions ("a moved verdict may be the rubric, not the agent"), the grader plan, the way Novera
+calls the agent, the declared release — or "Same policy, graders, rubric and agent configuration". A
+partial comparison now begins "Not fully comparable".
+
+Walked with two planted runs (no model): X1 moved on an identical reply → graders; X2 fixed with a new
+reply → the agent's reply changed; X3 lost its reply → cannot be compared; the policy line v1 → v2. axe
+clean, no overflow at 390 and 1440. 601 tests.
+
+## 2026-10-02 — The docs say what the workflow pages now do; the retest sentence follows who received the scenario
+
+`/docs/how-a-run-works` gains the approved change's next steps, the no-verdict explanation and Review →
+Evidence needing repair, and a "Comparing two runs" section; `/docs/what-the-report-contains` gains
+withdrawal (permanent, attributed) and report readiness with its states. The language rule caught "whether
+retesting is safe" in the first draft; the docs now say "whether a retest could repeat something your agent
+did". Writing that found a wrong sentence in the product: a scenario the agent *received* but that asks for
+no action was told "your agent did not receive it". `retryWords` now takes who received it. 602 tests.
+**Production needs `npm run seed:docs`** for the support agent to answer from these pages.
+
+## 2026-10-02 — 0053 kept 0005's erasure exemption; a failed erasure in a verifier is now a failure
+
+The full from-zero run caught it: 0053 rewrote `reports_revoke_only()` from the 0001 text and dropped the
+`erasing_workspace()` exemption 0005 had added, so erasing a workspace that held a sealed report failed
+(`verify:webhooks` "erasure removes endpoints and deliveries", `verify:access`). It was the documented
+lesson — rewriting replaces everything the old version did — and it passed `verify:db` only because the
+fixture's `erase()` ignored the RPC's error. 0053 (applied nowhere but the local stack) now carries the
+exemption; `erase()` throws when erasure fails; `verify:db` checks that a workspace with a withdrawn report
+still erases; `verify:access` tests expiry before withdrawal, because a withdrawal can no longer be undone,
+and checks that it cannot. `verify:free` 15/15 from an empty database (53 migrations); every walk and both
+n8n proofs re-run on it.

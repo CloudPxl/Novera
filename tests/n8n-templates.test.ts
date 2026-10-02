@@ -51,7 +51,8 @@ test("the release gate answers 200 only on the branch that requires a sealed rep
   const wf = load("n8n-novera-release-gate.json");
   const gate = wf.nodes.find((n) => n.name === "Release may proceed?")!;
   const conditions = JSON.stringify(gate.parameters);
-  for (const needle of ["run.status", "counts.failed", "counts.no_result", "run.report"]) assert.ok(conditions.includes(needle), needle);
+  // run.outcome is Novera's own decision over the sealed report (the CLI's and the webhook's), G5 included.
+  for (const needle of ["run.outcome", "run.status", "counts.failed", "counts.no_result", "run.report"]) assert.ok(conditions.includes(needle), needle);
   assert.equal((gate.parameters as { conditions: { combinator: string } }).conditions.combinator, "and");
   assert.deepEqual(wf.connections["Release may proceed?"].main.map((b) => b.map((t) => t.node)), [["Respond: proceed"], ["Respond: blocked"]]);
   const code = (name: string) => (wf.nodes.find((n) => n.name === name)!.parameters.options as { responseCode: number }).responseCode;
@@ -71,5 +72,27 @@ test("weekly assurance opens a ticket for a regression, a lost verdict or incomp
   const compare = load("n8n-novera-weekly-assurance.json").nodes.find((n) => n.name === "Compare")!.parameters.jsCode as string;
   assert.match(compare, /open_ticket: incomplete \|\| regressions\.length > 0/);
   assert.match(compare, /no_result > 0/);
+  assert.match(compare, /run\.outcome === 'incomplete'/);
   assert.match(compare, /moved === 'graders'/);
+});
+
+test("every template that starts a run sends one Idempotency-Key per execution, retries, and takes a replay as started", () => {
+  for (const file of templates) {
+    const wf = load(file);
+    const start = wf.nodes.find((n) => n.name === "Start run");
+    if (!start) continue;
+    const headers = (start.parameters.headerParameters as { parameters: Array<{ name: string; value: string }> } | undefined)?.parameters ?? [];
+    assert.equal(headers.find((h) => h.name === "Idempotency-Key")?.value, "={{ $('Configure').item.json.idempotency_key }}", file);
+    // Made once per execution, unique across reinstalls: an execution id alone restarts at 1.
+    const configure = JSON.stringify(wf.nodes.find((n) => n.name === "Configure")?.parameters);
+    assert.match(configure, /idempotency_key[^}]*\$execution\.id[^}]*\$now\.toMillis\(\)/, `${file}: the key is built in Configure`);
+    assert.equal((start as unknown as { retryOnFail?: boolean }).retryOnFail, true, `${file}: a failed request is retried`);
+    const started = wf.nodes.find((n) => n.name === "Run started?");
+    if (started) assert.match(JSON.stringify(started.parameters), /replayed === true/, `${file}: a 200 replay is the same run, not a refusal`);
+  }
+});
+
+test("the run-suite template passes only when Novera's own outcome is pass", () => {
+  const check = load("n8n-novera-run-suite.json").nodes.find((n) => n.name === "Every scenario passed?")!;
+  assert.match(JSON.stringify(check.parameters), /run\.outcome/);
 });

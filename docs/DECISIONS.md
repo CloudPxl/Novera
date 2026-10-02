@@ -3663,3 +3663,18 @@ Production, after the deploy:
   before any connection: "Not sent: … points to a private or internal address". That shows the address
   guard runs on Vercel. It does not prove the connect-time pinning against a name whose answer changes
   between check and connect, which a static name cannot exercise. That stays a documented boundary.
+
+## 2026-10-02 — Redesign, milestone 1: the home page shows the product
+
+- **Diagnosis, measured at 1440:** the home page was a 1024 px column and read as an article; the
+  report preview was a picture. Direction chosen and recorded in `docs/DESIGN.md` ("Swiss editorial
+  assurance + evidence instrument"): wider composition, text at a 62ch measure, one accent (`trace`)
+  for evidence in motion, a motion vocabulary that only replays a state already rendered.
+- **The hero preview is now the product, operated:** open any failed or no-verdict scenario into its
+  six-stage trace (sent → replied → rules → read-back → graders → sealed), see who decided it, compare
+  with the baseline, re-check the seal. Labelled illustrative on every tab; figures follow the real rules.
+- **Found:** `Reveal` left every revealed block at opacity 0 with JavaScript off (nothing ever set
+  `data-shown`). Now hidden only under `@media (scripting: enabled)`.
+- **Measured:** axe clean at 390/1440, no overflow at 390/768/1024/1440, every module operated by a
+  headless walk, complete with JS off and under reduced motion. Production build, same method as the
+  live page: +31 KB JS and +14 KB CSS decoded, CLS 0, LCP 0.67 s desktop / 0.84 s throttled mobile.

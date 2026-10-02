@@ -532,7 +532,7 @@ export default async function RunPage({
   const suiteLabel = suite ? `${suite.name} v${suite.version}` : "Suite";
 
   return (
-    <main className="w-full max-w-[1200px] py-8 text-ink">
+    <main className="w-full py-8 text-ink">
       <Link href={`/agents/${run.agent_id}`} className="text-sm text-ink-soft underline-offset-2 hover:underline">
         ← {agent?.name ?? "Agent"}
       </Link>

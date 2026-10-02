@@ -7,6 +7,7 @@ import type { SuiteCase } from "@/lib/runner/types.ts";
 import { describeCheck } from "@/lib/judge/checks.ts";
 import { DraftForm, DecideForm, ImportForm, PromoteForm } from "./client.tsx";
 import { SOURCE_LABELS, type ImportProvenance, type SourceTool } from "@/lib/imports/datasets.ts";
+import { Library, type LibraryOrigin, type LibraryRun } from "./library.tsx";
 
 export const metadata: Metadata = { title: "Scenarios · Novera" };
 export const dynamic = "force-dynamic";
@@ -35,7 +36,8 @@ interface DraftRow {
 // The tone set already names the severities; risk uses the same words on purpose.
 const RISK_TONE = { high: "high", medium: "medium", low: "low" } as const;
 
-export default async function ScenariosPage() {
+export default async function ScenariosPage({ searchParams }: { searchParams: Promise<{ suite?: string }> }) {
+  const { suite: suiteParam } = await searchParams;
   const { user, workspace } = await requireWorkspace();
   const admin = await assertMembership(user.id, workspace.id);
 
@@ -53,12 +55,42 @@ export default async function ScenariosPage() {
   ]);
 
   const rows = (drafts ?? []) as unknown as DraftRow[];
+
+  // The library: one suite version's scenarios and how each has done. Defaults to the suite
+  // of the newest run, so it opens on what this workspace actually runs.
+  const { data: newestRun } = await admin.from("runs").select("suite_id").eq("workspace_id", workspace.id)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const suiteList = (suites ?? []) as Array<{ id: string; key: string; version: number; name: string }>;
+  const chosenId = suiteList.some((x) => x.id === suiteParam) ? suiteParam!
+    : (newestRun?.suite_id as string | undefined) ?? suiteList.find((x) => x.key === "eu-support")?.id ?? suiteList[0]?.id;
+  const [{ data: chosen }, { data: libRuns }, { data: promoted }] = chosenId
+    ? await Promise.all([
+      admin.from("suites").select("id, key, version, name, cases, workspace_id").eq("id", chosenId).maybeSingle(),
+      admin.from("runs").select("id, created_at, agents(name)").eq("workspace_id", workspace.id).eq("suite_id", chosenId)
+        .eq("status", "completed").order("created_at", { ascending: false }).limit(8),
+      admin.from("scenario_drafts").select("scenario, origin, approved_at").eq("workspace_id", workspace.id)
+        .eq("included_in_suite_id", chosenId),
+    ])
+    : [{ data: null }, { data: [] }, { data: [] }];
+  const libRunIds = (libRuns ?? []).map((r) => r.id as string);
+  const { data: libCases } = libRunIds.length
+    ? await admin.from("run_cases").select("run_id, case_id, status").in("run_id", libRunIds)
+    : { data: [] };
+  const library: LibraryRun[] = (libRuns ?? []).map((r) => ({
+    id: r.id as string,
+    createdAt: r.created_at as string,
+    agentName: (r.agents as unknown as { name: string } | null)?.name ?? "agent",
+    statuses: new Map((libCases ?? []).filter((c) => c.run_id === r.id).map((c) => [c.case_id as string, c.status as "pass" | "fail" | "error"])),
+  }));
+  const origins = new Map<string, LibraryOrigin>((promoted ?? []).map((d) => [
+    (d.scenario as SuiteCase).id, { origin: d.origin as LibraryOrigin["origin"], approvedAt: (d.approved_at as string | null) ?? null },
+  ]));
   const pending = rows.filter((d) => d.status === "draft");
   const approved = rows.filter((d) => d.status === "approved");
   const settled = rows.filter((d) => d.status === "rejected" || d.status === "included");
 
   return (
-    <main className="w-full max-w-4xl py-8 text-ink">
+    <main className="w-full py-8 text-ink">
       <Link href="/dashboard" className="text-sm text-ink-faint underline-offset-2 hover:underline">
         ← Dashboard
       </Link>
@@ -74,15 +106,45 @@ export default async function ScenariosPage() {
         run: you approve it or you reject it, and only an approval lets it enter a suite version.
       </p>
 
-      <Reveal className="mt-8">
-        <Card className="p-5">
+      {chosen && (
+        <section id="library" aria-labelledby="library-heading" className="mt-8 scroll-mt-20">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 id="library-heading" className="type-h2">In {chosen.name as string} · v{chosen.version as number}</h2>
+              <p className="mt-1 max-w-2xl text-sm text-ink-soft">
+                {(chosen.cases as SuiteCase[]).length} scenarios that run, each with what it takes to settle it, where it came from,
+                and its last {library.length || "few"} results in this workspace. A version never changes once published.
+              </p>
+            </div>
+            <nav aria-label="Suite version" className="flex flex-wrap gap-1.5">
+              {suiteList.slice(0, 8).map((x) => (
+                <Link key={x.id} href={`/scenarios?suite=${x.id}#library`} aria-current={x.id === chosen.id ? "true" : undefined}
+                  className={`novera-press rounded-full border px-3 py-1 text-xs font-medium ${x.id === chosen.id ? "border-ink bg-ink text-on-ink" : "border-line-strong bg-surface text-ink-soft hover:text-ink"}`}>
+                  {x.key} v{x.version}
+                </Link>
+              ))}
+            </nav>
+          </div>
+          <Library
+            suite={{ key: chosen.key as string, version: chosen.version as number, name: chosen.name as string }}
+            cases={chosen.cases as SuiteCase[]}
+            runs={library}
+            origins={origins}
+            builtIn={chosen.workspace_id === null}
+          />
+        </section>
+      )}
+
+      <div className="mt-10 grid gap-6 lg:grid-cols-2">
+      <Reveal>
+        <Card className="h-full p-5">
           <h2 className="type-h2">Draft from a policy version</h2>
           <DraftForm agents={(agents ?? []) as Array<{ id: string; name: string; is_production: boolean }>} />
         </Card>
       </Reveal>
 
-      <Reveal className="mt-6">
-        <Card className="p-5">
+      <Reveal>
+        <Card className="h-full p-5">
           <h2 className="type-h2">Import from another tool</h2>
           <p className="mt-1 type-body text-ink-soft">
             Promptfoo, DeepEval, LangSmith or Langfuse. Each test case becomes a draft for you to
@@ -93,6 +155,7 @@ export default async function ScenariosPage() {
           <ImportForm />
         </Card>
       </Reveal>
+      </div>
 
       <Reveal className="mt-10">
         <div className="flex flex-wrap items-center justify-between gap-3">

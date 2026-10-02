@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { retryWords, type Repair } from "@/lib/evidence/repair.ts";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Badge, ProgressBar, inputClass } from "@/components/ui/primitives.tsx";
@@ -97,7 +97,6 @@ export function CaseTable({
   diagnosis?: Record<string, ReactNode>;
 }) {
   const [query, setQuery] = useState("");
-  const [verdict, setVerdict] = useState<Verdict>("all");
   const [category, setCategory] = useState("all");
   const [severities, setSeverities] = useState<string[]>([]);
   // The lens lives in the address, so a filtered view can be bookmarked, shared with a
@@ -106,6 +105,10 @@ export function CaseTable({
   const pathname = usePathname();
   const params = useSearchParams();
   const fromUrl = params.get("lens");
+  // `?verdict=fail` opens on that tab, so "review the failures" can be a link.
+  const verdictFromUrl = params.get("verdict");
+  const [verdict, setVerdict] = useState<Verdict>(() =>
+    verdictFromUrl === "pass" || verdictFromUrl === "fail" || verdictFromUrl === "error" ? verdictFromUrl : "all");
   const [lens, setLensState] = useState<Lens | null>(LENSES.some((l) => l.key === fromUrl) ? (fromUrl as Lens) : null);
   const setLens = (next: Lens | null) => {
     setLensState(next);
@@ -113,7 +116,13 @@ export function CaseTable({
     if (next) q.set("lens", next); else q.delete("lens");
     router.replace(q.size ? `${pathname}?${q}` : pathname, { scroll: false });
   };
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // `?case=T15` opens that scenario, so the review queue and the dashboard can link to a
+  // finding rather than to a run the reader then has to search.
+  const fromCase = params.get("case");
+  const [expanded, setExpanded] = useState<string | null>(() => cases.find((c) => c.caseId === fromCase)?.id ?? null);
+  useEffect(() => {
+    if (fromCase) document.getElementById(`case-${fromCase}`)?.scrollIntoView({ block: "center" });
+  }, [fromCase]);
 
   const categories = useMemo(() => {
     const seen = new Map<string, string>();
@@ -288,7 +297,7 @@ export function CaseTable({
           {shown.map((c) => {
             const open = expanded === c.id;
             return (
-              <li key={c.id}>
+              <li key={c.id} id={`case-${c.caseId}`} className="scroll-mt-24">
                 <button
                   type="button"
                   aria-expanded={open}

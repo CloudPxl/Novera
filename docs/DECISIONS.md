@@ -3678,3 +3678,30 @@ Production, after the deploy:
 - **Measured:** axe clean at 390/1440, no overflow at 390/768/1024/1440, every module operated by a
   headless walk, complete with JS off and under reduced motion. Production build, same method as the
   live page: +31 KB JS and +14 KB CSS decoded, CLS 0, LCP 0.67 s desktop / 0.84 s throttled mobile.
+
+## 2026-10-02 — Redesign, milestone 2: the operator pages put current work first
+
+- **Dashboard.** A status board of seven tiles — needs review, evidence incomplete, new regressions,
+  awaiting approval, schedules paused, reports ready, connections — each a stored count linking to a
+  filtered page; history (agents, runs, reports) moved to a small strip on the right. Agent cards show
+  evidence health (the release gate's outcome read from the sealed report), the last run, the
+  comparison with the previous run of the same suite version, open findings, the next scheduled run
+  and the newest report's readiness. Recent runs state outcome, a withheld band as withheld (never as
+  a fail colour alone), coverage, newly broken scenarios and who started them; a run in flight shows
+  no counts. Rules extracted to `dashboard/summary.ts` and tested.
+- **Failure → review → fix, with no copying.** `src/lib/review/findings.ts` derives each failed
+  scenario's state from stored rows — new (passed last time), recurring (with its streak), not
+  comparable, resolved — and its next step from what a person already did (proposal, retest, their own
+  finding). Review lists them with state, agent and severity filters in the URL; every next step opens
+  the run at that scenario (`?case=T15`, and `?verdict=fail` opens the failures tab).
+- **Declined: an automatic regression draft for a failed suite scenario.** The brief asked for one.
+  A suite scenario already runs on every rerun, so a draft copy would test the same case twice and
+  count it twice, and a findings table would be a third copy of a verdict that can drift from the
+  first two. Production failures keep their own path (0031), which is where a draft is the right tool.
+- **Scenarios** gains the suite library: every scenario of a suite version with what settles it
+  (rules, read-back, conversation, channel), its source and approval, its last result linked to the
+  run, and a history strip; "recurring" when it failed in consecutive runs. **Regressions** puts the
+  list first and the form in a disclosure that opens only on an empty page.
+- **Measured:** axe clean at 390 and 1440 on dashboard, review, run, scenarios, regressions, agent,
+  connect, settings, guide and docs (docs needed a settle wait — axe caught a reveal mid-fade); every
+  tile and finding link resolves; 615 tests.

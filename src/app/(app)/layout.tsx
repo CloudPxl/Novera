@@ -32,7 +32,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         Skip to the page
       </a>
       <TopBar />
-      <div id="main" className="mx-auto w-full max-w-[1200px] flex-1 px-4 pb-20 sm:px-6">
+      <div id="main" className="mx-auto w-full max-w-[80rem] flex-1 px-4 pb-20 sm:px-6">
         {children}
       </div>
       <Assistant />

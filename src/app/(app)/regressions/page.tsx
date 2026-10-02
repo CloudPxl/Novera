@@ -109,7 +109,7 @@ export default async function RegressionsPage() {
   });
 
   return (
-    <main className="w-full max-w-4xl py-8 text-ink">
+    <main className="w-full py-8 text-ink">
       <Link href="/dashboard" className="text-sm text-ink-faint underline-offset-2 hover:underline">
         ← Dashboard
       </Link>
@@ -124,19 +124,28 @@ export default async function RegressionsPage() {
         and every later run shows whether it came back.
       </p>
 
-      <Reveal className="mt-8">
-        <Card className="p-5">
-          <h2 className="type-h2">Record a failure</h2>
+      <div className="mt-8 grid gap-8 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] xl:items-start">
+      {/* The form is the second thing on the page once something is recorded: the list is
+          what a returning operator came for. Open by default only on an empty page. */}
+      <details open={rows.length === 0} className="group order-first rounded-shell border border-line bg-surface shadow-card xl:order-last xl:sticky xl:top-20">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-shell px-5 py-4 [&::-webkit-details-marker]:hidden">
+          <span>
+            <span className="block type-h2">Record a failure</span>
+            <span className="mt-0.5 block text-sm text-ink-soft">About two minutes. Personal details are removed before anything is stored.</span>
+          </span>
+          <span aria-hidden className="text-ink-faint transition-transform duration-200 group-open:rotate-180">▾</span>
+        </summary>
+        <div className="border-t border-line px-5 pb-5">
           <FailureForm agents={(agents ?? []) as Array<{ id: string; name: string }>} />
-        </Card>
-      </Reveal>
+        </div>
+      </details>
 
-      <Reveal className="mt-10">
+      <Reveal>
         <h2 className="type-h2">Recorded failures</h2>
         {rows.length === 0 ? (
           <div className="mt-3">
             <EmptyState title="Nothing recorded yet">
-              When a customer conversation goes wrong, record it above. It becomes a draft scenario on the
+              When a customer conversation goes wrong, record it with the form on this page. It becomes a draft scenario on the
               Scenarios page for you to approve.
             </EmptyState>
           </div>
@@ -205,6 +214,7 @@ export default async function RegressionsPage() {
           </ul>
         )}
       </Reveal>
+      </div>
     </main>
   );
 }

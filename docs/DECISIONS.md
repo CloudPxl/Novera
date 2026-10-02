@@ -3571,3 +3571,22 @@ them; each is now an item when it is true, from its own rows, linking to where i
 Nothing renders when nothing is true, as before. The dashboard costs seven more requests (two parallel
 batches). Walked: a paused schedule, a planted proposal and a real report with no recorded authorisation
 each appear with the right link; axe clean, no overflow at 390 and 1440. 599 tests.
+
+## 2026-10-02 — A comparison says why each verdict moved, and what else changed between the runs
+
+The comparison listed fixed, newly broken, still failing and no result, with a note for scenarios that had
+flipped before. It could not say whether a moved verdict was the agent at all. The database stamps every
+row with a SHA-256 of the reply, transcript and tool activity (0037), so it now can:
+- **"The agent's reply changed."** — the fingerprints differ (never "improved" or "regressed": a moved
+  verdict on a changed reply is still only that);
+- **"The agent's reply was identical; the graders changed."** — same fingerprint, different verdict;
+- **"The action could not be independently verified this time."** — the read-back answered before and not now;
+- **"One of the two runs has no reply for it…"** — and **"not known"** when a run predates fingerprints.
+Above the groups, what else differed, from both runs' declared manifests: the policy version, the
+grading instructions ("a moved verdict may be the rubric, not the agent"), the grader plan, the way Novera
+calls the agent, the declared release — or "Same policy, graders, rubric and agent configuration". A
+partial comparison now begins "Not fully comparable".
+
+Walked with two planted runs (no model): X1 moved on an identical reply → graders; X2 fixed with a new
+reply → the agent's reply changed; X3 lost its reply → cannot be compared; the policy line v1 → v2. axe
+clean, no overflow at 390 and 1440. 601 tests.

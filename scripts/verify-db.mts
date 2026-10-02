@@ -484,8 +484,12 @@ console.log("\nWithdrawing a report");
     report(/stays withdrawn/.test(rename?.message ?? ""), "nor who withdrew it rewritten", rename?.message.slice(0, 70) ?? "rewritten");
     const { data: row } = await db.from("reports").select("revoked_at, revoked_by, content_hash").eq("token", sealed.token).single();
     report(row?.revoked_by === owner && Boolean(row?.revoked_at), "the row holds when and who", JSON.stringify({ by: row?.revoked_by === owner }));
-  } finally {
-    await sealed.erase();
+    const erased = await sealed.erase().then(() => null, (e: Error) => e.message);
+    const { count: left } = await db.from("reports").select("*", { count: "exact", head: true }).eq("token", sealed.token);
+    report(erased === null && left === 0, "erasure still removes a withdrawn report with its workspace", erased ?? `${left} left`);
+  } catch (e) {
+    await sealed.erase().catch(() => {});
+    throw e;
   }
 }
 

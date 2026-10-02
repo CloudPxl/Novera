@@ -9,6 +9,7 @@
 --
 -- `revoked_by` is set with `revoked_at`, once. A withdrawn report's expiry no longer moves.
 -- The column goes with the report on erasure (cascade, 0005); a deleted user is kept as null.
+-- The function is 0005's, extended: erasure (`erasing_workspace()`) still deletes reports.
 
 alter table reports add column if not exists revoked_by uuid references auth.users (id) on delete set null;
 
@@ -16,6 +17,9 @@ create or replace function reports_revoke_only()
 returns trigger language plpgsql as $$
 begin
   if tg_op = 'DELETE' then
+    if erasing_workspace() then
+      return old;
+    end if;
     raise exception 'Reports are append-only; revoke instead of deleting';
   end if;
   if new.payload is distinct from old.payload

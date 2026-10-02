@@ -41,25 +41,22 @@ const FINDINGS = "Findings (";
 console.log("\nAccess control");
 check(has(await body(), FINDINGS), "a live link renders the report");
 
-await db.from("reports").update({ revoked_at: new Date().toISOString() }).eq("token", report.token);
+// Expiry first, and restored: a withdrawal is permanent (0053), so it comes last.
+await db.from("reports").update({ expires_at: new Date(Date.now() - 86_400_000).toISOString() }).eq("token", report.token);
 let page = await body();
-check(has(page, "no longer shared") && !has(page, FINDINGS), "a revoked link refuses and shows nothing");
-
-await db
-  .from("reports")
-  .update({ revoked_at: null, expires_at: new Date(Date.now() - 86_400_000).toISOString() })
-  .eq("token", report.token);
-page = await body();
 check(has(page, "no longer available") && !has(page, FINDINGS), "an expired link refuses and shows nothing");
 
 const unknown = await fetch(`${appUrl}/report/this-token-does-not-exist-000000000000`);
 check(unknown.status === 404, "an unknown token is a 404", `got ${unknown.status}`);
 
-await db
-  .from("reports")
-  .update({ revoked_at: report.revoked_at, expires_at: report.expires_at })
-  .eq("token", report.token);
-check(has(await body(), FINDINGS), "the report is restored");
+await db.from("reports").update({ expires_at: report.expires_at }).eq("token", report.token);
+check(has(await body(), FINDINGS), "the report opens again once its expiry is restored");
+
+await db.from("reports").update({ revoked_at: new Date().toISOString() }).eq("token", report.token);
+page = await body();
+check(has(page, "no longer shared") && !has(page, FINDINGS), "a revoked link refuses and shows nothing");
+const { error: reopen } = await db.from("reports").update({ revoked_at: null }).eq("token", report.token);
+check(Boolean(reopen) && !has(await body(), FINDINGS), "and a revoked link cannot be reopened (0053)", reopen?.message.slice(0, 60));
 
 console.log("\nEvidence immutability, attempted with the service role");
 const { error: payloadErr } = await db.from("reports").update({ payload: { tampered: true } }).eq("token", report.token);

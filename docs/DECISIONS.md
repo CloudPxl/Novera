@@ -3600,3 +3600,15 @@ retesting is safe" in the first draft; the docs now say "whether a retest could 
 did". Writing that found a wrong sentence in the product: a scenario the agent *received* but that asks for
 no action was told "your agent did not receive it". `retryWords` now takes who received it. 602 tests.
 **Production needs `npm run seed:docs`** for the support agent to answer from these pages.
+
+## 2026-10-02 — 0053 kept 0005's erasure exemption; a failed erasure in a verifier is now a failure
+
+The full from-zero run caught it: 0053 rewrote `reports_revoke_only()` from the 0001 text and dropped the
+`erasing_workspace()` exemption 0005 had added, so erasing a workspace that held a sealed report failed
+(`verify:webhooks` "erasure removes endpoints and deliveries", `verify:access`). It was the documented
+lesson — rewriting replaces everything the old version did — and it passed `verify:db` only because the
+fixture's `erase()` ignored the RPC's error. 0053 (applied nowhere but the local stack) now carries the
+exemption; `erase()` throws when erasure fails; `verify:db` checks that a workspace with a withdrawn report
+still erases; `verify:access` tests expiry before withdrawal, because a withdrawal can no longer be undone,
+and checks that it cannot. `verify:free` 15/15 from an empty database (53 migrations); every walk and both
+n8n proofs re-run on it.

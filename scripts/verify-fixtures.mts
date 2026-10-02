@@ -26,7 +26,13 @@ export async function sealThrowawayReport(db: SupabaseClient, tag: string, optio
 }> {
   const user = (await db.auth.admin.createUser({ email: `verify-${tag}+${Date.now()}@novera.invalid`, password: crypto.randomUUID(), email_confirm: true })).data.user!;
   const { data: ws } = await db.from("workspaces").insert({ name: `__novera_verify_${tag}__`, owner_id: user.id }).select("id").single();
-  const erase = async () => { await db.rpc("erase_workspace", { target: ws!.id }); await db.auth.admin.deleteUser(user.id); };
+  // A failed erasure is a finding, not a cleanup detail: it once hid that 0053 had dropped
+  // the erasure exemption for reports.
+  const erase = async () => {
+    const { error } = await db.rpc("erase_workspace", { target: ws!.id });
+    if (error) throw new Error(`The verification workspace could not be erased: ${error.message}`);
+    await db.auth.admin.deleteUser(user.id);
+  };
   try {
     await db.from("workspace_members").insert({ workspace_id: ws!.id, user_id: user.id, role: "owner" });
     const { data: agent } = await db.from("agents").insert({

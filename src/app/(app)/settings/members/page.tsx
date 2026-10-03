@@ -39,8 +39,8 @@ export default async function MembersPage() {
   const grantable = GRANTABLE_ROLES.filter((r) => canManageMember(ctx.role, "auditor", r));
 
   return (
-    <main className="w-full max-w-4xl py-8 text-ink">
-      <SettingsNav current="members" role={ctx.role} mode={ctx.accountMode} members={ids.length} workspace={ctx.workspace.name} />
+    <main className="w-full pb-10 text-ink">
+      <SettingsNav current="members" role={ctx.role} mode={ctx.accountMode} members={ids.length} workspace={ctx.workspace.name}>
 
       <section aria-labelledby="members-heading" className="mt-8">
         <h2 id="members-heading" className="type-h2">Members · {ids.length}</h2>
@@ -113,6 +113,7 @@ export default async function MembersPage() {
           <Card className="mt-3 p-5"><LeaveWorkspaceForm name={ctx.workspace.name} /></Card>
         </section>
       )}
+    </SettingsNav>
     </main>
   );
 }

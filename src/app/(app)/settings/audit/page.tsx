@@ -18,10 +18,11 @@ export default async function AuditPage() {
   const ctx = await requireContext();
   if (!can(ctx.role, "audit.view")) {
     return (
-      <main className="w-full max-w-4xl py-8 text-ink">
-        <SettingsNav current="audit" role={ctx.role} mode={ctx.accountMode} members={2} workspace={ctx.workspace.name} />
+      <main className="w-full pb-10 text-ink">
+        <SettingsNav current="audit" role={ctx.role} mode={ctx.accountMode} members={2} workspace={ctx.workspace.name}>
         <div className="mt-8"><EmptyState title="Not for your role">The audit log is read by the owner, admins and auditors.</EmptyState></div>
-      </main>
+      </SettingsNav>
+    </main>
     );
   }
   const admin = await assertMembership(ctx.user.id, ctx.workspace.id, "audit.view");
@@ -52,8 +53,8 @@ export default async function AuditPage() {
   };
 
   return (
-    <main className="w-full max-w-4xl py-8 text-ink">
-      <SettingsNav current="audit" role={ctx.role} mode={ctx.accountMode} members={count ?? 1} workspace={ctx.workspace.name} />
+    <main className="w-full pb-10 text-ink">
+      <SettingsNav current="audit" role={ctx.role} mode={ctx.accountMode} members={count ?? 1} workspace={ctx.workspace.name}>
       <p className="mt-6 max-w-2xl text-sm text-ink-soft">
         Every change to who may do what here, newest first. Nobody can edit or delete a line; the log leaves only with the
         workspace. Times in {ctx.profile.timezone}.
@@ -76,6 +77,7 @@ export default async function AuditPage() {
           </ol>
         </Card>
       )}
+    </SettingsNav>
     </main>
   );
 }

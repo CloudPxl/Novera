@@ -31,8 +31,8 @@ export default async function ProfilePage() {
   const owned = ctx.memberships.filter((m) => m.role === "owner").map((m) => m.workspace.name);
 
   return (
-    <main className="w-full max-w-4xl py-8 text-ink">
-      <SettingsNav current="profile" role={ctx.role} mode={ctx.accountMode} members={members ?? 1} workspace={ctx.workspace.name} />
+    <main className="w-full pb-10 text-ink">
+      <SettingsNav current="profile" role={ctx.role} mode={ctx.accountMode} members={members ?? 1} workspace={ctx.workspace.name}>
 
       <section aria-labelledby="mode-heading" className="mt-8">
         <h2 id="mode-heading" className="type-h2">How you use Novera</h2>
@@ -109,6 +109,7 @@ export default async function ProfilePage() {
           <Link href="/docs/data-and-privacy" className="underline underline-offset-2 hover:text-ink">Data and privacy</Link> says what is kept and for how long.
         </p>
       </section>
+    </SettingsNav>
     </main>
   );
 }

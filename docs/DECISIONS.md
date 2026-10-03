@@ -3797,3 +3797,14 @@ Production, after the deploy:
   customer's message, the reply and the redaction record open beneath it.
 - **Reports**: rows link to the run, whose Overview carries the report, its exports and readiness.
 - **Measured**: operator walk 69/69 with every new tab at 390/1440, identity walk passing, 629 tests.
+
+## 2026-10-03 — IA refactor, milestone 5: settings in sections
+
+- One section at a time with a grouped navigation (left on wide screens, a scrolling row on phones): You (profile
+  and preferences), This workspace (General, Grading and data routing, Members), Developer (API keys, MCP and
+  webhooks), Security (audit log). Members and the audit log appear once a workspace has more than one member or
+  the account is not personal. New addresses `/settings/grading` and `/settings/developer`; `/settings` is General.
+- One component renders the workspace sections, so nothing is duplicated; the MCP endpoint and its scopes are stated
+  on Developer. Erasing or leaving moved into a labelled "Danger zone" disclosure under the name and retention.
+- **Found**: the settings navigation pushed phones 279 px wide (a grid item sized to its scrolling list).
+- **Measured**: operator walk 75/75 twice, identity walk passing, 629 tests.

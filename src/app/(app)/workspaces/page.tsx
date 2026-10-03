@@ -7,6 +7,7 @@ import { switchWorkspace } from "@/lib/workflow/identity.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { portfolio } from "@/lib/workspaces/portfolio.ts";
 import { formatWhen } from "@/lib/format/when.ts";
+import { PageHeader } from "@/components/ui/page.tsx";
 import { NewWorkspaceForm } from "../settings/identity-forms.tsx";
 
 export const metadata: Metadata = { title: "Workspaces · Novera" };
@@ -23,16 +24,15 @@ export default async function WorkspacesPage() {
   const agency = ctx.accountMode !== "personal";
 
   return (
-    <main className="w-full py-8 text-ink">
-      <p className="type-eyebrow text-ink-faint">{agency ? "Portfolio" : "Workspaces"}</p>
-      <h1 className="mt-2 type-h1">{agency ? "Clients" : "Your workspaces"}</h1>
-      <p className="mt-2 max-w-2xl type-body text-ink-soft">
-        {agency
+    <main className="w-full pb-10 text-ink">
+      <PageHeader
+        eyebrow={agency ? "Portfolio" : "Workspaces"}
+        title={agency ? "Clients" : "Your workspaces"}
+        description={agency
           ? "One workspace per client keeps their agents, keys, retention and reports apart — and each report names that client. What needs review comes first."
           : "Each workspace has its own agents, keys, retention and reports."}
-      </p>
-
-      <ul className="mt-8 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      />
+      <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {rows.map(({ membership: m, newest: run, summary: sum, agents: n, inFlight }) => {
           const current = m.workspace.id === ctx.workspace.id;
           return (

@@ -203,6 +203,13 @@ this, both invisible to inspection: a severity chip at 2.82:1 contrast on the cl
 report, and a transparent tooltip that still occupied layout and pushed every page using
 one 28px past a 390px viewport.
 
+**Three levels, never mixed on one screen** (`docs/DESIGN.md`, 2026-10-02): *Decide* (page header with
+one primary action, one health sentence, three metrics, at most five attention items), *Investigate*
+(lists, filters, comparisons), *Prove* (a case's evidence chain, hashes, provenance — behind a tab, a row
+that opens, or an explicit disclosure). Build pages from `src/components/ui/page.tsx`; tabs are addresses
+(`?tab=`), so links and the back button work and nothing waits for JavaScript. Navigation is chosen by
+account mode (personal, agency, enterprise); every existing URL keeps resolving.
+
 **Measure the interface, never inspect it.** Every accessibility defect found in Phase 6
 was invisible to reading the code *and* to looking at the page: a list whose items were
 wrapped in a `<div>` and stopped being a list, a dropdown announcing itself as a menu it

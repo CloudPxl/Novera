@@ -21,6 +21,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div
       data-motion={ctx.profile.reduced_motion === "reduce" ? "reduce" : undefined}
+      data-shell="app"
       className="flex min-h-full flex-1 flex-col bg-ground text-ink"
     >
       {/*

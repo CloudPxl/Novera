@@ -118,3 +118,7 @@ control is quiet (outlined) so a page's own primary action is the only filled bu
 swaps in; with scripting off it stayed on "Loading…". The streamed block is shown and the fallback
 hidden under `@media (scripting: none)`, inside the base layer (Tailwind's `[hidden]` rule is
 `!important` there).
+
+**Motion inside the app (2026-10-03).** Sections appear in place in the operator app — no fade on
+scroll — because a work tool's screens are read, not toured. Drawers, tabs, progress, live status and
+the public page keep their motion. `[data-shell="app"]` in `globals.css`.

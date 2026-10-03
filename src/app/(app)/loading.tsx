@@ -7,7 +7,7 @@ import { LoadingState } from "@/components/ui/primitives.tsx";
  */
 export default function Loading() {
   return (
-    <main className="novera-loading w-full max-w-4xl text-ink">
+    <main className="novera-loading w-full pt-8 text-ink">
       <LoadingState />
     </main>
   );

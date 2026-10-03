@@ -3808,3 +3808,10 @@ Production, after the deploy:
   on Developer. Erasing or leaving moved into a labelled "Danger zone" disclosure under the name and retention.
 - **Found**: the settings navigation pushed phones 279 px wide (a grid item sized to its scrolling list).
 - **Measured**: operator walk 75/75 twice, identity walk passing, 629 tests.
+
+## 2026-10-03 — IA refactor, milestone 6: cross-app polish
+
+- Sections no longer rise on scroll inside the app; the connect page and the portfolio use the shared page header;
+  the loading state uses the page frame. Rule recorded in CLAUDE.md: three levels never mixed on one screen.
+- **Measured**: operator walk 77/77 (every page, tab and view axe-clean at 390/1440, no overflow, links resolve),
+  identity walk, homepage walk, keyboard / reduced motion / JavaScript-off on the Overview; 629 tests.

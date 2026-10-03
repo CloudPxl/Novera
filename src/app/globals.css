@@ -555,3 +555,12 @@ body {
     }
   }
 }
+
+/* Inside the operator app, sections appear in place rather than rising on scroll: a work tool's
+   screens are read, not toured, and nine sections fading in one after another is movement with no
+   meaning (2026-10-03 IA refactor). Drawers, tabs, progress and live status keep their motion. */
+[data-shell="app"] .novera-reveal,
+[data-shell="app"] .novera-reveal[data-shown="true"] {
+  opacity: 1;
+  animation: none;
+}

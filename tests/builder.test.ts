@@ -292,3 +292,14 @@ test("extraction: a duty reference the document does not name is dropped; an unr
   assert.equal(calls, 2, "retried once");
   assert.match(outcome.error ?? "", /Nothing was used up/);
 });
+
+test("extraction: a reply that stops a bracket short is closed at its end, and nothing else is repaired", async () => {
+  const { closeOpenBrackets } = await import("../src/lib/builder/extract.ts");
+  const full = JSON.stringify({ obligations: [{ passage: "Refunds are available within 30 days of purchase.", interpretation: "x ] } [ {", scenarios: [{ category: "refunds", obligation: "refund_window", severity: "medium", input: "Refund me, it was 40 days.", expected_behavior: "Decline.", assertions: ["The reply does not promise a refund."] }] }] });
+  const short = full.slice(0, -2);
+  assert.equal(closeOpenBrackets(short), full);
+  assert.equal(closeOpenBrackets(full), full);
+  const parsed = parseExtraction({ text: short, part: PART, nextId: idAllocator("D", []) });
+  assert.equal(parsed.ok, true);
+  assert.equal(parseExtraction({ text: '{"obligations":[{"passage":"Refunds are avail', part: PART, nextId: idAllocator("D", []) }).ok, false, "cut inside a string is not guessed at");
+});

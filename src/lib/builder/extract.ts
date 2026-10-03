@@ -95,8 +95,31 @@ export function idAllocator(prefix: string, used: Iterable<string>): () => strin
   return () => `${prefix}${String(++highest).padStart(2, "0")}`;
 }
 
+/**
+ * The text with any brackets left open at its very end closed. A free-tier model was
+ * measured stopping one `]}` short of a complete answer; nothing in the middle is touched,
+ * and whatever parses is still checked word for word against the document after this.
+ */
+export function closeOpenBrackets(text: string): string {
+  const stack: string[] = [];
+  let inString = false, escaped = false;
+  for (const ch of text) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === "\"") inString = false;
+      continue;
+    }
+    if (ch === "\"") inString = true;
+    else if (ch === "{" || ch === "[") stack.push(ch);
+    else if (ch === "}" || ch === "]") stack.pop();
+  }
+  if (inString || !stack.length) return text;
+  return text.trimEnd() + stack.reverse().map((c) => (c === "{" ? "}" : "]")).join("");
+}
+
 export function parseExtraction(args: { text: string; part: string; nextId: () => string }): { ok: true; result: ExtractionResult } | { ok: false; reason: string; readable: boolean } {
-  const json = extractJsonObject(args.text) as Record<string, unknown> | null;
+  const json = (extractJsonObject(args.text) ?? extractJsonObject(closeOpenBrackets(args.text.trim().replace(/```\s*$/, "")))) as Record<string, unknown> | null;
   if (!json || typeof json !== "object" || Array.isArray(json)) {
     const t = args.text.trim();
     return { ok: false, readable: false, reason: t.startsWith("{") && !t.endsWith("}") ? "The model ran out of room before it finished." : "The model did not return a readable answer." };

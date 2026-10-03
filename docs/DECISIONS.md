@@ -3876,4 +3876,6 @@ could be inserted already approved** (the trigger guarded updates only). Both ar
   marked the part as read for good. Now: an assertion must be a sentence; a duty reference is kept only if the
   document names it; the prompt carries a worked example and skips contact lines; an unreadable reply is retried
   once and leaves the part unread; the read button stays, disabled, so its result and the reasons for anything
-  dropped stay on screen. 650 tests.
+  dropped stay on screen. 650 tests. Then, measured on the production route: gpt-oss-20b sometimes ends its answer one `]}` short (2 of 6 samples);
+  the reply is now closed at its very end before parsing — nothing in the middle is repaired, and what parses is still
+  checked word for word. 651 tests.

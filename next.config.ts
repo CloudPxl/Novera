@@ -5,6 +5,12 @@ const nextConfig: NextConfig = {
   // against a list of known issues.
   poweredByHeader: false,
 
+  // A Suite Builder source may be a 2 MB document (src/lib/builder/sources.ts checks the
+  // bytes again); the default 1 MB would refuse it before that check could explain why.
+  experimental: {
+    serverActions: { bodySizeLimit: "3mb" },
+  },
+
   // Pages get their headers from `src/proxy.ts`, which does not run for /api. Route
   // handlers answer with data — JSON, CSV, Markdown, JUnit — never with a page, so they
   // get the strictest set: nothing may be sniffed into something executable, framed,

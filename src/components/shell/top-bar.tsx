@@ -41,7 +41,7 @@ export async function TopBar() {
   const [{ data: agentRows }, { data: suiteRows }] = await Promise.all([
     db.from("agents").select("id, name, config").eq("workspace_id", workspace.id).order("created_at"),
     // Built-in suites (no workspace) and this workspace's own; never another membership's.
-    db.from("suites").select("id, key, name, version, cases").or(`workspace_id.is.null,workspace_id.eq.${workspace.id}`)
+    db.from("suites").select("id, key, name, version, cases").or(`workspace_id.is.null,workspace_id.eq.${workspace.id}`).neq("approval", "exploratory")
       .order("key").order("version", { ascending: false }),
   ]);
 

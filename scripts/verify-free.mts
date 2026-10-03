@@ -17,7 +17,7 @@ import { spawn } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 
 const FREE = [
-  "verify:db", "verify:tenancy", "verify:identity", "verify:access", "verify:byok", "verify:throttle", "verify:imports",
+  "verify:db", "verify:tenancy", "verify:identity", "verify:builder", "verify:access", "verify:byok", "verify:throttle", "verify:imports",
   "verify:regressions", "verify:retention", "verify:api", "verify:mcp", "verify:webhooks",
   "verify:schedules", "verify:leases", "verify:slices",
   // A database deployed a minute ago has jobs whose first run is still to come.

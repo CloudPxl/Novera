@@ -89,7 +89,7 @@ export default async function RunPage({
   const [{ data: agent }, { data: policy }, { data: suite }, { data: reportRows }, { data: schedule }, { data: apiKey }, { data: newestPolicy }] = await Promise.all([
     db.from("agents").select("name").eq("id", run.agent_id).maybeSingle(),
     db.from("policies").select("version").eq("id", run.policy_id).maybeSingle(),
-    db.from("suites").select("name, version, cases").eq("id", run.suite_id).maybeSingle(),
+    db.from("suites").select("name, version, cases, approval, provenance").eq("id", run.suite_id).maybeSingle(),
     // Newest first: a run can carry a reissue that discloses human review, and a
     // single-row read of more than one report returns nothing at all.
     db.from("reports").select("token, created_at, revoked_at, expires_at, content_hash, payload, disclosed:payload->human_review->>as_of").eq("run_id", id)
@@ -111,6 +111,10 @@ export default async function RunPage({
       ? `started by the API key “${apiKey.name as string}”`
       : null;
 
+  // A Suite Builder scan of unapproved drafts: never sealed as a report (0056), never rerun
+  // from here, and said so above everything else on the page.
+  const exploratory = suite?.approval === "exploratory";
+  const scanBuild = exploratory ? ((suite?.provenance as { build_id?: string } | null)?.build_id ?? null) : null;
   const suiteCases = Array.isArray(suite?.cases) ? (suite.cases as Array<Record<string, unknown>>) : [];
   const plannedCases = suiteCases.length;
   const settled = run.status === "completed" || run.status === "aborted";
@@ -519,13 +523,13 @@ export default async function RunPage({
                         {retestedSince.status === "pass" ? "it now passes." : retestedSince.status === "fail" ? "it still fails." : "no verdict."}
                       </p>
                     )}
-                    <form action={rerunFrom} className="mt-3 flex flex-wrap items-center gap-3">
+                    {!exploratory && <form action={rerunFrom} className="mt-3 flex flex-wrap items-center gap-3">
                       <input type="hidden" name="runId" value={run.id} />
                       <SubmitButton variant="secondary" size="sm" pendingLabel="Starting…">
                         Rerun the suite and compare with this run
                       </SubmitButton>
                       <span className="text-xs text-ink-faint">A new run of every scenario under the newest policy; it uses one run.</span>
-                    </form>
+                    </form>}
                   </>
                 ) : undefined}
               />
@@ -553,6 +557,17 @@ export default async function RunPage({
       <Link href={`/agents/${run.agent_id}`} className="text-sm text-ink-soft underline-offset-2 hover:underline">
         ← {agent?.name ?? "Agent"}
       </Link>
+
+      {exploratory && (
+        <div role="note" className="mt-4 rounded-panel border border-warning-border bg-warning-surface px-4 py-3 text-warning-text">
+          <p className="font-semibold">Exploratory scan — not a conformity report</p>
+          <p className="mt-1 text-sm">
+            This run includes scenarios nobody has approved yet. No report is sealed for it, and a pipeline reads it as
+            incomplete. Use it to see what the agent does, then decide each scenario
+            {scanBuild ? <> in the <Link href={`/builder/${scanBuild}`} className="font-medium underline underline-offset-2">Suite Builder</Link></> : " in the Suite Builder"} and publish the suite.
+          </p>
+        </div>
+      )}
 
       {!settled ? (
         <div className="mt-4">

@@ -17,7 +17,8 @@ export type AuditAction =
   | "account.mode_changed" | "account.profile_updated" | "account.exported" | "account.personalization_reset"
   | "account.erased" | "apikey.created" | "apikey.revoked" | "webhook.created" | "webhook.revoked"
   | "retention.changed" | "report.withdrawn" | "judgekey.connected" | "judgekey.removed"
-  | "memory.created" | "memory.deleted" | "memory.cleared" | "memory.suggestion_accepted" | "memory.suggestion_dismissed";
+  | "memory.created" | "memory.deleted" | "memory.cleared" | "memory.suggestion_accepted" | "memory.suggestion_dismissed"
+  | "suite.bulk_approved" | "suite.published" | "suite.gaps_accepted" | "suite.source_fetched";
 
 export async function recordAudit(admin: SupabaseClient, event: {
   workspaceId: string | null;
@@ -66,4 +67,8 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   "memory.cleared": "cleared assistant memory",
   "memory.suggestion_accepted": "accepted a memory suggestion",
   "memory.suggestion_dismissed": "dismissed a memory suggestion",
+  "suite.bulk_approved": "approved several scenarios at once",
+  "suite.published": "published a suite version",
+  "suite.gaps_accepted": "published a suite with open questions",
+  "suite.source_fetched": "had a web page fetched as a source",
 };

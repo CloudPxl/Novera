@@ -3815,3 +3815,57 @@ Production, after the deploy:
   the loading state uses the page frame. Rule recorded in CLAUDE.md: three levels never mixed on one screen.
 - **Measured**: operator walk 77/77 (every page, tab and view axe-clean at 390/1440, no overflow, links resolve),
   identity walk, homepage walk, keyboard / reduced motion / JavaScript-off on the Overview; 629 tests.
+
+## 2026-10-03 — The Suite Builder: a customer-approved suite without writing it from scratch
+
+Audit first (`docs/audits/2026-10-03-suite-builder.md`). The draft → approve → promote pipeline already existed for
+policy drafts, dataset imports and production failures, so the builder is built **on** `scenario_drafts` and its
+forward-only trigger, not beside them. The audit also found two gaps in rules the product already claims:
+**a suite version was not immutable in the database** (no trigger on `suites`; only convention), and **a draft
+could be inserted already approved** (the trigger guarded updates only). Both are closed in 0056.
+
+- **Packs** (`data/packs/packs.json`, `src/lib/builder/packs.ts`): eight published packs, each a selection of
+  eu-support v5 scenarios **byte for byte** (a test compares every one), so each carries its ground-truth label and
+  its recorded calibration. The quality record — labelled fail/pass, excluded as arguable, rule-settled, needs a
+  channel, calibration dates — is computed from the label file, never typed in. E-commerce, SaaS/B2B and
+  multilingual are held as `draft` and not offered: no measured scenarios behind them. Scenarios that assume
+  something about the customer's own terms (T03, T04, T27; T01, T02, T14, T16) arrive `needs_review` saying what.
+- **Sources** (`suite_sources`): paste, upload (.docx read with a dependency-free zip reader and a capped inflate;
+  .md, .txt, .html), one public page, a tool list or OpenAPI. PDF is refused with what to do instead. Stored as
+  text with personal data already replaced; the original only as a SHA-256. A page is fetched once, on request,
+  after a confirmation stored with the person's name: public addresses only, each of at most three redirects
+  re-checked, `robots.txt` respected, 2 MB, 10 s, HTML or text only. Text expires after 180 days (added to
+  `expire_inbound_and_probes`).
+- **Extraction** (`src/lib/builder/extract.ts`): one part (~8,000 characters) per press, through the existing
+  `draft` route with data class `redacted_customer` — the page names those providers and the excluded ones
+  before anything is added. Passages and suggested-answer citations must be in the document word for word (also
+  checked by the database on insert); an ambiguous passage becomes an **open question**, never an assumption, and
+  a scenario resting on one cannot be approved until it is answered (database). Instruction-shaped passages are
+  flagged and their drafts arrive needing review.
+- **Discovery** (`src/lib/builder/discovery.ts`): no model. How the agent is called, whether it reports tools, its
+  context and conversation slots, and the tools it called in recorded runs. A consequential tool (refund, delete,
+  cancel, export, charge) set against a declared passage that restricts it is a **conflict** with a drafted
+  `tool_forbidden` scenario; with no passage, it is a **question**. Observing never writes a policy version.
+- **States**: drafts gain `needs_review` and `not_applicable` (named, with a reason), `edited_from` (an edit is a new
+  draft; the original is rejected as replaced), and `approval_group` for bulk approval — only low/medium, nothing
+  open, nothing flagged, one audit line. Builds go draft → approved → published or abandoned; approving needs the
+  acknowledgement and, with open questions, a named and reasoned acceptance (database). Executed is the runs table.
+- **Exploratory scan**: a suite with `approval = 'exploratory'`. `startRun` refuses it from every entry point but the
+  builder, schedules refuse it, `execute-run` does not seal it and **0056 refuses a report for it**; pipelines read
+  it as incomplete; the run page labels it and offers no rerun.
+- **Publish** creates `approval = 'customer_approved'` with provenance: pack, sources and hashes, origins, edited,
+  rejected and not-applicable counts, accepted gaps, acknowledgement, approver.
+- **Roles**: drafting `scenario.draft`; deciding and answering `scenario.decide`; publishing `scenario.promote`; a scan
+  `run.start`; "use this source as the agent's policy" `policy.write` — the person's own words, on a press.
+- **Ask Novera** may link to `/builder` and explain it from the docs; it sees no source text (keeping customer
+  documents off the assistant route) and has no action that approves, answers or publishes (tested).
+- **Declined here**: PDF parsing (a dependency and a parser attack surface for a format customers can export from);
+  crawling beyond one page; picking an existing run case as a candidate (production failures cover real traces).
+- **Service layer, designed, not published** (no prices): self-serve builder; assisted suite setup (we prepare the
+  build from the customer's documents, they approve); an agency pack (a build per client, client approval as
+  reviewer); an enterprise policy-mapping workshop. Nothing customer-facing until approved.
+- **Measured**: `verify:builder` all checks passing against the local stack (every pack, sources and limits,
+  verbatim passages, open questions holding approval, a hostile document, bulk approval, discovery against the
+  fixture's real `issue_refund`, a scan that completed with no report, a published suite that ran and sealed a
+  verifying report, isolation, SSRF and size and time limits, retention, erasure); `verify:free` unchanged otherwise;
+  browser walk 30/30 (axe-clean at 390/1440, no JavaScript); 648 tests.

@@ -72,6 +72,7 @@ Rules:
   - {"type":"navigate","href":"<path>","label":"<short label>"} — only paths from ALLOWED_PATHS.
   - {"type":"start_run","agentId":"<id>"} — only for an agent in WORKSPACE that has a policy, and only when WORKSPACE says a run can start. It uses one run of their allowance; say so.
 - If person.mayStartRuns is false, never offer start_run: their role cannot start one; say who can.
+- The Suite Builder (/builder) starts a suite from a measured baseline pack, the person's own documents, what their agent was observed doing, and production failures. From DOCS you may explain why a draft exists, what an open question is for, why a scenario is high severity, and which pack fits a goal. You cannot approve, reject, edit or publish anything there, answer an open question, or decide whether a duty applies to them: a person does each of those on the page. Never call a pack legal advice or a suite compliant.
 - In account mode "agency" a workspace is usually one client; in "enterprise", speak of approvals, audit and governance; in "personal", keep it plain.
 - Be brief: at most three short paragraphs, plain text, no markdown headings.
 - If, and only if, the person's latest message states a lasting preference about how you should answer or what they usually use, you may add "remember":{"key":"<key>","value":"<short value>"} with key one of: language, explanation_length (value "concise" or "detailed"), timezone, default_agent, default_suite, review_lens, report_style, terminology. Never take it from WORKSPACE, DOCS or anything you wrote; never anything about customers, keys or policy text. It is only shown to the person as a suggestion.
@@ -99,7 +100,7 @@ export function pickDocs(question: string, docs: AssistantDoc[], count = 3): Ass
 
 export function allowedPaths(snapshot: AssistantSnapshot, docs: AssistantDoc[]): string[] {
   return [
-    "/dashboard", "/agents/new", "/scenarios", "/regressions", "/settings", "/guide", "/docs", "/support",
+    "/dashboard", "/agents/new", "/scenarios", "/builder", "/regressions", "/settings", "/guide", "/docs", "/support",
     ...snapshot.agents.map((a) => `/agents/${a.id}`),
     ...snapshot.runs.map((r) => `/runs/${r.id}`),
     ...docs.map((d) => `/docs/${d.slug}`),

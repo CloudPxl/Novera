@@ -46,7 +46,7 @@ export async function startRunExecution(args: {
   const [agentRow, policyRow, suiteRow, workspaceRow] = await Promise.all([
     client.from("agents").select("name, config, verification, is_production").eq("id", run.agent_id).single(),
     client.from("policies").select("version, body").eq("id", run.policy_id).single(),
-    client.from("suites").select("key, version, name, cases").eq("id", run.suite_id).single(),
+    client.from("suites").select("key, version, name, cases, approval").eq("id", run.suite_id).single(),
     client.from("workspaces").select("name").eq("id", workspaceId).single(),
   ]);
 
@@ -112,6 +112,10 @@ export async function startRunExecution(args: {
   // A run with no gradable result is not worth a report; leave it as evidence of the
   // attempt rather than publishing an empty document.
   if (whole.coverage.graded === 0) return whole;
+
+  // An exploratory scan runs drafts nobody has approved yet. Its results stay on the run
+  // page, labelled; it is never sealed as a report, and 0056 refuses one regardless.
+  if ((suiteRow.data as { approval?: string }).approval === "exploratory") return whole;
 
   let baseline: Parameters<typeof publishReport>[0]["baseline"];
   if (run.baseline_run_id) {

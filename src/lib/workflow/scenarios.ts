@@ -253,6 +253,8 @@ export async function promoteApprovedScenarios(_prev: FormState, form: FormData)
     workspace_id: workspace.id,
     key, version, name,
     cases: promotion.suite.cases,
+    // Every case approved by a named person (0056 requires promoted_by for this).
+    approval: "customer_approved",
     // Where these scenarios came from is part of the evidence, not metadata: every
     // case here was approved by a named person, and was either drafted from a policy
     // version or imported from another tool — said separately, because they are

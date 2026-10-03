@@ -53,6 +53,9 @@ someone with the service role, not merely someone using the application.
 | A policy version is immutable; editing creates a new one | 0001 + append-only trigger |
 | A diagnosis is a proposal: the model cannot quote policy text that is not in the policy, and a proposal whose target moved is refused rather than applied nearby | 0007 |
 | A drafted or imported scenario cannot enter a suite without a named approval, and cannot be withdrawn once it has; an import carries its file and item hashes, a policy draft its quoted passage, each frozen | 0022 + 0030 |
+| A suite version cannot be changed or deleted once it exists, by anyone; a draft arrives undecided, whoever inserts it; a builder draft quotes its source word for word, and one resting on an open question cannot be approved until a person answers it | 0056, `verify:builder` |
+| An exploratory scan of unapproved drafts is never a conformity report: only the Suite Builder starts one, it cannot be scheduled, and the database refuses it a report | 0056 `reports_not_exploratory`, `src/lib/workflow/start-run.ts` |
+| A curated pack is eu-support v5 scenarios byte for byte, its quality record computed from the labels; a pack without measured scenarios is not offered; observed agent behaviour is never written as policy | `src/lib/builder/packs.ts`, `tests/builder.test.ts`, `verify:builder` |
 | A destructive or fixture-only scenario never runs against a production agent | `agents.is_production`, checked in the runner |
 | A support reply goes draft → approved → sent, forward only; editing writes a new draft | 0009 |
 | A public form cannot be made free | 0024, counted in Postgres |
@@ -190,6 +193,8 @@ src/lib/net/          the public-address guard every outbound request goes throu
 src/lib/auth/         the request's context (user, profile, active workspace, role) and the permission matrix
 src/lib/audit/        the audit trail of access changes
 src/lib/review/       failed scenarios as findings (new, recurring, resolved), derived from stored rows
+src/lib/builder/      the Suite Builder: curated packs, sources (parse, fetch one page), extraction, discovery, coverage
+data/packs/           curated baseline packs — selections of eu-support v5, byte for byte
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites + calibration labels
 data/docs/            the published documentation, seeded into the database
@@ -223,11 +228,12 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 629 unit tests | free |
+| `npm test` | 648 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:identity` | profiles, roles in RLS, invitations, removal revoking keys, the audit trail, private conversations, memory isolation, trial per owner, retention, account and workspace erasure — as real signed-in users (needs `npm run dev`) | free |
+| `verify:builder` | the Suite Builder: every pack, sources and their limits, verbatim passages, open questions holding approval, a hostile document, bulk approval with its audit line, discovery against the fixture, a scan that is never a report, a published suite that cannot change and runs, isolation, SSRF, retention, erasure (needs `npm run dev`) | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
 | `verify:effect` · `verify:channel` · `verify:compiler` · `verify:conversation` | evidence rules, the metadata channel, the compiler's refusals, multi-turn scenarios | a few model calls |
 | `verify:throttle` | the public forms cannot be made free | free |

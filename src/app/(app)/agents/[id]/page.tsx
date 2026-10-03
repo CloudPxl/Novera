@@ -51,7 +51,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
       .order("created_at", { ascending: false }).limit(8),
     // Newest version first within a key, so the default below is the current suite
     // rather than whichever row Postgres happened to return first.
-    db.from("suites").select("id, key, version, name").order("key").order("version", { ascending: false }),
+    db.from("suites").select("id, key, version, name").neq("approval", "exploratory").order("key").order("version", { ascending: false }),
     // Cancelled schedules stay in the table for the runs that name them, not on this page.
     db.from("run_schedules")
       .select("id, suite_id, cadence, hour_utc, weekday, next_run_at, paused_at, paused_reason, cancelled_at, last_attempt_at, last_outcome")
@@ -254,6 +254,13 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                 Every version is kept. Saving creates a new one — an existing version can never be
                 edited, so a report always names exactly what the agent was tested against.
               </p>
+              {!latestPolicy && (
+                <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+                  Already have it written down — a refund policy, a help-centre page? Add it in the{" "}
+                  <Link href="/builder" className="font-medium text-ink underline underline-offset-2">Suite Builder</Link>,
+                  draft scenarios from it, and save it here word for word with one press.
+                </p>
+              )}
               <PolicyEditor
                 agentId={agent.id}
                 latest={latestPolicy ? { version: latestPolicy.version, body: latestPolicy.body } : null}

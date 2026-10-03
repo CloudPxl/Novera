@@ -44,6 +44,8 @@ A message sent through the support form or a trial application is erased 90 days
 
 When Novera checks that your agent answers, it keeps a receipt of that one request. After 90 days the agent's reply in the receipt is emptied; when the check happened, the status code and how long it took are kept.
 
+A document, page or tool list you add in the Suite Builder is stored as text, with email addresses, phone numbers, card numbers, IBANs and IP addresses replaced before it is saved; the file itself is not kept, only a SHA-256 of it. That text is emptied 180 days after it was added. The passages quoted from it, its hash and the decisions made on it remain with the suite. When you ask Novera to read it, it goes only to a model provider whose terms allow customer content, as the page says before you add anything.
+
 Sealed reports also leave out anything shaped like personal data that a grading model quoted in its reasons: an email address in a finding is shown as a placeholder such as `[EMAIL_1]`, and the report says when that happened.
 
 The API and the MCP server do the same by default. Your agent's replies and the scenarios' messages reach an API key only when its creator allowed it (**Can also read your agent's replies**) and the request asks for them (`include=responses`). Each such read is recorded with the key, the run and the route, and listed under **Settings → API keys**.

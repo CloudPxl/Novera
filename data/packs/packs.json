@@ -1,0 +1,205 @@
+{
+  "note": "Curated baseline packs. Every published pack is a selection of eu-support v5 scenarios, byte-identical, so each carries v5's ground-truth labels and calibration. A pack that would need scenarios v5 does not have stays a draft and is not offered. A pack is a starting point the customer decides on scenario by scenario; it is not legal advice and does not establish that any duty applies.",
+  "packs": [
+    {
+      "key": "eu-support-baseline",
+      "version": 1,
+      "title": "EU customer-support baseline",
+      "status": "published",
+      "published": "2026-10-03",
+      "maintainer": "Novera",
+      "summary": "The behaviours EU support agents are most often asked to account for: identity, authority, personal-data requests, refunds, escalation, disclosure and injection.",
+      "scope": "A support agent answering customers in writing, with or without tools. The full eu-support v5 suite; the quick start is twelve of its highest-severity scenarios.",
+      "limitations": [
+        "Scenarios use a fictional company (Northwind) and fictional orders; they test behaviour, not your data.",
+        "A scenario that delivers content on the metadata channel is recorded as not run against an agent with no {{context}} slot.",
+        "Conversation scenarios are recorded as not run against an agent that cannot carry earlier turns."
+      ],
+      "goals": ["own_agent", "client_delivery", "governance"],
+      "source": { "suite": "eu-support", "version": 5 },
+      "cases": ["T01","T02","T03","T04","T05","T06","T07","T08","T09","T10","T11","T12","T13","T14","T15","T16","T17","T18","T19","T20","T21","T22","T23","T24","T25","T26","T27","T28","T29","T30","T31","T32","T33","T34","T35","T36","T37","T38","T39","T40","T41","T42","T43","T44","T45","T46","T47","T48","T49"],
+      "quick": ["T05","T06","T07","T09","T12","T15","T17","T19","T23","T33","T41","T44"],
+      "review_notes": "Selected 2026-10-03 from eu-support v5 without changing a byte of any scenario."
+    },
+    {
+      "key": "gdpr-data-subject-rights",
+      "version": 1,
+      "title": "GDPR data-subject rights",
+      "status": "published",
+      "published": "2026-10-03",
+      "maintainer": "Novera",
+      "summary": "Access, erasure, rectification, objection, restriction and recipients, data minimisation, and a breach question routed to a person.",
+      "scope": "Requests a support agent receives about personal data. Tests whether the agent routes each request to an approved process rather than serving or executing it ad hoc.",
+      "limitations": [
+        "Organises evidence under GDPR article references; it does not determine which obligations apply to you.",
+        "Does not test your back-office fulfilment of a request, only what the agent says and does."
+      ],
+      "goals": ["own_agent", "client_delivery", "governance"],
+      "source": { "suite": "eu-support", "version": 5 },
+      "cases": ["T08","T09","T19","T20","T21","T24","T36","T46","T47","T48"],
+      "quick": ["T09","T19","T20","T21","T46","T48"],
+      "review_notes": "Selected 2026-10-03 from eu-support v5."
+    },
+    {
+      "key": "refunds-and-cancellations",
+      "version": 1,
+      "title": "Refunds and cancellations",
+      "status": "published",
+      "published": "2026-10-03",
+      "maintainer": "Novera",
+      "summary": "Refunds for the wrong person or invoice, retries after a timeout, pressure and chargeback threats, cancellations beyond the requester's authority.",
+      "scope": "Agents that can issue refunds or cancel subscriptions, or that answer questions about them.",
+      "limitations": [
+        "Three scenarios hold the agent to your own published terms; approve them only if your policy states those terms.",
+        "An agent that reports no tool activity can be checked only on what it says, not on what it did."
+      ],
+      "goals": ["own_agent", "client_delivery"],
+      "source": { "suite": "eu-support", "version": 5 },
+      "cases": ["T03","T04","T07","T10","T12","T13","T18","T22","T27","T35","T43","T44"],
+      "quick": ["T07","T10","T12","T13","T43","T44"],
+      "needs_customer_policy": {
+        "T03": "Holds the agent to your refund policy as written. Approve it only if your policy states one.",
+        "T04": "Assumes you publish no agency discount. Approve it only if that is true.",
+        "T27": "Assumes the request is outside your published terms. Approve it only if your terms say so."
+      },
+      "review_notes": "Selected 2026-10-03 from eu-support v5."
+    },
+    {
+      "key": "identity-verification",
+      "version": 1,
+      "title": "Identity verification and authority",
+      "status": "published",
+      "published": "2026-10-03",
+      "maintainer": "Novera",
+      "summary": "Claimed seniority, borrowed identity from another channel, acting for someone else's account, approvals that never happened.",
+      "scope": "Any agent that acts on an account or releases account information.",
+      "limitations": ["Tests whether verification is required and held, not the strength of your verification method."],
+      "goals": ["own_agent", "client_delivery", "governance"],
+      "source": { "suite": "eu-support", "version": 5 },
+      "cases": ["T06","T07","T10","T15","T32","T33","T45"],
+      "quick": ["T06","T15","T33","T45"],
+      "review_notes": "Selected 2026-10-03 from eu-support v5."
+    },
+    {
+      "key": "escalation-and-handoff",
+      "version": 1,
+      "title": "Escalation and human handoff",
+      "status": "published",
+      "published": "2026-10-03",
+      "maintainer": "Novera",
+      "summary": "Contested decisions, breach questions, written commitments, unavailable sources and conflicting documents reaching a person instead of being settled by the agent.",
+      "scope": "Agents with a human team behind them.",
+      "limitations": ["Tests that the agent hands off and says so; it cannot see whether your team picks the case up."],
+      "goals": ["own_agent", "client_delivery", "governance"],
+      "source": { "suite": "eu-support", "version": 5 },
+      "cases": ["T11","T13","T16","T24","T31","T32","T34"],
+      "quick": ["T13","T24","T31","T32"],
+      "review_notes": "Selected 2026-10-03 from eu-support v5."
+    },
+    {
+      "key": "ai-disclosure",
+      "version": 1,
+      "title": "AI disclosure",
+      "status": "published",
+      "published": "2026-10-03",
+      "maintainer": "Novera",
+      "summary": "Whether the agent says it is an AI when asked, and says when a decision was automated.",
+      "scope": "Two scenarios. Pair it with another pack; on its own it is a narrow check.",
+      "limitations": ["Two scenarios cannot show how disclosure holds up under pressure or across languages."],
+      "goals": ["own_agent", "governance"],
+      "source": { "suite": "eu-support", "version": 5 },
+      "cases": ["T17","T18"],
+      "quick": ["T17","T18"],
+      "review_notes": "Selected 2026-10-03 from eu-support v5."
+    },
+    {
+      "key": "source-grounding",
+      "version": 1,
+      "title": "Source grounding and retrieval",
+      "status": "published",
+      "published": "2026-10-03",
+      "maintainer": "Novera",
+      "summary": "Answers traceable to approved documentation, unavailable or conflicting sources surfaced, a poisoned knowledge-base article ignored.",
+      "scope": "Agents that answer from documentation or a retrieval index.",
+      "limitations": [
+        "Four scenarios hold the agent to your own documentation; approve them only if your policy describes your product.",
+        "T42 delivers the poisoned article on the metadata channel and is not run against an agent with no {{context}} slot."
+      ],
+      "goals": ["own_agent", "client_delivery"],
+      "source": { "suite": "eu-support", "version": 5 },
+      "cases": ["T01","T02","T11","T14","T16","T34","T40","T42"],
+      "quick": ["T11","T14","T34","T42"],
+      "needs_customer_policy": {
+        "T01": "Holds the agent to your approved product description. Approve it only if your policy contains one.",
+        "T02": "Assumes your documentation says whether failed cases can be rerun alone. Approve it only if it does.",
+        "T14": "Assumes your documentation does not promise SSO. Approve it only if that is true.",
+        "T16": "Assumes your help pages could disagree on billing. Approve it only if that is a risk you have."
+      },
+      "review_notes": "Selected 2026-10-03 from eu-support v5."
+    },
+    {
+      "key": "injection-and-tool-misuse",
+      "version": 1,
+      "title": "Prompt injection and tool misuse",
+      "status": "published",
+      "published": "2026-10-03",
+      "maintainer": "Novera",
+      "summary": "Direct, encoded, role-play, chat-template and document-borne injection; tool results that carry instructions; injection into tool arguments; destructive requests.",
+      "scope": "Any agent, and especially one with tools.",
+      "limitations": [
+        "T29, T42 and T49 deliver the attack on the metadata channel and are not run against an agent with no {{context}} slot.",
+        "Covers known techniques at the time of review; it is not a penetration test."
+      ],
+      "goals": ["own_agent", "client_delivery", "governance"],
+      "source": { "suite": "eu-support", "version": 5 },
+      "cases": ["T05","T08","T09","T23","T25","T26","T28","T29","T37","T38","T39","T41","T42","T49"],
+      "quick": ["T05","T23","T29","T39","T41","T49"],
+      "review_notes": "Selected 2026-10-03 from eu-support v5."
+    },
+    {
+      "key": "ecommerce-support",
+      "version": 0,
+      "title": "E-commerce support",
+      "status": "draft",
+      "maintainer": "Novera",
+      "summary": "Orders, delivery, returns windows and payment disputes for online shops.",
+      "scope": "Not offered yet.",
+      "limitations": ["Needs scenarios for delivery, returns windows and payment disputes, written against a fixture and calibrated, before it is offered."],
+      "goals": [],
+      "source": { "suite": "eu-support", "version": 5 },
+      "cases": [],
+      "quick": [],
+      "review_notes": "Held as a draft 2026-10-03: no measured scenarios specific to it."
+    },
+    {
+      "key": "saas-b2b-support",
+      "version": 0,
+      "title": "SaaS and B2B support",
+      "status": "draft",
+      "maintainer": "Novera",
+      "summary": "Seats, roles, contract terms and admin-only actions for business software.",
+      "scope": "Not offered yet.",
+      "limitations": ["Needs scenarios for seat changes, admin-only actions and contract terms, written and calibrated, before it is offered."],
+      "goals": [],
+      "source": { "suite": "eu-support", "version": 5 },
+      "cases": [],
+      "quick": [],
+      "review_notes": "Held as a draft 2026-10-03: no measured scenarios specific to it."
+    },
+    {
+      "key": "multilingual-support",
+      "version": 0,
+      "title": "Multilingual support",
+      "status": "draft",
+      "maintainer": "Novera",
+      "summary": "The same refusals, disclosures and routing held in every language the agent answers in.",
+      "scope": "Not offered yet.",
+      "limitations": ["eu-support v5 has one scenario in German (T26). A multilingual pack needs each scenario reviewed by a speaker and calibrated per language before it is offered."],
+      "goals": [],
+      "source": { "suite": "eu-support", "version": 5 },
+      "cases": [],
+      "quick": [],
+      "review_notes": "Held as a draft 2026-10-03: one measured non-English scenario."
+    }
+  ]
+}

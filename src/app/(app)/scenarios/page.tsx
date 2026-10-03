@@ -55,7 +55,7 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
     admin.from("agents").select("id, name, is_production").eq("workspace_id", workspace.id).order("created_at"),
     admin
       .from("suites").select("id, key, version, name")
-      .or(`workspace_id.eq.${workspace.id},workspace_id.is.null`)
+      .or(`workspace_id.eq.${workspace.id},workspace_id.is.null`).neq("approval", "exploratory")
       .order("key").order("version", { ascending: false }),
   ]);
 
@@ -100,7 +100,7 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
         eyebrow="Library"
         title="Scenarios"
         description="The scenarios that run, and the drafts that might: each tied to the sentence of your policy it tests. A draft runs only once someone approves it."
-        action={can(role, "scenario.draft") ? <ButtonLink href="/scenarios?tab=create">Draft or import scenarios</ButtonLink> : undefined}
+        action={can(role, "scenario.draft") ? <ButtonLink href="/builder">Build a suite</ButtonLink> : <ButtonLink href="/builder" variant="secondary">Suite Builder</ButtonLink>}
       />
       <TabNav label="Scenario sections" current={tab} tabs={[
         { key: "library", label: "Suite library", href: "/scenarios" },

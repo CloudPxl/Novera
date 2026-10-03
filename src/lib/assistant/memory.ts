@@ -43,7 +43,7 @@ export function isMemoryKey(value: unknown): value is MemoryKey {
  * injection takes when it tries to become memory. Refused outright, whoever typed it: a
  * preference never needs to tell a model what to ignore.
  */
-const INSTRUCTION_SHAPED = /\b(ignore|disregard|override|bypass)\b[^.]{0,40}\b(instruction|instructions|prompt|rules?|policy|previous|above|system)\b|\bsystem prompt\b|\byou are now\b|\bact as\b|\bapprove (all|every)\b|\b(change|raise|set) (the )?(grade|score|verdict)\b|<\/?(system|assistant|instructions?)>/i;
+export const INSTRUCTION_SHAPED = /\b(ignore|disregard|override|bypass)\b[^.]{0,40}\b(instruction|instructions|prompt|rules?|policy|previous|above|system)\b|\bsystem prompt\b|\byou are now\b|\bact as\b|\bapprove (all|every)\b|\b(change|raise|set) (the )?(grade|score|verdict)\b|<\/?(system|assistant|instructions?)>/i;
 
 const URL_SHAPED = /\bhttps?:\/\/|\bwww\./i;
 

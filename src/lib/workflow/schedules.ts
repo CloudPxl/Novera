@@ -37,8 +37,8 @@ export async function createSchedule(_prev: ScheduleFormState, form: FormData): 
     .eq("agent_id", agentId).eq("workspace_id", workspace.id).limit(1).maybeSingle();
   if (!policy) return { error: "Save a policy version first — every scheduled run is graded against it." };
 
-  const { data: suite } = await admin.from("suites").select("id, workspace_id").eq("id", suiteId).maybeSingle();
-  if (!suite || (suite.workspace_id !== null && suite.workspace_id !== workspace.id)) {
+  const { data: suite } = await admin.from("suites").select("id, workspace_id, approval").eq("id", suiteId).maybeSingle();
+  if (!suite || suite.approval === "exploratory" || (suite.workspace_id !== null && suite.workspace_id !== workspace.id)) {
     return { error: "Choose a suite this workspace can run." };
   }
 

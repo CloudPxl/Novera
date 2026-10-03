@@ -84,3 +84,17 @@ test("key-shaped text is recognised before it can be sent to a model", async () 
     assert.ok(!looksLikeSecret(s), s);
   }
 });
+
+test("the assistant can point at the Suite Builder and can do nothing there", () => {
+  const reply = parseReply({
+    reply: "Open the builder to decide.",
+    actions: [
+      { type: "navigate", href: "/builder", label: "Suite Builder" },
+      { type: "approve", draftId: "d-1", label: "Approve it for you" },
+      { type: "publish", buildId: "b-1" },
+      { type: "answer_question", obligationId: "o-1", answer: "yes" },
+      { type: "navigate", href: "/builder/b-someone-else", label: "Their build" },
+    ],
+  }, SNAPSHOT, DOCS)!;
+  assert.deepEqual(reply.actions, [{ type: "navigate", href: "/builder", label: "Suite Builder" }]);
+});

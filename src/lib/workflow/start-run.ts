@@ -40,6 +40,12 @@ export async function startRun(args: {
   baselineRunId?: string | null;
   /** The id to create the run with, chosen first by an Idempotency-Key claim. */
   runId?: string;
+  /**
+   * Set only by the Suite Builder's scan. A suite marked exploratory is refused from every
+   * other entry point — the button, the API, MCP, a schedule — so a scan is always started
+   * on purpose, and the database refuses it a report (0056).
+   */
+  exploratory?: boolean;
 }): Promise<{ id: string }> {
   const { client, workspaceId, agentId } = args;
 
@@ -55,7 +61,7 @@ export async function startRun(args: {
   // A named suite is re-checked: a run must never name a suite the workspace cannot
   // read. With none named, the newest built-in version — pinning `version 1` once ran a
   // 16-scenario suite for anyone who never opened the dropdown.
-  const suiteQuery = client.from("suites").select("id, workspace_id");
+  const suiteQuery = client.from("suites").select("id, workspace_id, approval");
   const { data: suite } = args.suiteId
     ? await suiteQuery.eq("id", args.suiteId).maybeSingle()
     : await suiteQuery.is("workspace_id", null).eq("key", "eu-support")
@@ -63,6 +69,11 @@ export async function startRun(args: {
   if (!suite) throw new RunRefusal("That suite could not be found.");
   if (suite.workspace_id !== null && suite.workspace_id !== workspaceId) {
     throw new RunRefusal("That suite does not belong to this workspace.");
+  }
+  if ((suite.approval === "exploratory") !== Boolean(args.exploratory)) {
+    throw new RunRefusal(suite.approval === "exploratory"
+      ? "That suite is an exploratory scan of unapproved drafts. Start scans from the Suite Builder; publish the suite to run it here."
+      : "An exploratory scan runs only a Suite Builder scan suite.");
   }
 
   let baselineId: string | null = null;

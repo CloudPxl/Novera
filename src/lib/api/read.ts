@@ -52,6 +52,8 @@ export async function listAgents(db: Db, workspaceId: string) {
 export async function listSuites(db: Db, workspaceId: string) {
   const { data } = await db.from("suites").select("id, key, version, name, cases, workspace_id")
     .or(`workspace_id.eq.${workspaceId},workspace_id.is.null`)
+    // A Suite Builder scan is not a suite anyone may start a run of (startRun refuses it).
+    .neq("approval", "exploratory")
     .order("key").order("version", { ascending: false });
   return (data ?? []).map((s) => ({
     id: s.id as string,

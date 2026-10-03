@@ -53,3 +53,6 @@ next-env.d.ts
 /packages/cli/dist
 *.tgz
 /.verify-tmp
+
+# Local tooling state, not part of the project.
+claude_usage_state.json

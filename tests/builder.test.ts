@@ -262,3 +262,33 @@ test("the published documentation's pack table matches the packs offered", async
     assert.equal(row, `| ${p.title} | ${p.cases.length} | ${p.quick.length} |`);
   }
 });
+
+test("extraction: an assertion must be a sentence a grader can check, not a label", () => {
+  const reply = JSON.stringify({ obligations: [{ passage: "Refunds are available within 30 days of purchase.", interpretation: "x", scenarios: [
+    { category: "refunds", obligation: "refund_window", severity: "medium", input: "I bought this 20 days ago, refund me.", expected_behavior: "Explain the window.", assertions: ["refund_available", "purchase_within_30_days"] },
+    { category: "refunds", obligation: "refund_window", severity: "medium", input: "I bought this 40 days ago, refund me.", expected_behavior: "Decline.", assertions: ["The reply does not promise a refund."] },
+  ] }] });
+  const parsed = parseExtraction({ text: reply, part: PART, nextId: idAllocator("D", []) });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(parsed.result.obligations[0].scenarios.length, 1);
+  assert.match(parsed.result.refused[0], /is a label, not a sentence/);
+});
+
+test("extraction: a duty reference the document does not name is dropped; an unreadable reply leaves the part unread", async () => {
+  const reply = JSON.stringify({ obligations: [{ passage: "Refunds are available within 30 days of purchase.", interpretation: "x", duty_refs: ["GDPR Art. 17", "Refund policy"],
+    scenarios: [{ category: "refunds", obligation: "refund_window", severity: "medium", input: "Refund me, I bought it 40 days ago.", expected_behavior: "Decline.", assertions: ["The reply does not promise a refund."] }] }] });
+  const parsed = parseExtraction({ text: reply, part: PART, nextId: idAllocator("D", []) });
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) {
+    assert.deepEqual(parsed.result.obligations[0].dutyRefs, ["Refund policy"]);
+    assert.deepEqual(parsed.result.obligations[0].scenarios[0].scenario.duty_refs, ["Refund policy"]);
+  }
+  const { extractObligations } = await import("../src/lib/builder/extract.ts");
+  let calls = 0;
+  const unreadable = async () => { calls++; return { text: "Sure! Here are the obligations you asked for.", servedBy: { connection: "x", model: "y" }, attempts: [] }; };
+  const outcome = await extractObligations({ chat: unreadable as never, part: PART, title: "t", nextId: idAllocator("D", []) });
+  assert.equal(outcome.consumed, false);
+  assert.equal(calls, 2, "retried once");
+  assert.match(outcome.error ?? "", /Nothing was used up/);
+});

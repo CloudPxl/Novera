@@ -199,9 +199,10 @@ export async function extractFromSource(ctx: Ctx, input: { sourceId: string; cha
     chat: input.chat, part: parts[index], title: source.title as string,
     nextId: idAllocator("D", await usedIds(ctx, build.id)),
   });
-  // A part that produced nothing is still read: the next press moves on rather than
-  // asking the same question of the same text.
-  await ctx.db.from("suite_sources").update({ extracted_parts: index + 1 }).eq("id", source.id);
+  // A part the model answered readably is read, even if nothing held up: the next press
+  // moves on rather than asking the same question of the same text. One it could not
+  // answer readably stays unread, so a transient failure costs nothing.
+  if (outcome.consumed) await ctx.db.from("suite_sources").update({ extracted_parts: index + 1 }).eq("id", source.id);
   if (!outcome.ok || !outcome.result) return { ok: false, error: outcome.error ?? "Nothing could be extracted." };
 
   let questions = 0, scenarios = 0, flagged = 0;

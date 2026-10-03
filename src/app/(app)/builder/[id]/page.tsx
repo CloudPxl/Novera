@@ -199,7 +199,7 @@ export default async function BuildPage({ params, searchParams }: {
                       {document && s.status === "parsed" && parts > 0 && (
                         <div className="flex flex-wrap items-center gap-3">
                           <span className="text-ink-soft">{read >= parts ? `All ${parts} part(s) read.` : `${read} of ${parts} part(s) read.`}</span>
-                          {canDraft && read < parts && <ExtractButton buildId={id} sourceId={s.id as string} label={read === 0 ? "Read for obligations" : `Read part ${read + 1}`} />}
+                          {canDraft && <ExtractButton buildId={id} sourceId={s.id as string} done={read >= parts} label={read === 0 ? "Read for obligations" : `Read part ${read + 1}`} />}
                           {canDraft && agent && can(role, "policy.write") && <PolicyFromSource buildId={id} sourceId={s.id as string} agentId={agent.id} agentName={agent.name} />}
                         </div>
                       )}

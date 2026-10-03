@@ -76,7 +76,7 @@ export async function extractAction(_prev: FormState, form: FormData): Promise<F
     notice: `Part ${result.part} of ${result.parts} read by ${result.servedBy ?? "a model"}: ${result.obligations} obligation(s), `
       + `${result.questions} open question(s), ${result.scenarios} draft scenario(s)`
       + `${result.flagged ? `, ${result.flagged} passage(s) flagged as instruction-shaped` : ""}.`
-      + (result.refused.length ? ` ${result.refused.length} dropped because they did not hold up.` : ""),
+      + (result.refused.length ? ` ${result.refused.length} dropped because they did not hold up — ${result.refused.slice(0, 2).join(" ")}` : ""),
   };
 }
 

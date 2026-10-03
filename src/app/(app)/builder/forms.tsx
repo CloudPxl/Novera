@@ -163,13 +163,17 @@ export function SourceForm({ buildId }: { buildId: string }) {
   );
 }
 
-export function ExtractButton({ buildId, sourceId, label }: { buildId: string; sourceId: string; label: string }) {
+/**
+ * Stays on the page after the last part is read, disabled, so the result of that last
+ * read — what was found, what was dropped and why — is not unmounted with the button.
+ */
+export function ExtractButton({ buildId, sourceId, label, done }: { buildId: string; sourceId: string; label: string; done: boolean }) {
   const [state, submit] = useActionState<FormState, FormData>(extractAction, {});
   return (
     <form action={submit}>
       <input type="hidden" name="buildId" value={buildId} />
       <input type="hidden" name="sourceId" value={sourceId} />
-      <SubmitButton size="sm" variant="secondary" pendingLabel="Reading… (up to a minute)">{label}</SubmitButton>
+      <SubmitButton size="sm" variant="secondary" disabled={done} pendingLabel="Reading… (up to a minute)">{done ? "Every part read" : label}</SubmitButton>
       <Message state={state} />
     </form>
   );

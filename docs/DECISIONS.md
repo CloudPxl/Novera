@@ -3869,3 +3869,11 @@ could be inserted already approved** (the trigger guarded updates only). Both ar
   fixture's real `issue_refund`, a scan that completed with no report, a published suite that ran and sealed a
   verifying report, isolation, SSRF and size and time limits, retention, erasure); `verify:free` unchanged otherwise;
   browser walk 30/30 (axe-clean at 390/1440, no JavaScript); 648 tests.
+- **Found in production, fixed the same day**: the first real extraction on production stored three verbatim
+  obligations but no scenarios, and its message vanished with the button once every part was read. Repeating the
+  call showed why the drafts were weak: assertions written as labels (`refund_available`), a schema placeholder
+  copied into `duty_refs`, a contact line read as an obligation, and one reply that was not JSON — which also
+  marked the part as read for good. Now: an assertion must be a sentence; a duty reference is kept only if the
+  document names it; the prompt carries a worked example and skips contact lines; an unreadable reply is retried
+  once and leaves the part unread; the read button stays, disabled, so its result and the reasons for anything
+  dropped stay on screen. 650 tests.

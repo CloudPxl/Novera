@@ -23,12 +23,13 @@ import { obligationLabel } from "@/lib/report/payload.ts";
 import { normaliseTrajectory } from "@/lib/agents/trajectory.ts";
 import { resolveAssertions } from "@/lib/judge/parse.ts";
 import { Help } from "@/components/ui/help.tsx";
-import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { Menu } from "@/components/ui/menu.tsx";
 import { menuItemClass } from "@/components/ui/menu-item.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { LiveRun } from "./live.tsx";
+import { RunActivity, RunOverview } from "./overview.tsx";
+import { TabNav } from "@/components/ui/page.tsx";
 import { Scorecard, type Corroboration } from "./scorecard.tsx";
 import { CaseTable, CategoryCard, type CaseRow } from "./case-table.tsx";
 import { BaselinePicker } from "./baseline-picker.tsx";
@@ -37,6 +38,8 @@ import { DiagnoseButton, ProposalCard, RetestButton, RetestHistory, type Proposa
 
 export const metadata: Metadata = { title: "Run · Novera" };
 export const dynamic = "force-dynamic";
+
+const SEVERITY_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
 const CHANGE_TONES = {
   fixed: "pass",
@@ -54,10 +57,17 @@ export default async function RunPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ compare?: string }>;
+  searchParams: Promise<{ compare?: string; tab?: string; case?: string; lens?: string; verdict?: string }>;
 }) {
   const { id } = await params;
-  const { compare } = await searchParams;
+  const sp = await searchParams;
+  const { compare } = sp;
+  // Tabs are addresses. A link that names a scenario, a lens or a verdict lands on Cases; one
+  // that names a baseline lands on Comparison — so every existing link still arrives where it meant.
+  const TABS = ["overview", "cases", "comparison", "evidence", "activity"] as const;
+  type Tab = (typeof TABS)[number];
+  const tab: Tab = (TABS as readonly string[]).includes(sp.tab ?? "") ? (sp.tab as Tab)
+    : sp.case || sp.lens || sp.verdict ? "cases" : compare ? "comparison" : "overview";
   const { user: viewer, workspace: activeWorkspace, context } = await requireWorkspace();
   const viewerId = viewer.id;
   const db = await sessionClient();
@@ -123,7 +133,7 @@ export default async function RunPage({
   const { data: proposals } = settled && rows.length
     ? await db
         .from("diagnoses")
-        .select("id, run_case_id, analysis, quoted_old, proposed_new, risks, status, decided_at, resulting_policy_id, api_keys(name)")
+        .select("id, run_case_id, analysis, quoted_old, proposed_new, risks, status, created_at, decided_at, resulting_policy_id, api_keys(name)")
         .in("run_case_id", rows.map((c) => c.id))
         .order("created_at")
     : { data: null };
@@ -535,6 +545,7 @@ export default async function RunPage({
   }
 
   const undecided = (proposals ?? []).filter((p) => p.status === "proposed").length;
+  const caseIdOf = new Map(rows.map((c) => [c.id as string, c.case_id as string]));
   const suiteLabel = suite ? `${suite.name} v${suite.version}` : "Suite";
 
   return (
@@ -580,73 +591,7 @@ export default async function RunPage({
             />
           </div>
 
-          {/* How often the automated verdicts matched a person who read the transcript —
-              LangSmith calls it the alignment score. Counted only over verdicts that were
-              verdicts: a person settling a disputed case is filling a gap, not agreeing
-              with the grader, and is counted separately. Changes no other number. */}
-          {currentReviews.size > 0 && (
-            <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-              {reviewAlignment.rate !== null && (
-                <>
-                  A person reviewed {reviewAlignment.agreed + reviewAlignment.disagreed} automated{" "}
-                  {reviewAlignment.agreed + reviewAlignment.disagreed === 1 ? "verdict" : "verdicts"} in this run
-                  and agreed with {reviewAlignment.agreed}
-                  {reviewAlignment.disagreed > 0 && (
-                    <>, <strong className="font-semibold text-fail-text">disagreed with {reviewAlignment.disagreed}</strong></>
-                  )}
-                  .{" "}
-                </>
-              )}
-              {reviewAlignment.resolvedGaps > 0 && (
-                <>
-                  {reviewAlignment.resolvedGaps} {reviewAlignment.resolvedGaps === 1 ? "scenario" : "scenarios"} with
-                  no automated result {reviewAlignment.resolvedGaps === 1 ? "was" : "were"} given a finding by a
-                  person.{" "}
-                </>
-              )}
-              Reviews sit beside the verdicts and change no count or grade.
-              {applied.changed > 0 && (
-                <>
-                  {" "}Read with your findings in place of the verdicts they dispute, this run would have{" "}
-                  {applied.passed} passed, {applied.failed} failed
-                  {applied.noVerdict > 0 && <> and {applied.noVerdict} without a result</>} — your own reading,
-                  shown for comparison, not a score.
-                </>
-              )}
-            </p>
-          )}
-          {undisclosedReviews > 0 && <ReissueReport runId={run.id} pending={undisclosedReviews} />}
-          {/* Read from the stored report rather than from the action's reply: the form
-              unmounts once nothing is left to disclose, and its confirmation with it. */}
-          {undisclosedReviews === 0 && report?.disclosed && (
-            <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-              The newest report discloses the review recorded up to{" "}
-              <time dateTime={report.disclosed as string} className="tnum">
-                {String(report.disclosed).slice(0, 16).replace("T", " ")} UTC
-              </time>
-              , beside the verdicts it concerns.
-            </p>
-          )}
-          {earlierReports.length > 0 && (
-            <p className="mt-3 text-xs leading-relaxed text-ink-faint">
-              The button below opens the newest report for this run. Earlier ones stay exactly as issued:{" "}
-              {earlierReports.map((r, i) => (
-                <span key={r.token as string}>
-                  {i > 0 && ", "}
-                  <Link href={`/report/${r.token}`} className="underline underline-offset-2 hover:text-ink">
-                    issued {String(r.created_at).slice(0, 10)}
-                  </Link>
-                  {r.revoked_at ? " (revoked)" : ""}
-                </span>
-              ))}
-              .
-            </p>
-          )}
-
-          {readiness && report?.token && (
-            <ReadinessPanel state={readiness.state} label={READINESS_LABEL[readiness.state]} checks={readiness.checks} token={report.token as string} />
-          )}
-
+          {/* The primary action and its two quieter neighbours, under the outcome they act on. */}
           <div className="mt-4 flex flex-wrap items-center gap-3">
             {report?.token && (
               <Link
@@ -692,16 +637,41 @@ export default async function RunPage({
                 Rerun and compare against this
               </SubmitButton>
             </form>
-            {undecided > 0 && (
-              <span className="text-xs text-warning-text">
-                {undecided} proposed change{undecided === 1 ? "" : "s"} still waiting on a decision.
-              </span>
-            )}
           </div>
 
+
+          <div className="mt-8">
+            <TabNav
+              label="Run sections"
+              current={tab}
+              tabs={[
+                { key: "overview", label: "Overview", href: `/runs/${id}` },
+                { key: "cases", label: "Cases", href: `/runs/${id}?tab=cases`, count: caseRows.length },
+                { key: "comparison", label: "Comparison", href: `/runs/${id}?tab=comparison${baselineRunId ? `&compare=${baselineRunId}` : ""}` },
+                { key: "evidence", label: "Evidence", href: `/runs/${id}?tab=evidence` },
+                { key: "activity", label: "Activity", href: `/runs/${id}?tab=activity` },
+              ]}
+            />
+          </div>
+
+          {tab === "overview" && (
+            <RunOverview
+              runId={id}
+              readiness={readiness ? { label: READINESS_LABEL[readiness.state], state: readiness.state, gap: readiness.checks.find((c) => c.result === "gap")?.detail ?? null } : null}
+              findings={caseRows.filter((c) => c.status !== "pass").sort((x, y) => SEVERITY_RANK[x.severity] - SEVERITY_RANK[y.severity] || x.caseId.localeCompare(y.caseId))
+                .map((c) => ({ caseId: c.caseId, status: c.status, severity: c.severity, title: c.obligationLabel, category: c.categoryLabel }))}
+              comparison={comparison ? { fixed: comparison.fixed.length, newFailures: comparison.newFailures.length, persistentFailures: comparison.persistentFailures.length, nowErrored: comparison.nowErrored.length } : null}
+              canCompare={(comparableRuns ?? []).length > 0}
+              undecided={undecided}
+            />
+          )}
+          {tab === "overview" && undisclosedReviews > 0 && <ReissueReport runId={run.id} pending={undisclosedReviews} />}
+
+          {tab === "cases" && (
+            <>
           {/* ------------------------------------------------ tier 2: categories */}
           {categories.length > 0 && (
-            <section className="mt-8">
+            <section className="mt-6">
               <div className="flex items-center"><h2 className="type-h2">By category</h2><Help label="Categories">
                   The same results grouped by the kind of behaviour tested — identity checks, refunds,
                   attacks and so on — so you can see where the agent is weak.
@@ -730,7 +700,7 @@ export default async function RunPage({
           )}
 
           {/* --------------------------------------------------- tier 3: matrix */}
-          <section className="mt-8">
+          <section className="mt-6">
             <div className="flex items-center"><h2 className="type-h2">Scenarios</h2><Help label="Scenarios">
                 Every test in this run. Passed and failed are verdicts; &ldquo;no result&rdquo; means the agent
                 errored, the grading models could not agree, or a claimed action could not be checked — never
@@ -763,13 +733,18 @@ export default async function RunPage({
             )}
           </section>
 
+            </>
+          )}
+
+          {tab === "comparison" && (
+            <>
           {/* ----------------------------------------------- tier 4: comparison */}
           {/* Shown whenever there is anything to compare against, not only when this
               run recorded a baseline. Gating the whole section on an existing
               comparison meant a run started on its own could never begin one, even
               with comparable runs sitting right there. */}
           {(comparison || (comparableRuns ?? []).length > 0) && (
-            <Reveal className="mt-10">
+            <div className="mt-6">
               <section>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center"><h2 className="type-h2">Compared with another run</h2><Help label="Comparison">
@@ -873,7 +848,112 @@ export default async function RunPage({
                   </p>
                 )}
               </section>
-            </Reveal>
+            </div>
+          )}
+              {!(comparison || (comparableRuns ?? []).length > 0) && (
+                <p className="mt-6 type-body text-ink-soft">No earlier run of this suite against this agent exists yet, so there is nothing to compare with.</p>
+              )}
+            </>
+          )}
+
+          {tab === "evidence" && (
+            <div className="mt-6 space-y-6">
+          {readiness && report?.token && (
+            <ReadinessPanel state={readiness.state} label={READINESS_LABEL[readiness.state]} checks={readiness.checks} token={report.token as string} />
+          )}
+
+              {report && (
+                <dl className="grid gap-3 rounded-shell border border-line bg-surface p-5 text-sm sm:grid-cols-2">
+                  <div><dt className="text-xs text-ink-faint">Report digest (SHA-256)</dt><dd className="mt-0.5 break-all type-mono text-xs">{report.content_hash as string}</dd></div>
+                  <div><dt className="text-xs text-ink-faint">Sealed</dt><dd className="mt-0.5 tnum">{String(report.created_at).slice(0, 16).replace("T", " ")} UTC</dd></div>
+                  {run.manifest && <div className="sm:col-span-2"><dt className="text-xs text-ink-faint">Inputs declared before the run</dt><dd className="mt-0.5 text-xs text-ink-soft">Suite version, scenario list, policy version, agent host, judge plan, pass mark and rubric digest were frozen when the run was created, before anything was sent.</dd></div>}
+                </dl>
+              )}
+              <p className="text-sm text-ink-soft">Each scenario&apos;s own evidence — input, reply, tool calls, read-back, rules, every grader&apos;s vote — opens from <Link href={`/runs/${id}?tab=cases`} className="font-medium underline underline-offset-2">Cases</Link>.</p>
+            </div>
+          )}
+
+          {tab === "activity" && (
+            <div className="mt-6 space-y-4">
+              <RunActivity events={[
+                { at: run.created_at as string, text: `Run created · ${startedBy ?? "in the app"}` },
+                ...(run.started_at ? [{ at: run.started_at as string, text: "First scenario sent" }] : []),
+                ...(run.finished_at ? [{ at: run.finished_at as string, text: `Finished · ${run.status}` }] : []),
+                ...(reportRows ?? []).flatMap((r) => [
+                  { at: r.created_at as string, text: "Report sealed" },
+                  ...(r.revoked_at ? [{ at: r.revoked_at as string, text: "Report withdrawn" }] : []),
+                ]),
+                ...(proposals ?? []).flatMap((p) => [
+                  { at: p.created_at as string, text: `Diagnosis proposed for ${caseIdOf.get(p.run_case_id as string) ?? "a scenario"}` },
+                  ...(p.decided_at ? [{ at: p.decided_at as string, text: `Proposal ${p.status} for ${caseIdOf.get(p.run_case_id as string) ?? "a scenario"}` }] : []),
+                ]),
+                ...(retestRows ?? []).map((r) => ({ at: r.created_at as string, text: `${caseIdOf.get(r.run_case_id as string) ?? "A scenario"} retested · ${r.status === "error" ? "no result" : r.status}` })),
+                ...reviews.map((r) => ({ at: r.createdAt, text: `A person recorded a finding on ${caseIdOf.get(r.runCaseId) ?? "a scenario"} · ${r.finding}` })),
+              ]} />
+          {/* How often the automated verdicts matched a person who read the transcript —
+              LangSmith calls it the alignment score. Counted only over verdicts that were
+              verdicts: a person settling a disputed case is filling a gap, not agreeing
+              with the grader, and is counted separately. Changes no other number. */}
+          {currentReviews.size > 0 && (
+            <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+              {reviewAlignment.rate !== null && (
+                <>
+                  A person reviewed {reviewAlignment.agreed + reviewAlignment.disagreed} automated{" "}
+                  {reviewAlignment.agreed + reviewAlignment.disagreed === 1 ? "verdict" : "verdicts"} in this run
+                  and agreed with {reviewAlignment.agreed}
+                  {reviewAlignment.disagreed > 0 && (
+                    <>, <strong className="font-semibold text-fail-text">disagreed with {reviewAlignment.disagreed}</strong></>
+                  )}
+                  .{" "}
+                </>
+              )}
+              {reviewAlignment.resolvedGaps > 0 && (
+                <>
+                  {reviewAlignment.resolvedGaps} {reviewAlignment.resolvedGaps === 1 ? "scenario" : "scenarios"} with
+                  no automated result {reviewAlignment.resolvedGaps === 1 ? "was" : "were"} given a finding by a
+                  person.{" "}
+                </>
+              )}
+              Reviews sit beside the verdicts and change no count or grade.
+              {applied.changed > 0 && (
+                <>
+                  {" "}Read with your findings in place of the verdicts they dispute, this run would have{" "}
+                  {applied.passed} passed, {applied.failed} failed
+                  {applied.noVerdict > 0 && <> and {applied.noVerdict} without a result</>} — your own reading,
+                  shown for comparison, not a score.
+                </>
+              )}
+            </p>
+          )}
+          {undisclosedReviews > 0 && <ReissueReport runId={run.id} pending={undisclosedReviews} />}
+          {/* Read from the stored report rather than from the action's reply: the form
+              unmounts once nothing is left to disclose, and its confirmation with it. */}
+          {undisclosedReviews === 0 && report?.disclosed && (
+            <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+              The newest report discloses the review recorded up to{" "}
+              <time dateTime={report.disclosed as string} className="tnum">
+                {String(report.disclosed).slice(0, 16).replace("T", " ")} UTC
+              </time>
+              , beside the verdicts it concerns.
+            </p>
+          )}
+          {earlierReports.length > 0 && (
+            <p className="mt-3 text-xs leading-relaxed text-ink-faint">
+              The button below opens the newest report for this run. Earlier ones stay exactly as issued:{" "}
+              {earlierReports.map((r, i) => (
+                <span key={r.token as string}>
+                  {i > 0 && ", "}
+                  <Link href={`/report/${r.token}`} className="underline underline-offset-2 hover:text-ink">
+                    issued {String(r.created_at).slice(0, 10)}
+                  </Link>
+                  {r.revoked_at ? " (revoked)" : ""}
+                </span>
+              ))}
+              .
+            </p>
+          )}
+
+            </div>
           )}
         </>
       )}

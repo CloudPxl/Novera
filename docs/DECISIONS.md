@@ -3768,3 +3768,18 @@ Production, after the deploy:
 - **Measured**: operator walk (axe 390/1440 on 15 pages, links, filters, deep links) and identity walk 51/51
   pass; keyboard reaches the primary action right after the skip link; complete with reduced motion and with
   JavaScript off; 629 tests.
+
+## 2026-10-03 — IA refactor, milestone 3: the run page in tabs; Review as a queue
+
+- **Run page**: the outcome (scorecard) and one primary action stay on top; below them, tabs that are
+  addresses — Overview (what failed or has no result, worst first, five shown; the report's readiness and its
+  first gap; what changed against the baseline), Cases (categories and the matrix; each scenario's evidence chain
+  opens in place), Comparison, Evidence (every readiness check, withdrawal, the digest, declared inputs), Activity
+  (a timeline from stored rows: created, sent, finished, sealed, withdrawn, proposals, retests, findings). Links
+  carrying `?case=`, `?lens=` or `?verdict=` land on Cases and `?compare=` on Comparison, so every existing link
+  still arrives where it meant to.
+- **Review**: one count of what needs action, one search field, views as tabs — Needs attention, Evidence
+  incomplete, New regressions, Unverified actions, Awaiting approval, Closed — and one-line rows (severity, title,
+  duty, agent, state, one next step). Repair explanations moved behind "What happened, and is a retry safe?";
+  per-run lens counts behind one disclosure. Older `?state=` links open the matching view.
+- **Measured**: operator walk 57/57 (axe at 390/1440 on every tab and view), identity walk passing, 629 tests.

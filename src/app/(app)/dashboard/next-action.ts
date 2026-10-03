@@ -55,7 +55,7 @@ export function nextAction(s: NextInput): NextAction {
     return { title: `Look at ${s.topFinding.caseId}`, body: s.topFinding.label, href: s.topFinding.href, label: `Review ${s.topFinding.caseId}` };
   }
   if (s.noVerdict > 0) {
-    return { title: `${s.noVerdict} ${s.noVerdict === 1 ? "scenario has" : "scenarios have"} no verdict`, body: "Each says why and whether retrying is safe. None is counted as a pass, so the report stays withheld until they are settled.", href: "/review#repair", label: "See what has no verdict" };
+    return { title: `${s.noVerdict} ${s.noVerdict === 1 ? "scenario has" : "scenarios have"} no verdict`, body: "Each says why and whether retrying is safe. None is counted as a pass, so the report stays withheld until they are settled.", href: "/review?view=incomplete", label: "See what has no verdict" };
   }
   if (s.readyRunId) {
     return { title: "Your report is ready to share", body: "Sealed, intact, every scenario with a verdict. Send the private link or export it.", href: `/runs/${s.readyRunId}#report`, label: "Open the report" };

@@ -258,7 +258,7 @@ export default async function DashboardPage() {
               note: latestRun ? `${agentName.get(latestRun.agent_id as string) ?? "Agent"} · ${day(latestRun.created_at as string)}${latestSum?.band && latestSum.state !== "pass" ? ` · ${latestSum.band}` : ""}` : undefined,
               href: latestRun ? `/runs/${latestRun.id}` : undefined,
             },
-            { label: "Open findings", value: open.length, note: newRegressions ? `${newRegressions} newly broken` : open.length ? "None new since last run" : "Nothing failing", href: open.length ? "/review#findings" : undefined },
+            { label: "Open findings", value: open.length, note: newRegressions ? `${newRegressions} newly broken` : open.length ? "None new since last run" : "Nothing failing", href: open.length ? "/review" : undefined },
             { label: "Reports ready", value: <>{readyCount}<span className="text-sm font-normal text-ink-faint"> of {readinessByAgent.size}</span></>, note: "Computed from each sealed report", href: "/reports" },
           ]} />
         </div>

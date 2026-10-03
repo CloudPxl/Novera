@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
-import { Card, Badge, EmptyState, type BadgeTone } from "@/components/ui/primitives.tsx";
-import { Help } from "@/components/ui/help.tsx";
+import { Badge, EmptyState, type BadgeTone } from "@/components/ui/primitives.tsx";
 import { regressionStage, type RegressionStage } from "@/lib/regressions/draft.ts";
 import type { SuiteCase } from "@/lib/runner/types.ts";
 import type { RedactionRecord } from "@/lib/redact/store.ts";
+import { PageHeader } from "@/components/ui/page.tsx";
 import { FailureForm } from "./client.tsx";
 
 export const metadata: Metadata = { title: "Regressions · Novera" };
@@ -109,22 +109,14 @@ export default async function RegressionsPage() {
   });
 
   return (
-    <main className="w-full py-8 text-ink">
-      <Link href="/dashboard" className="text-sm text-ink-faint underline-offset-2 hover:underline">
-        ← Dashboard
-      </Link>
+    <main className="w-full pb-10 text-ink">
+      <PageHeader
+        eyebrow="Work"
+        title="Regressions from production"
+        description="A mistake your agent made with a real customer is the best test case you have. Record it once, and every later run shows whether it came back."
+      />
 
-      <div className="mt-4 flex items-center"><h1 className="type-h1">Regressions from production</h1><Help label="Regressions">
-          When your agent gets something wrong with a real customer, record it here. Novera removes
-          personal details, turns it into a test scenario, and — once you approve it and add it to a
-          suite — checks on every later run whether the same mistake came back.
-        </Help></div>
-      <p className="mt-2 max-w-2xl type-body text-ink-soft">
-        A mistake your agent made with a real customer is the best test case you have. Record it once,
-        and every later run shows whether it came back.
-      </p>
-
-      <div className="mt-8 grid gap-8 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] xl:items-start">
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] xl:items-start">
       {/* The form is the second thing on the page once something is recorded: the list is
           what a returning operator came for. Open by default only on an empty page. */}
       <details open={rows.length === 0} className="group order-first rounded-shell border border-line bg-surface shadow-card xl:order-last xl:sticky xl:top-20">
@@ -150,65 +142,44 @@ export default async function RegressionsPage() {
             </EmptyState>
           </div>
         ) : (
-          <ul className="mt-3 space-y-4">
+          <ul className="mt-3 divide-y divide-line overflow-hidden rounded-shell border border-line bg-surface">
             {rows.map(({ f, draft, stage }) => (
               <li key={f.id}>
-                <Card className="p-5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {draft && <span className="type-mono text-ink-soft">{draft.scenario.id}</span>}
-                    {stage && <Badge tone={STAGE[stage.stage].tone}>{STAGE[stage.stage].label}</Badge>}
-                    {stage && "suite" in stage && <Badge tone="neutral">{stage.suite}</Badge>}
-                    {f.agents && <Badge tone="neutral">{f.agents.name}</Badge>}
-                    <span className="text-xs text-ink-faint">
-                      {f.occurred_on ? `happened ${f.occurred_on} · ` : ""}recorded {f.created_at.slice(0, 10)}
-                      {f.api_keys ? ` · sent with the API key “${f.api_keys.name}”` : ""}
+                {/* One line per incident; what was said, and how it was stored, opens beneath it. */}
+                <details>
+                  <summary className="grid cursor-pointer list-none gap-x-4 gap-y-1.5 px-5 py-3.5 text-sm transition-colors hover:bg-ground md:grid-cols-[minmax(0,1fr)_auto] md:items-center [&::-webkit-details-marker]:hidden">
+                    <span className="min-w-0">
+                      <span className="flex flex-wrap items-center gap-2">
+                        {stage && <Badge tone={STAGE[stage.stage].tone}>{STAGE[stage.stage].label}</Badge>}
+                        {draft && <span className="type-mono text-xs text-ink-faint">{draft.scenario.id}</span>}
+                      </span>
+                      <span className="mt-1 block font-medium">{f.expected_behavior}</span>
+                      <span className="mt-0.5 block text-xs text-ink-faint">
+                        {f.agents ? `${f.agents.name} · ` : ""}{f.occurred_on ? `happened ${f.occurred_on} · ` : ""}recorded {f.created_at.slice(0, 10)}
+                        {f.api_keys ? ` · sent with the API key “${f.api_keys.name}”` : ""}
+                      </span>
                     </span>
+                    <span className="text-sm font-medium">
+                      {stage?.stage === "drafted" ? <Link href="/scenarios?tab=drafts" className="underline-offset-2 hover:underline">Review the draft →</Link>
+                        : stage?.stage === "approved" ? <Link href="/scenarios?tab=drafts" className="underline-offset-2 hover:underline">Add it to a suite →</Link>
+                        : <span className="text-ink-faint">Details</span>}
+                    </span>
+                  </summary>
+                  <div className="space-y-3 border-t border-line bg-ground px-5 py-4 text-sm">
+                    <div><p className="text-xs font-medium text-ink-faint">The customer sent</p><p className="mt-1 whitespace-pre-wrap">{f.customer_message}</p></div>
+                    {f.agent_reply && <div><p className="text-xs font-medium text-ink-faint">The agent replied</p><p className="mt-1 whitespace-pre-wrap text-ink-soft">{f.agent_reply}</p></div>}
+                    {stage && "suite" in stage && <p className="text-xs text-ink-soft">In {stage.suite}.</p>}
+                    {stage?.stage === "rejected" && stage.reason && <p className="text-ink-faint">Rejected because: {stage.reason}</p>}
+                    <p className="text-xs text-ink-faint">
+                      Stored redacted
+                      {Object.keys(f.redaction.counts ?? {}).length > 0
+                        ? ` (removed: ${Object.entries(f.redaction.counts).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(", ")})`
+                        : ""}
+                      . The original text was not kept; its SHA-256 is{" "}
+                      <span className="type-mono break-all">{f.redaction.original_hash}</span>.
+                    </p>
                   </div>
-
-                  <dl className="mt-4 space-y-3">
-                    <div>
-                      <dt className="type-pill text-ink-faint">The customer sent</dt>
-                      <dd className="mt-1 type-body whitespace-pre-wrap">{f.customer_message}</dd>
-                    </div>
-                    {f.agent_reply && (
-                      <div>
-                        <dt className="type-pill text-ink-faint">The agent replied</dt>
-                        <dd className="mt-1 type-body whitespace-pre-wrap text-ink-soft">{f.agent_reply}</dd>
-                      </div>
-                    )}
-                    <div>
-                      <dt className="type-pill text-ink-faint">What should have happened</dt>
-                      <dd className="mt-1 type-body">{f.expected_behavior}</dd>
-                    </div>
-                  </dl>
-
-                  {stage?.stage === "rejected" && stage.reason && (
-                    <p className="mt-3 text-sm text-ink-faint">Rejected because: {stage.reason}</p>
-                  )}
-                  {stage?.stage === "drafted" && (
-                    <p className="mt-3 text-sm">
-                      <Link href="/scenarios" className="font-medium underline underline-offset-2">
-                        Review the draft on the Scenarios page →
-                      </Link>
-                    </p>
-                  )}
-                  {stage?.stage === "approved" && (
-                    <p className="mt-3 text-sm">
-                      <Link href="/scenarios" className="font-medium underline underline-offset-2">
-                        Add it to a suite version on the Scenarios page →
-                      </Link>
-                    </p>
-                  )}
-
-                  <p className="mt-4 text-xs text-ink-faint">
-                    Stored redacted
-                    {Object.keys(f.redaction.counts ?? {}).length > 0
-                      ? ` (removed: ${Object.entries(f.redaction.counts).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(", ")})`
-                      : ""}
-                    . The original text was not kept; its SHA-256 is{" "}
-                    <span className="type-mono break-all">{f.redaction.original_hash}</span>.
-                  </p>
-                </Card>
+                </details>
               </li>
             ))}
           </ul>

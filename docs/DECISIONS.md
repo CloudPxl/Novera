@@ -3783,3 +3783,17 @@ Production, after the deploy:
   duty, agent, state, one next step). Repair explanations moved behind "What happened, and is a retry safe?";
   per-run lens counts behind one disclosure. Older `?state=` links open the matching view.
 - **Measured**: operator walk 57/57 (axe at 390/1440 on every tab and view), identity walk passing, 629 tests.
+
+## 2026-10-03 — IA refactor, milestone 4: agent, scenarios, regressions, reports
+
+- **Agent page**: header with the address, the authorisation and one action (run the suite; or write the policy, or
+  connect a key, whichever is the next step — nothing for a role that cannot run); tabs Overview (connection,
+  policy, latest run, open findings, next scheduled run — one line each, each a link), Policy, Runs, Schedule,
+  Connection (with read-back).
+- **Scenarios**: tabs Suite library, Drafts (with its count), Draft or import (suite import moved here from the bar).
+  Library rows show ID, title and duty, severity, source, last result and history; the scenario's whole contract —
+  input, expectation, assertions, rules, effect, source, every result here — opens beneath its row.
+- **Regressions**: one line per incident (stage, scenario, what should have happened, agent, dates, next step); the
+  customer's message, the reply and the redaction record open beneath it.
+- **Reports**: rows link to the run, whose Overview carries the report, its exports and readiness.
+- **Measured**: operator walk 69/69 with every new tab at 390/1440, identity walk passing, 629 tests.

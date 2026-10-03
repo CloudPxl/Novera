@@ -7,6 +7,10 @@ import type { SuiteCase } from "@/lib/runner/types.ts";
 import { describeCheck } from "@/lib/judge/checks.ts";
 import { DraftForm, DecideForm, ImportForm, PromoteForm } from "./client.tsx";
 import { SOURCE_LABELS, type ImportProvenance, type SourceTool } from "@/lib/imports/datasets.ts";
+import { PageHeader, TabNav } from "@/components/ui/page.tsx";
+import { ButtonLink } from "@/components/ui/button-link.tsx";
+import { can } from "@/lib/auth/permissions.ts";
+import { ImportSuite } from "@/components/shell/import-suite.tsx";
 import { Library, type LibraryOrigin, type LibraryRun } from "./library.tsx";
 
 export const metadata: Metadata = { title: "Scenarios · Novera" };
@@ -36,9 +40,10 @@ interface DraftRow {
 // The tone set already names the severities; risk uses the same words on purpose.
 const RISK_TONE = { high: "high", medium: "medium", low: "low" } as const;
 
-export default async function ScenariosPage({ searchParams }: { searchParams: Promise<{ suite?: string }> }) {
-  const { suite: suiteParam } = await searchParams;
-  const { user, workspace } = await requireWorkspace();
+export default async function ScenariosPage({ searchParams }: { searchParams: Promise<{ suite?: string; tab?: string }> }) {
+  const { suite: suiteParam, tab: tabParam } = await searchParams;
+  const tab = tabParam === "drafts" || tabParam === "create" ? tabParam : "library";
+  const { user, workspace, role } = await requireWorkspace();
   const admin = await assertMembership(user.id, workspace.id);
 
   const [{ data: drafts }, { data: agents }, { data: suites }] = await Promise.all([
@@ -90,24 +95,23 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
   const settled = rows.filter((d) => d.status === "rejected" || d.status === "included");
 
   return (
-    <main className="w-full py-8 text-ink">
-      <Link href="/dashboard" className="text-sm text-ink-faint underline-offset-2 hover:underline">
-        ← Dashboard
-      </Link>
+    <main className="w-full pb-10 text-ink">
+      <PageHeader
+        eyebrow="Library"
+        title="Scenarios"
+        description="The scenarios that run, and the drafts that might: each tied to the sentence of your policy it tests. A draft runs only once someone approves it."
+        action={can(role, "scenario.draft") ? <ButtonLink href="/scenarios?tab=create">Draft or import scenarios</ButtonLink> : undefined}
+      />
+      <TabNav label="Scenario sections" current={tab} tabs={[
+        { key: "library", label: "Suite library", href: "/scenarios" },
+        { key: "drafts", label: "Drafts", href: "/scenarios?tab=drafts", count: pending.length },
+        { key: "create", label: "Draft or import", href: "/scenarios?tab=create" },
+      ]} />
 
-      <h1 className="mt-4 type-h1">Scenarios</h1>
-      <p className="mt-2 max-w-2xl type-body text-ink-soft">
-        A policy is a list of things you have promised to do. This drafts the scenarios that would
-        show whether your agent actually does them — each one tied to the sentence of your own
-        policy it tests, so you can always answer <em>why is this case in my report</em>.
-      </p>
-      <p className="mt-2 max-w-2xl type-body text-ink-soft">
-        You can also bring test cases you already wrote for another tool. Either way, a draft cannot
-        run: you approve it or you reject it, and only an approval lets it enter a suite version.
-      </p>
-
+      {tab === "library" && (
+        <>
       {chosen && (
-        <section id="library" aria-labelledby="library-heading" className="mt-8 scroll-mt-20">
+        <section id="library" aria-labelledby="library-heading" className="mt-6 scroll-mt-20">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 id="library-heading" className="type-h2">In {chosen.name as string} · v{chosen.version as number}</h2>
@@ -118,7 +122,7 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
             </div>
             <nav aria-label="Suite version" className="flex flex-wrap gap-1.5">
               {suiteList.slice(0, 8).map((x) => (
-                <Link key={x.id} href={`/scenarios?suite=${x.id}#library`} aria-current={x.id === chosen.id ? "true" : undefined}
+                <Link key={x.id} href={`/scenarios?suite=${x.id}`} aria-current={x.id === chosen.id ? "true" : undefined}
                   className={`novera-press rounded-full border px-3 py-1 text-xs font-medium ${x.id === chosen.id ? "border-ink bg-ink text-on-ink" : "border-line-strong bg-surface text-ink-soft hover:text-ink"}`}>
                   {x.key} v{x.version}
                 </Link>
@@ -135,7 +139,12 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
         </section>
       )}
 
-      <div className="mt-10 grid gap-6 lg:grid-cols-2">
+        </>
+      )}
+
+      {tab === "create" && (
+        <>
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
       <Reveal>
         <Card className="h-full p-5">
           <h2 className="type-h2">Draft from a policy version</h2>
@@ -157,7 +166,19 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
       </Reveal>
       </div>
 
-      <Reveal className="mt-10">
+          {can(role, "suite.import") && (
+            <div className="mt-6 rounded-shell border border-line bg-surface p-5">
+              <h2 className="type-h2">Import a whole suite</h2>
+              <p className="mt-1 text-sm text-ink-soft">A suite file you wrote yourself, added as a new suite version in this workspace.</p>
+              <div className="mt-3"><ImportSuite /></div>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "drafts" && (
+        <>
+      <Reveal className="mt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="type-h2">Waiting on you</h2>
           <Badge tone={pending.length ? "high" : "neutral"}>{pending.length} to decide</Badge>
@@ -334,6 +355,8 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
             </ul>
           </Card>
         </Reveal>
+      )}
+        </>
       )}
     </main>
   );

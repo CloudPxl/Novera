@@ -6,21 +6,27 @@ import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { createRun } from "@/lib/workflow/actions.ts";
-import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState, inputClass } from "@/components/ui/primitives.tsx";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { PolicyEditor, ReprobeButton, VerificationEndpoint, ResponsePathPicker } from "./client.tsx";
 import { ScheduleCard, ScheduleForm, type ScheduleView } from "./schedules.tsx";
 import { summariseRun } from "../../dashboard/summary.ts";
 import { OtherWorkspace } from "@/components/shell/other-workspace.tsx";
+import { PageHeader, Panel, Rows, TabNav } from "@/components/ui/page.tsx";
+import { formatWhen } from "@/lib/format/when.ts";
+import { can } from "@/lib/auth/permissions.ts";
+import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { scheduleState } from "@/lib/schedules/cadence.ts";
 
 export const metadata: Metadata = { title: "Agent · Novera" };
 export const dynamic = "force-dynamic";
 
-export default async function AgentPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AgentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   const { id } = await params;
-  const { user, workspace, context } = await requireWorkspace();
+  const TABS = ["overview", "policy", "runs", "schedule", "connection"] as const;
+  const requested = (await searchParams).tab ?? "";
+  const tab = (TABS as readonly string[]).includes(requested) ? (requested as (typeof TABS)[number]) : "overview";
+  const { user, workspace, role, context } = await requireWorkspace();
   const db = await sessionClient();
   const entitlement = await workspaceEntitlement({
     client: await assertMembership(user.id, workspace.id),
@@ -91,34 +97,23 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
   const latestProbe = probes?.[0];
   const latestPolicy = policies?.[0];
   const config = agent.config as { url?: string; responsePath?: string; toolActivityPath?: string };
+  const latestCompleted = (runs ?? []).find((r) => r.status === "completed");
+  const latestSummary = latestCompleted ? summariseRun({ status: "completed", payload: (payloadOf.get(latestCompleted.id as string) as never) ?? null, scheduleId: null, apiKeyName: null }) : null;
+  const nextSchedule = scheduleViews.find((v) => v.state !== "cancelled") ?? null;
 
   return (
-    <main className="w-full py-8 text-ink">
-      <Link href="/dashboard" className="text-sm text-ink-faint underline-offset-2 hover:underline">
-        ← Dashboard
-      </Link>
-
-      <header className="mt-4 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="min-w-0 text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">{agent.name}</h1>
-          <p className="mt-1 break-all font-mono text-xs text-ink-faint">{config.url}</p>
-        </div>
-        {agent.attested_at ? (
-          <Badge tone="pass">Authorisation recorded</Badge>
-        ) : (
-          <Badge tone="error">No authorisation recorded</Badge>
-        )}
-      </header>
-
-      {/* The work — runs and the policy they are graded against — on the left; how the agent
-          is reached, checked and scheduled beside it on wide screens. */}
-      <div className="mt-8 grid gap-10 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] xl:items-start">
-        <div className="min-w-0">
-          <Reveal className="" delay={120}>
-            <section>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Runs</h2><Help label="Running the suite">Runs the chosen suite version against this agent with the current policy. The newest version is selected. Each run produces a dated report when it finishes.</Help></div>
-                {latestPolicy && entitlement.canRun && (
+    <main className="w-full pb-10 text-ink">
+      <PageHeader
+        back={{ href: "/agents", label: context.accountMode === "personal" ? "My agents" : "Agents" }}
+        eyebrow={<span className="normal-case tracking-normal">{config.url}</span>}
+        title={agent.name}
+        status={agent.attested_at ? <Badge tone="pass">Authorisation recorded</Badge> : <Badge tone="error">No authorisation recorded</Badge>}
+        action={
+          !can(role, "run.start") ? undefined
+          : !latestPolicy ? <ButtonLink href={`/agents/${agent.id}?tab=policy`}>Write the policy</ButtonLink>
+          : !entitlement.canRun ? <ButtonLink href="/settings">Connect a key to run</ButtonLink>
+          : <div className="max-w-md">
+{latestPolicy && entitlement.canRun && (
                   <form action={createRun} className="flex flex-wrap items-center gap-2">
                     <input type="hidden" name="agentId" value={agent.id} />
                     {(suites ?? []).length > 1 && (
@@ -156,6 +151,44 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                     </details>
                   </form>
                 )}
+          </div>
+        }
+      />
+
+      <TabNav label="Agent sections" current={tab} tabs={[
+        { key: "overview", label: "Overview", href: `/agents/${agent.id}` },
+        { key: "policy", label: "Policy", href: `/agents/${agent.id}?tab=policy`, count: (policies ?? []).length },
+        { key: "runs", label: "Runs", href: `/agents/${agent.id}?tab=runs`, count: (runs ?? []).length },
+        { key: "schedule", label: "Schedule", href: `/agents/${agent.id}?tab=schedule` },
+        { key: "connection", label: "Connection", href: `/agents/${agent.id}?tab=connection` },
+      ]} />
+
+      <div className="mt-6">
+        {tab === "overview" && (
+          <Panel>
+            <Rows label="This agent at a glance">
+              {[
+                { k: "Connection", v: !latestProbe ? <span className="text-ink-faint">Never checked</span> : latestProbe.error ? <Badge tone="fail">Did not answer the last check</Badge> : <span>Answered in {latestProbe.latency_ms} ms · {formatWhen(latestProbe.created_at as string, context.profile)}</span>, href: `/agents/${agent.id}?tab=connection` },
+                { k: "Policy", v: latestPolicy ? <span>Version {latestPolicy.version} · <span className="text-ink-soft">{String(latestPolicy.body).split("\n")[0].slice(0, 90)}{String(latestPolicy.body).length > 90 ? "…" : ""}</span></span> : <span className="text-warning-text">None yet — a run needs one</span>, href: `/agents/${agent.id}?tab=policy` },
+                { k: "Latest run", v: latestSummary && latestCompleted ? <span className="flex flex-wrap items-center gap-2"><Badge tone={latestSummary.tone}>{latestSummary.stateLabel}</Badge>{latestSummary.band && latestSummary.state !== "pass" ? <span className="text-ink-soft">{latestSummary.band}</span> : null}<span className="text-ink-faint">{formatWhen(latestCompleted.created_at as string, context.profile)}</span></span> : <span className="text-ink-faint">No completed run</span>, href: latestCompleted ? `/runs/${latestCompleted.id}` : `/agents/${agent.id}?tab=runs` },
+                { k: "Open findings", v: latestSummary?.counts ? <span>{latestSummary.counts.failed} failed · {latestSummary.counts.noVerdict} without a verdict</span> : <span className="text-ink-faint">—</span>, href: `/review?agent=${agent.id}` },
+                { k: "Next scheduled run", v: nextSchedule ? (nextSchedule.state === "paused" ? <span className="text-high-text">Paused{nextSchedule.pausedReason ? ` — ${nextSchedule.pausedReason}` : ""}</span> : <span>{formatWhen(nextSchedule.nextRunAt, context.profile)}</span>) : <span className="text-ink-faint">No schedule</span>, href: `/agents/${agent.id}?tab=schedule` },
+              ].map((row) => (
+                <li key={row.k}>
+                  <Link href={row.href} className="grid gap-x-6 gap-y-0.5 px-5 py-3.5 text-sm transition-colors hover:bg-ground sm:grid-cols-[10rem_minmax(0,1fr)_auto] sm:items-center">
+                    <span className="text-xs font-medium text-ink-faint">{row.k}</span>
+                    <span className="min-w-0">{row.v}</span>
+                    <span aria-hidden className="hidden text-ink-faint sm:inline">→</span>
+                  </Link>
+                </li>
+              ))}
+            </Rows>
+          </Panel>
+        )}
+        {tab === "runs" && (
+            <section>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Runs</h2><Help label="Running the suite">Runs the chosen suite version against this agent with the current policy. The newest version is selected. Each run produces a dated report when it finishes.</Help></div>
               </div>
 
               {!entitlement.canRun && (
@@ -213,9 +246,8 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                 </div>
               )}
             </section>
-          </Reveal>
-
-          <Reveal className="mt-10" delay={60}>
+        )}
+        {tab === "policy" && (
             <section>
               <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Policy</h2><Help label="Policy">The rules this agent should follow. Every verdict is judged against this text. Saving creates a new version; earlier versions and the runs graded on them are kept.</Help></div>
               <p className="mt-1 text-sm leading-relaxed text-ink-soft">
@@ -228,11 +260,32 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                 history={(policies ?? []).map((p) => ({ version: p.version, createdAt: p.created_at }))}
               />
             </section>
-          </Reveal>
-
-        </div>
-        <aside aria-label="Connection and schedule" className="min-w-0 xl:sticky xl:top-20">
-          <Reveal className="">
+        )}
+        {tab === "schedule" && (
+            <section>
+              <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Schedule</h2><Help label="Scheduled runs">Runs the suite again on a calendar, so a change in the agent — a new model, an edited prompt — shows up in a comparison without anyone remembering to press the button. Each scheduled run is an ordinary run with its own sealed report, and says it was scheduled.</Help></div>
+              <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+                Re-run the suite on a calendar. Each run compares with this agent&rsquo;s previous run on the same suite.
+              </p>
+              {scheduleViews.length > 0 && (
+                <ul className="mt-3 space-y-2">
+                  {scheduleViews.map((s) => <li key={s.id}><ScheduleCard schedule={s} /></li>)}
+                </ul>
+              )}
+              {latestPolicy ? (
+                <ScheduleForm
+                  agentId={agent.id}
+                  suites={(suites ?? []).map((s) => ({ id: s.id as string, label: suiteLabel(s.id as string) }))}
+                  defaultSuiteId={(suites ?? []).find((s) => s.key === "eu-support")?.id as string | undefined}
+                  costNote={costNote}
+                />
+              ) : (
+                <p className="mt-3 text-sm text-ink-soft">Save a policy version first — every scheduled run is graded against it.</p>
+              )}
+            </section>
+        )}
+        {tab === "connection" && (
+          <div className="space-y-10">
             <section>
               <div className="flex items-center justify-between">
                 <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Connection</h2><Help label="Connection">Where Novera sends each scenario, and the last time it checked your agent answered. Re-check it after changing the agent&rsquo;s address.</Help></div>
@@ -279,9 +332,6 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                 <p className="mt-3 text-sm text-ink-soft">No connection receipt yet.</p>
               )}
             </section>
-          </Reveal>
-
-          <Reveal className="mt-10" delay={50}>
             <section>
               <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Verifying what the agent does</h2><Help label="Read-back">Optional. A read-only address in your own system Novera can check to confirm an action the agent claims, such as a refund. Without it, such claims are reported as not verified — never as passed.</Help></div>
               <p className="mt-1 text-sm leading-relaxed text-ink-soft">
@@ -293,32 +343,8 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                 current={(agent.verification as { url?: string; authHeaderName?: string } | null) ?? null}
               />
             </section>
-          </Reveal>
-
-          <Reveal className="mt-10" delay={140}>
-            <section>
-              <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Schedule</h2><Help label="Scheduled runs">Runs the suite again on a calendar, so a change in the agent — a new model, an edited prompt — shows up in a comparison without anyone remembering to press the button. Each scheduled run is an ordinary run with its own sealed report, and says it was scheduled.</Help></div>
-              <p className="mt-1 text-sm leading-relaxed text-ink-soft">
-                Re-run the suite on a calendar. Each run compares with this agent&rsquo;s previous run on the same suite.
-              </p>
-              {scheduleViews.length > 0 && (
-                <ul className="mt-3 space-y-2">
-                  {scheduleViews.map((s) => <li key={s.id}><ScheduleCard schedule={s} /></li>)}
-                </ul>
-              )}
-              {latestPolicy ? (
-                <ScheduleForm
-                  agentId={agent.id}
-                  suites={(suites ?? []).map((s) => ({ id: s.id as string, label: suiteLabel(s.id as string) }))}
-                  defaultSuiteId={(suites ?? []).find((s) => s.key === "eu-support")?.id as string | undefined}
-                  costNote={costNote}
-                />
-              ) : (
-                <p className="mt-3 text-sm text-ink-soft">Save a policy version first — every scheduled run is graded against it.</p>
-              )}
-            </section>
-          </Reveal>
-        </aside>
+          </div>
+        )}
       </div>
     </main>
   );

@@ -14,7 +14,7 @@ test("each stage of a first run has its own next step", () => {
   assert.equal(nextAction({ ...base, runInFlight: "r9" }).href, "/runs/r9");
   assert.equal(nextAction({ ...base, topFinding: { href: "/runs/r1?case=T15", caseId: "T15", label: "Identity" } }).href, "/runs/r1?case=T15");
   assert.equal(nextAction({ ...base, noVerdict: 3 }).href, "/review?view=incomplete");
-  assert.equal(nextAction({ ...base, readyRunId: "r2" }).href, "/runs/r2#report");
+  assert.equal(nextAction({ ...base, readyRunId: "r2" }).href, "/runs/r2");
   assert.equal(nextAction(base).label, "Run again");
 });
 

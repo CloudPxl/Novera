@@ -56,7 +56,7 @@ export default async function ReportsPage() {
           <Rows label="Reports">
             {rows.map(({ r, run, ready, sum, suite, policyVersion }) => (
               <li key={r.token as string}>
-                <Link href={`/runs/${r.run_id}#report`} className="grid gap-x-6 gap-y-1.5 px-5 py-3.5 transition-colors hover:bg-ground md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] md:items-center">
+                <Link href={`/runs/${r.run_id}`} className="grid gap-x-6 gap-y-1.5 px-5 py-3.5 transition-colors hover:bg-ground md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] md:items-center">
                   <span className="min-w-0">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{run ? agentName.get(run.agent_id) ?? "Agent" : "Agent"}</span>

@@ -18,7 +18,8 @@ export type AuditAction =
   | "account.erased" | "apikey.created" | "apikey.revoked" | "webhook.created" | "webhook.revoked"
   | "retention.changed" | "report.withdrawn" | "judgekey.connected" | "judgekey.removed"
   | "memory.created" | "memory.deleted" | "memory.cleared" | "memory.suggestion_accepted" | "memory.suggestion_dismissed"
-  | "suite.bulk_approved" | "suite.published" | "suite.gaps_accepted" | "suite.source_fetched";
+  | "suite.bulk_approved" | "suite.published" | "suite.gaps_accepted" | "suite.source_fetched"
+  | "identity.linked" | "identity.unlinked" | "account.password_set" | "account.password_changed" | "account.signed_out_everywhere";
 
 export async function recordAudit(admin: SupabaseClient, event: {
   workspaceId: string | null;
@@ -71,4 +72,9 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   "suite.published": "published a suite version",
   "suite.gaps_accepted": "published a suite with open questions",
   "suite.source_fetched": "had a web page fetched as a source",
+  "identity.linked": "connected a sign-in method",
+  "identity.unlinked": "disconnected a sign-in method",
+  "account.password_set": "added a password",
+  "account.password_changed": "changed their password",
+  "account.signed_out_everywhere": "signed out on every device",
 };

@@ -56,6 +56,7 @@ someone with the service role, not merely someone using the application.
 | A suite version cannot be changed or deleted once it exists, by anyone; a draft arrives undecided, whoever inserts it; a builder draft quotes its source word for word, and one resting on an open question cannot be approved until a person answers it | 0056, `verify:builder` |
 | An exploratory scan of unapproved drafts is never a conformity report: only the Suite Builder starts one, it cannot be scheduled, and the database refuses it a report | 0056 `reports_not_exploratory`, `src/lib/workflow/start-run.ts` |
 | A curated pack is eu-support v5 scenarios byte for byte, its quality record computed from the labels; a pack without measured scenarios is not offered; observed agent behaviour is never written as policy | `src/lib/builder/packs.ts`, `tests/builder.test.ts`, `verify:builder` |
+| A sign-in never strands a person: a sign-up whose email could not be sent says no account was created, a reset never claims a link was sent over a mail failure, every emailed or provider link returns only to this deployment and to a fixed list of pages, Google and GitHub appear only when enabled, the last way in cannot be removed, and linking, unlinking, password changes and signing out everywhere are audited | `src/lib/auth/redirects.ts`, `src/lib/auth/errors.ts`, `src/app/auth/callback/`, `tests/auth.test.ts`; dashboard steps in `docs/setup/sign-in-and-email.md` |
 | A destructive or fixture-only scenario never runs against a production agent | `agents.is_production`, checked in the runner |
 | A support reply goes draft → approved → sent, forward only; editing writes a new draft | 0009 |
 | A public form cannot be made free | 0024, counted in Postgres |
@@ -199,6 +200,7 @@ supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites + calibration labels
 data/docs/            the published documentation, seeded into the database
 docs/DECISIONS.md     append-only decision log — the reasoning behind everything here
+docs/setup/           what is configured in a dashboard rather than in code, step by step
 docs/COMPETITION.md   the market, what we took, what we declined
 ```
 
@@ -228,7 +230,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 651 unit tests | free |
+| `npm test` | 659 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -343,8 +345,10 @@ they drive the scripted fixture at `/api/test-agent`.
 - **A judge key stored before 2026-09-24 has no models recorded**, so it falls back to
   whatever `DEFAULT_ROUTES` measures on that connection — which is groq only. Any other
   provider's legacy key refuses the run with a sentence saying to reconnect it.
-- **`_dmarc` TXT record is not set.** Signup works end to end in production, but the
-  Resend key is send-only, so inbox *placement* is unproven.
+- **Production sign-up email needs dashboard steps** (`docs/setup/sign-in-and-email.md`):
+  Supabase custom SMTP through Resend, the redirect allow list, the `_dmarc` record, and the
+  Google and GitHub OAuth apps. Until SMTP is set, Supabase's built-in mailer sends only to
+  team addresses, so a stranger's account cannot be confirmed.
 - **`eu-support v5` has not had a full calibration sweep.** Its eight new scenarios
   were measured on the route judges (no false pass; ministral-8b one false fail); T01–T41
   are byte-identical to v4 and T01–T36 to v3, whose sweep is the current measurement.

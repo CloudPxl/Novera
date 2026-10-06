@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { AccountMode } from "@/lib/auth/session.ts";
 import { can, ROLE_LABEL, type Role } from "@/lib/auth/permissions.ts";
 
-export type SettingsSection = "general" | "grading" | "developer" | "members" | "audit" | "profile";
+export type SettingsSection = "general" | "grading" | "developer" | "members" | "audit" | "profile" | "account";
 
 /**
  * Settings, grouped by whom they concern — you, this workspace, its integrations, its security —
@@ -23,7 +23,13 @@ export function SettingsNav({ current, role, mode, members, workspace, children 
   const active = current === "workspace" ? "general" : current;
   const team = mode !== "personal" || members > 1;
   const groups: Array<{ label: string; items: Array<{ key: SettingsSection; href: string; label: string }> }> = [
-    { label: "You", items: [{ key: "profile", href: "/settings/profile", label: "Profile and preferences" }] },
+    {
+      label: "You",
+      items: [
+        { key: "profile", href: "/settings/profile", label: "Profile and preferences" },
+        { key: "account", href: "/settings/account", label: "Sign-in and security" },
+      ],
+    },
     {
       label: "This workspace",
       items: [
@@ -40,9 +46,9 @@ export function SettingsNav({ current, role, mode, members, workspace, children 
     <>
       <header className="pb-6 pt-8">
         <p className="type-eyebrow text-ink-faint">Settings</p>
-        <h1 className="mt-1.5 type-h1">{active === "profile" ? "Your profile" : workspace}</h1>
+        <h1 className="mt-1.5 type-h1">{active === "profile" ? "Your profile" : active === "account" ? "Sign-in and security" : workspace}</h1>
         <p className="mt-1.5 type-body text-ink-soft">
-          {active === "profile" ? "Yours, in every workspace." : <>You are <span className="font-medium text-ink">{ROLE_LABEL[role].toLowerCase()}</span> here.</>}
+          {active === "profile" || active === "account" ? "Yours, in every workspace." : <>You are <span className="font-medium text-ink">{ROLE_LABEL[role].toLowerCase()}</span> here.</>}
         </p>
       </header>
       <div className="grid gap-8 lg:grid-cols-[14rem_minmax(0,1fr)] lg:items-start">

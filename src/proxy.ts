@@ -34,6 +34,20 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(target, 308);
   }
 
+  // Supabase sends an emailed link to its Site URL root instead of `/auth/callback` when the
+  // callback is missing from its redirect allow list — a dashboard setting, outside this
+  // repository. The home page ignores a `code`, so the person landed signed out with no word
+  // about their confirmation. Forwarded rather than handled twice; treated as a sign-up.
+  if (request.nextUrl.pathname === "/" && (request.nextUrl.searchParams.has("code") || request.nextUrl.searchParams.has("error_code"))) {
+    const target = new URL("/auth/callback", request.nextUrl.origin);
+    for (const key of ["code", "error", "error_code", "error_description"]) {
+      const value = request.nextUrl.searchParams.get(key);
+      if (value) target.searchParams.set(key, value);
+    }
+    target.searchParams.set("flow", "signup");
+    return NextResponse.redirect(target, 307);
+  }
+
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
 
@@ -63,7 +77,10 @@ export async function proxy(request: NextRequest) {
     `connect-src 'self'${supabase ? ` ${supabase}` : ""}${isDev ? " ws: wss:" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self'",
+    // "Continue with Google/GitHub" is a form whose answer redirects to Supabase, which
+    // redirects to the provider; browsers hold the whole redirect chain of a submission to
+    // form-action. Named hosts only, the same three the sign-in can lead to.
+    `form-action 'self'${supabase ? ` ${supabase}` : ""} https://accounts.google.com https://github.com`,
     // A report is a document someone was sent, not a widget. It is never framed.
     "frame-ancestors 'none'",
     "upgrade-insecure-requests",

@@ -13,15 +13,24 @@
  * all through us.
  */
 export const PROBLEMS = {
-  link_invalid: "That confirmation link is not valid. Ask for a new one.",
-  link_spent: "That confirmation link has expired or was already used. Ask for a new one.",
+  link_invalid: "That confirmation link is not valid. Send yourself a new one below.",
+  link_spent: "That confirmation link has expired or was already used. Send yourself a new one below.",
   reset_expired: "That password reset link has expired or was already used. Ask for a new one below.",
   signed_out: "You have been signed out.",
+  signed_out_everywhere: "You have been signed out on every device.",
+  // The address is confirmed by the time this is shown: Supabase only sends a code back after
+  // the token checked out. What failed is starting a session in *this* browser — the link was
+  // opened somewhere other than where the account was created.
+  confirmed_sign_in: "Your email address is confirmed. Sign in to continue.",
+  oauth_cancelled: "Sign-in was cancelled, so nothing changed. Choose a way to sign in.",
+  oauth_failed: "That sign-in did not complete. Try again, or use another method.",
+  oauth_verify_email: "That provider has not verified your email address, so we sent a confirmation link to it. Open the link, then continue with the provider again.",
+  oauth_no_email: "That account did not share a verified email address, so it cannot be used to sign in here. Use another method, or make the address visible to the provider and try again.",
 } as const;
 
 export type ProblemCode = keyof typeof PROBLEMS;
 
 export function problemMessage(code: string | undefined): string | null {
   if (!code) return null;
-  return PROBLEMS[code as ProblemCode] ?? "That link did not work. Sign in, or ask for a new one.";
+  return Object.hasOwn(PROBLEMS, code) ? PROBLEMS[code as ProblemCode] : "That link did not work. Sign in, or ask for a new one.";
 }

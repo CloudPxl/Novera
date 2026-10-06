@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import type { ProblemCode } from "./problems.ts";
+import { completeAuth } from "../callback/handle.ts";
 
 /**
  * Where the link in a confirmation email lands.
@@ -11,10 +12,15 @@ import type { ProblemCode } from "./problems.ts";
  * and therefore through the user's browser history and any referrer — so on success
  * this redirects to a clean URL rather than rendering anything at this address.
  */
-const CONFIRMABLE: EmailOtpType[] = ["signup", "email_change", "recovery", "invite", "magiclink"];
+const CONFIRMABLE: EmailOtpType[] = ["signup", "email", "email_change", "recovery", "invite", "magiclink"];
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
+  // A reset link asked for before 2026-10-06 points here and carries a PKCE `code`, not a
+  // `token_hash` — this route rejected every one of them as "not valid". Only reset links
+  // were sent here with a code, so a code is spent as a recovery.
+  if (url.searchParams.has("code") || url.searchParams.has("error")) return completeAuth(url, "recovery");
+
   const tokenHash = url.searchParams.get("token_hash");
   const type = url.searchParams.get("type") as EmailOtpType | null;
 

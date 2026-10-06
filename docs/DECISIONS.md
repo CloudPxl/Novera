@@ -3879,3 +3879,60 @@ could be inserted already approved** (the trigger guarded updates only). Both ar
   dropped stay on screen. 650 tests. Then, measured on the production route: gpt-oss-20b sometimes ends its answer one `]}` short (2 of 6 samples);
   the reply is now closed at its very end before parsing — nothing in the middle is repaired, and what parses is still
   checked word for word. 651 tests.
+
+## 2026-10-06 — Sign-in that does not trap anyone: confirmation, reset, Google, GitHub, linking
+
+**The blocker, diagnosed.** Measured on a local GoTrue v2.197 with confirmations on, mail caught by mailpit and a
+mail server that refuses connections. Production's public auth settings show the same mode: confirmations on, no
+social provider. In production, both accounts were confirmed without a confirmation email ever being sent
+(`confirmation_sent_at` null), so no signup there has been through the email path. Found:
+- **Email was not going out.** Supabase's built-in mailer sends only to team addresses. When sending failed,
+  GoTrue's 500 "Error sending confirmation email" was shown to the person raw. It means nothing was saved (the
+  transaction rolls back), and the person was not told so or given a way forward.
+- **Every password reset link failed.** The server client uses PKCE, so the link comes back as
+  `/auth/confirm?code=…`. That route read only `token_hash` and called every reset link "not valid".
+- **Sign-up never named a return address.** The confirmation link went to Supabase's Site URL root, where
+  nothing spent its code.
+- **A reset over a mail-server failure said "a reset link is on its way".**
+
+**Built:**
+- `/auth/callback` spends every `code` link: signup, recovery, oauth and link flows.
+  - A link opened in another browser confirms the address and asks for a manual sign-in.
+  - Supabase's error parameters map to fixed problem codes, never shown text.
+  - `/auth/confirm` hands old reset codes to it.
+  - The proxy forwards a code that lands on `/`.
+- Sign-up names its return address. A "Check your inbox" panel offers: send a new link, use a different address,
+  sign in, write to support, continue with a provider.
+- Sign-in before confirming says so and offers a new link in place. A spent link opens on "send a new one".
+- Errors are classified (`src/lib/auth/errors.ts`, from observed GoTrue answers), never passed through.
+- Each address is limited to 5 sign-ups, 3 resends and 3 resets an hour, refused when the count cannot be read.
+- Google and GitHub buttons appear only once Supabase reports the provider enabled. Destinations come from a fixed
+  list (`safeNext`), and links point only at this deployment (`appOrigin`).
+- Settings → **Sign-in and security**:
+  - lists ways in and connects or disconnects Google and GitHub (manual linking), never the last way in;
+  - adds or changes a password, asking for the current one;
+  - signs out everywhere;
+  - records each change in the person-level audit trail. No provider token is read.
+- The dev server no longer prints `/auth/callback` or `/auth/confirm` URLs.
+
+**Declined:**
+- Merging accounts by hand.
+- Email change: not asked for, and it needs both addresses confirmed.
+- An avatar: an image store for a preference.
+
+**Tested:**
+- GoTrue's own GitHub provider, against a mock GitHub inside the Docker network (its GitHub Enterprise base URL):
+  new account, cancelled consent, an unverified provider email, automatic linking to an existing confirmed email
+  account (same user id, still one workspace), manual link and unlink, another user's GitHub account refused.
+- Google uses the same callback and has no local stand-in, so it is untested here.
+
+**Measured:**
+- Browser walk 73/73: every path above, wrong password and unknown address reading the same, a duplicate sign-up
+  sending nothing, no account row when email fails, emailed tokens absent from the app log, axe and overflow clean
+  at 390 and 1440, no console errors.
+- 659 tests.
+- `npm audit --omit=dev`: 0, after `source-map-js` 1.2.2. Five dev-only highs remain in eslint-config-next's
+  `braces` chain; every `braces` version is affected, and the only "fix" is a downgrade to Next 14's config.
+
+**Outside the repository** (`docs/setup/sign-in-and-email.md`): Supabase custom SMTP through Resend, Site URL and
+redirect allow list, the `_dmarc` record, the Google and GitHub OAuth apps, manual linking.

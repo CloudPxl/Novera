@@ -11,6 +11,14 @@ const nextConfig: NextConfig = {
     serverActions: { bodySizeLimit: "3mb" },
   },
 
+  // The dev server prints every request URL, and an auth return address carries a one-time
+  // code or token in its query string. Single-use and spent on arrival, but a terminal log
+  // is shared and pasted; those two routes are not printed. (Development only: production
+  // logs no request lines of ours.)
+  logging: {
+    incomingRequests: { ignore: [/^\/auth\/(callback|confirm)/] },
+  },
+
   // Pages get their headers from `src/proxy.ts`, which does not run for /api. Route
   // handlers answer with data — JSON, CSV, Markdown, JUnit — never with a page, so they
   // get the strictest set: nothing may be sniffed into something executable, framed,

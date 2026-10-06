@@ -2,20 +2,30 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth/session.ts";
-import { SignInForm } from "./form.tsx";
+import { SignInForm, type Mode } from "./form.tsx";
 import { problemMessage } from "../auth/confirm/problems.ts";
+import { enabledProviders } from "@/lib/auth/providers.ts";
+import { safeNext } from "@/lib/auth/redirects.ts";
 
 export const metadata: Metadata = { title: "Sign in · Novera" };
 
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ problem?: string }>;
+  searchParams: Promise<{ problem?: string; next?: string; mode?: string }>;
 }) {
-  if (await currentUser()) redirect("/dashboard");
+  const query = await searchParams;
+  const next = safeNext(query.next);
+  if (await currentUser()) redirect(next);
   // Mapped from a code this application defined, never rendered from the query string:
   // a link someone was sent must not be able to put its own sentence inside our alert.
-  const problem = problemMessage((await searchParams).problem);
+  const problem = problemMessage(query.problem);
+  // A spent or broken confirmation link opens on "send a new one", which is what the alert says to do.
+  const mode: Mode = query.problem === "link_spent" || query.problem === "link_invalid"
+    ? "resend"
+    : query.problem === "reset_expired" ? "reset"
+    : query.mode === "signup" || query.mode === "reset" ? query.mode : "signin";
+  const providers = await enabledProviders();
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center bg-surface px-6 text-ink">
@@ -35,7 +45,7 @@ export default async function SignInPage({
           {problem}
         </p>
       )}
-      <SignInForm />
+      <SignInForm providers={providers} next={next} initialMode={mode} />
     </main>
   );
 }

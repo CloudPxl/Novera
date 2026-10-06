@@ -3936,3 +3936,9 @@ social provider. In production, both accounts were confirmed without a confirmat
 
 **Outside the repository** (`docs/setup/sign-in-and-email.md`): Supabase custom SMTP through Resend, Site URL and
 redirect allow list, the `_dmarc` record, the Google and GitHub OAuth apps, manual linking.
+- **UI sweep across account modes (2026-10-06).** Every operator page (12, plus Workspaces and Audit for enterprise)
+  at 1440, 1280, 1024, 768 and 390. Personal ran with normal motion, agency and enterprise with reduced motion.
+  Checked: axe after motion settles, overflow, nothing left at opacity 0, the navigation each mode should and should
+  not show, the first Tab reaching the skip link, no console errors. Found one defect: in enterprise mode at 1024 a
+  long workspace name pushed the top bar 18 px past the window on every page. The switcher label is now narrower
+  between lg and xl, where the full navigation needs the room. 790/790 after the fix.

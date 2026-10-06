@@ -18,7 +18,7 @@ export function WorkspaceSwitcher({ current, workspaces, heading, allLabel }: {
 }) {
   return (
     <Menu
-      label={<span className="flex max-w-24 items-center gap-1.5 truncate sm:max-w-40"><span aria-hidden className="size-1.5 shrink-0 rounded-full bg-trace" /><span className="truncate">{current.name}</span></span>}
+      label={<span className="flex max-w-24 items-center gap-1.5 truncate sm:max-w-40 lg:max-w-28 xl:max-w-40"><span aria-hidden className="size-1.5 shrink-0 rounded-full bg-trace" /><span className="truncate">{current.name}</span></span>}
       align="left"
       triggerClassName="border border-line px-2.5 py-1.5 text-ink hover:bg-sunken"
       panelClassName="w-72"

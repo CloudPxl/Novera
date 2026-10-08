@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 
 interface DraftRow {
   id: string;
-  origin: "policy" | "import" | "production";
+  origin: "policy" | "import" | "production" | "pack" | "document" | "discovery";
   production_failures: { occurred_on: string | null; created_at: string; agent_reply: string | null; redaction: { counts: Record<string, number>; original_hash: string } } | null;
   import_provenance: (ImportProvenance & { imported_at: string }) | null;
   source_quote: string | null;
@@ -214,14 +214,18 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
                     <FromProduction failure={d.production_failures} />
                   ) : d.origin === "import" && d.import_provenance ? (
                     <ImportedFrom provenance={d.import_provenance} />
-                  ) : (
+                  ) : d.source_quote ? (
                     <figure className="mt-4 border-l-2 border-line-strong pl-3">
                       <blockquote className="type-body text-ink-soft italic">{d.source_quote}</blockquote>
                       <figcaption className="mt-1 text-xs text-ink-faint">
                         the passage of your policy this tests
                       </figcaption>
                     </figure>
-                  )}
+                  ) : d.origin === "pack" ? (
+                    <p className="mt-4 text-sm text-ink-soft">
+                      From a curated pack: a published Novera scenario, unchanged. It quotes no passage of your policy.
+                    </p>
+                  ) : null}
 
                   <dl className="mt-4 space-y-3">
                     <div>

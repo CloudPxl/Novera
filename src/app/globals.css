@@ -564,3 +564,14 @@ body {
   opacity: 1;
   animation: none;
 }
+
+/* The Ask Novera button sits fixed at the bottom right of every operator page. A control
+   tabbed to near the bottom of the viewport was scrolled into view underneath it (WCAG 2.4.11,
+   audit 2026-10-08); the page now scrolls focus clear of it, and the last content can be
+   scrolled above it. */
+html:has([data-shell="app"]) {
+  scroll-padding-bottom: 5rem;
+}
+[data-shell="app"] {
+  padding-bottom: 4.5rem;
+}

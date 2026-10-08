@@ -191,7 +191,7 @@ export default async function ReviewPage({
       <PageHeader
         eyebrow="Work"
         title="Review"
-        status={<Badge tone={total ? "high" : "pass"}>{total ? `${total} need action` : "Nothing waiting"}</Badge>}
+        status={<Badge tone={total ? "high" : "neutral"}>{total ? `${total} need action` : "Nothing waiting"}</Badge>}
         description={`What needs a person across your last ${RECENT_RUNS} completed runs. Each row opens the scenario where it is resolved.`}
       />
 

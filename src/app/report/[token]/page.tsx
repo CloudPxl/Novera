@@ -236,8 +236,8 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-faint">
                 <th className="py-2 font-medium">Area</th>
-                <th className="py-2 text-right font-medium">Passed</th>
-                <th className="py-2 text-right font-medium">Graded</th>
+                <th className="py-2 pl-3 text-right font-medium">Passed</th>
+                <th className="py-2 pl-3 text-right font-medium">Graded</th>
                 <th className="py-2 pl-3 font-medium">Result</th>
               </tr>
             </thead>
@@ -250,8 +250,8 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
                       <span className="font-medium text-ink">{meta.label}</span>
                       <span className="block text-xs leading-relaxed text-ink-faint">{meta.description}</span>
                     </td>
-                    <td className="py-2 text-right tabular-nums">{c.passed}</td>
-                    <td className="py-2 text-right tabular-nums">{c.graded}</td>
+                    <td className="py-2 pl-3 text-right tabular-nums">{c.passed}</td>
+                    <td className="py-2 pl-3 text-right tabular-nums">{c.graded}</td>
                     <td className="py-2 pl-3">
                       {c.critical_failure ? (
                         <span className="font-medium text-fail-text">Critical scenario failed</span>

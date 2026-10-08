@@ -1,4 +1,7 @@
 import { describeTiming } from "@/lib/schedules/cadence.ts";
+import { FixtureNote } from "@/components/ui/fixture-note.tsx";
+import { isNoveraFixture } from "@/lib/agents/environment.ts";
+import type { AgentConfig } from "@/lib/agents/types.ts";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -87,7 +90,7 @@ export default async function RunPage({
   }
 
   const [{ data: agent }, { data: policy }, { data: suite }, { data: reportRows }, { data: schedule }, { data: apiKey }, { data: newestPolicy }] = await Promise.all([
-    db.from("agents").select("name").eq("id", run.agent_id).maybeSingle(),
+    db.from("agents").select("name, config").eq("id", run.agent_id).maybeSingle(),
     db.from("policies").select("version").eq("id", run.policy_id).maybeSingle(),
     db.from("suites").select("name, version, cases, approval, provenance").eq("id", run.suite_id).maybeSingle(),
     // Newest first: a run can carry a reissue that discloses human review, and a
@@ -557,6 +560,8 @@ export default async function RunPage({
       <Link href={`/agents/${run.agent_id}`} className="text-sm text-ink-soft underline-offset-2 hover:underline">
         ← {agent?.name ?? "Agent"}
       </Link>
+
+      {agent?.config && isNoveraFixture(agent.config as AgentConfig) && <FixtureNote className="mt-4" />}
 
       {exploratory && (
         <div role="note" className="mt-4 rounded-panel border border-warning-border bg-warning-surface px-4 py-3 text-warning-text">

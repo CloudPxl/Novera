@@ -58,7 +58,7 @@ export function RunOverview({ runId, readiness, findings, comparison, canCompare
               <>
                 <Badge tone={ready ? "pass" : readiness.state === "REVOKED" || readiness.state === "EXPIRED" ? "neutral" : "error"}>{readiness.label}</Badge>
                 {readiness.gap && <p className="mt-2 text-sm text-ink-soft">{readiness.gap}</p>}
-                <Link href={`/runs/${runId}?tab=evidence`} className="mt-2 inline-block text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">Every check, and withdrawal →</Link>
+                <Link href={`/runs/${runId}?tab=evidence`} className="mt-3 block w-fit text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">Every check, and withdrawal →</Link>
               </>
             ) : (
               <p className="text-sm text-ink-soft">No report was sealed for this run.</p>

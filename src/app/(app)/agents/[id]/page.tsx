@@ -1,4 +1,7 @@
 import { Help } from "@/components/ui/help.tsx";
+import { FixtureNote } from "@/components/ui/fixture-note.tsx";
+import { isNoveraFixture } from "@/lib/agents/environment.ts";
+import type { AgentConfig } from "@/lib/agents/types.ts";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -107,7 +110,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
         back={{ href: "/agents", label: context.accountMode === "personal" ? "My agents" : "Agents" }}
         eyebrow={<span className="normal-case tracking-normal">{config.url}</span>}
         title={agent.name}
-        status={agent.attested_at ? <Badge tone="pass">Authorisation recorded</Badge> : <Badge tone="error">No authorisation recorded</Badge>}
+        status={agent.attested_at ? <Badge tone="neutral">Authorisation recorded</Badge> : <Badge tone="error">No authorisation recorded</Badge>}
         action={
           !can(role, "run.start") ? undefined
           : !latestPolicy ? <ButtonLink href={`/agents/${agent.id}?tab=policy`}>Write the policy</ButtonLink>
@@ -154,6 +157,8 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
           </div>
         }
       />
+
+      {isNoveraFixture(agent.config as AgentConfig) && <FixtureNote className="mb-6" />}
 
       <TabNav label="Agent sections" current={tab} tabs={[
         { key: "overview", label: "Overview", href: `/agents/${agent.id}` },

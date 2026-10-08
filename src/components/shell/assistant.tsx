@@ -133,7 +133,7 @@ export function Assistant() {
         onClick={() => (open ? close() : setOpen(true))}
         aria-expanded={open}
         aria-controls={open ? titleId : undefined}
-        className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-on-ink shadow-modal transition-[background-color,transform] duration-150 ease-out hover:bg-ink-hover active:scale-[0.98]"
+        className="fixed bottom-5 right-5 z-20 inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-on-ink shadow-modal transition-[background-color,transform] duration-150 ease-out hover:bg-ink-hover active:scale-[0.98]"
       >
         <span aria-hidden="true" className="text-base leading-none">?</span>
         {open ? "Close" : "Ask Novera"}
@@ -147,7 +147,7 @@ export function Assistant() {
           onKeyDown={(e) => {
             if (e.key === "Escape") close();
           }}
-          className="fixed bottom-20 right-4 z-40 flex h-[min(34rem,calc(100dvh-7rem))] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-panel border border-line bg-surface/95 shadow-modal backdrop-blur"
+          className="fixed bottom-20 right-4 z-20 flex h-[min(34rem,calc(100dvh-10rem))] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-panel border border-line bg-surface/95 shadow-modal backdrop-blur"
         >
           <div className="border-b border-line px-4 py-3">
             <div className="flex items-center justify-between gap-2">

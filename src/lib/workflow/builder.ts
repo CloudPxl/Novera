@@ -9,6 +9,7 @@ import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
 import { connectionsFromEnv } from "@/lib/providers/registry.ts";
 import * as builder from "@/lib/builder/service.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
+import { spendModelCall } from "@/lib/workflow/model-budget.ts";
 
 /**
  * The Suite Builder's buttons. Each checks the person's role against the live membership,
@@ -68,6 +69,8 @@ export async function addSourceAction(_prev: FormState, form: FormData): Promise
 export async function extractAction(_prev: FormState, form: FormData): Promise<FormState> {
   const c = await context("scenario.draft");
   if ("error" in c) return { error: c.error };
+  const overBudget = await spendModelCall(c.ctx.workspaceId);
+  if (overBudget) return { error: overBudget };
   const chat = createRoutedChat({ connections: connectionsFromEnv(), routes: DEFAULT_ROUTES });
   const result = await builder.extractFromSource(c.ctx, { sourceId: text(form, "sourceId"), chat });
   revalidatePath(`/builder/${text(form, "buildId")}`);

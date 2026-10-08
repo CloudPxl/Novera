@@ -8,6 +8,7 @@ import { recordProductionFailure } from "@/lib/regressions/record.ts";
 import type { SuiteCase } from "@/lib/runner/types.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
 import { draftScenariosFromPolicy } from "@/lib/workflow/propose.ts";
+import { spendModelCall } from "@/lib/workflow/model-budget.ts";
 
 /**
  * The duty-to-test compiler, from the operator's side.
@@ -32,6 +33,8 @@ export async function draftScenarios(_prev: FormState, form: FormData): Promise<
   const gated = await gate(user.id, workspace.id, "scenario.draft");
   if ("error" in gated) return { error: gated.error };
   const admin = gated.admin;
+  const overBudget = await spendModelCall(workspace.id);
+  if (overBudget) return { error: overBudget };
 
   const drafted = await draftScenariosFromPolicy({ db: admin, workspaceId: workspace.id, agentId, wanted, by: { userId: user.id } });
   if (!drafted.ok) return { error: drafted.error };

@@ -18,6 +18,9 @@ export interface Limit {
 /** The public forms. Deliberately generous: a person with a real problem writes twice. */
 export const SUPPORT_LIMIT: Limit = { max: 5, windowSeconds: 60 * 60 };
 export const APPLY_LIMIT: Limit = { max: 3, windowSeconds: 60 * 60 };
+/** Per network address, whatever email is typed. Room for an office behind one address. */
+export const SUPPORT_ADDRESS_LIMIT: Limit = { max: 20, windowSeconds: 60 * 60 };
+export const APPLY_ADDRESS_LIMIT: Limit = { max: 10, windowSeconds: 60 * 60 };
 
 function salt(): string {
   // Reuses the key the rest of the product already requires rather than adding a new

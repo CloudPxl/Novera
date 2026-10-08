@@ -10,6 +10,8 @@ import { sessionClient } from "@/lib/supabase/server.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { mailProblem, sendEmail } from "@/lib/mail/send.ts";
+import { appOrigin } from "@/lib/auth/redirects.ts";
+import { fingerprint, rateLimit } from "@/lib/support/rate-limit.ts";
 import { isMemoryKey } from "@/lib/assistant/memory.ts";
 import { saveMemory } from "./memory.ts";
 
@@ -187,6 +189,8 @@ export async function resetPersonalization(_prev: IdentityState, form: FormData)
 
 // =================================================================== members
 
+const INVITE_LIMIT = { max: 20, windowSeconds: 60 * 60 };
+
 export async function inviteMember(_prev: IdentityState, form: FormData): Promise<IdentityState> {
   const ctx = await requireContext();
   const { user, workspace, role: actorRole } = ctx;
@@ -202,6 +206,12 @@ export async function inviteMember(_prev: IdentityState, form: FormData): Promis
   const { count: open } = await gated.admin.from("workspace_invitations").select("*", { count: "exact", head: true })
     .eq("workspace_id", workspace.id).is("accepted_at", null).is("revoked_at", null).gt("expires_at", new Date().toISOString());
   if ((open ?? 0) >= 20) return { error: "This workspace has 20 open invitations. Revoke some first." };
+  // Revoking and inviting again sent an email each time, unbounded, carrying a workspace name the
+  // inviter chose. Counted per person; refused when the count cannot be read, because each one is mail.
+  const invites = await rateLimit(fingerprint(["invite", user.id]), INVITE_LIMIT, { onError: "refuse" });
+  if (!invites.allowed) {
+    return { error: invites.counted ? `That is ${INVITE_LIMIT.max} invitations in an hour. Try again in about ${invites.retryAfterMinutes} minutes.` : "Novera could not check the invitation limit just now. Try again in a minute." };
+  }
 
   const token = randomBytes(32).toString("base64url");
   const tokenHash = createHash("sha256").update(token).digest("hex");
@@ -210,8 +220,8 @@ export async function inviteMember(_prev: IdentityState, form: FormData): Promis
   if (error || !inv) return { error: `Could not create the invitation: ${error?.message ?? "no row"}` };
   await recordAudit(gated.admin, { workspaceId: workspace.id, actorId: user.id, action: "member.invited", detail: { invitation: inv.id, role } });
 
-  const origin = (await headers()).get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
-  const link = `${origin}/invite/${token}`;
+  // Only this deployment's own address, as every other emailed link (src/lib/auth/redirects.ts).
+  const link = `${appOrigin((await headers()).get("origin"))}/invite/${token}`;
   const sent = await sendEmail({
     to: email,
     subject: `You are invited to ${workspace.name} on Novera`,

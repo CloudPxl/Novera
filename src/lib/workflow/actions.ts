@@ -22,6 +22,7 @@ import { httpVerificationConnector } from "../evidence/connectors/http.ts";
 import { connectionFor } from "@/lib/providers/workspace-connections.ts";
 import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
+import { spendModelCall } from "@/lib/workflow/model-budget.ts";
 
 export interface FormState {
   error?: string;
@@ -221,6 +222,8 @@ export async function requestDiagnosis(_prev: FormState, form: FormData): Promis
   const gated = await gate(user.id, workspace.id, "diagnosis.request");
   if ("error" in gated) return { error: gated.error };
   const admin = gated.admin;
+  const overBudget = await spendModelCall(workspace.id);
+  if (overBudget) return { error: overBudget };
 
   const proposed = await diagnoseRunCase({ db: admin, workspaceId: workspace.id, runCaseId, by: { userId: user.id } });
   if (!proposed.ok) return { error: proposed.error };

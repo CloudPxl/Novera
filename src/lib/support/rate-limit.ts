@@ -23,7 +23,7 @@ import { decideLimit, type Limit, type LimitDecision, type OnCountFailure } from
  * served (the support form keeps the question and drafts nothing).
  */
 
-export { fingerprint, refusalMessage, SUPPORT_LIMIT, APPLY_LIMIT, COUNT_UNAVAILABLE_MESSAGE } from "./throttle.ts";
+export { fingerprint, refusalMessage, SUPPORT_LIMIT, APPLY_LIMIT, SUPPORT_ADDRESS_LIMIT, APPLY_ADDRESS_LIMIT, COUNT_UNAVAILABLE_MESSAGE } from "./throttle.ts";
 export type { Limit, OnCountFailure } from "./throttle.ts";
 
 /** The caller's address, as coarsely as the platform will give it. Never stored raw. */

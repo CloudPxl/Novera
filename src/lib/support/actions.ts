@@ -11,7 +11,7 @@ import { draftAnswer, type DocPage } from "./answer.ts";
 import { sendEmail } from "@/lib/mail/send.ts";
 import {
   rateLimit, fingerprint, callerAddress, refusalMessage,
-  SUPPORT_LIMIT, APPLY_LIMIT,
+  SUPPORT_LIMIT, APPLY_LIMIT, SUPPORT_ADDRESS_LIMIT, APPLY_ADDRESS_LIMIT,
 } from "./rate-limit.ts";
 import { MESSAGE_MIN, MESSAGE_MAX, EMAIL_MAX, ORGANISATION_MAX } from "./limits.ts";
 
@@ -62,11 +62,16 @@ export async function submitSupportRequest(_prev: InboundState, form: FormData):
 
   // Counted per person and per form: asking a question and applying for a trial are
   // different acts, and one should not spend the other's allowance.
-  const who = fingerprint(["support", contact.email, await callerAddress()]);
+  const address = await callerAddress();
+  const who = fingerprint(["support", contact.email, address]);
   // When the count cannot be read the question is still taken — a person reads every one —
   // but no model is asked to draft an answer, since nothing would bound how many it drafts.
   const limit = await rateLimit(who, SUPPORT_LIMIT, { onError: "allow" });
   if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
+  // Per address as well: a new email address each time was a new allowance, and each
+  // message is drafted by a model on Novera's keys (audit, 2026-10-08).
+  const fromAddress = address ? await rateLimit(fingerprint(["support-address", address]), SUPPORT_ADDRESS_LIMIT, { onError: "allow" }) : null;
+  if (fromAddress && !fromAddress.allowed) return { error: refusalMessage(fromAddress.retryAfterMinutes) };
 
   // The same question sent twice is one question. Accepted, acknowledged, and not
   // drafted again — silently dropping it would teach someone to press the button
@@ -145,11 +150,14 @@ export async function submitTrialApplication(_prev: InboundState, form: FormData
   const contact = readContact(form);
   if (typeof contact === "string") return { error: contact };
 
-  const who = fingerprint(["apply", contact.email, await callerAddress()]);
+  const address = await callerAddress();
+  const who = fingerprint(["apply", contact.email, address]);
   // Allowed when the count cannot be read: an application is stored for a person to read
   // and calls no model.
   const limit = await rateLimit(who, APPLY_LIMIT, { onError: "allow" });
   if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
+  const fromAddress = address ? await rateLimit(fingerprint(["apply-address", address]), APPLY_ADDRESS_LIMIT, { onError: "allow" }) : null;
+  if (fromAddress && !fromAddress.allowed) return { error: refusalMessage(fromAddress.retryAfterMinutes) };
 
   const db = serviceClient();
 

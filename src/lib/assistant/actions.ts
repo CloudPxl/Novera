@@ -1,5 +1,6 @@
 "use server";
 
+import { messageRows } from "./rows.ts";
 import { revalidatePath } from "next/cache";
 import { requireContext, assertMembership } from "@/lib/auth/session.ts";
 import { can } from "@/lib/auth/permissions.ts";
@@ -198,10 +199,9 @@ export async function askAssistant(threadId: string | null, message: string): Pr
       if (error || !created) return { error: "The conversation could not be saved. Try again.", fundedBy };
       thread = created as { id: string };
     }
-    const { data: stored, error: storeError } = await admin.from("assistant_messages").insert([
-      { thread_id: thread.id, role: "user", content: question },
-      { thread_id: thread.id, role: "assistant", content: parsed.reply, citations: parsed.citations, funded_by: fundedBy, model: response.model ?? null },
-    ]).select("id, role");
+    const { data: stored, error: storeError } = await admin.from("assistant_messages")
+      .insert(messageRows(thread.id, question, { reply: parsed.reply, citations: parsed.citations, fundedBy, model: response.model ?? null }))
+      .select("id, role");
     if (storeError) return { error: "The conversation could not be saved. Try again.", fundedBy };
     await admin.from("assistant_threads").update({ last_message_at: new Date().toISOString() }).eq("id", thread.id);
 

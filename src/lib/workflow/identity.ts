@@ -9,7 +9,7 @@ import { canManageMember, GRANTABLE_ROLES, isRole, ROLE_LABEL, type Role } from 
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
-import { sendEmail } from "@/lib/mail/send.ts";
+import { mailProblem, sendEmail } from "@/lib/mail/send.ts";
 import { isMemoryKey } from "@/lib/assistant/memory.ts";
 import { saveMemory } from "./memory.ts";
 
@@ -227,7 +227,7 @@ export async function inviteMember(_prev: IdentityState, form: FormData): Promis
   return {
     notice: sent.ok
       ? `Invitation sent to ${email}. The link is also below, once — it works only for that address.`
-      : `Invitation created. Email is not available here, so send them this link yourself. It is shown once and works only for ${email}.`,
+      : `Invitation created, but the email was not sent — ${mailProblem(sent.error)} Send them this link yourself. It is shown once and works only for ${email}.`,
     link,
   };
 }

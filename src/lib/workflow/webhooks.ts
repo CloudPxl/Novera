@@ -45,7 +45,7 @@ export async function createWebhook(_prev: WebhookFormState, form: FormData): Pr
   try {
     const { secret } = await createEndpoint({ db: admin, workspaceId: workspace.id, url: parsed.toString(), events, createdBy: user.id });
     await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "webhook.created", detail: {} });
-    revalidatePath("/settings");
+    revalidatePath("/settings", "layout");
     return { secret, notice: "Copy the signing secret now. Novera keeps it sealed and cannot show it again." };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "The endpoint could not be saved." };
@@ -66,7 +66,7 @@ export async function revokeWebhook(_prev: WebhookFormState, form: FormData): Pr
   if (error) return { error: `The endpoint could not be revoked: ${error.message}` };
   if (!data?.length) return { error: "That endpoint was not found, or is already revoked." };
   await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "webhook.revoked", detail: {} });
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   return { notice: "Revoked. Nothing more is sent to it." };
 }
 
@@ -84,7 +84,7 @@ export async function sendTestWebhook(_prev: WebhookFormState, form: FormData): 
   if (!ids.length) return { error: "That endpoint was not found, or is revoked." };
   await deliverDue({ db: admin, ids, deadline: Date.now() + 8_000 });
   const { data: d } = await admin.from("webhook_deliveries").select("status, last_status, last_error").eq("id", ids[0]).single();
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   return d?.status === "delivered"
     ? { notice: `Delivered: your endpoint answered ${d.last_status}.` }
     : { error: `Not delivered: ${d?.last_error ?? "no answer"}. It will be retried.` };

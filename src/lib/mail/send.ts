@@ -71,3 +71,18 @@ export async function sendEmail(args: {
 
   return { ok: true, id: (payload?.id as string | undefined) ?? null, error: null };
 }
+
+/**
+ * Why an email did not go, in words for the person who pressed the button — never the key, never
+ * the provider's full answer. "Email is not available here" was the only sentence for every failure,
+ * which hid for a week that the mail service was refusing the sending domain (2026-10-08).
+ */
+export function mailProblem(error: string | null): string {
+  const e = error ?? "";
+  if (/not configured/i.test(e)) return "email is not set up on this server.";
+  if (/domain.*not verified|not verified.*domain/i.test(e)) return "the mail service has not verified Novera's sending domain yet.";
+  if (/did not answer|timeout|timed out/i.test(e)) return "the mail service did not answer in time.";
+  if (/^(401|403)\b/.test(e)) return "the mail service refused Novera's credentials.";
+  if (/^429\b/.test(e)) return "the mail service is rate limiting us; try again in a minute.";
+  return "the mail service refused it.";
+}

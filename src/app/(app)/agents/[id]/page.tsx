@@ -112,7 +112,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
           !can(role, "run.start") ? undefined
           : !latestPolicy ? <ButtonLink href={`/agents/${agent.id}?tab=policy`}>Write the policy</ButtonLink>
           : !entitlement.canRun ? <ButtonLink href="/settings">Connect a key to run</ButtonLink>
-          : <div className="max-w-md">
+          : <div className="w-full max-w-md">
 {latestPolicy && entitlement.canRun && (
                   <form action={createRun} className="flex flex-wrap items-center gap-2">
                     <input type="hidden" name="agentId" value={agent.id} />

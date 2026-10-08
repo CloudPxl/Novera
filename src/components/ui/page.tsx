@@ -39,7 +39,9 @@ export function PageHeader({ eyebrow, title, description, action, status, back }
           </div>
           {description && <p className="mt-1.5 type-body text-ink-soft">{description}</p>}
         </div>
-        {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
+        {/* max-w-full: an action wider than a phone (the agent page's run form, 448 px) pushed every
+            such page 74 px past a 390 px screen, measured on production 2026-10-08. */}
+        {action && <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{action}</div>}
       </div>
     </header>
   );

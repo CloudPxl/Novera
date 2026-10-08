@@ -58,7 +58,7 @@ export async function createApiKey(_prev: KeyFormState, form: FormData): Promise
   if (error) return { error: `The key could not be created: ${error.message}` };
 
   await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "apikey.created", detail: {} });
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   return {
     key: minted.key,
     notice: "Copy this key now. Novera keeps only a fingerprint of it, so it cannot be shown again.",
@@ -81,6 +81,6 @@ export async function revokeApiKey(_prev: KeyFormState, form: FormData): Promise
   if (!data?.length) return { error: "That key was not found, or is already revoked." };
 
   await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "apikey.revoked", detail: {} });
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   return { notice: "Revoked. Any request using it is refused from now on." };
 }

@@ -79,7 +79,7 @@ function originLabel(c: Candidate): string {
 
 export default async function BuildPage({ params, searchParams }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ step?: string; view?: string; edit?: string }>;
+  searchParams: Promise<{ step?: string; view?: string; edit?: string; grouped?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -264,9 +264,15 @@ export default async function BuildPage({ params, searchParams }: {
             </Section>
           )}
 
+          {/^\d{1,3}$/.test(sp.grouped ?? "") && (
+            <p role="status" className="rounded-control border border-pass-border bg-pass-surface px-3 py-2 text-sm text-pass-text">
+              {sp.grouped} approved together, recorded in the audit trail under your name.
+            </p>
+          )}
+
           {bulk.length > 1 && view === "decide" && (
             <Section title="Approve the straightforward ones together">
-              <Disclosure summary={`${bulk.length} low-risk drafts with nothing open`}>
+              <Disclosure summary={`${bulk.length} that can be approved together — unchanged pack scenarios and low-risk drafts, nothing open`}>
                 <BulkApproveForm buildId={id} candidates={bulk.map((c) => ({ id: c.id, label: `${c.scenario.id} · ${c.scenario.severity} · ${c.scenario.input.slice(0, 90)}${c.scenario.input.length > 90 ? "…" : ""}` }))} />
               </Disclosure>
             </Section>

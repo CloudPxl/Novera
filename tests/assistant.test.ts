@@ -98,3 +98,11 @@ test("the assistant can point at the Suite Builder and can do nothing there", ()
   }, SNAPSHOT, DOCS)!;
   assert.deepEqual(reply.actions, [{ type: "navigate", href: "/builder", label: "Suite Builder" }]);
 });
+
+test("a question and its answer are stored as rows with the same columns (PostgREST fills a missing one with NULL)", async () => {
+  const { messageRows } = await import("../src/lib/assistant/rows.ts");
+  const [q, a] = messageRows("t", "What failed?", { reply: "Two scenarios.", citations: ["how-a-run-works"], fundedBy: "the Novera trial allowance", model: "m" });
+  assert.deepEqual(Object.keys(q).sort(), Object.keys(a).sort());
+  assert.deepEqual(q.citations, [], "citations is NOT NULL: the question row carries an empty list");
+  assert.equal(q.role, "user"); assert.equal(a.role, "assistant");
+});

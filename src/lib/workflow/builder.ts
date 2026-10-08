@@ -126,9 +126,13 @@ export async function answerAction(_prev: FormState, form: FormData): Promise<Fo
 export async function bulkApproveAction(_prev: FormState, form: FormData): Promise<FormState> {
   const c = await context("scenario.decide");
   if ("error" in c) return { error: c.error };
-  const result = await builder.bulkApprove(c.ctx, { buildId: text(form, "buildId"), draftIds: form.getAll("draftId").map(String) });
-  revalidatePath(`/builder/${text(form, "buildId")}`);
-  return result.ok ? { notice: `${result.approved} approved together, recorded in the audit trail under your name.` } : { error: result.error };
+  const buildId = text(form, "buildId");
+  const result = await builder.bulkApprove(c.ctx, { buildId, draftIds: form.getAll("draftId").map(String) });
+  if (!result.ok) return { error: result.error };
+  revalidatePath(`/builder/${buildId}`);
+  // The page says so, not this form: the section holding the form is gone once nothing is left to
+  // approve together, and its message went with it (found by the production audit, 2026-10-08).
+  redirect(`/builder/${buildId}?step=review&grouped=${result.approved}`);
 }
 
 export async function attachProductionAction(_prev: FormState, form: FormData): Promise<FormState> {

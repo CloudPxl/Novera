@@ -159,13 +159,19 @@ export default async function RegressionsPage() {
                         {f.api_keys ? ` · sent with the API key “${f.api_keys.name}”` : ""}
                       </span>
                     </span>
-                    <span className="text-sm font-medium">
-                      {stage?.stage === "drafted" ? <Link href="/scenarios?tab=drafts" className="underline-offset-2 hover:underline">Review the draft →</Link>
-                        : stage?.stage === "approved" ? <Link href="/scenarios?tab=drafts" className="underline-offset-2 hover:underline">Add it to a suite →</Link>
-                        : <span className="text-ink-faint">Details</span>}
+                    {/* A summary is already the control that opens the row; a link inside it is a
+                        control inside a control (axe nested-interactive, production 2026-10-08). The
+                        row says what is next; the link is the first thing it opens onto. */}
+                    <span className="text-sm font-medium text-ink-soft">
+                      {stage?.stage === "drafted" ? "Draft to review" : stage?.stage === "approved" ? "Ready for a suite" : "Details"}
                     </span>
                   </summary>
                   <div className="space-y-3 border-t border-line bg-ground px-5 py-4 text-sm">
+                    {(stage?.stage === "drafted" || stage?.stage === "approved") && (
+                      <Link href="/scenarios?tab=drafts" className="inline-block font-medium text-ink underline underline-offset-2 hover:text-ink-soft">
+                        {stage.stage === "drafted" ? "Review the draft →" : "Add it to a suite →"}
+                      </Link>
+                    )}
                     <div><p className="text-xs font-medium text-ink-faint">The customer sent</p><p className="mt-1 whitespace-pre-wrap">{f.customer_message}</p></div>
                     {f.agent_reply && <div><p className="text-xs font-medium text-ink-faint">The agent replied</p><p className="mt-1 whitespace-pre-wrap text-ink-soft">{f.agent_reply}</p></div>}
                     {stage && "suite" in stage && <p className="text-xs text-ink-soft">In {stage.suite}.</p>}

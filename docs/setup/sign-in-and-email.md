@@ -53,9 +53,32 @@ redirect Supabase builds, and counts from the auth tables. Nothing was sent and 
 | `/auth/callback` in the redirect allow list | yes | the callback was kept as the return address |
 | Google enabled, its redirect | enabled; Supabase's own callback; client ID `419511702504-…` | provider redirect |
 | GitHub enabled, its redirect | enabled; Supabase's own callback; client ID `Ov23li…` | provider redirect |
-| Manual linking | not readable; the first **Connect** under Settings → Sign-in and security answers it | |
+| Manual linking | **off**: Connect Google answers "not switched on" (audit, 2026-10-08) | Settings → Sign-in and security |
 | Confirmation email ever sent by production | **no** (0 of 2 users) | `auth.users.confirmation_sent_at` |
 | Google sign-in in production | worked 2026-10-07 15:53 UTC; attached to an existing email account (2 identities, 1 workspace) | `auth.identities` |
+
+### Found by the production audit, 2026-10-08: no email leaves Novera
+
+Two things stop every email Novera sends: invitations, support replies and, through
+Supabase SMTP, confirmations and resets.
+
+1. **Vercel → Project → Settings → Environment Variables (Production):** `RESEND_API_KEY` and
+   `RESEND_FROM_EMAIL` exist but are empty when the app runs. Inviting a member answers "email
+   is not set up on this server". Set them:
+   - `RESEND_FROM_EMAIL` = `no-reply@nover.space`;
+   - `RESEND_API_KEY` = a Resend key with sending access for `nover.space`.
+
+   Then redeploy, because Vercel applies a variable only to new deployments.
+2. **Resend → Domains → `nover.space`:** the key currently in `.env.local` is refused with "The
+   associated domain with your API key is not verified". Open the domain, press **Verify DNS
+   records**, and wait for **Verified**. If a record shows as failing, copy Resend's exact value
+   into Namecheap.
+
+   If verification still fails, create a new key with **Full access** to rule out a key tied to
+   another domain. Use that same key in Vercel and in Supabase SMTP (step 2 below).
+
+Check it yourself afterwards: Settings → Members → invite `delivered@resend.dev` (Resend's own
+test inbox). The answer should start "Invitation sent".
 
 ## 2. Supabase: custom SMTP
 

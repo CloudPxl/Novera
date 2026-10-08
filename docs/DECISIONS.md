@@ -3942,3 +3942,35 @@ redirect allow list, the `_dmarc` record, the Google and GitHub OAuth apps, manu
   not show, the first Tab reaching the skip link, no console errors. Found one defect: in enterprise mode at 1024 a
   long workspace name pushed the top bar 18 px past the window on every page. The switcher label is now narrower
   between lg and xl, where the full navigation needs the room. 790/790 after the fix.
+
+## 2026-10-08 — A signed-in audit of production, and what it found
+
+**How it ran.** A throwaway production account went through the whole app, page by page and as a person would use it:
+- onboarding;
+- 16 pages at 1440 and 390, and six more per account mode at 1024 and 390;
+- connecting Novera's own support agent and saving a policy;
+- a Suite Builder build from the quick-start pack, published;
+- one real run of 12 scenarios (3 passed, 9 failed, every one corroborated by two models);
+- the sealed report and its exports;
+- API keys, webhooks with a test event, a schedule, an invitation;
+- a second workspace, a recorded production failure, a diagnosis, a withdrawal;
+- Ask Novera, and the public support form.
+
+The signed-out pages were crawled separately. Every step checked axe, overflow, console errors and failed requests.
+
+**Fixed:**
+- **Ask Novera never saved an answer (since 0054).** PostgREST inserts several rows using the union of their keys and writes NULL where a row leaves one out. The question row had no `citations`, which is NOT NULL, so every question ended in "The conversation could not be saved". Both rows now carry every column (`src/lib/assistant/rows.ts`, tested). The other multi-row inserts were checked: every row in each carries the same keys.
+- **The suggested quick start offered no group approval.** It is the 12 highest-severity pack scenarios, and group approval admitted only low and medium. An unchanged pack scenario is Novera's measured text, so it may now be approved with others (audited as before). Drafted or edited high-severity scenarios, destructive ones, conflicts, flags and open questions are still decided one by one.
+- **The agent page was 74 px wider than a phone.** The page header's action slot could not shrink; it is now capped at the container width, for every page.
+- **`/docs/cli-and-ci` was 51 px too wide at 390.** Inline code with a long URL now wraps.
+- **Regressions had a link inside a `<summary>`** (axe `nested-interactive`). No other summary holds a control.
+- **Invitations said "Email is not available here" for every failure.** They now say why.
+- **The group-approval confirmation vanished with its section.** The page shows it now.
+- **Key and webhook changes refreshed only `/settings`**, not the page that lists them.
+
+**Found and not fixable from the repository:**
+- **Production sends no email at all.** `RESEND_API_KEY` and `RESEND_FROM_EMAIL` exist in Vercel but are empty at runtime: the invitation answers "email is not set up on this server". The local key is refused by Resend with "The associated domain with your API key is not verified", although the DKIM, SPF and bounce records for `nover.space` are published.
+- **Manual identity linking is off in Supabase.** "Connect Google" answers that it is not switched on.
+- **Google's consent screen names `qougibxuacmzxlxjeqvn.supabase.co`, not nover.space.** Only Supabase's custom-domain add-on changes that.
+
+**Not done:** the throwaway account is still in production. Deleting it, through the app or the admin API, was refused by the session's permission classifier.

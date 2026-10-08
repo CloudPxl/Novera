@@ -23,11 +23,39 @@ State on 2026-10-06, read from public DNS via 1.1.1.1:
    **Verify DNS records** and wait for it.
 2. At the DNS host for `nover.space` (Namecheap, `registrar-servers.com`), add a TXT record:
    - Host: `_dmarc`
-   - Value: `v=DMARC1; p=none; rua=mailto:<an address you read>; adkim=s; aspf=s`
+   - Value, exactly: `v=DMARC1; p=none; rua=mailto:dmarc@nover.space; adkim=s; aspf=r`
 
-   `p=none` only reports; move to `p=quarantine` after a couple of weeks of clean reports.
+   The value has no angle brackets. `mailto:<…>` is not a valid report address, so no reports
+   arrive. The report address should be at `nover.space`: a receiver sends reports to another
+   domain, such as gmail.com, only if that domain publishes a record allowing it, and gmail.com
+   does not.
+
+   `aspf=r` (relaxed) is required. Resend sends from `send.nover.space`, so strict SPF never
+   aligns. DMARC still passes on DKIM, which Resend signs as `nover.space`.
+
+   `p=none` only reports. Move to `p=quarantine` after a couple of weeks of clean reports.
 3. Resend → **API Keys** → create a key named `supabase-smtp`, permission **Sending access**,
    domain `nover.space`. Keep it on screen for step 2; it is shown once.
+
+## Audit, 2026-10-08
+
+Every check here is a read: public DNS over HTTPS, Supabase's public settings, the provider
+redirect Supabase builds, and counts from the auth tables. Nothing was sent and no one signed in.
+
+| Item | State | How it was read |
+|---|---|---|
+| Resend DKIM, SPF (`send.`), bounce MX | present | DNS |
+| DMARC | present, but `rua=mailto:<cloudpxlsupport@gmail.com>` is invalid and `aspf=s` never aligns | DNS. Fix per step 1.2 |
+| Domain verified in Resend | not readable: the app's key can only send | Resend dashboard |
+| Custom SMTP in Supabase, sender address | not readable without a dashboard session | Supabase dashboard |
+| Confirm email | on | `/auth/v1/settings`: `mailer_autoconfirm: false` |
+| Site URL | `https://www.nover.space` | an unlisted return address fell back to it |
+| `/auth/callback` in the redirect allow list | yes | the callback was kept as the return address |
+| Google enabled, its redirect | enabled; Supabase's own callback; client ID `419511702504-…` | provider redirect |
+| GitHub enabled, its redirect | enabled; Supabase's own callback; client ID `Ov23li…` | provider redirect |
+| Manual linking | not readable; the first **Connect** under Settings → Sign-in and security answers it | |
+| Confirmation email ever sent by production | **no** (0 of 2 users) | `auth.users.confirmation_sent_at` |
+| Google sign-in in production | worked 2026-10-07 15:53 UTC; attached to an existing email account (2 identities, 1 workspace) | `auth.identities` |
 
 ## 2. Supabase: custom SMTP
 

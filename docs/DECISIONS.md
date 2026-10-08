@@ -3974,3 +3974,13 @@ The signed-out pages were crawled separately. Every step checked axe, overflow, 
 - **Google's consent screen names `qougibxuacmzxlxjeqvn.supabase.co`, not nover.space.** Only Supabase's custom-domain add-on changes that.
 
 **Not done:** the throwaway account is still in production. Deleting it, through the app or the admin API, was refused by the session's permission classifier.
+
+## 2026-10-08 — App-wide audit: client writes closed, 404 page under the CSP, Next 16.4
+
+An app-wide audit (security, the evaluation loop, platform features, every page measured, completeness) found, among others:
+
+- **Clients could write evidence-bearing rows directly** (0054 policies, never used by the app). Reproduced locally as an operator: `agents.is_production` switched off, the attestation rewritten, a production failure stored with a card number in clear under a teammate's name, a draft approval reattributed. Anyone could call `throttle_hit` and spend another person's limit. **0057** drops the policies and grants, freezes an agent's attestation and a draft's decisions (service role included), and leaves the throttle to the server. Applied to production before this was pushed; `verify:identity` and `verify:builder` assert each refusal.
+- **Every unknown address in production logged thirteen CSP errors:** the not-found page was prerendered, so its scripts had no nonce. It now renders per request (`connection()`).
+- **Next 16.3.6 carried six high advisories** (`ee1f6ec`): 16.4.0, sharp 0.35.5; production dependencies audit at 0.
+
+The full findings, with what remains, are in `docs/audits/2026-10-08-full-app-audit.md`.

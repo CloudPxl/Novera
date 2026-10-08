@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 
 export const metadata: Metadata = { title: "Not found · Novera" };
 
@@ -10,8 +11,13 @@ export const metadata: Metadata = { title: "Not found · Novera" };
  * returns nothing for another workspace's run, and a page that only said "does not
  * exist" would be asserting something it cannot know. Next's built-in page had no
  * `<main>` landmark, so it was the one page in the product axe failed.
+ *
+ * Rendered per request, like every other page: prerendered, it carried no CSP nonce, and the
+ * policy refused all of its scripts — thirteen console errors on every unknown address in
+ * production (audit, 2026-10-08).
  */
-export default function NotFound() {
+export default async function NotFound() {
+  await connection();
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center bg-surface px-6 text-ink">
       <p className="type-pill text-ink-faint"><Link href="/" className="rounded-control hover:text-ink">Novera</Link></p>

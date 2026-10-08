@@ -112,15 +112,23 @@ try {
 
   section("Roles in the database");
   const { data: agent } = await admin.from("agents").insert({ workspace_id: A, name: "identity agent", kind: "http", config: { url: "https://identity.invalid/chat" }, is_production: false }).select("id").single();
-  const { error: opWrite } = await ops.c.from("agents").update({ name: "renamed by operator" }).eq("id", agent!.id);
-  const { data: afterOp } = await admin.from("agents").select("name").eq("id", agent!.id).single();
-  check(!opWrite && afterOp?.name === "renamed by operator", "an operator may edit an agent directly");
+  // 0057: no client writes an agent, whatever its role. The server does, behind the role check.
+  await ops.c.from("agents").update({ name: "renamed by operator", is_production: true }).eq("id", agent!.id);
   await rev.c.from("agents").update({ name: "renamed by reviewer" }).eq("id", agent!.id);
   await aud.c.from("agents").update({ name: "renamed by auditor" }).eq("id", agent!.id);
-  const { data: afterRev } = await admin.from("agents").select("name").eq("id", agent!.id).single();
-  check(afterRev?.name === "renamed by operator", "a reviewer and an auditor cannot, even straight through the REST API");
+  const { data: afterRev } = await admin.from("agents").select("name, is_production").eq("id", agent!.id).single();
+  check(afterRev?.name === "identity agent" && afterRev?.is_production === false,
+    "no member edits an agent straight through the REST API — not its name, not the production flag");
+  const { error: opInsert } = await ops.c.from("agents").insert({ workspace_id: A, name: "x", kind: "http", config: {} });
   const { error: audInsert } = await aud.c.from("agents").insert({ workspace_id: A, name: "x", kind: "http", config: {} });
-  check(Boolean(audInsert), "an auditor cannot connect an agent through the REST API");
+  check(Boolean(opInsert) && Boolean(audInsert), "nobody connects an agent through the REST API; connecting is a server action");
+  const { error: attest } = await admin.from("agents").update({ attestation_text: "rewritten" }).eq("id", agent!.id);
+  check(/attestation and workspace are fixed/.test(attest?.message ?? ""), "an agent's attestation cannot be rewritten, even by the service role");
+  const { error: failureInsert } = await ops.c.from("production_failures").insert({ workspace_id: A, customer_message: "card 4111 1111 1111 1111" });
+  check(Boolean(failureInsert), "a production failure cannot be inserted by a client, so it cannot skip redaction");
+  const { error: throttleAnon } = await createClient(url, anon, { auth: { persistSession: false } }).rpc("throttle_hit", { key: `assistant:${ops.id}`, window_seconds: 3600 });
+  const { error: throttleMember } = await ops.c.rpc("throttle_peek", { key: `assistant:${ops.id}`, window_seconds: 3600 });
+  check(Boolean(throttleAnon) && Boolean(throttleMember), "nobody but the server can spend or read a rate limit");
   const { data: readByAud } = await aud.c.from("agents").select("id").eq("workspace_id", A);
   check((readByAud ?? []).length === 1, "an auditor reads the workspace's evidence");
   const { error: ownerRemove } = await admin.from("workspace_members").delete().eq("workspace_id", A).eq("user_id", owner.id);

@@ -238,6 +238,14 @@ try {
   const answered = await builder.decideObligation(ctx, { obligationId: open!.id as string, answer: "Escalate any refund over €100 to a manager; the agent never executes refunds." });
   const approveEdited = edited.ok ? await builder.decideCandidate(ctx, { draftId: edited.draftId, decision: "approve" }) : { ok: false as const, error: "" };
   check(answered.ok && approveEdited.ok, "once the question is answered, the draft can be approved");
+  const { error: reattribute } = edited.ok
+    ? await admin.from("scenario_drafts").update({ approved_by: reviewer.id, approved_at: new Date().toISOString() }).eq("id", edited.draftId)
+    : { error: null };
+  check(/cannot be reattributed/.test(reattribute?.message ?? ""), "an approval names its person once — not even the service role renames or redates it", reattribute?.message.slice(0, 50));
+  const { error: clientDecide } = edited.ok
+    ? await reviewer.c.from("scenario_drafts").update({ status: "approved", approved_by: owner.id, approved_at: new Date().toISOString() }).eq("id", edited.draftId)
+    : { error: null };
+  check(Boolean(clientDecide), "no client decides a draft straight through the REST API; deciding is a server action");
   const { data: packDrafts } = await admin.from("scenario_drafts").select("id, scenario, status").eq("build_id", M.buildId).eq("origin", "pack").order("created_at");
   const t07 = packDrafts!.find((d) => (d.scenario as { id: string }).id === "T07")!;
   const noReason = await builder.decideCandidate(ctx, { draftId: t07.id as string, decision: "not_applicable" });

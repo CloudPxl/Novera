@@ -326,7 +326,7 @@ export default async function Home() {
               </div>
               <ul className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-ink-faint">
                 <li>No card</li>
-                <li>Email and password, nothing else</li>
+                <li>Email, Google or GitHub</li>
                 <li>About ten minutes to a first report</li>
               </ul>
               <p className="mt-6 text-sm text-ink-faint">An agency, or several clients&apos; agents? &ldquo;Talk to us first&rdquo; reaches a person.</p>

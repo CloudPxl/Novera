@@ -32,7 +32,7 @@ Model API keys and agent auth headers are encrypted before storage using AES-256
 
 ## How long your agent's replies are kept
 
-A run keeps what your agent actually said — each reply, whole conversations and tool activity — so a person can check a verdict against it. That text is where personal data ends up if your agent leaks it, so it is not kept indefinitely. Under **Settings → Evidence retention** the workspace owner chooses 30, 90, 180 or 365 days; the default is 180.
+A run keeps what your agent actually said — each reply, whole conversations and tool activity — so a person can check a verdict against it. That text is where personal data ends up if your agent leaks it, so it is not kept indefinitely. Under **Settings → General**, under evidence retention the workspace owner chooses 30, 90, 180 or 365 days; the default is 180.
 
 Once a day, replies older than the period are removed. What stays until you erase the workspace: the verdict, the reasons for it, the scenario, the checks, and a SHA-256 fingerprint of the reply taken when it was graded — so a copy you kept elsewhere can still be shown to be the one that was graded. Reports never contained your agent's replies, so no report changes. A removed reply cannot be diagnosed; retest the scenario to get a fresh one.
 
@@ -48,9 +48,9 @@ A document, page or tool list you add in the Suite Builder is stored as text, wi
 
 Sealed reports also leave out anything shaped like personal data that a grading model quoted in its reasons: an email address in a finding is shown as a placeholder such as `[EMAIL_1]`, and the report says when that happened.
 
-The API and the MCP server do the same by default. Your agent's replies and the scenarios' messages reach an API key only when its creator allowed it (**Can also read your agent's replies**) and the request asks for them (`include=responses`). Each such read is recorded with the key, the run and the route, and listed under **Settings → API keys**.
+The API and the MCP server do the same by default. Your agent's replies and the scenarios' messages reach an API key only when its creator allowed it (**Can also read your agent's replies**) and the request asks for them (`include=responses`). Each such read is recorded with the key, the run and the route, and listed under **Settings → API keys, MCP and webhooks**.
 
-A workspace can be erased completely, by its owner, under **Settings → Workspace**: type the workspace's name to confirm. Erasure removes the agents, policies, runs, verdicts, probe receipts, diagnoses, reports, invitations, its audit log and its shared assistant memory, and leaves behind only a record that an erasure happened and what it removed — which contains no personal data. Report links stop working at once.
+A workspace can be erased completely, by its owner, under **Settings → General**: type the workspace's name to confirm. Erasure removes the agents, policies, runs, verdicts, probe receipts, diagnoses, reports, invitations, its audit log and its shared assistant memory, and leaves behind only a record that an erasure happened and what it removed — which contains no personal data. Report links stop working at once.
 
 Erasure is all or nothing by design. Individual verdicts, policy versions and reports cannot be deleted, because a product whose evidence could be selectively removed would not be evidence.
 
@@ -60,11 +60,11 @@ Your profile — name, title, company, timezone, date format, motion, account mo
 
 Your conversations with Ask Novera are stored so you can reopen them, are visible only to you (not to your teammates), and are deleted after 180 days without a new message, or when you delete them under **History**.
 
-Assistant memory is off until you turn it on. When it is on, Ask Novera remembers only what you choose: a preference you save under **Settings → Your profile**, or a suggestion it offers and you accept with **Remember**. It never remembers customer conversations, keys, policy text or anything shaped like an instruction or a link. Memory shapes how answers are worded; it cannot change a policy, a verdict, a grade or a report. Every memory says where it came from, can be deleted on its own, and can be cleared at once.
+Assistant memory is off until you turn it on. When it is on, Ask Novera remembers only what you choose: a preference you save under **Settings → Profile and preferences**, or a suggestion it offers and you accept with **Remember**. It never remembers customer conversations, keys, policy text or anything shaped like an instruction or a link. Memory shapes how answers are worded; it cannot change a policy, a verdict, a grade or a report. Every memory says where it came from, can be deleted on its own, and can be cleared at once.
 
 ## Members, roles and leaving
 
 A workspace's owner and admins invite members by email, as admin, operator, reviewer or auditor. An invitation works once, only for the address it was sent to, and expires after seven days. Removing a member takes effect on their next request and revokes the API keys they created in that workspace. Changes to members, roles, keys, webhooks, retention and report withdrawal are recorded in the workspace's audit log, which cannot be edited.
 
-**Download my data** under **Settings → Your profile** gives you your profile, memberships, memory, conversations and your own events as JSON. **Delete my account** erases the workspaces you own (they are listed first), ends your memberships elsewhere, revokes your keys there, and deletes your profile, conversations and memory. What you did in other people's workspaces stays as evidence, attributed to an identifier that no longer carries your name or email.
+**Download my data** under **Settings → Profile and preferences** gives you your profile, memberships, memory, conversations and your own events as JSON. **Delete my account** erases the workspaces you own (they are listed first), ends your memberships elsewhere, revokes your keys there, and deletes your profile, conversations and memory. What you did in other people's workspaces stays as evidence, attributed to an identifier that no longer carries your name or email.
 

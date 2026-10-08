@@ -45,7 +45,7 @@ Any test reporter that reads JUnit XML can display `novera-junit.xml`. Each repo
 
 ## A release gate: run the suite on every deploy
 
-With a workspace API key that can start runs (**Settings → API keys**, tick *Can also start runs*), a pipeline can run the suite itself and block the release on the result. Store the key as `NOVERA_API_KEY` and the agent's id as `NOVERA_AGENT_ID`:
+With a workspace API key that can start runs (**Settings → API keys, MCP and webhooks**, tick *Can also start runs*), a pipeline can run the suite itself and block the release on the result. Store the key as `NOVERA_API_KEY` and the agent's id as `NOVERA_AGENT_ID`:
 
 ```yaml
 - name: Novera release gate
@@ -74,7 +74,7 @@ With a workspace API key that can start runs (**Settings → API keys**, tick *C
 
 The `Idempotency-Key` makes the retries safe: a request that timed out after the run started returns that same run instead of starting and paying for another. Re-running the job is a new attempt, so it starts a new run.
 
-Exit code `2` — evidence incomplete — fails the job exactly as a failed scenario does: a release does not go out because nothing was found wrong in a run that did not finish. The commit is recorded on the report as the release you declared, labelled as declared by you. To be told about runs rather than waiting for them, add a webhook (**Settings → Webhooks**; see [the API](/docs/api)).
+Exit code `2` — evidence incomplete — fails the job exactly as a failed scenario does: a release does not go out because nothing was found wrong in a run that did not finish. The commit is recorded on the report as the release you declared, labelled as declared by you. To be told about runs rather than waiting for them, add a webhook (**Settings → API keys, MCP and webhooks**; see [the API](/docs/api)).
 
 ## Verifying a copy you were sent
 

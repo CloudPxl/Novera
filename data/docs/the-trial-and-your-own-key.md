@@ -2,9 +2,9 @@
 title: The trial, and using your own model key
 published: true
 ---
-A new workspace gets three suite runs, graded on Novera's own free-tier key. There is no card and nothing to pay.
+Each account gets three suite runs, graded on Novera's own free-tier key. They are counted across every workspace you own, so a second workspace does not start a second trial. There is no card and nothing to pay.
 
-After three runs, connect your own model key in Settings and the cap is removed. Novera supports keys from Groq, Google AI Studio, OpenRouter and Anthropic. There is still nothing to pay Novera — the grading simply runs on your key, on your provider's free or paid tier, inside your own account.
+After three runs, connect your own model key under **Settings → Grading and data routing** and the cap is removed. Novera supports keys from Groq, Google AI Studio, OpenRouter and Anthropic. There is still nothing to pay Novera — the grading simply runs on your key, on your provider's free or paid tier, inside your own account.
 
 A key is tested with one short request before it is stored. If it does not work, it is not saved.
 

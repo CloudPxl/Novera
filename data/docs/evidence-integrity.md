@@ -16,4 +16,4 @@ Each report carries a SHA-256 digest computed over its own evidence. If any figu
 
 Where a scenario expects an action rather than words, the agent's account of it is not accepted as proof. Either recorded tool activity evidences it, or your own system is read back independently, or the pass is withheld and the report says which.
 
-The one thing that can be changed about a report is its availability: it can be revoked, and it expires.
+The one thing that can be changed about a report is its availability: it can be withdrawn, and it expires.

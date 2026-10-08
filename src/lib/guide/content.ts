@@ -44,7 +44,7 @@ export const GUIDE_STEPS: Array<{ title: string; body: string; where: string; ta
   },
   {
     title: "Share the report",
-    body: "Every finished run produces a dated report with a private link. Its fingerprint (a SHA-256 hash) proves nothing was edited after it was issued. Send the link, export it as Markdown, CSV, PDF, JSON (to verify a copy) or JUnit (for a CI pipeline), or revoke it at any time.",
+    body: "Every finished run produces a dated report with a private link. Its fingerprint (a SHA-256 hash) proves nothing was edited after it was issued. Send the link, print it to PDF, export it as Markdown, CSV, JSON (to verify a copy) or JUnit (for a CI pipeline), or withdraw it at any time.",
     where: "The run page → Open the client report",
     target: "run",
   },

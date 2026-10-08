@@ -30,7 +30,7 @@ Under the run's verdict counts, the run page also shows how the grading went: fo
 
 A failed scenario can be diagnosed: a model reads the stored evidence and proposes a change to the policy version the run used. It is a proposal, and nothing changes until you approve it. Approving creates a new policy version; it does not change this run or its report. The approved change then shows its next steps in place: retest this scenario against the new version, and rerun the whole suite compared with this run, so a fix here is not a break somewhere else.
 
-A scenario with no result says why: whether your agent received it at all, who acts on it (your agent, your configuration, Novera's graders, or you), whether a retest could repeat something your agent did, and the next step. Retesting sends the scenario to your agent again, so where your agent received it and can act, Novera says to check your own system first. A scenario with no result has no failure to explain, so it is not diagnosed, and editing the policy will not change it. **Review → Evidence needing repair** groups these across your recent runs by reason.
+A scenario with no result says why: whether your agent received it at all, who acts on it (your agent, your configuration, Novera's graders, or you), whether a retest could repeat something your agent did, and the next step. Retesting sends the scenario to your agent again, so where your agent received it and can act, Novera says to check your own system first. A scenario with no result has no failure to explain, so it is not diagnosed, and editing the policy will not change it. **Review → Evidence incomplete** groups these across your recent runs by reason.
 
 ## When you disagree with a verdict
 

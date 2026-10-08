@@ -251,16 +251,30 @@ try {
   const { error: revive } = await admin.from("scenario_drafts").update({ status: "draft" }).eq("id", t07.id);
   check(Boolean(revive), "a decision stays decided");
 
-  section("9 · Bulk approval: only the low-risk ones, with an audit line");
-  const everything = (await admin.from("scenario_drafts").select("id").eq("build_id", M.buildId)).data!.map((d) => d.id as string);
+  section("9 · Bulk approval: unchanged pack scenarios and low-risk drafts, with an audit line");
+  // Worked out here from the rows, not from bulkEligible: what may be approved together is a pack
+  // scenario nobody changed, or a low/medium draft — never destructive, conflicted, flagged or resting
+  // on an open question, and never a drafted or edited high-severity one.
+  const { data: before } = await admin.from("scenario_drafts").select("id, origin, status, scenario, conflicts, obligation_id, edited_from, destructive").eq("build_id", M.buildId);
+  const { data: bulkObs } = await admin.from("suite_obligations").select("id, status, flags").eq("build_id", M.buildId);
+  const obById = new Map((bulkObs ?? []).map((o) => [o.id as string, o]));
+  const expected = (before ?? []).filter((d) => {
+    const sc = d.scenario as { severity: string; destructive?: boolean };
+    const ob = d.obligation_id ? obById.get(d.obligation_id as string) : null;
+    if (d.status !== "draft" || d.destructive || sc.destructive || (d.conflicts as unknown[]).length) return false;
+    if (ob && (ob.status === "open" || ob.status === "not_applicable" || (ob.flags as unknown[]).length)) return false;
+    return (d.origin === "pack" && !d.edited_from) || ["low", "medium"].includes(sc.severity);
+  }).map((d) => d.id as string).sort();
+  const highDrafted = (before ?? []).filter((d) => d.status === "draft" && d.origin !== "pack" && !["low", "medium"].includes((d.scenario as { severity: string }).severity)).length;
+  const everything = (before ?? []).map((d) => d.id as string);
   const bulk = await builder.bulkApprove(ctx, { buildId: M.buildId, draftIds: everything });
-  const { data: grouped } = bulk.ok ? await admin.from("scenario_drafts").select("scenario, approved_by").eq("approval_group", bulk.group) : { data: [] };
+  const { data: grouped } = bulk.ok ? await admin.from("scenario_drafts").select("id, scenario, approved_by").eq("approval_group", bulk.group) : { data: [] };
   const { data: bulkAudit } = await admin.from("audit_events").select("detail").eq("workspace_id", W).eq("action", "suite.bulk_approved");
-  // The two low/medium document drafts and T18 (medium, no caveat); not the pack drafts that
-  // carry an assumption, the flagged one, or anything high.
-  check(bulk.ok && bulk.approved === 3 && (grouped ?? []).every((g) => ["low", "medium"].includes((g.scenario as { severity: string }).severity) && g.approved_by === owner.id),
-    "of everything ticked, only the three low/medium drafts with nothing open were approved", bulk.ok ? `${bulk.approved}: ${(grouped ?? []).map((g) => (g.scenario as { id: string }).id).join(",")}` : bulk.error);
-  check((bulkAudit ?? []).length === 1 && (bulkAudit![0].detail as { count: number }).count === 3, "the group approval is one audit line naming the count and the group");
+  const got = (grouped ?? []).map((g) => g.id as string).sort();
+  check(bulk.ok && expected.length > 0 && JSON.stringify(got) === JSON.stringify(expected) && (grouped ?? []).every((g) => g.approved_by === owner.id),
+    `of everything ticked, exactly the ${expected.length} that may go together were approved; ${highDrafted} drafted high-severity one(s) left to decide alone`,
+    bulk.ok ? `${bulk.approved}: ${(grouped ?? []).map((g) => (g.scenario as { id: string }).id).join(",")}` : bulk.error);
+  check((bulkAudit ?? []).length === 1 && (bulkAudit![0].detail as { count: number }).count === expected.length, "the group approval is one audit line naming the count and the group");
 
   section("15 · Discovery: observation, never policy");
   const policiesBefore = (await admin.from("policies").select("id").eq("agent_id", agent!.id)).data!.length;

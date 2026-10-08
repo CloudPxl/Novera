@@ -32,7 +32,7 @@ function Spans({ spans }: { spans: Span[] }) {
       {spans.map((span, i) => {
         if (span.kind === "code") {
           return (
-            <code key={i} className="rounded bg-sunken px-1 py-0.5 font-mono text-[0.9em] text-ink">
+            <code key={i} className="rounded bg-sunken px-1 py-0.5 font-mono text-[0.9em] text-ink [overflow-wrap:anywhere]">
               {span.text}
             </code>
           );

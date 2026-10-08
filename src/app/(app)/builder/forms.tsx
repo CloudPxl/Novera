@@ -301,7 +301,7 @@ export function BulkApproveForm({ buildId, candidates }: { buildId: string; cand
     <form action={submit} className="grid gap-3">
       <input type="hidden" name="buildId" value={buildId} />
       <fieldset>
-        <legend className="text-sm text-ink-soft">Low- and medium-severity drafts with no question, conflict or flag. Untick any you want to read first.</legend>
+        <legend className="text-sm text-ink-soft">Unchanged pack scenarios and low- or medium-severity drafts, with no question, conflict or flag. Untick any you want to read first.</legend>
         <ul className="mt-2 grid gap-1">
           {candidates.map((c) => (
             <li key={c.id}>

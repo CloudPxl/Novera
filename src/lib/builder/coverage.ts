@@ -40,7 +40,7 @@ export interface BuildCoverage {
   baselineOnly: number;
   /** Approved scenarios that claim an action and would need tool activity to settle it. */
   missingToolReceipts: number;
-  /** Candidates a bulk approval may decide: low or medium, no question, no conflict. */
+  /** Candidates a bulk approval may decide: unchanged pack scenarios, or low or medium drafts; no question, no conflict. */
   bulkEligible: number;
   /** Nothing undecided, no open question, at least one approved. */
   readyToPublish: boolean;
@@ -49,7 +49,13 @@ export interface BuildCoverage {
 export function bulkEligible(c: CandidateRow, obligations: Map<string, ObligationRow>): boolean {
   if (c.status !== "draft" || c.destructive || c.scenario.destructive) return false;
   if (c.conflicts.length) return false;
-  if (c.scenario.severity !== "low" && c.scenario.severity !== "medium") return false;
+  // A curated pack scenario is Novera's measured text, unchanged; approving it says only "this applies
+  // to us", so its severity does not call for reading it alone. Until 2026-10-08 this rule held packs
+  // to low and medium too — and the suggested quick start is the twelve highest-severity scenarios, so
+  // the default path offered no group approval at all (found by the production audit). A drafted or
+  // edited scenario is still decided one by one from high upwards: a model or a person wrote it.
+  const curated = c.origin === "pack" && !c.edited_from;
+  if (!curated && c.scenario.severity !== "low" && c.scenario.severity !== "medium") return false;
   const ob = c.obligation_id ? obligations.get(c.obligation_id) : null;
   if (ob && (ob.status === "open" || ob.status === "not_applicable" || ob.flags.length)) return false;
   return true;

@@ -430,7 +430,7 @@ export async function bulkApprove(ctx: Ctx, input: { buildId: string; draftIds: 
   const obligations = new Map(state.obligations.map((o) => [o.id, o]));
   const wanted = new Set(input.draftIds);
   const eligible = state.candidates.filter((c) => wanted.has(c.id) && bulkEligible(c, obligations));
-  if (!eligible.length) return { ok: false, error: "None of those can be approved together. Only low- and medium-severity drafts with no open question, conflict or flag can; decide the rest one by one." };
+  if (!eligible.length) return { ok: false, error: "None of those can be approved together. Unchanged pack scenarios and low- or medium-severity drafts with no open question, conflict or flag can; decide the rest one by one." };
   const group = randomUUID();
   const { error } = await ctx.db.from("scenario_drafts").update({
     status: "approved", approved_by: ctx.userId, approved_at: new Date().toISOString(), approval_group: group,

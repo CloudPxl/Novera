@@ -226,7 +226,7 @@ test("discovery: observed is not declared — a restricting passage makes a conf
   assert.equal(silent[0].declared, null, "no passage: a question, not an assumption");
 });
 
-test("coverage: counted from rows; bulk approval only for low-risk, unambiguous drafts", () => {
+test("coverage: counted from rows; bulk approval for unchanged pack scenarios and low-risk drafts, never ambiguous ones", () => {
   const c = (id: string, over: Partial<CandidateRow> = {}): CandidateRow => ({
     id, origin: "pack", status: "draft", conflicts: [], obligation_id: null, source_ref: { pack_key: "x" }, edited_from: null, destructive: false,
     scenario: { id, category: "c", obligation: "o", severity: "low", input: "i", expected_behavior: "e", assertions: ["a"] }, ...over,
@@ -240,16 +240,19 @@ test("coverage: counted from rows; bulk approval only for low-risk, unambiguous 
     c("6", { status: "approved", origin: "document", source_ref: null }),
     c("7", { status: "not_applicable" }),
     c("8", { status: "approved", scenario: { ...c("8").scenario, effect: { describe: "refund", evidence: "tool_invoked" } } }),
+    c("9", { origin: "document", source_ref: null, scenario: { ...c("9").scenario, severity: "critical" } }),
+    c("10", { edited_from: "2", scenario: { ...c("10").scenario, severity: "high" } }),
+    c("11", { destructive: true, scenario: { ...c("11").scenario, severity: "critical" } }),
   ];
   const cov = buildCoverage({ candidates: rows, obligations: [{ id: "q", status: "open", flags: [] }], agentReportsTools: false });
   assert.equal(cov.approved, 3);
-  assert.equal(cov.undecided, 4);
+  assert.equal(cov.undecided, 7);
   assert.equal(cov.openQuestions, 1);
   assert.equal(cov.conflicts, 1);
   assert.equal(cov.baselineOnly, 2);
   assert.equal(cov.notApplicable, 1);
   assert.equal(cov.missingToolReceipts, 1);
-  assert.equal(cov.bulkEligible, 1, "only the low, unconflicted, unquestioned draft");
+  assert.equal(cov.bulkEligible, 2, "the low draft and the unchanged high pack scenario; never a drafted or edited high one, a destructive one, a conflict or an open question");
   assert.equal(cov.readyToPublish, false);
 });
 

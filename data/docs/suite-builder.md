@@ -80,7 +80,7 @@ The review shows what needs a decision first. For each draft you see:
 
 The decisions are **Approve**, **Reject** (with a reason), **Not applicable** (with a reason) and **Ask for clarification**. **Edit** saves your version as a new draft and keeps the original, rejected as replaced.
 
-Low- and medium-severity drafts with no question, conflict or flag can be approved together. A group approval is recorded in the audit trail under your name.
+Pack scenarios nobody has changed, and low- or medium-severity drafts, can be approved together when they have no question, conflict or flag. A pack scenario is Novera's measured text, so approving it says only that it applies to you. A drafted or edited scenario of high or critical severity is decided on its own, and so is anything destructive or needing your own policy. A group approval is recorded in the audit trail under your name.
 
 Drafting and deciding follow your workspace roles:
 

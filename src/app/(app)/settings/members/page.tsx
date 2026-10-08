@@ -3,6 +3,7 @@ import { requireContext, assertMembership } from "@/lib/auth/session.ts";
 import { can, canManageMember, GRANTABLE_ROLES, ROLE_DESCRIPTION, ROLE_LABEL, ROLES, isRole, type Role } from "@/lib/auth/permissions.ts";
 import { Badge, Card } from "@/components/ui/primitives.tsx";
 import { SettingsNav } from "../nav.tsx";
+import { mailConfigured } from "@/lib/mail/send.ts";
 import { InviteForm, LeaveWorkspaceForm, MemberControls, RevokeInvitationButton } from "../identity-forms.tsx";
 
 /** Read outside render: whether an invitation has not yet expired. */
@@ -85,6 +86,11 @@ export default async function MembersPage() {
       {can(ctx.role, "member.invite") && (
         <section aria-labelledby="invite-heading" className="mt-10">
           <h2 id="invite-heading" className="type-h2">Invite someone</h2>
+          {!mailConfigured() && (
+            <p className="mt-1 max-w-2xl text-sm text-ink-soft">
+              This server cannot send email yet, so an invitation gives you a link to send them yourself.
+            </p>
+          )}
           <Card className="mt-3 p-5"><InviteForm grantable={grantable} /></Card>
           {(open.length > 0 || closed.length > 0) && (
             <Card className="mt-3 p-0">

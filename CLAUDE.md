@@ -230,7 +230,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 659 unit tests | free |
+| `npm test` | 660 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -345,10 +345,10 @@ they drive the scripted fixture at `/api/test-agent`.
 - **A judge key stored before 2026-09-24 has no models recorded**, so it falls back to
   whatever `DEFAULT_ROUTES` measures on that connection — which is groq only. Any other
   provider's legacy key refuses the run with a sentence saying to reconnect it.
-- **Production sign-up email needs dashboard steps** (`docs/setup/sign-in-and-email.md`):
-  Supabase custom SMTP through Resend, the redirect allow list, the `_dmarc` record, and the
-  Google and GitHub OAuth apps. Until SMTP is set, Supabase's built-in mailer sends only to
-  team addresses, so a stranger's account cannot be confirmed.
+- **Production sends no email** (audit 2026-10-08, `docs/setup/sign-in-and-email.md`). The
+  Resend variables are empty in Vercel, and Resend refuses the local key because `nover.space`
+  is not verified there. Supabase custom SMTP needs the same verified key, and manual identity
+  linking is off. The redirect allow list, Site URL, Google and GitHub are correct.
 - **`eu-support v5` has not had a full calibration sweep.** Its eight new scenarios
   were measured on the route judges (no false pass; ministral-8b one false fail); T01–T41
   are byte-identical to v4 and T01–T36 to v3, whose sweep is the current measurement.

@@ -86,3 +86,8 @@ export function mailProblem(error: string | null): string {
   if (/^429\b/.test(e)) return "the mail service is rate limiting us; try again in a minute.";
   return "the mail service refused it.";
 }
+
+/** Whether this server has what it needs to send at all — said before a form is used, not after. */
+export function mailConfigured(): boolean {
+  return Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL);
+}

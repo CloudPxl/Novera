@@ -8,6 +8,29 @@ import { independenceOf } from "../judge/independence.ts";
 import type { RunCaseRecord } from "../runner/types.ts";
 import { redact } from "../redact/pii.ts";
 import type { ReportPayload } from "./payload.ts";
+import { noVerdictRow, repairFor, type Repair } from "../evidence/repair.ts";
+
+/**
+ * Why a scenario has no result, from the same classifier the run page uses, so a report
+ * never prints a runner's refusal as what the agent did (format 14).
+ */
+function noResultOf(c: RunCaseRecord): Repair | null {
+  return repairFor(noVerdictRow({
+    status: c.status, error: c.error, response_text: c.responseText, transcript: c.transcript ?? null,
+    evidence_gap: c.evidenceGap, judge_agreement: c.judgeAgreement, judge_attempts: c.judgeAttempts,
+  }, { observationStatus: (c.observation as { status?: string } | null)?.status ?? null }));
+}
+
+function noResultStage(r: Repair): NonNullable<ReportPayload["findings"][number]["no_result"]> {
+  const stage = r.agentReceived === "no" ? "not_sent"
+    : r.reason.startsWith("agent_") ? "agent"
+    : r.reason.startsWith("graders_") || r.reason === "cut_by_slice" ? "grading"
+    : r.reason === "readback_unavailable" ? "read_back"
+    : r.reason === "action_not_verified" ? "evidence"
+    : r.reason === "unsettled_disagreement" ? "disagreement"
+    : "unknown";
+  return { stage, label: r.label, agent_received: r.agentReceived };
+}
 
 /**
  * Builds the client-facing report payload.
@@ -125,8 +148,11 @@ export function buildReport(input: ReportInput): BuiltReport {
       expected: c.expected,
       // The judge's rationale, not the agent's words: a client report states what was
       // wrong without reproducing the conversation.
-      observed: scrub(c.status === "error" ? (c.error ?? "The case did not produce a result.") : (c.rationale ?? "No rationale recorded.")),
+      observed: scrub(c.status === "error"
+        ? (noResultOf(c)?.happened ?? c.error ?? "The case did not produce a result.")
+        : (c.rationale ?? "No rationale recorded.")),
       outcome: c.status,
+      ...(c.status === "error" && noResultOf(c) ? { no_result: noResultStage(noResultOf(c)!) } : {}),
     }));
 
   const gradedBy = [
@@ -150,6 +176,20 @@ export function buildReport(input: ReportInput): BuiltReport {
     (c.judgeVotes as Array<{ model?: unknown; status?: unknown }> | undefined)
       ?.filter((v): v is { model: string; status: "pass" | "fail" | "error" } =>
         typeof v?.model === "string" && typeof v?.status === "string") ?? [];
+  // Format 14: every model that voted, by the role it voted in (votes are stored in order:
+  // the first opinion, the second, then the settler a disagreement went to).
+  const ROLES = ["first", "second", "settler"] as const;
+  const graderTally = new Map<string, { model: string; role: (typeof ROLES)[number]; cases: number }>();
+  for (const c of input.cases) {
+    votesOf(c).slice(0, 3).forEach((v, i) => {
+      const key = `${ROLES[i]}|${v.model}`;
+      const entry = graderTally.get(key) ?? { model: v.model, role: ROLES[i], cases: 0 };
+      entry.cases += 1;
+      graderTally.set(key, entry);
+    });
+  }
+  const graders = [...graderTally.values()].sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role) || b.cases - a.cases || a.model.localeCompare(b.model));
+
   const corroborated = input.cases.filter(
     (c) => c.judgeAgreement === "agreed" || c.judgeAgreement === "majority",
   );
@@ -227,7 +267,7 @@ export function buildReport(input: ReportInput): BuiltReport {
     // Novera or declared by the customer. Reports
     // sealed as any earlier format are still rendered from their own payload and must
     // keep verifying — every reader of this payload branches on absence.
-    novera: { format: 13 },
+    novera: { format: 14 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -242,6 +282,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       // Derived from the cases, not from what was intended. A fallback mid-run means
       // the evidence was not graded uniformly, and a reader has to be told.
       graded_by: gradedBy,
+      graders,
       graded_uniformly: gradedBy.length <= 1,
       corroboration,
       pass_threshold: input.passThreshold,

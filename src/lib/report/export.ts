@@ -1,4 +1,5 @@
 import { obligationLabel, scoreWithheldAs, type ReportPayload } from "./payload.ts";
+import { findingLead, gradedByLine } from "./graders.ts";
 import { ciOutcome } from "./ci.ts";
 
 /**
@@ -253,7 +254,7 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
     );
   }
   out.push("");
-  out.push(`Graded by: ${run.graded_by.join(", ")}. Grading funded by ${run.grading_funded_by}.`);
+  out.push(`Graded by: ${gradedByLine(run)}. Grading funded by ${run.grading_funded_by}.`);
   // Absent before format 7 and on runs that predate the manifest; nothing is printed
   // rather than a line implying the inputs were sealed when they were not.
   if (run.manifest_hash) {
@@ -294,7 +295,7 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
       out.push("");
       out.push(`**Expected:** ${f.expected}`);
       out.push("");
-      out.push(`**Observed:** ${f.observed}`);
+      out.push(`**${findingLead(f)}:** ${f.observed}`);
       out.push("");
     }
   }
@@ -470,7 +471,7 @@ export function reportToJunit(payload: ReportPayload, contentHash: string, url: 
       const tag = f.outcome === "fail" ? "failure" : "error";
       const message = f.outcome === "fail" ? `Failed (${f.severity})` : `No result (${f.severity})`;
       out.push(`    <testcase ${a("classname", classname)} ${a("name", f.case)}>`);
-      out.push(`      <${tag} ${a("message", message)} ${a("type", f.severity)}>${escapeXml(`Expected: ${f.expected}\nObserved: ${f.observed}`)}</${tag}>`);
+      out.push(`      <${tag} ${a("message", message)} ${a("type", f.severity)}>${escapeXml(`Expected: ${f.expected}\n${findingLead(f)}: ${f.observed}`)}</${tag}>`);
       out.push("    </testcase>");
     }
     if (g.passed > 0) {

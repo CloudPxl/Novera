@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { scoreWithheldAs, obligationLabel, type ReportPayload } from "@/lib/report/payload.ts";
+import { findingLead, gradedByLine } from "@/lib/report/graders.ts";
 import { categoryMeta } from "@/lib/evidence/categories.ts";
 import { loadReportByToken } from "@/lib/report/access.ts";
 import { ReportToolbar } from "./toolbar.tsx";
@@ -337,7 +338,9 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
                   {f.expected}
                 </p>
                 <p className="mt-1.5 text-sm leading-relaxed">
-                  <span className="font-medium text-ink-faint">Observed: </span>
+                  {/* A scenario with no result has no observed behaviour: what it carries is why
+                      there is none (every format; format 14 also says where it stopped). */}
+                  <span className="font-medium text-ink-faint">{findingLead(f)}: </span>
                   {f.observed}
                 </p>
               </li>
@@ -412,7 +415,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         </p>
         <dl className="mt-4 space-y-2 text-sm text-ink-soft">
           <Line label="Authorisation" value={subject.authorisation} />
-          <Line label="Graded by" value={run.graded_by?.join(", ") || "not recorded"} />
+          <Line label="Graded by" value={gradedByLine(run)} />
           {/*
             A sealed report is rendered from the payload it was sealed with, and older
             payloads predate fields that were added later. Reading them unconditionally
@@ -683,3 +686,4 @@ function Compare({ label, ids, tone }: { label: string; ids: string[]; tone: "pa
     </div>
   );
 }
+

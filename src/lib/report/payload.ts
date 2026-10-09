@@ -18,8 +18,16 @@ export interface ReportPayload {
     id: string;
     date: string;
     suite: string;
+    /** The first opinion on each scenario a model graded (the judge that answered first). */
     graded_by: string[];
     graded_uniformly: boolean;
+    /**
+     * Format 14. Every model that voted, in the role it voted in, and on how many scenarios —
+     * "Graded by" had named only the first judge while a second (and a settler) voted on every
+     * model-graded case. Absent on formats 1–13, which made no such claim; an empty array means
+     * no model was asked (every scenario settled by a rule or a read-back).
+     */
+    graders?: Array<{ model: string; role: "first" | "second" | "settler"; cases: number }>;
     /** Absent on reports sealed before corroboration was recorded (format 1). */
     /** Absent on format 1. */
     pass_threshold?: number;
@@ -161,6 +169,16 @@ export interface ReportPayload {
     expected: string;
     observed: string;
     outcome: "fail" | "error";
+    /**
+     * Format 14, on scenarios with no result only: where it stopped, in Novera's fixed words —
+     * never the agent's reply, and never a runner error presented as one. `observed` then
+     * carries the same sentence. Absent on formats 1–13, where `observed` held the stored error.
+     */
+    no_result?: {
+      stage: "not_sent" | "agent" | "grading" | "read_back" | "evidence" | "disagreement" | "unknown";
+      label: string;
+      agent_received: "yes" | "no" | "unknown";
+    };
   }>;
   comparison: {
     baseline_run: string;

@@ -406,7 +406,9 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
     </Step>
   ) : (
     <>
-      <Step n={++n} title="What the scenario sent">
+      {/* Never sent (production guard, no channel for it, a refused address): say so in both
+          steps, and keep Novera's reason out of the place where the agent's words go. */}
+      <Step n={++n} title={row.repair?.agentReceived === "no" ? "What the scenario would have sent (not sent)" : "What the scenario sent"}>
         <p className="whitespace-pre-wrap rounded-control bg-surface px-3 py-2 text-sm leading-relaxed text-ink ring-1 ring-line">
           {row.input}
         </p>
@@ -429,9 +431,13 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
           <p className="whitespace-pre-wrap rounded-control bg-surface px-3 py-2 text-sm leading-relaxed text-ink ring-1 ring-line">
             {row.responseText}
           </p>
+        ) : row.repair?.agentReceived === "no" ? (
+          <p className="rounded-control bg-sunken px-3 py-2 text-sm leading-relaxed text-ink-soft ring-1 ring-line">
+            Nothing: the scenario was never sent to the agent. Why is below.
+          </p>
         ) : (
-          <p className="rounded-control bg-warning-surface px-3 py-2 text-sm leading-relaxed text-warning-text ring-1 ring-warning-border">
-            {row.error ?? "No reply was recorded for this scenario."}
+          <p className="rounded-control bg-sunken px-3 py-2 text-sm leading-relaxed text-ink-soft ring-1 ring-line">
+            No reply was recorded for this scenario.{row.repair ? " Why is below." : row.error ? <> Novera recorded: <span className="text-ink">{row.error}</span></> : null}
           </p>
         )}
       </Step>

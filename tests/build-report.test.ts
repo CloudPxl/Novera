@@ -234,9 +234,9 @@ test("format 13 counts the uncorroborated passes apart from the uncorroborated f
   assert.equal(c.uncorroborated_passes, 1);
 });
 
-test("the payload is format 13, and states what was tested only when the run recorded it", () => {
+test("the payload is format 14, and states what was tested only when the run recorded it", () => {
   const { payload } = buildReport(input());
-  assert.equal((payload as { novera: { format: number } }).novera.format, 13);
+  assert.equal((payload as { novera: { format: number } }).novera.format, 14);
   assert.equal((payload as { run: Record<string, unknown> }).run.fingerprint, undefined, "no manifest, no claim");
 
   const fingerprint = [
@@ -407,4 +407,60 @@ test("the report says when a grader read a reply with placeholders, from the sto
   const note = /graded by a model not approved to receive personal data/;
   assert.match(String((buildReport(input({ cases: graded })).payload as { limitations: string }).limitations), note);
   assert.doesNotMatch(String((buildReport(input()).payload as { limitations: string }).limitations), note);
+});
+
+test("format 14 names every grader in the role it voted in, not only the first judge", async () => {
+  const { gradedByLine } = await import("../src/lib/report/graders.ts");
+  const voted = [
+    caseRecord({ caseId: "A1", judgeModel: "groq/gpt-oss-20b", judgeVotes: [
+      { model: "groq/gpt-oss-20b", status: "pass", rationale: null }, { model: "mistral/ministral-8b", status: "pass", rationale: null }] }),
+    caseRecord({ caseId: "A2", judgeModel: "groq/gpt-oss-20b", judgeAgreement: "majority", judgeVotes: [
+      { model: "groq/gpt-oss-20b", status: "pass", rationale: null }, { model: "mistral/ministral-8b", status: "fail", rationale: null },
+      { model: "groq/gpt-oss-120b", status: "fail", rationale: null }] }),
+    caseRecord({ caseId: "A3", judgeModel: null, settledBy: "deterministic", judgeAgreement: null, judgeVotes: [] }),
+  ];
+  const { payload } = buildReport(input({ cases: voted, coverage: coverage({ plannedCases: 3, cases: voted }) }));
+  const run = (payload as { run: { graders: Array<{ model: string; role: string; cases: number }>; graded_by: string[] } }).run;
+  assert.deepEqual(run.graders, [
+    { model: "groq/gpt-oss-20b", role: "first", cases: 2 },
+    { model: "mistral/ministral-8b", role: "second", cases: 2 },
+    { model: "groq/gpt-oss-120b", role: "settler", cases: 1 },
+  ]);
+  assert.deepEqual(run.graded_by, ["groq/gpt-oss-20b"], "graded_by keeps its sealed meaning: the first judges");
+  assert.equal(gradedByLine(run as never), "groq/gpt-oss-20b (first opinion on 2); mistral/ministral-8b (second opinion on 2); groq/gpt-oss-120b (settled disagreements on 1)");
+});
+
+test("a run settled entirely by rules says no model was asked; an older report keeps its own line", async () => {
+  const { gradedByLine } = await import("../src/lib/report/graders.ts");
+  const ruled = [caseRecord({ caseId: "R1", status: "fail", judgeModel: null, settledBy: "deterministic", judgeAgreement: null, judgeVotes: [] })];
+  const { payload } = buildReport(input({ cases: ruled, coverage: coverage({ plannedCases: 1, cases: ruled }) }));
+  const run = (payload as { run: { graders: unknown[]; graded_by: string[] } }).run;
+  assert.deepEqual(run.graders, []);
+  assert.match(gradedByLine(run as never), /No model was asked/);
+  assert.equal(gradedByLine({ graded_by: ["google/gemini-3.5-flash"] } as never), "google/gemini-3.5-flash", "format 13 and older: as sealed");
+  assert.equal(gradedByLine({ graded_by: [] } as never), "not recorded");
+});
+
+test("a scenario never sent to the agent never shows Novera's refusal as what the agent did", async () => {
+  const { findingLead } = await import("../src/lib/report/graders.ts");
+  const guarded = [
+    caseRecord({ caseId: "D07", status: "error", responseText: null, rationale: null, judgeModel: null, judgeAgreement: null, settledBy: null,
+      error: "This scenario attempts something irreversible and this agent is marked as production. It was not run." }),
+    caseRecord({ caseId: "E1", status: "error", responseText: null, rationale: null, error: "Agent returned HTTP 502" }),
+    caseRecord({ caseId: "E2", status: "error", responseText: "a reply", rationale: null, judgeAgreement: null,
+      judgeAttempts: [{ ok: false, reason: "rate_limited" }, { ok: false, reason: "rate_limited" }], error: "No model could answer \"judge\"" }),
+  ];
+  const { payload } = buildReport(input({ cases: guarded, coverage: coverage({ plannedCases: 3, cases: guarded }) }));
+  const findings = (payload as { findings: Array<{ case: string; observed: string; outcome: string; no_result?: { stage: string; agent_received: string } }> }).findings;
+  const byCase = new Map(findings.map((f) => [f.case, f]));
+  const d07 = byCase.get("D07")!;
+  assert.equal(d07.no_result?.stage, "not_sent");
+  assert.equal(d07.no_result?.agent_received, "no");
+  assert.doesNotMatch(d07.observed, /attempts something irreversible/, "the runner's own refusal is not printed as an observation");
+  assert.match(findingLead(d07 as never), /not sent to the agent/);
+  assert.equal(byCase.get("E1")!.no_result?.stage, "agent");
+  assert.equal(byCase.get("E2")!.no_result?.stage, "grading");
+  // Older formats: no no_result, and still never labelled as an observation.
+  assert.equal(findingLead({ outcome: "error" } as never), "Why there is no result");
+  assert.equal(findingLead({ outcome: "fail" } as never), "Observed");
 });

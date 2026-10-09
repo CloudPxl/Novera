@@ -41,12 +41,13 @@ export function ApproveButton({ draftId }: { draftId: string }) {
  * Collapsing the two into one button is how a draft goes out while you are still
  * reading it.
  */
-export function SendButton({ draftId, to }: { draftId: string; to: string }) {
+export function SendButton({ draftId, to, retry = false }: { draftId: string; to: string; retry?: boolean }) {
   const [state, submit] = useActionState<InboundState, FormData>(sendDraft, {});
   return (
     <form action={submit} className="flex flex-wrap items-center gap-3">
       <input type="hidden" name="draftId" value={draftId} />
-      <SubmitButton size="sm" pendingLabel="Sending…">Send to {to}</SubmitButton>
+      {/* After a failed send the draft stays approved, so the same button is the retry — said in its label. */}
+      <SubmitButton size="sm" pendingLabel="Sending…">{retry || state.error ? `Try sending again to ${to}` : `Send to ${to}`}</SubmitButton>
       <Feedback state={state} />
     </form>
   );

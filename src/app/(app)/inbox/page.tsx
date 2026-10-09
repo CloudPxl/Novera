@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth/staff.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
+import { mailDiagnostics } from "@/lib/mail/diagnostics.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { ApproveButton, SendButton, CloseButton, DraftEditor, EraseButton } from "./client.tsx";
@@ -79,6 +80,10 @@ export default async function InboxPage() {
         {waiting} waiting on you
         {sent > 0 ? `, ${sent} already sent` : ""}. A draft is never sent until you send it.
       </p>
+      <p className="mt-1 text-sm">
+        <Link href="/inbox/email" className="text-ink-soft underline underline-offset-2 hover:text-ink">Email setup and templates</Link>
+        {!mailDiagnostics().configured && <span className="text-fail-text"> · this server cannot send email yet</span>}
+      </p>
 
       {(requests ?? []).length === 0 ? (
         <div className="mt-8">
@@ -155,14 +160,15 @@ export default async function InboxPage() {
 
                       {current.send_error && (
                         <p role="alert" className="mt-3 rounded-lg border border-fail-border bg-fail-surface px-3 py-2 text-sm text-fail-text">
-                          Last send failed: {current.send_error as string}
+                          Last send failed: {current.send_error as string}. It is still approved and has not been
+                          sent{current.status === "approved" ? "; send it again below once the cause is fixed" : ""}.
                         </p>
                       )}
 
                       <div className="mt-4 flex flex-col gap-3 border-t border-line pt-4">
                         {current.status === "draft" && <ApproveButton draftId={current.id as string} />}
                         {current.status === "approved" && (
-                          <SendButton draftId={current.id as string} to={r.email as string} />
+                          <SendButton draftId={current.id as string} to={r.email as string} retry={Boolean(current.send_error)} />
                         )}
                         {current.status === "sent" && (
                           <p className="text-xs text-ink-faint">

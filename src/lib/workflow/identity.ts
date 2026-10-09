@@ -10,6 +10,7 @@ import { sessionClient } from "@/lib/supabase/server.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { mailProblem, sendEmail } from "@/lib/mail/send.ts";
+import { invitationEmail } from "@/lib/mail/templates.ts";
 import { appOrigin } from "@/lib/auth/redirects.ts";
 import { fingerprint, rateLimit } from "@/lib/support/rate-limit.ts";
 import { isMemoryKey } from "@/lib/assistant/memory.ts";
@@ -222,17 +223,14 @@ export async function inviteMember(_prev: IdentityState, form: FormData): Promis
 
   // Only this deployment's own address, as every other emailed link (src/lib/auth/redirects.ts).
   const link = `${appOrigin((await headers()).get("origin"))}/invite/${token}`;
-  const sent = await sendEmail({
-    to: email,
-    subject: `You are invited to ${workspace.name} on Novera`,
-    text: [
-      `${ctx.profile.display_name ?? user.email} invited you to the workspace "${workspace.name}" on Novera, as ${ROLE_LABEL[role as Role].toLowerCase()}.`,
-      "",
-      `Accept: ${link}`,
-      "",
-      `The link works once, for ${email}, and expires in seven days. If you did not expect this, ignore it.`,
-    ].join("\n"),
+  const message = invitationEmail({
+    inviterName: ctx.profile.display_name ?? user.email ?? "A Novera user",
+    workspaceName: workspace.name,
+    roleLabel: ROLE_LABEL[role as Role],
+    link,
+    email,
   });
+  const sent = await sendEmail({ to: email, subject: message.subject, text: message.text, html: message.html });
   revalidatePath("/settings/members");
   return {
     notice: sent.ok

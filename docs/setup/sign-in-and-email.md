@@ -114,12 +114,11 @@ the app forwards a code arriving there, but put the address on the list anyway.
 back to `/auth/callback` with a one-time code. Opening it in the browser that asked for it signs
 the person in; opening it elsewhere confirms the address and asks them to sign in by hand.
 
-If you want links that sign in on any device, change the templates under **Authentication →
-Emails → Templates**. Leave everything else in each template as it is:
+Novera's own wording for these templates is in `docs/setup/email-templates/`, with the subjects in
+`docs/setup/email-checklist.md` step 5. Keep Supabase's `{{ .ConfirmationURL }}` link. Do not
+switch to `token_hash` links to `/auth/confirm`: such a link signs in whichever browser opens it,
+which is the login CSRF in launch-readiness row B.
 
-- **Confirm signup:** `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`
-- **Reset password:** `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery`
-- **Change email address:** `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email_change`
 - **Invite user:** not used. Novera sends its own invitation emails.
 
 Keep **Confirm email** and **Secure email change** switched on (Authentication → Sign In /

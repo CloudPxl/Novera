@@ -1,5 +1,9 @@
 # Making signup email work
 
+> **Superseded (2026-10-09)** by `docs/setup/email-checklist.md`, which is current. Do not follow
+> step 7 below: Novera keeps Supabase's `{{ .ConfirmationURL }}` links, because a `token_hash` link
+> signs in whichever browser opens it (launch-readiness row B). Kept for its history.
+
 **Why this is needed:** Supabase Auth sends the confirmation email, not Novera. Supabase
 has no mail sender configured, so today a new signup gets a "check your email" message
 and no email ever arrives. Until this is done, accounts can only be created with the

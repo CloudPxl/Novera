@@ -19,7 +19,7 @@ export type AuditAction =
   | "retention.changed" | "report.withdrawn" | "judgekey.connected" | "judgekey.removed"
   | "memory.created" | "memory.deleted" | "memory.cleared" | "memory.suggestion_accepted" | "memory.suggestion_dismissed"
   | "suite.bulk_approved" | "suite.published" | "suite.gaps_accepted" | "suite.source_fetched"
-  | "identity.linked" | "identity.unlinked" | "account.password_set" | "account.password_changed" | "account.signed_out_everywhere";
+  | "identity.linked" | "identity.unlinked" | "agent.environment_changed" | "account.password_set" | "account.password_changed" | "account.signed_out_everywhere";
 
 export async function recordAudit(admin: SupabaseClient, event: {
   workspaceId: string | null;
@@ -61,6 +61,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   "webhook.revoked": "revoked a webhook",
   "retention.changed": "changed evidence retention",
   "report.withdrawn": "withdrew a report",
+  "agent.environment_changed": "changed whether an agent is production or a test target",
   "judgekey.connected": "connected a model key",
   "judgekey.removed": "removed the model key",
   "memory.created": "saved an assistant memory",
@@ -75,6 +76,6 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   "identity.linked": "connected a sign-in method",
   "identity.unlinked": "disconnected a sign-in method",
   "account.password_set": "added a password",
-  "account.password_changed": "changed their password",
+  "account.password_changed": "changed the account password",
   "account.signed_out_everywhere": "signed out on every device",
 };

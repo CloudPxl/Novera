@@ -87,7 +87,7 @@ export async function sendTestWebhook(_prev: WebhookFormState, form: FormData): 
   revalidatePath("/settings", "layout");
   return d?.status === "delivered"
     ? { notice: `Delivered: your endpoint answered ${d.last_status}.` }
-    : { error: `Not delivered: ${d?.last_error ?? "no answer"}. It will be retried.` };
+    : { error: `Not delivered: ${(d?.last_error ?? "no answer").replace(/\.+$/, "")}. It will be retried.` };
 }
 
 export type { WebhookEvent };

@@ -64,3 +64,7 @@ test("the RLS write policies in 0054 grant the same roles as the code", () => {
   assert.deepEqual(roles("production_failures_insert"), [...PERMISSIONS["regression.record"]].sort());
   assert.deepEqual(roles("audit_events_select"), [...PERMISSIONS["audit.view"]].sort());
 });
+
+test("only the owner or an admin decides whether an agent is a test target", () => {
+  for (const role of ROLES) assert.equal(can(role, "agent.environment"), role === "owner" || role === "admin", role);
+});

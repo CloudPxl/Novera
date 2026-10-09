@@ -47,7 +47,7 @@ export function ReadinessPanel({ state, label, checks, token }: { state: Readine
           <input type="hidden" name="token" value={token} />
           <label className="flex items-start gap-2 text-sm text-ink-soft">
             <input type="checkbox" name="confirm" required className="mt-0.5 size-4 accent-ink" />
-            <span>Withdraw it: the link and every download stop working for everyone who has them. This cannot be undone.</span>
+            <span>Withdraw it: this run&rsquo;s report links — the original and any reissue — and every download stop working for everyone who has them. This cannot be undone.</span>
           </label>
           <SubmitButton variant="secondary" size="sm" pendingLabel="Withdrawing…">Withdraw this report</SubmitButton>
           {result.error && <p role="alert" className="basis-full text-xs font-medium text-fail-text">{result.error}</p>}

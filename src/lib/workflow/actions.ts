@@ -180,27 +180,38 @@ export async function reprobeAgent(_prev: FormState, form: FormData): Promise<Fo
     : { error: `No answer: ${result.error}` };
 }
 
-/** Creates a queued run; execution is started by the run page. */
-export async function createRun(formData: FormData): Promise<void> {
+/**
+ * Creates a queued run; execution is started by the run page. A refusal comes back as a
+ * sentence for the form (`RefusableForm`); anything else is still an error.
+ */
+export async function createRun(_prev: FormState, formData: FormData): Promise<FormState> {
   const { user, workspace } = await requireWorkspace();
-  const admin = await assertMembership(user.id, workspace.id, "run.start");
+  const gated = await gate(user.id, workspace.id, "run.start");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   // Optional, and stated on the report as declared by the person, never as observed.
   const customerDeclared = cleanDeclared({
     releaseId: String(formData.get("releaseId") ?? ""),
     knowledgeBaseRevision: String(formData.get("knowledgeBaseRevision") ?? ""),
   });
-  if ("error" in customerDeclared) throw new RunRefusal(customerDeclared.error);
+  if ("error" in customerDeclared) return { error: customerDeclared.error };
 
   // The same implementation the API uses (`start-run.ts`), so the two cannot drift.
-  const run = await startRun({
-    client: admin,
-    workspaceId: workspace.id,
-    userId: user.id,
-    agentId: String(formData.get("agentId") ?? ""),
-    suiteId: String(formData.get("suiteId") ?? "").trim() || null,
-    customerDeclared,
-  });
+  let run: Awaited<ReturnType<typeof startRun>>;
+  try {
+    run = await startRun({
+      client: admin,
+      workspaceId: workspace.id,
+      userId: user.id,
+      agentId: String(formData.get("agentId") ?? ""),
+      suiteId: String(formData.get("suiteId") ?? "").trim() || null,
+      customerDeclared,
+    });
+  } catch (e) {
+    if (e instanceof RunRefusal) return { error: e.message };
+    throw e;
+  }
 
   // A run counts against the trial from the moment it exists, and the top bar showing
   // the allowance lives in the shared layout, which a redirect alone does not re-render:
@@ -626,15 +637,26 @@ export async function withdrawReport(_prev: FormState, form: FormData): Promise<
   const gated = await gate(user.id, workspace.id, "report.withdraw");
   if ("error" in gated) return { error: gated.error };
   const admin = gated.admin;
+  const { data: named } = await admin.from("reports").select("run_id")
+    .eq("workspace_id", workspace.id).eq("token", token).is("revoked_at", null).maybeSingle();
+  if (!named) return { error: "That report is not open in this workspace; it may already be withdrawn." };
+  // Every open report of the run, not only the one named: a reissue carries the original, and
+  // withdrawing the newest left the original link working while the run page said "Withdrawn"
+  // (app-wide audit, 2026-10-08).
   const { data, error } = await admin.from("reports")
     .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
-    .eq("workspace_id", workspace.id).eq("token", token).is("revoked_at", null)
-    .select("run_id").maybeSingle();
+    .eq("workspace_id", workspace.id).eq("run_id", named.run_id).is("revoked_at", null)
+    .select("content_hash");
   if (error) return { error: `The report could not be withdrawn: ${error.message}` };
-  if (!data) return { error: "That report is not open in this workspace; it may already be withdrawn." };
-  await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "report.withdrawn", detail: {} });
-  revalidatePath(`/runs/${data.run_id}`);
-  return { notice: "Withdrawn. The link and its downloads stopped working, for everyone." };
+  const hashes = (data ?? []).map((r) => r.content_hash as string);
+  await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "report.withdrawn", detail: { run: named.run_id, reports: hashes } });
+  revalidatePath(`/runs/${named.run_id}`);
+  revalidatePath("/reports");
+  return {
+    notice: hashes.length > 1
+      ? `Withdrawn: this run's ${hashes.length} reports, the original and its reissues. Their links and downloads stopped working, for everyone.`
+      : "Withdrawn. The link and its downloads stopped working, for everyone.",
+  };
 }
 
 export async function retestOneCase(_prev: FormState, form: FormData): Promise<FormState> {
@@ -907,4 +929,34 @@ export async function applyResponsePath(_prev: FormState, form: FormData): Promi
   return probe.ok
     ? { notice: `Reading the ${field === "reply" ? "reply" : "tool activity"} from "${path}". The agent answered.` }
     : { error: `Saved "${path}", but the agent still did not answer as expected: ${probe.error}` };
+}
+
+/**
+ * Whether an agent is production or a test target.
+ *
+ * Every agent is connected as production, and a destructive or fixture-only scenario is never
+ * sent to a production agent. Nothing could change it, so a suite with one such scenario was
+ * withheld for good while the runner said "Mark the agent as a test target" (app-wide audit,
+ * 2026-10-08). Owner or admin, confirmed, and audited: it decides what may reach the agent.
+ */
+export async function setAgentEnvironment(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const agentId = String(form.get("agentId") ?? "");
+  const environment = String(form.get("environment") ?? "");
+  if (environment !== "production" && environment !== "test") return { error: "Choose production or test target." };
+  if (form.get("confirm") !== "on") return { error: "Tick the box to confirm." };
+  const gated = await gate(user.id, workspace.id, "agent.environment");
+  if ("error" in gated) return { error: gated.error };
+  const production = environment === "production";
+  const { data, error } = await gated.admin.from("agents").update({ is_production: production })
+    .eq("id", agentId).eq("workspace_id", workspace.id).select("id").maybeSingle();
+  if (error) return { error: `Could not change it: ${error.message}` };
+  if (!data) return { error: "That agent is not in this workspace." };
+  await recordAudit(gated.admin, { workspaceId: workspace.id, actorId: user.id, action: "agent.environment_changed", detail: { agent: agentId, production } });
+  revalidatePath(`/agents/${agentId}`);
+  return {
+    notice: production
+      ? "Marked as production. Destructive and test-data-only scenarios will not be sent to it."
+      : "Marked as a test target. Destructive and test-data-only scenarios will now be sent to it.",
+  };
 }

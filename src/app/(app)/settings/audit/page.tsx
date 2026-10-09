@@ -68,7 +68,7 @@ export default async function AuditPage() {
               <li key={e.id as string} className="grid gap-1 px-5 py-3 text-sm sm:grid-cols-[11rem_minmax(0,1fr)]">
                 <span className="tnum text-xs text-ink-faint">{formatWhen(e.created_at as string, ctx.profile)}</span>
                 <span>
-                  <span className="font-medium">{name(e.actor_id)}</span> {AUDIT_LABEL[e.action as AuditAction] ?? e.action}
+                  <span className="font-medium">{name(e.actor_id)}</span> {e.action === "member.removed" && e.subject_user_id === e.actor_id ? AUDIT_LABEL["member.left"] : AUDIT_LABEL[e.action as AuditAction] ?? e.action}
                   {e.subject_user_id && e.subject_user_id !== e.actor_id ? <> — {name(e.subject_user_id)}</> : null}
                   {describe(e.detail as Record<string, unknown>) && <span className="text-ink-soft"> · {describe(e.detail as Record<string, unknown>)}</span>}
                 </span>

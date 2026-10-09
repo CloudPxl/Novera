@@ -139,7 +139,7 @@ export async function executeCase(args: {
       observation: null,
       error: testCase.destructive
         ? "This scenario attempts something irreversible and this agent is marked as "
-          + "production. It was not run. Mark the agent as a test target to run it."
+          + "production. It was not run. Mark the agent as a test target (the agent's Connection tab) to run it."
         : "This scenario is written against scripted test data and this agent is marked "
           + "as production. It was not run.",
     };

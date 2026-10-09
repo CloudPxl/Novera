@@ -6,6 +6,7 @@ import {
   reprobeAgent,
   saveVerificationEndpoint,
   applyResponsePath,
+  setAgentEnvironment,
   type FormState,
 } from "@/lib/workflow/actions.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
@@ -315,6 +316,42 @@ export function ResponsePathPicker({
 
       {state.error && <p className="mt-3 text-sm text-fail-text">{state.error}</p>}
       {state.notice && <p className="mt-3 text-sm text-pass-text">{state.notice}</p>}
+    </div>
+  );
+}
+
+/** Production or test target: owner or admin, confirmed, audited (`setAgentEnvironment`). */
+export function AgentEnvironment({ agentId, production, canChange }: { agentId: string; production: boolean; canChange: boolean }) {
+  const [state, submit] = useActionState<FormState, FormData>(setAgentEnvironment, {});
+  const next = production ? "test" : "production";
+  return (
+    <div className="mt-3 rounded-control bg-surface p-4 ring-1 ring-line">
+      <p className="text-sm leading-relaxed text-ink">
+        {production
+          ? "Production. Destructive and test-data-only scenarios are not sent to it; a run records them as not run."
+          : "Test target. Destructive and test-data-only scenarios are sent to it, so point it at a deployment where that is safe."}
+      </p>
+      {canChange ? (
+        <form action={submit} className="mt-3 flex flex-wrap items-center gap-3 border-t border-line pt-3">
+          <input type="hidden" name="agentId" value={agentId} />
+          <input type="hidden" name="environment" value={next} />
+          <label className="flex items-start gap-2 text-sm text-ink-soft">
+            <input type="checkbox" name="confirm" required className="mt-0.5 size-4 accent-ink" />
+            <span>
+              {production
+                ? "This agent is a staging or test deployment, and an irreversible action against it harms no real customer."
+                : "Treat this agent as production again."}
+            </span>
+          </label>
+          <SubmitButton variant="secondary" size="sm" pendingLabel="Saving…">
+            {production ? "Mark as a test target" : "Mark as production"}
+          </SubmitButton>
+          {state.error && <p role="alert" className="basis-full text-sm text-fail-text">{state.error}</p>}
+          {state.notice && <p role="status" className="basis-full text-sm text-ink-soft">{state.notice}</p>}
+        </form>
+      ) : (
+        <p className="mt-2 text-xs text-ink-faint">Only the owner or an admin can change this.</p>
+      )}
     </div>
   );
 }

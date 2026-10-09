@@ -50,7 +50,7 @@ export function httpVerificationConnector(
 ): VerificationConnector {
   const mode: ConnectorMode = "read_only";
 
-  async function fetchBody(path?: string): Promise<{ ok: true; text: string } | { ok: false; why: string }> {
+  async function fetchBody(path?: string, reachableOnly = false): Promise<{ ok: true; text: string; status: number } | { ok: false; why: string }> {
     const url = resolve(config.url, path);
     if (!url) return { ok: false, why: "The scenario's verification path does not resolve inside the configured endpoint." };
 
@@ -74,12 +74,20 @@ export function httpVerificationConnector(
         await discardBody(response);
         return { ok: false, why: `The verification endpoint answered ${response.status} (a redirect), and redirects are not followed.` };
       }
+      // Saving the endpoint asks only whether the server is there. A REST collection root
+      // commonly answers 404 or 405 while every record beneath it answers; requiring a 2xx at
+      // the base refused ordinary APIs (app-wide audit, 2026-10-08). A refused credential or a
+      // server error still fails here, where it can be fixed.
+      if (reachableOnly && [400, 404, 405].includes(response.status)) {
+        await discardBody(response);
+        return { ok: true, text: "", status: response.status };
+      }
       if (!response.ok) {
         await discardBody(response);
         return { ok: false, why: `The verification endpoint answered ${response.status}.` };
       }
       // Read under the same deadline, and only so far: the body is parsed, never stored.
-      return { ok: true, text: await readTextLimited(response, MAX_READBACK_BYTES) };
+      return { ok: true, text: await readTextLimited(response, MAX_READBACK_BYTES), status: response.status };
     } catch (error) {
       if (error instanceof BodyTooLarge) {
         return { ok: false, why: `The verification endpoint's answer was larger than ${formatLimit(MAX_READBACK_BYTES)}, so it was not read.` };
@@ -101,9 +109,11 @@ export function httpVerificationConnector(
 
     async validate(): Promise<ValidationResult> {
       const started = Date.now();
-      const result = await fetchBody();
+      const result = await fetchBody(undefined, true);
       return result.ok
-        ? { ok: true, detail: `Answered in ${Date.now() - started}ms.` }
+        ? { ok: true, detail: result.status >= 400
+          ? `Reachable: the base address answered ${result.status} in ${Date.now() - started}ms, which is fine — scenarios read paths beneath it.`
+          : `Answered in ${Date.now() - started}ms.` }
         : { ok: false, detail: redactCredentials(result.why, secret) };
     },
 

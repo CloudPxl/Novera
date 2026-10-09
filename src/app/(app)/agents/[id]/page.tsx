@@ -1,4 +1,5 @@
 import { Help } from "@/components/ui/help.tsx";
+import { RefusableForm } from "@/components/ui/refusable-form.tsx";
 import { FixtureNote } from "@/components/ui/fixture-note.tsx";
 import { isNoveraFixture } from "@/lib/agents/environment.ts";
 import type { AgentConfig } from "@/lib/agents/types.ts";
@@ -11,7 +12,7 @@ import { sessionClient } from "@/lib/supabase/server.ts";
 import { createRun } from "@/lib/workflow/actions.ts";
 import { Card, Badge, EmptyState, inputClass } from "@/components/ui/primitives.tsx";
 import { SubmitButton } from "@/components/ui/button.tsx";
-import { PolicyEditor, ReprobeButton, VerificationEndpoint, ResponsePathPicker } from "./client.tsx";
+import { PolicyEditor, ReprobeButton, VerificationEndpoint, ResponsePathPicker, AgentEnvironment } from "./client.tsx";
 import { ScheduleCard, ScheduleForm, type ScheduleView } from "./schedules.tsx";
 import { summariseRun } from "../../dashboard/summary.ts";
 import { OtherWorkspace } from "@/components/shell/other-workspace.tsx";
@@ -37,7 +38,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
   });
 
   const { data: agent } = await db
-    .from("agents").select("id, workspace_id, name, kind, config, verification, attestation_text, attested_at").eq("id", id).maybeSingle();
+    .from("agents").select("id, workspace_id, name, kind, config, verification, attestation_text, attested_at, is_production").eq("id", id).maybeSingle();
   if (!agent) notFound();
   if (agent.workspace_id !== workspace.id) {
     const there = context.memberships.find((m) => m.workspace.id === agent.workspace_id);
@@ -117,7 +118,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
           : !entitlement.canRun ? <ButtonLink href="/settings">Connect a key to run</ButtonLink>
           : <div className="w-full max-w-md">
 {latestPolicy && entitlement.canRun && (
-                  <form action={createRun} className="flex flex-wrap items-center gap-2">
+                  <RefusableForm action={createRun} className="flex flex-wrap items-center gap-2">
                     <input type="hidden" name="agentId" value={agent.id} />
                     {(suites ?? []).length > 1 && (
                       <select
@@ -152,7 +153,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                         Recorded before the run starts and shown on the report as declared by you — Novera cannot see inside your deployment to confirm it.
                       </p>
                     </details>
-                  </form>
+                  </RefusableForm>
                 )}
           </div>
         }
@@ -306,7 +307,10 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
               {latestProbe ? (
                 <Card className="mt-3 p-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    {latestProbe.error ? (
+                    {latestProbe.error && latestProbe.response_body ? (
+                      // It answered; the reply was not where the configuration looks for it.
+                      <Badge tone="fail">Answered, but no reply was found</Badge>
+                    ) : latestProbe.error ? (
                       <Badge tone="fail">No answer</Badge>
                     ) : (
                       <Badge tone="pass">Answered in {latestProbe.latency_ms}ms</Badge>
@@ -343,6 +347,10 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
               ) : (
                 <p className="mt-3 text-sm text-ink-soft">No connection receipt yet.</p>
               )}
+            </section>
+            <section>
+              <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Production or test target</h2><Help label="Production or test target">A destructive scenario (one that attempts something irreversible) and a scenario written against Novera&rsquo;s scripted test data are never sent to a production agent; they are recorded as not run. Mark a staging or test deployment as a test target to run them.</Help></div>
+              <AgentEnvironment agentId={agent.id} production={agent.is_production !== false} canChange={can(role, "agent.environment")} />
             </section>
             <section>
               <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Verifying what the agent does</h2><Help label="Read-back">Optional. A read-only address in your own system Novera can check to confirm an action the agent claims, such as a refund. Without it, such claims are reported as not verified — never as passed.</Help></div>

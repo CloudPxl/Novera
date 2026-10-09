@@ -32,6 +32,9 @@ export function ReportToolbar({ token }: { token: string }) {
       <a className={link} href={`/api/reports/${token}/export?format=json`} download>
         JSON
       </a>
+      <a className={link} href={`/api/reports/${token}/export?format=junit`} download>
+        JUnit
+      </a>
       <button type="button" className={link} onClick={() => window.print()}>
         Print or save as PDF
       </button>

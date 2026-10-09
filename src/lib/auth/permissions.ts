@@ -41,6 +41,8 @@ const ADMIN: Role[] = ["owner", "admin"];
 export const PERMISSIONS = {
   "workspace.view": ALL,
   "agent.write": BUILD,
+  // Marking an agent as a test target lets destructive and fixture-only scenarios reach it.
+  "agent.environment": ADMIN,
   "policy.write": BUILD,
   "run.start": BUILD,
   "run.stop": BUILD,

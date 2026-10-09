@@ -33,7 +33,7 @@ These are optional:
 - `persona` — a simulated customer who continues the conversation after `input`. See below.
 - `attack` — for an adversarial scenario: the `technique`, the `channel` it arrives on (`message`, `metadata`, `document` or `tool_result`), and optionally a `reference` such as an OWASP category. A `metadata` attack with no `context` is refused, because it would describe an attack the run never made.
 - `duty_refs` — the references this evidence is filed under. They organise evidence for a reader who already carries these duties; they are not a legal conclusion.
-- `destructive` and `fixture_only` — true or false. Either one stops the scenario running against any agent you have not explicitly marked as a test agent. An agent is treated as production until you say otherwise, and the scenario is recorded as producing no result, with the reason, rather than quietly skipped.
+- `destructive` and `fixture_only` — true or false. Either one stops the scenario running against any agent you have not explicitly marked as a test target (the agent's **Connection** tab, owner or admin). An agent is treated as production until you say otherwise, and the scenario is recorded as producing no result, with the reason, rather than quietly skipped.
 
 ## Rules settled without a model
 

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { instructionShapedSentences } from "@/lib/builder/extract.ts";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
@@ -193,6 +194,16 @@ export default async function BuildPage({ params, searchParams }: {
                         {s.content_expired_at ? " · text expired under retention" : ""}
                       </p>
                       {s.status === "failed" && <p className="text-fail-text">{s.parse_error as string}</p>}
+                      {document && typeof s.text === "string" && (() => {
+                        const shaped = instructionShapedSentences(s.text);
+                        return shaped.length > 0 && (
+                          <div role="note" className="rounded-control border border-warning-border bg-warning-surface px-3 py-2 text-warning-text">
+                            <p className="font-medium">Instruction-shaped text in this source</p>
+                            <p className="mt-1 text-xs">Read as text, never followed. Check whether it belongs in the document before you decide anything drafted from it.</p>
+                            <ul className="mt-1 list-disc pl-5 text-xs">{shaped.map((l) => <li key={l} className="[overflow-wrap:anywhere]">&ldquo;{l}&rdquo;</li>)}</ul>
+                          </div>
+                        );
+                      })()}
                       {s.kind === "agent_observation" && s.text && (
                         <ul className="list-disc pl-5 text-ink-soft">{(s.text as string).split("\n").map((l) => <li key={l}>{l.replace(/^Observed: /, "")}</li>)}</ul>
                       )}
@@ -306,6 +317,7 @@ export default async function BuildPage({ params, searchParams }: {
                           <Badge tone={s.severity as "low" | "medium" | "high" | "critical"}>{s.severity}</Badge>
                           <Badge tone={STATUS_TONE[c.status]}>{STATUS_LABEL[c.status]}</Badge>
                           {conflicts.length > 0 && <Badge tone="error">{conflicts[0].kind === "instruction_shaped" ? "flagged" : "conflict"}</Badge>}
+                          {c.destructive && <Badge tone="high">destructive · runs only on a test target</Badge>}
                         </span>
                       }>
                         <div className="grid gap-3 text-sm">

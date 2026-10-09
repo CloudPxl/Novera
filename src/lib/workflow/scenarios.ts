@@ -191,11 +191,13 @@ export async function decideScenarioDraft(_prev: FormState, form: FormData): Pro
     ? { status: "approved", approved_by: user.id, approved_at: now }
     : { status: "rejected", rejected_by: user.id, rejected_at: now, rejection_reason: reason };
 
-  const { error } = await admin
+  const { data: decided, error } = await admin
     .from("scenario_drafts").update(patch)
-    .eq("id", draftId).eq("workspace_id", workspace.id).eq("status", "draft");
+    .eq("id", draftId).eq("workspace_id", workspace.id).eq("status", "draft").select("id");
 
   if (error) return { error: `That decision could not be recorded: ${error.message}` };
+  // Decided meanwhile, in another tab or by a teammate: say so rather than seem to succeed.
+  if (!decided?.length) return { error: "That draft has already been decided. Reload to see how." };
 
   revalidatePath("/scenarios");
   return { notice: decision === "approve" ? "Approved. It can now enter a suite version." : "Rejected." };

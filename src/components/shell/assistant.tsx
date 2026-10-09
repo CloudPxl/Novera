@@ -1,5 +1,6 @@
 "use client";
 
+import { RefusableForm } from "@/components/ui/refusable-form.tsx";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { askAssistant, decideSuggestion, deleteThread, listThreads, loadThread, type AssistantResult, type AssistantSuggestion, type ThreadSummary } from "@/lib/assistant/actions.ts";
@@ -244,7 +245,7 @@ export function Assistant() {
                             {a.label} →
                           </Link>
                         ) : (
-                          <form key={a.agentId} action={createRun} className="w-full">
+                          <RefusableForm key={a.agentId} action={createRun} className="w-full">
                             <input type="hidden" name="agentId" value={a.agentId} />
                             <SubmitButton size="sm" pendingLabel="Starting…">{a.label}</SubmitButton>
                             <span className="mt-1 block text-xs text-ink-soft">
@@ -252,7 +253,7 @@ export function Assistant() {
                                 ? "Starts a run graded on your own key."
                                 : "Uses one of your trial runs."}
                             </span>
-                          </form>
+                          </RefusableForm>
                         ),
                       )}
                     </div>

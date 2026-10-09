@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Menu } from "@/components/ui/menu.tsx";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { inputClass } from "@/components/ui/primitives.tsx";
+import { RefusableForm } from "@/components/ui/refusable-form.tsx";
 
 export interface LaunchAgent {
   id: string;
@@ -36,7 +37,7 @@ export function RunLauncher({
 }: {
   agents: LaunchAgent[];
   suites: LaunchSuite[];
-  action: (formData: FormData) => void | Promise<void>;
+  action: (state: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   defaultAgentId?: string;
   /** The suite the person chose in their profile — their decision, so it may be preselected. */
   defaultSuiteKey?: string | null;
@@ -59,7 +60,7 @@ export function RunLauncher({
           send scenarios to.
         </p>
       ) : (
-        <form action={action} className="space-y-3">
+        <RefusableForm action={action} className="space-y-3">
           <div>
             <label htmlFor="launch-agent" className="type-pill text-ink-faint">
               Agent
@@ -117,7 +118,7 @@ export function RunLauncher({
           <SubmitButton size="sm" pendingLabel="Starting…" disabled={!agent || !suite} className="w-full">
             Start the run
           </SubmitButton>
-        </form>
+        </RefusableForm>
       )}
     </Menu>
   );

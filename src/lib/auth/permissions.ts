@@ -68,6 +68,8 @@ export const PERMISSIONS = {
   "member.manage": ADMIN,
   "audit.view": ["owner", "admin", "auditor"],
   "workspace.erase": ["owner"],
+  // A copy of everything in the workspace leaves Novera: the people who manage it (0061).
+  "workspace.export": ADMIN,
   "workspace.rename": ADMIN,
   "memory.workspace": BUILD,
   // Starting a checkout, opening the billing portal, scheduling a cancellation (0060).

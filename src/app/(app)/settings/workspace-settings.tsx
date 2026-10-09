@@ -15,6 +15,7 @@ import { JudgeKeyForm, RemoveKeyButton, type ProviderChoice } from "./client.tsx
 import { CreateApiKey, RevokeApiKey } from "./api-keys.tsx";
 import { CreateWebhook, WebhookActions } from "./webhooks.tsx";
 import { RetentionForm } from "./retention.tsx";
+import { ExportWorkspaceForm } from "./export-form.tsx";
 import { DEFAULT_RETENTION_DAYS } from "@/lib/privacy/retention.ts";
 
 
@@ -31,6 +32,11 @@ const PROVIDERS: ProviderChoice[] = [
   { id: "openrouter", label: "OpenRouter", suggested: suggestedModelsFor("openrouter") },
   { id: "anthropic", label: "Anthropic", suggested: [DEFAULT_ANTHROPIC_MODEL] },
 ];
+
+/** Read outside render: a pending export link past its expiry is expired, whether or not anyone tried it. */
+function exportStatus(status: string, expiresAt: string): string {
+  return status === "pending" && Date.parse(expiresAt) <= Date.now() ? "expired" : status;
+}
 
 /** The workspace's settings, one section at a time (general, grading, developer). */
 export async function WorkspaceSettings({ section }: { section: "general" | "grading" | "developer" }) {
@@ -59,6 +65,11 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
       .select("id, run_id, api_key_id, via, read_at")
       .eq("workspace_id", workspace.id).order("read_at", { ascending: false }).limit(10),
   ]);
+  // Receipts of recent exports (0061); RLS and this check agree: owner and admin only.
+  const { data: exports } = section === "general" && can(role, "workspace.export")
+    ? await admin.from("workspace_exports").select("id, status, includes_raw_evidence, created_at, expires_at, delivered_at, sha256, byte_size")
+      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(5)
+    : { data: null };
   const keyName = new Map((apiKeys ?? []).map((k) => [k.id as string, k.name as string]));
 
   const models = entitlement.judgeModels;
@@ -85,6 +96,34 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
               {can(role, "workspace.rename") ? <RenameWorkspaceForm name={workspace.name} /> : <p className="text-sm text-ink-soft">{workspace.name}</p>}
             </div>
           </Card>
+          <section aria-labelledby="export-heading" className="mt-6">
+            <h3 id="export-heading" className="text-sm font-semibold">Export this workspace</h3>
+            <p className="mt-1 text-xs leading-relaxed text-ink-faint">
+              One JSON file with every agent, policy, suite, run, verdict, sealed report, draft, schedule and audit line in
+              this workspace. Keys, secrets and report links are never included; the file lists what is left out and why.
+              {can(role, "workspace.erase") ? " Export before you erase: erasure cannot be undone." : ""}
+            </p>
+            <Card className="mt-3 p-5">
+              {can(role, "workspace.export") ? <ExportWorkspaceForm /> : onlyFor("The owner and admins")}
+              {(exports ?? []).length > 0 && (
+                <ul className="mt-4 divide-y divide-line border-t border-line text-xs text-ink-soft">
+                  {(exports ?? []).map((e) => {
+                    const status = exportStatus(e.status as string, e.expires_at as string);
+                    return (
+                      <li key={e.id as string} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+                        <span>
+                          {(e.created_at as string).slice(0, 16).replace("T", " ")} UTC
+                          {e.includes_raw_evidence ? " · with raw replies" : ""}
+                          {e.sha256 ? <span className="block break-all type-mono text-ink-faint">SHA-256 {e.sha256 as string} · {Math.ceil((e.byte_size as number) / 1024)} KB</span> : null}
+                        </span>
+                        <Badge tone={status === "ready" ? "pass" : status === "failed" ? "fail" : "neutral"}>{status === "ready" ? "downloaded" : status === "pending" ? "waiting for download" : status}</Badge>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Card>
+          </section>
           <div className="mt-6">
             <Disclosure tone="danger" summary={can(role, "workspace.erase") ? "Danger zone — erase this workspace" : "Leave this workspace"}>
               {can(role, "workspace.erase")

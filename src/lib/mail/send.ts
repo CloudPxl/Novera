@@ -24,6 +24,8 @@ export async function sendEmail(args: {
   to: string;
   subject: string;
   text: string;
+  /** Optional HTML part, from `src/lib/mail/templates.ts`, where every variable is escaped. */
+  html?: string;
   replyTo?: string;
 }): Promise<SendResult> {
   const apiKey = process.env.RESEND_API_KEY;
@@ -43,6 +45,7 @@ export async function sendEmail(args: {
         to: [args.to],
         subject: args.subject,
         text: args.text,
+        ...(args.html ? { html: args.html } : {}),
         ...(args.replyTo ? { reply_to: args.replyTo } : {}),
       }),
       // Called from a request that has its own platform limit: a mail API that hangs must

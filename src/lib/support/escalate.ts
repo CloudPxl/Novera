@@ -98,7 +98,11 @@ export function checkEscalation(message: string): EscalationCheck {
  */
 export function withSources(body: string, citations: string[], baseUrl?: string): string {
   if (citations.length === 0) return body;
+  return `${body}\n\nThis answer is based on:\n${sourceLinks(citations, baseUrl).join("\n")}`;
+}
+
+/** The documentation address of each cited page, as `withSources` lists them. */
+export function sourceLinks(citations: string[], baseUrl?: string): string[] {
   const root = (baseUrl ?? "").replace(/\/+$/, "");
-  const list = citations.map((slug) => (root ? `${root}/docs/${slug}` : `/docs/${slug}`)).join("\n");
-  return `${body}\n\nThis answer is based on:\n${list}`;
+  return citations.map((slug) => (root ? `${root}/docs/${slug}` : `/docs/${slug}`));
 }

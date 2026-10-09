@@ -7,9 +7,11 @@ import { requireStaff } from "@/lib/auth/staff.ts";
 import { createRoutedChat } from "@/lib/router/execute.ts";
 import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
 import { connectionsFromEnv } from "@/lib/providers/registry.ts";
-import { checkEscalation, withSources } from "./escalate.ts";
+import { checkEscalation, sourceLinks } from "./escalate.ts";
 import { draftAnswer, type DocPage } from "./answer.ts";
-import { sendEmail } from "@/lib/mail/send.ts";
+import { mailProblem, sendEmail } from "@/lib/mail/send.ts";
+import { supportReplyEmail } from "@/lib/mail/templates.ts";
+import { appOrigin } from "@/lib/auth/redirects.ts";
 import {
   rateLimit, fingerprint, callerAddress, refusalMessage,
   SUPPORT_LIMIT, APPLY_LIMIT, SUPPORT_ADDRESS_LIMIT, APPLY_ADDRESS_LIMIT,
@@ -262,20 +264,21 @@ export async function sendDraft(_prev: InboundState, form: FormData): Promise<In
     .from("inbound_requests").select("email, message").eq("id", draft.request_id).single();
   if (!request) return { error: "The original message could not be found." };
 
-  const result = await sendEmail({
-    to: request.email as string,
-    subject: "Re: your question about Novera",
-    text: `${withSources(
-      draft.body as string,
-      Array.isArray(draft.citations) ? (draft.citations as string[]) : [],
-      process.env.NEXT_PUBLIC_APP_URL,
-    )}\n\n— Novera\n\n\nYou asked:\n${(request.message as string).slice(0, 600)}`,
+  // The documentation links point at this deployment's own address only (src/lib/auth/redirects.ts):
+  // an unset NEXT_PUBLIC_APP_URL used to send relative "/docs/…" lines nobody could open.
+  const message = supportReplyEmail({
+    reply: draft.body as string,
+    sources: sourceLinks(Array.isArray(draft.citations) ? (draft.citations as string[]) : [], appOrigin(process.env.NEXT_PUBLIC_APP_URL)),
+    question: request.message as string,
   });
+  const result = await sendEmail({ to: request.email as string, subject: message.subject, text: message.text, html: message.html });
 
   if (!result.ok) {
+    // Still approved, never sent: the error is stored on the draft and the inbox offers the
+    // send again. Nothing here says it went.
     await db.from("reply_drafts").update({ send_error: result.error }).eq("id", draftId);
     revalidatePath("/inbox");
-    return { error: `Not sent: ${result.error}` };
+    return { error: `Not sent — ${mailProblem(result.error)} It stays approved; send it again when that is fixed. (${result.error})` };
   }
 
   const { error } = await db

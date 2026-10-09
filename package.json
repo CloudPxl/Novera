@@ -44,7 +44,8 @@
     "verify:leases": "node --conditions=react-server --env-file=.env.local scripts/verify-leases.mts",
     "verify:cron": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/verify-cron.mts",
     "verify:free": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/verify-free.mts",
-    "verify:builder": "node --conditions=react-server --env-file=.env.local scripts/verify-builder.mts"
+    "verify:builder": "node --conditions=react-server --env-file=.env.local scripts/verify-builder.mts",
+    "observability:test-event": "node --no-warnings --conditions=react-server --env-file-if-exists=.env.local scripts/observability-test-event.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

@@ -23,6 +23,7 @@ import { connectionFor } from "@/lib/providers/workspace-connections.ts";
 import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { spendModelCall } from "@/lib/workflow/model-budget.ts";
+import { track } from "@/lib/analytics/track.ts";
 
 export interface FormState {
   error?: string;
@@ -153,6 +154,7 @@ export async function savePolicyVersion(_prev: FormState, form: FormData): Promi
   });
 
   if (error) return { error: `Could not save the policy: ${error.message}` };
+  await track("policy_saved", { workspaceId: workspace.id, userId: user.id, properties: { version: (latest?.version ?? 0) + 1 } });
 
   revalidatePath(`/agents/${agentId}`);
   return { notice: `Saved as version ${(latest?.version ?? 0) + 1}.` };

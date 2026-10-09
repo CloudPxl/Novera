@@ -4,6 +4,7 @@ import { plannedRoutes, TRIAL_EXHAUSTED, workspaceEntitlement } from "../auth/en
 import { manifestForNewRun } from "../report/manifest.ts";
 import { startRunExecution } from "./execute-run.ts";
 import { notifyRunFinished } from "../webhooks/deliver.ts";
+import { track } from "../analytics/track.ts";
 
 /**
  * Starting a run, and advancing one — the single implementation behind the run button
@@ -119,6 +120,13 @@ export async function startRun(args: {
   // past the third are refused here even though each passed the check above.
   if (error && /trial_exhausted/.test(error.message)) throw new RunRefusal(TRIAL_EXHAUSTED);
   if (error || !run) throw new Error(`Could not start the run: ${error?.message ?? "no row returned"}`);
+  await track("run_created", {
+    workspaceId, userId: args.userId,
+    properties: {
+      source: args.exploratory ? "builder_scan" : args.scheduleId ? "schedule" : args.apiKeyId ? "api" : args.baselineRunId ? "rerun" : "button",
+      judge_source: entitlement.judgeSource,
+    },
+  });
   return { id: run.id as string };
 }
 
@@ -215,6 +223,7 @@ export async function advanceRun(args: {
       // Finished (or stopped): tell the workspace's webhooks, briefly, within this call.
       await notifyRunFinished(client, workspaceId, runId, Date.now() + 8_000);
     }
+    if (summary.status === "completed") await track("run_completed", { workspaceId, properties: { cases: summary.coverage.planned } });
     return {
       status: summary.status,
       started: true,

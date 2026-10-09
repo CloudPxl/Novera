@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
+import { track } from "@/lib/analytics/track.ts";
 import { classifyAuthError } from "@/lib/auth/errors.ts";
 import { isOAuthProvider, safeNext } from "@/lib/auth/redirects.ts";
 import type { ProblemCode } from "../confirm/problems.ts";
@@ -85,5 +86,6 @@ export async function completeAuth(url: URL, flow: Flow): Promise<NextResponse> 
     return settings(`linked=${provider}`);
   }
 
+  if (flow === "signup") await track("signup_confirmed", { userId: data.user.id, properties: { method: "email" } });
   return to(safeNext(url.searchParams.get("next")));
 }

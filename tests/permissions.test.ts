@@ -10,7 +10,7 @@ const AUDIT: Array<[Capability, string]> = [
   ["scenario.draft", "OAPR"], ["regression.record", "OAPR"], ["scenario.decide", "OAR"], ["scenario.promote", "OAR"],
   ["apikey.manage", "OA"], ["apikey.grant_responses", "OA"], ["webhook.manage", "OA"], ["judgekey.manage", "OA"],
   ["retention.change", "O"], ["report.withdraw", "OA"], ["report.export", "OAPRU"], ["member.invite", "OA"],
-  ["member.manage", "OA"], ["audit.view", "OAU"], ["workspace.erase", "O"],
+  ["member.manage", "OA"], ["audit.view", "OAU"], ["workspace.erase", "O"], ["workspace.export", "OA"],
 ];
 const LETTER: Record<Role, string> = { owner: "O", admin: "A", operator: "P", reviewer: "R", auditor: "U" };
 

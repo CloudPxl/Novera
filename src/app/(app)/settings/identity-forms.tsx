@@ -62,7 +62,7 @@ export function EraseWorkspaceForm({ name, members }: { name: string; members: n
       <p className="text-sm leading-relaxed text-ink-soft">
         Removes every agent, policy, run, verdict, report and report link in <span className="font-medium text-ink">{name}</span>
         {members > 1 ? `, for all ${members} members` : ""}. Links you sent stop working. This cannot be undone; a record
-        that an erasure happened, with no content, is all that remains.
+        that an erasure happened, with no content, is all that remains. If you need a copy, use Export this workspace above first.
       </p>
       <Field label={`Type ${name} to confirm`} htmlFor="erase-confirm">
         <input id="erase-confirm" name="confirmName" required autoComplete="off" className={inputClass} />

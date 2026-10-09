@@ -19,7 +19,8 @@ export type AuditAction =
   | "retention.changed" | "report.withdrawn" | "judgekey.connected" | "judgekey.removed"
   | "memory.created" | "memory.deleted" | "memory.cleared" | "memory.suggestion_accepted" | "memory.suggestion_dismissed"
   | "suite.bulk_approved" | "suite.published" | "suite.gaps_accepted" | "suite.source_fetched"
-  | "identity.linked" | "identity.unlinked" | "agent.environment_changed" | "account.password_set" | "account.password_changed" | "account.signed_out_everywhere";
+  | "identity.linked" | "identity.unlinked" | "agent.environment_changed" | "account.password_set" | "account.password_changed" | "account.signed_out_everywhere"
+  | "workspace.export_requested" | "workspace.exported";
 
 export async function recordAudit(admin: SupabaseClient, event: {
   workspaceId: string | null;
@@ -78,4 +79,6 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   "account.password_set": "added a password",
   "account.password_changed": "changed the account password",
   "account.signed_out_everywhere": "signed out on every device",
+  "workspace.export_requested": "asked for a copy of the workspace's data",
+  "workspace.exported": "downloaded a copy of the workspace's data",
 };

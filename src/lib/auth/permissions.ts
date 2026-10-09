@@ -70,6 +70,8 @@ export const PERMISSIONS = {
   "workspace.erase": ["owner"],
   "workspace.rename": ADMIN,
   "memory.workspace": BUILD,
+  // Starting a checkout, opening the billing portal, scheduling a cancellation (0060).
+  "billing.manage": ADMIN,
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof PERMISSIONS;

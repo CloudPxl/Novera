@@ -19,7 +19,8 @@ export type AuditAction =
   | "retention.changed" | "report.withdrawn" | "judgekey.connected" | "judgekey.removed"
   | "memory.created" | "memory.deleted" | "memory.cleared" | "memory.suggestion_accepted" | "memory.suggestion_dismissed"
   | "suite.bulk_approved" | "suite.published" | "suite.gaps_accepted" | "suite.source_fetched"
-  | "identity.linked" | "identity.unlinked" | "agent.environment_changed" | "account.password_set" | "account.password_changed" | "account.signed_out_everywhere";
+  | "identity.linked" | "identity.unlinked" | "agent.environment_changed" | "account.password_set" | "account.password_changed" | "account.signed_out_everywhere"
+  | "billing.checkout_started" | "billing.portal_opened" | "billing.cancellation_scheduled" | "billing.cancellation_withdrawn";
 
 export async function recordAudit(admin: SupabaseClient, event: {
   workspaceId: string | null;
@@ -78,4 +79,8 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   "account.password_set": "added a password",
   "account.password_changed": "changed the account password",
   "account.signed_out_everywhere": "signed out on every device",
+  "billing.checkout_started": "started a subscription checkout",
+  "billing.portal_opened": "opened the billing portal",
+  "billing.cancellation_scheduled": "asked to cancel the subscription at the end of the period",
+  "billing.cancellation_withdrawn": "withdrew a scheduled cancellation",
 };

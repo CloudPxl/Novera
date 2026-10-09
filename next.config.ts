@@ -25,6 +25,10 @@ const nextConfig: NextConfig = {
   // or loaded from them. Measured missing on production 2026-09-29.
   async headers() {
     return [
+      // The legal pages are drafts for counsel. The page metadata says noindex; the header
+      // says it to crawlers that read only headers. Remove both when a document is signed off.
+      { source: "/legal", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      { source: "/legal/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       {
         source: "/api/:path*",
         headers: [

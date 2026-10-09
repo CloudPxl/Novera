@@ -56,12 +56,25 @@ export function modelsForStoredKey(provider: string, models: string[] | null): s
 export async function connectionsForWorkspace(args: {
   client: SupabaseClient;
   workspaceId: string;
-}): Promise<{
+}): Promise<WorkspaceConnections> {
+  return resolveConnections(await revealSecret({ ...args, scope: "judge_key" }), connectionsFromEnv);
+}
+
+export interface WorkspaceConnections {
   connections: Map<string, Connection>;
   routes: RouteTable;
   source: "trial_free" | "workspace_key";
-}> {
-  const key = await revealSecret({ ...args, scope: "judge_key" });
+}
+
+/**
+ * The decision itself, apart from the database: a stored key yields that key's connection and
+ * route and nothing else — `ours` is not even called — and only no key at all yields ours. Pure,
+ * so the no-fallback rule is tested with mock providers (tests/model-work.test.ts).
+ */
+export function resolveConnections(
+  key: { value: string; provider: string | null; models: string[] | null } | null,
+  ours: () => Map<string, Connection>,
+): WorkspaceConnections {
 
   if (key?.provider) {
     const connection = connectionFor(key.provider, key.value);
@@ -86,5 +99,5 @@ export async function connectionsForWorkspace(args: {
     );
   }
 
-  return { connections: connectionsFromEnv(), routes: DEFAULT_ROUTES, source: "trial_free" };
+  return { connections: ours(), routes: DEFAULT_ROUTES, source: "trial_free" };
 }

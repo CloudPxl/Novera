@@ -13,7 +13,7 @@ import { partsOf } from "@/lib/builder/sources.ts";
 import { buildCoverage, bulkEligible, type CandidateRow, type ObligationRow } from "@/lib/builder/coverage.ts";
 import { documentRoute, providerName } from "@/lib/builder/routing.ts";
 import { ACKNOWLEDGEMENT } from "@/lib/builder/constants.ts";
-import { connectionsFromEnv } from "@/lib/providers/registry.ts";
+import { connectionsForWorkspace } from "@/lib/providers/workspace-connections.ts";
 import { formatWhen } from "@/lib/format/when.ts";
 import type { AgentConfig } from "@/lib/agents/types.ts";
 import type { SuiteCase } from "@/lib/runner/types.ts";
@@ -126,7 +126,12 @@ export default async function BuildPage({ params, searchParams }: {
   const step: Step = (["sources", "review", "coverage", "publish"] as const).find((s) => s === sp.step) ?? (build.status === "published" ? "publish" : "review");
   const view: View = (["decide", "approved", "closed", "all"] as const).find((v) => v === sp.view) ?? "decide";
   const published = build.suites as { id: string; key: string; version: number; cases: SuiteCase[] } | null;
-  const route = documentRoute(new Set(connectionsFromEnv().keys()));
+  // The route extraction will actually take: the workspace's own key when it has one.
+  const reading = await connectionsForWorkspace({ client: admin, workspaceId: workspace.id }).catch(() => null);
+  const route = reading
+    ? documentRoute(new Set(reading.connections.keys()), { routes: reading.routes, owner: reading.source === "workspace_key" ? "customer" : "novera" })
+    : { allowed: [], excluded: [] };
+  const ownKey = reading?.source === "workspace_key";
   const openQuestions = obs.filter((o) => o.status === "open");
   const live = rows.filter((c) => c.status === "draft" || c.status === "needs_review" || c.status === "approved");
 
@@ -231,8 +236,10 @@ export default async function BuildPage({ params, searchParams }: {
                       It is stored with email addresses, phone numbers, card numbers, IBANs and IP addresses already replaced; the file itself is
                       not kept. When you ask Novera to read it, that text goes to{" "}
                       {route.allowed.length ? route.allowed.map((c) => `${providerName(c.connection)} (${c.model})`).join(", then ") : "no configured provider"}
-                      {" "}— providers whose terms allow customer content — and never to{" "}
-                      {[...new Set(route.excluded.map((c) => providerName(c.connection)))].join(" or ") || "a free tier that may train on it"}.
+                      {ownKey
+                        ? <> — on this workspace&rsquo;s own key, under your agreement with that provider; Novera&rsquo;s keys are not used.</>
+                        : <>{" "}— providers whose terms allow customer content — and never to{" "}
+                          {[...new Set(route.excluded.map((c) => providerName(c.connection)))].join(" or ") || "a free tier that may train on it"}.</>}
                       A model only proposes; nothing is tested until you approve it.
                     </p>
                   </div>

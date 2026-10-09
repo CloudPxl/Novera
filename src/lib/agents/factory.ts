@@ -31,9 +31,16 @@ export async function buildAgentAdapter(args: {
 
   const model = config as ModelAgentConfig;
 
-  // A workspace's own key first; the shared trial credential only if it has none.
+  // A workspace's own key, only for the provider it belongs to; the shared trial credential only
+  // for a workspace that has no key at all. A key for one provider was sent to another, and a
+  // workspace with a key silently fell back to ours (app-wide audit, 2026-10-08).
   const own = await revealSecret({ client, workspaceId, scope: "judge_key" });
-  const apiKey = own?.value ?? connectionsFromEnv().get(model.provider)?.apiKey;
+  const ownMatches = own?.provider === model.provider
+    || (model.provider === "openai-compatible" && own?.provider != null && Boolean(model.baseUrl?.includes(own.provider)));
+  if (own && !ownMatches) {
+    throw new Error(`This agent runs on ${model.provider}, but this workspace's own key is for ${own.provider ?? "another provider"}. Novera does not use its own key for a workspace that has one.`);
+  }
+  const apiKey = own ? own.value : connectionsFromEnv().get(model.provider)?.apiKey;
   if (!apiKey) {
     throw new Error(`No credential available for provider "${model.provider}"`);
   }

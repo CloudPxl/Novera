@@ -124,7 +124,7 @@ A location is stated only where Novera's own configuration shows it. The databas
 
 Each model provider Novera uses on its own keys is approved for a kind of data, based on the provider's published terms for the plan used. Every request is classified before it is sent, and a provider that is not approved for what a request contains is not sent it. Groq and Mistral AI may receive personal data. OpenRouter and Google's free tier receive only material Novera wrote itself. The approvals were set from each provider's terms as read on 29 September 2026 and are [TO BE RE-VERIFIED BEFORE PUBLICATION].
 
-At the date of this draft, diagnosis, scenario drafting and Suite Builder extraction use Novera's own providers even when a workspace has connected its own model key. Grading and Ask Novera on such a workspace use only the workspace's key.
+A workspace that has connected its own model key is served on that key alone for grading, diagnosis, scenario drafting, Suite Builder extraction and Ask Novera, with no fallback to Novera's providers (since 2026-10-09). Novera's providers above serve workspaces without their own key, and Novera's own support-reply drafting.
 
 ## Configured by the customer, not engaged by Novera
 

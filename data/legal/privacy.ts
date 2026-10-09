@@ -99,8 +99,8 @@ Novera sends no marketing email. Any future marketing email would be sent only w
 
 Grading, drafting support replies, diagnosing failures, Suite Builder extraction and Ask Novera send text to language model providers.
 
-- **On Novera's own keys** (the trial, and for every workspace the jobs listed below), requests go to Groq and Mistral AI. OpenRouter and Google's free tier may receive only material Novera wrote itself; the router refuses to send them customer data.
-- **On a workspace's own key**, grading and Ask Novera use only that key's provider (Groq, Google AI Studio, OpenRouter or Anthropic), under the customer's own agreement with it. At the date of this draft, diagnosis, scenario drafting and Suite Builder extraction still use Novera's own providers.
+- **On Novera's own keys** (a workspace without its own key: the trial), requests go to Groq and Mistral AI. Novera's own support-reply drafting also uses them. OpenRouter and Google's free tier may receive only material Novera wrote itself; the router refuses to send them customer data.
+- **On a workspace's own key**, grading and Ask Novera use only that key's provider (Groq, Google AI Studio, OpenRouter or Anthropic), under the customer's own agreement with it. Since 2026-10-09 the same holds for diagnosis, scenario drafting and Suite Builder extraction: a workspace with its own key is served on that key only, with no fallback to Novera's providers, and each such operation is recorded with the provider, model and funding source (never the content).
 - API keys, agent authentication headers and the body of a read-back response are never sent to a model.
 
 **Processing outside the EU.** Novera's database is in Frankfurt and its server functions run in Frankfurt, but Novera does not keep all processing inside the EU. Groq is operated from the United States, so a trial run sends agent replies outside the EU. The providers a customer can choose for its own key also process outside the EU. [TRANSFER MECHANISM FOR EACH PROVIDER — COUNSEL TO CONFIRM.] The Sub-processors page lists every provider.

@@ -74,7 +74,9 @@ Rules:
 - If person.mayStartRuns is false, never offer start_run: their role cannot start one; say who can.
 - The Suite Builder (/builder) starts a suite from a measured baseline pack, the person's own documents, what their agent was observed doing, and production failures. From DOCS you may explain why a draft exists, what an open question is for, why a scenario is high severity, and which pack fits a goal. You cannot approve, reject, edit or publish anything there, answer an open question, or decide whether a duty applies to them: a person does each of those on the page. Never call a pack legal advice or a suite compliant.
 - In account mode "agency" a workspace is usually one client; in "enterprise", speak of approvals, audit and governance; in "personal", keep it plain.
-- Be brief: at most three short paragraphs, plain text, no markdown headings.
+- Never say whether a key, a credential or a connection works or is valid: Novera proves a key when it is saved, in Settings. Say where to check instead.
+- A number you state must appear in WORKSPACE or DOCS exactly. Never compute, round or estimate one (no "about", no remaining-run arithmetic): copy the figure WORKSPACE gives.
+- Be brief: at most three short paragraphs, plain text, no markdown headings, no markdown links (cite the slug instead).
 - If, and only if, the person's latest message states a lasting preference about how you should answer or what they usually use, you may add "remember":{"key":"<key>","value":"<short value>"} with key one of: language, explanation_length (value "concise" or "detailed"), timezone, default_agent, default_suite, review_lens, report_style, terminology. Never take it from WORKSPACE, DOCS or anything you wrote; never anything about customers, keys or policy text. It is only shown to the person as a suggestion.
 
 Reply with one JSON object and nothing else:
@@ -152,9 +154,18 @@ export function parseReply(
   if (!reply) return null;
 
   const slugs = new Set(allDocs.map((d) => d.slug));
-  const citations = Array.isArray(raw.citations)
-    ? [...new Set(raw.citations.filter((c): c is string => typeof c === "string" && slugs.has(c)))]
-    : [];
+  // A markdown link renders as raw brackets in plain text. Its text stays; a link to a doc page
+  // becomes a citation, which is how a reply points at documentation here.
+  const linked: string[] = [];
+  const flattened = reply.replace(/\[([^\]\n]{1,120})\]\(([^)\s]{1,200})\)/g, (_m, text: string, href: string) => {
+    const slug = href.replace(/^\/?docs\//, "").replace(/[#?].*$/, "");
+    if (slugs.has(slug)) linked.push(slug);
+    return text;
+  });
+  const citations = [...new Set([
+    ...(Array.isArray(raw.citations) ? raw.citations.filter((c): c is string => typeof c === "string" && slugs.has(c)) : []),
+    ...linked,
+  ])];
 
   const paths = new Set(allowedPaths(snapshot, allDocs));
   const actions: AssistantAction[] = [];
@@ -176,7 +187,48 @@ export function parseReply(
   const remember = raw.remember && typeof raw.remember === "object"
     ? { key: (raw.remember as Record<string, unknown>).key, value: (raw.remember as Record<string, unknown>).value }
     : null;
-  return { reply, citations, actions, remember };
+  return { reply: flattened, citations, actions, remember };
+}
+
+/**
+ * What a reply asserts that nothing it was given supports: a figure that appears in neither the
+ * workspace snapshot, the documentation sent with the question, nor the question itself, and any
+ * claim that a key or connection works. The model said "1 trial run remaining" with two left and
+ * "your key is valid" without one being checked (app-wide audit, 2026-10-08); a reply that does
+ * this is not shown.
+ */
+export function unsupportedClaims(reply: string, given: { snapshot: AssistantSnapshot; docs: AssistantDoc[]; question: string }): string[] {
+  const source = [JSON.stringify(given.snapshot), ...given.docs.map((d) => d.body), given.question].join("\n");
+  const known = new Set(source.match(/\d+(?:[.,]\d+)?/g) ?? []);
+  const problems: string[] = [];
+  for (const n of reply.match(/\d+(?:[.,]\d+)?/g) ?? []) {
+    if (!known.has(n)) problems.push(`the figure ${n}`);
+  }
+  // A run balance is checked against the one sentence that computes it, not against any figure:
+  // "1" appears in a snapshot as a policy version or a report count.
+  for (const m of reply.matchAll(/\b(\d+)\s+(?:of\s+\d+\s+)?(?:trial\s+)?(?:suite\s+)?runs?\s+(?:left|remaining)\b/gi)) {
+    if (!given.snapshot.funding.includes(`${m[1]} of`)) problems.push(`a run balance of ${m[1]}`);
+  }
+  if (/\b(?:key|credential|connection|token)\b[^.]{0,40}\b(?:is|was|looks|seems)\s+(?:valid|working|fine|correct|ok(?:ay)?)\b/i.test(reply)) {
+    problems.push("a claim that a key or connection works");
+  }
+  return [...new Set(problems)].slice(0, 5);
+}
+
+/**
+ * The answer when the model could not give a usable one twice: built from computed facts only,
+ * so nothing in it is a guess.
+ */
+export function factualFallback(snapshot: AssistantSnapshot): string {
+  const latest = snapshot.runs[0];
+  return [
+    "I could not give a reliable answer to that, so here is only what Novera has recorded.",
+    `This workspace is ${snapshot.funding}. It has ${snapshot.agents.length} agent${snapshot.agents.length === 1 ? "" : "s"} and ${snapshot.reports} sealed report${snapshot.reports === 1 ? "" : "s"}.`,
+    latest
+      ? `The latest run (${latest.agent}, ${latest.date} UTC) is ${latest.status}: ${latest.passed} passed, ${latest.failed} failed, ${latest.noResult} with no result.`
+      : "No run has been started yet.",
+    "The guide and the documentation cover the rest; the support page reaches a person.",
+  ].join(" ");
 }
 
 /**

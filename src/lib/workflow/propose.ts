@@ -1,9 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { diagnoseFailure } from "../diagnose/index.ts";
-import { createRoutedChat } from "../router/execute.ts";
-import { DEFAULT_ROUTES } from "../router/routes.ts";
-import { connectionsFromEnv } from "../providers/registry.ts";
+import { recordModelOperation, workspaceChat, type Funding, type WorkspaceChat } from "../providers/model-work.ts";
 import { compileScenarios } from "../scenarios/compile.ts";
 import { coveredBehaviours } from "../scenarios/promote.ts";
 import type { SuiteCase } from "../runner/types.ts";
@@ -28,12 +26,23 @@ export interface Requester {
 
 export type Proposed<T> = { ok: true; value: T } | { ok: false; error: string };
 
+/** The operation's row in `model_operations`: what answered, who paid, whether it was usable. */
+async function settle(db: SupabaseClient, work: WorkspaceChat, operation: "diagnose" | "draft", workspaceId: string, by: Requester, usable: boolean, detail?: string | null) {
+  await recordModelOperation(db, {
+    workspaceId, operation, funding: work.funding,
+    outcome: usable ? "ok" : work.calls.some((c) => c.served_by) ? "no_usable_output" : "error",
+    calls: work.calls, detail: usable ? null : detail ?? null, requestedBy: by.userId, apiKeyId: by.apiKeyId ?? null,
+  });
+}
+
 export interface DraftedScenarios {
   policyVersion: number;
   drafts: Array<{ id: string; scenarioId: string; input: string; quote: string; riskLevel: string }>;
   /** Drafts the model produced that did not hold up and were not stored. */
   refused: number;
   servedBy: string | null;
+  /** Whose key the model ran on: the workspace's own, or the trial allowance. */
+  funding: Funding;
 }
 
 export async function draftScenariosFromPolicy(args: {
@@ -65,13 +74,17 @@ export async function draftScenariosFromPolicy(args: {
     .map((row) => row.scenario as SuiteCase)
     .filter((c): c is SuiteCase => Boolean(c?.id));
 
+  // The workspace's own key when it has one, with no fallback to ours.
+  const work = await workspaceChat({ client: db, workspaceId });
+  if ("error" in work) return { ok: false, error: work.error };
   const outcome = await compileScenarios({
-    chat: createRoutedChat({ connections: connectionsFromEnv(), routes: DEFAULT_ROUTES }),
+    chat: work.chat,
     policyBody: policy.body as string,
     existing: coveredBehaviours(existingCases),
     wanted: args.wanted,
     usedIds: existingCases.map((c) => c.id),
   });
+  await settle(db, work, "draft", workspaceId, args.by, Boolean(outcome.ok && outcome.parsed), outcome.error);
   if (!outcome.ok || !outcome.parsed) return { ok: false, error: outcome.error ?? "No usable scenarios came back." };
 
   const servedBy = outcome.servedBy ? `${outcome.servedBy.connection}/${outcome.servedBy.model}` : null;
@@ -106,6 +119,7 @@ export async function draftScenariosFromPolicy(args: {
       })),
       refused: outcome.parsed.refused.length,
       servedBy,
+      funding: work.funding,
     },
   };
 }
@@ -119,6 +133,7 @@ export interface ProposedDiagnosis {
   proposedNew: string | null;
   risks: unknown;
   servedBy: string | null;
+  funding: Funding;
 }
 
 /**
@@ -164,8 +179,10 @@ export async function diagnoseRunCase(args: {
     : { data: null };
   if (!policy) return { ok: false, error: "The policy this run used could not be loaded." };
 
+  const work = await workspaceChat({ client: db, workspaceId });
+  if ("error" in work) return { ok: false, error: work.error };
   const outcome = await diagnoseFailure({
-    chat: createRoutedChat({ connections: connectionsFromEnv(), routes: DEFAULT_ROUTES }),
+    chat: work.chat,
     policyBody: policy.body as string,
     failure: {
       caseId: runCase.case_id as string,
@@ -178,6 +195,7 @@ export async function diagnoseRunCase(args: {
       rationale: (runCase.rationale as string | null) ?? null,
     },
   });
+  await settle(db, work, "diagnose", workspaceId, args.by, Boolean(outcome.ok && outcome.change), outcome.error);
   if (!outcome.ok || !outcome.change) return { ok: false, error: outcome.error ?? "No usable proposal came back." };
 
   const { data: saved, error: insertError } = await db.from("diagnoses").insert({
@@ -204,6 +222,7 @@ export async function diagnoseRunCase(args: {
       proposedNew: outcome.change.proposedNew ?? null,
       risks: outcome.change.risks ?? null,
       servedBy: outcome.servedBy ? `${outcome.servedBy.connection}/${outcome.servedBy.model}` : null,
+      funding: work.funding,
     },
   };
 }

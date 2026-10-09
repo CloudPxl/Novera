@@ -420,6 +420,11 @@ const MAX_MODEL_LENGTH = 120;
  */
 export async function saveJudgeKey(_prev: FormState, form: FormData): Promise<FormState> {
   const { user, workspace } = await requireWorkspace();
+  // The role first: before 2026-10-09 the key was tried against the provider before anyone
+  // checked who asked, so any member could use Novera to test whether a key works.
+  const gated = await gate(user.id, workspace.id, "judgekey.manage");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
   const provider = String(form.get("provider") ?? "");
   const apiKey = String(form.get("apiKey") ?? "").trim();
 
@@ -452,7 +457,10 @@ export async function saveJudgeKey(_prev: FormState, form: FormData): Promise<Fo
         {
           model,
           messages: [{ role: "user", content: "Reply with the single word: ok" }],
-          maxTokens: 16,
+          // Room for a reasoning model to think before it answers: at 16 tokens gpt-oss-20b —
+          // the first model of our own grading route — spent them all reasoning and every key
+          // naming it was refused as "empty completion" (2026-10-09).
+          maxTokens: 512,
           temperature: 0,
         },
         apiKey,
@@ -461,10 +469,6 @@ export async function saveJudgeKey(_prev: FormState, form: FormData): Promise<Fo
       return { error: explainKeyFailure(provider, model, error) };
     }
   }
-
-  const gated = await gate(user.id, workspace.id, "judgekey.manage");
-  if ("error" in gated) return { error: gated.error };
-  const admin = gated.admin;
 
   const { data: superseded } = await admin
     .from("secrets").select("id").eq("workspace_id", workspace.id).eq("scope", "judge_key");

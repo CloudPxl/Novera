@@ -10,7 +10,7 @@ Running a suite sends each scenario's prompt to the agent endpoint you configure
 
 On the trial allowance, grading uses our own keys: Groq, which is operated from the United States, and Mistral, which is operated from France. So a trial run sends your agent's replies outside the EU.
 
-On your own key, grading uses only that key, and where it is processed is a question about the provider you chose. Novera supports keys from Groq, Google AI Studio, OpenRouter and Anthropic; of those, all currently process outside the EU.
+On your own key, everything Novera asks a model for your workspace uses only that key — grading, "Why did this fail?", drafting scenarios from a policy, reading a Suite Builder source and Ask Novera — and where it is processed is a question about the provider you chose. If your key fails or is rate-limited, the operation fails and says so; it never switches to our keys. Each of these operations is recorded with the provider, the model and who funded it, never its content. Novera supports keys from Groq, Google AI Studio, OpenRouter and Anthropic; of those, all currently process outside the EU.
 
 Every report names the models that graded each scenario, so the document itself records where the evidence was produced rather than leaving you to ask.
 

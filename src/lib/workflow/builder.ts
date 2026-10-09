@@ -4,10 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import type { Capability } from "@/lib/auth/permissions.ts";
-import { createRoutedChat } from "@/lib/router/execute.ts";
-import { DEFAULT_ROUTES } from "@/lib/router/routes.ts";
-import { connectionsFromEnv } from "@/lib/providers/registry.ts";
 import * as builder from "@/lib/builder/service.ts";
+import { fundingLabel, recordModelOperation, workspaceChat } from "@/lib/providers/model-work.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
 import { spendModelCall } from "@/lib/workflow/model-budget.ts";
 
@@ -71,12 +69,19 @@ export async function extractAction(_prev: FormState, form: FormData): Promise<F
   if ("error" in c) return { error: c.error };
   const overBudget = await spendModelCall(c.ctx.workspaceId);
   if (overBudget) return { error: overBudget };
-  const chat = createRoutedChat({ connections: connectionsFromEnv(), routes: DEFAULT_ROUTES });
-  const result = await builder.extractFromSource(c.ctx, { sourceId: text(form, "sourceId"), chat });
+  // The workspace's own key when it has one, with no fallback to ours (model-work.ts).
+  const work = await workspaceChat({ client: c.ctx.db, workspaceId: c.ctx.workspaceId });
+  if ("error" in work) return { error: work.error };
+  const result = await builder.extractFromSource(c.ctx, { sourceId: text(form, "sourceId"), chat: work.chat });
+  await recordModelOperation(c.ctx.db, {
+    workspaceId: c.ctx.workspaceId, operation: "extract", funding: work.funding,
+    outcome: result.ok ? "ok" : work.calls.some((x) => x.served_by) ? "no_usable_output" : work.calls.length ? "error" : "refused",
+    calls: work.calls, detail: result.ok ? null : result.error, requestedBy: c.ctx.userId,
+  });
   revalidatePath(`/builder/${text(form, "buildId")}`);
   if (!result.ok) return { error: result.error };
   return {
-    notice: `Part ${result.part} of ${result.parts} read by ${result.servedBy ?? "a model"}: ${result.obligations} obligation(s), `
+    notice: `Part ${result.part} of ${result.parts} read by ${result.servedBy ?? "a model"} on ${fundingLabel(work.funding)}: ${result.obligations} obligation(s), `
       + `${result.questions} open question(s), ${result.scenarios} draft scenario(s)`
       + `${result.flagged ? `, ${result.flagged} passage(s) flagged as instruction-shaped` : ""}.`
       + (result.refused.length ? ` ${result.refused.length} dropped because they did not hold up — ${result.refused.slice(0, 2).join(" ")}` : ""),

@@ -8,10 +8,9 @@ import { recordAudit } from "@/lib/audit/record.ts";
 import { MEMORY_LABEL, memoryForPrompt, suggestionFromPerson, type MemoryKey, type SafeMemory } from "./memory.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
-import { connectionsForWorkspace } from "@/lib/providers/workspace-connections.ts";
-import { createRoutedChat } from "@/lib/router/execute.ts";
 import { extractJsonObject } from "@/lib/judge/parse.ts";
 import { rateLimit } from "@/lib/support/rate-limit.ts";
+import { fundingLabel, recordModelOperation, workspaceChat } from "@/lib/providers/model-work.ts";
 import {
   ASSISTANT_SYSTEM,
   HISTORY_TURNS,
@@ -21,6 +20,8 @@ import {
   buildMessages,
   parseReply,
   pickDocs,
+  unsupportedClaims,
+  factualFallback,
   type AssistantAction,
   type AssistantDoc,
   type AssistantSnapshot,
@@ -164,35 +165,39 @@ export async function askAssistant(threadId: string | null, message: string): Pr
 
   const allDocs = (pages ?? []) as AssistantDoc[];
 
-  let chat;
-  let fundedBy: string;
-  try {
-    // The same resolution a run uses: a workspace with its own key is answered on that
-    // key alone; otherwise on the trial allowance's free-tier keys.
-    const { connections, routes, source } = await connectionsForWorkspace({ client: admin, workspaceId: workspace.id });
-    chat = createRoutedChat({ connections, routes });
-    fundedBy = source === "workspace_key" ? "your own key" : "the Novera trial allowance";
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "No model is available to answer right now." };
-  }
+  // The same resolution a run uses: a workspace with its own key is answered on that key
+  // alone; otherwise on the trial allowance's free-tier keys (src/lib/providers/model-work.ts).
+  const work = await workspaceChat({ client: admin, workspaceId: workspace.id });
+  if ("error" in work) return { error: work.error };
+  const fundedBy = fundingLabel(work.funding);
 
-  const [first, ...rest] = buildMessages({
-    snapshot, docs: pickDocs(question, allDocs), allDocs, history: turns, message: question, preferences,
-  });
+  const docs = pickDocs(question, allDocs);
+  const messages = buildMessages({ snapshot, docs, allDocs, history: turns, message: question, preferences });
+  let outcome: "ok" | "no_usable_output" | "error" = "ok";
+  let problemNote: string | null = null;
 
   try {
-    const response = await chat("draft", {
-      system: ASSISTANT_SYSTEM,
-      messages: [first, ...rest],
-      maxTokens: 700,
-      temperature: 0,
-    }, { data: "redacted_customer" });
-    const parsed = parseReply(
-      extractJsonObject(response.text) as Record<string, unknown> | null,
-      snapshot,
-      allDocs,
-    );
-    if (!parsed) return { error: "The answer came back unreadable. Ask again, or use the guide.", fundedBy };
+    // Asked once; asked again, once, with what was wrong, when the answer was unreadable or
+    // stated something nothing it was given supports; then a reply built from computed facts.
+    let parsed: ReturnType<typeof parseReply> = null;
+    let model: string | null = null;
+    for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
+      const response = await work.chat("draft", {
+        system: ASSISTANT_SYSTEM,
+        messages: attempt === 0 ? messages : [...messages, { role: "user", content: `Your previous answer could not be shown: ${problemNote}. Answer the same question again as one JSON object, using only figures that appear in WORKSPACE or DOCS.` }],
+        maxTokens: 700,
+        temperature: 0,
+      }, { data: "redacted_customer" });
+      model = response.model ?? null;
+      const candidate = parseReply(extractJsonObject(response.text) as Record<string, unknown> | null, snapshot, allDocs);
+      const unsupported = candidate ? unsupportedClaims(candidate.reply, { snapshot, docs, question }) : [];
+      if (candidate && unsupported.length === 0) parsed = candidate;
+      else problemNote = candidate ? `it stated ${unsupported.join(" and ")}, which WORKSPACE and DOCS do not contain` : "it was not a readable JSON object";
+    }
+    if (!parsed) {
+      outcome = "no_usable_output";
+      parsed = { reply: factualFallback(snapshot), citations: [], actions: [], remember: null };
+    }
 
     // Stored only once there is an answer to store with it.
     if (!thread) {
@@ -202,7 +207,7 @@ export async function askAssistant(threadId: string | null, message: string): Pr
       thread = created as { id: string };
     }
     const { data: stored, error: storeError } = await admin.from("assistant_messages")
-      .insert(messageRows(thread.id, question, { reply: parsed.reply, citations: parsed.citations, fundedBy, model: response.model ?? null }))
+      .insert(messageRows(thread.id, question, { reply: parsed.reply, citations: parsed.citations, fundedBy, model }))
       .select("id, role");
     if (storeError) return { error: "The conversation could not be saved. Try again.", fundedBy };
     await admin.from("assistant_threads").update({ last_message_at: new Date().toISOString() }).eq("id", thread.id);
@@ -222,6 +227,7 @@ export async function askAssistant(threadId: string | null, message: string): Pr
     void _unused;
     return { ...shown, fundedBy, threadId: thread.id, suggestion };
   } catch (e) {
+    outcome = "error";
     const detail = e instanceof Error ? e.message : String(e);
     return {
       error: /429|rate/i.test(detail)
@@ -229,6 +235,13 @@ export async function askAssistant(threadId: string | null, message: string): Pr
         : "No model could answer right now. Try again shortly, or use the guide.",
       fundedBy,
     };
+  } finally {
+    // What answered, who paid, and whether the answer was usable: the unreadable rate is
+    // counted from these rows, not estimated.
+    await recordModelOperation(admin, {
+      workspaceId: workspace.id, operation: "assistant", funding: work.funding, outcome,
+      calls: work.calls, detail: outcome === "ok" ? null : problemNote, requestedBy: user.id,
+    });
   }
 }
 

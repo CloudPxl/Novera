@@ -6,7 +6,7 @@ import { Field, inputClass } from "@/components/ui/primitives.tsx";
 import type { FormState } from "@/lib/workflow/actions.ts";
 import { submitProductionFailure } from "@/lib/workflow/scenarios.ts";
 import { OBLIGATION_LABELS } from "@/lib/report/payload.ts";
-import { redact, NOT_DETECTED } from "@/lib/redact/pii.ts";
+import { redactFields, NOT_DETECTED } from "@/lib/redact/pii.ts";
 import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 
 /**
@@ -21,11 +21,10 @@ export function FailureForm({ agents }: { agents: Array<{ id: string; name: stri
   const [message, setMessage] = useState("");
   const [reply, setReply] = useState("");
   const preview = useMemo(() => {
-    const m = redact(message);
-    const r = redact(reply);
-    const counts: Record<string, number> = {};
-    for (const c of [m.counts, r.counts]) for (const [k, n] of Object.entries(c)) counts[k] = (counts[k] ?? 0) + (n ?? 0);
-    return { message: m.text, reply: r.text, counts };
+    // The order the server stores them in (src/lib/regressions/record.ts), so the preview's
+    // placeholders are the stored ones.
+    const r = redactFields({ customer_message: message, agent_reply: reply });
+    return { message: r.fields.customer_message, reply: r.fields.agent_reply, counts: r.counts as Record<string, number> };
   }, [message, reply]);
   const removed = Object.entries(preview.counts);
 

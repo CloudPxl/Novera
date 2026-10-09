@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { redact, NOT_DETECTED, REDACTION_POLICY_VERSION, type PiiKind } from "./pii.ts";
+import { redactFields, NOT_DETECTED, REDACTION_POLICY_VERSION, type PiiKind } from "./pii.ts";
 
 /**
  * Redaction for storage: the redacted fields, and a record of what was done that names
@@ -25,14 +25,8 @@ export function redactForStorage(fields: Record<string, string>): {
   fields: Record<string, string>;
   record: RedactionRecord;
 } {
-  const out: Record<string, string> = {};
-  const counts: Partial<Record<PiiKind, number>> = {};
-  // Placeholders are numbered per field; the counts are summed across them.
-  for (const [name, value] of Object.entries(fields)) {
-    const r = redact(value);
-    out[name] = r.text;
-    for (const [k, n] of Object.entries(r.counts)) counts[k as PiiKind] = (counts[k as PiiKind] ?? 0) + (n ?? 0);
-  }
+  // One numbering across the record's fields: the same address is the same placeholder.
+  const { fields: out, counts } = redactFields(fields);
   const canonical = (o: Record<string, string>) => JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k]]));
   return {
     fields: out,

@@ -1,5 +1,6 @@
 "use server";
 
+import { redact } from "@/lib/redact/pii.ts";
 import { revalidatePath } from "next/cache";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { requireStaff } from "@/lib/auth/staff.ts";
@@ -45,7 +46,11 @@ function readContact(form: FormData): { email: string; message: string; organisa
   // this one was free, which is all an abusive payload needs.
   if (organisation.length > ORGANISATION_MAX) return "Shorten the organisation name a little.";
 
-  return { email, message, organisation: organisation || null };
+  // A key, a card number or an IBAN pasted into a question is not kept: the inbox shows the
+  // message to staff and a model drafts from it. Addresses and phone numbers stay, since a person
+  // replying may need them (app-wide audit, 2026-10-08: stored verbatim before).
+  const scrubbed = redact(message, { only: ["SECRET", "CARD", "IBAN"] }).text;
+  return { email, message: scrubbed, organisation: organisation || null };
 }
 
 /**

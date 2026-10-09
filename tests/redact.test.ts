@@ -75,3 +75,22 @@ test("bounding the patterns still finds what they found", () => {
   assert.equal(redact("a.b@c.io, ops@sub.domain.example").counts.EMAIL, 2);
   assert.equal(redact("not.an.email@nodot").counts.EMAIL ?? 0, 0);
 });
+
+test("a record's fields share one numbering, so the same address is the same placeholder", async () => {
+  const { redactFields } = await import("../src/lib/redact/pii.ts");
+  const r = redactFields({
+    customer_message: "I'm old@example.com, change my account email to new@example.org",
+    agent_reply: "Done. Your email is now new@example.org",
+  });
+  assert.equal(r.fields.customer_message, "I'm [EMAIL_1], change my account email to [EMAIL_2]");
+  assert.equal(r.fields.agent_reply, "Done. Your email is now [EMAIL_2]", "the agent set the new address, and the record still says so");
+  assert.equal(r.counts.EMAIL, 2, "two addresses, counted once each");
+});
+
+test("Novera's own keys and common platform tokens are redacted as secrets", async () => {
+  const { redact } = await import("../src/lib/redact/pii.ts");
+  for (const s of ["nvk_Abc123def456ghi", "whsec_4f2c1aDEADbeef99", "ghp_abcdefghijklmnop1234", "AKIAABCDEFGHIJKLMNOP"]) {
+    assert.equal(redact(`key: ${s}`).text, "key: [SECRET_1]", s);
+  }
+  assert.equal(redact("card 4111 1111 1111 1111, mail a@b.eu", { only: ["SECRET", "CARD", "IBAN"] }).text, "card [CARD_1], mail a@b.eu", "the support form keeps addresses");
+});

@@ -221,6 +221,13 @@ try {
     admin.from("assistant_memory").select("id").eq("user_id", rev.id),
   ]);
   check(!revErase && !(m1 ?? []).length && !(m2 ?? []).length && !(m3 ?? []).length, "erasing an account removes memberships, profile and memory", JSON.stringify(revResult));
+  // 0058: the invitation they accepted kept their address and showed it on Members.
+  const [{ data: byAddress }, { data: accepted }] = await Promise.all([
+    admin.from("workspace_invitations").select("id").eq("email", rev.email.toLowerCase()),
+    admin.from("workspace_invitations").select("email").eq("accepted_by", rev.id),
+  ]);
+  check(!(byAddress ?? []).length && (accepted ?? []).length > 0 && (accepted ?? []).every((i) => i.email === `deleted-${rev.id}@deleted.invalid`),
+    "no invitation keeps an erased account's address; the one they accepted names the pseudonym", JSON.stringify(revResult));
   const { error: eraseA } = await admin.rpc("erase_workspace", { target: A, requested_by: owner.id });
   const [{ data: inv }, { data: ev }, { data: mem }] = await Promise.all([
     admin.from("workspace_invitations").select("id").eq("workspace_id", A),

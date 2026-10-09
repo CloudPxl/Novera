@@ -191,6 +191,13 @@ const SECRET_SHAPES: RegExp[] = [
   /\bBearer\s+[A-Za-z0-9._-]{12,}/i,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+  // Novera's own: a workspace API key and a webhook signing secret (both reached the model
+  // before 2026-10-08, the app-wide audit), and other platforms' tokens a person may paste.
+  /\bnvk_[A-Za-z0-9_-]{8,}/,
+  /\bwhsec_[A-Za-z0-9_-]{8,}/,
+  /\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{16,}/,
+  /\bAKIA[0-9A-Z]{16}\b/,
+  /\bxox[abposr]-[A-Za-z0-9-]{10,}/,
 ];
 
 export function looksLikeSecret(text: string): boolean {

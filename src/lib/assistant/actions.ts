@@ -92,7 +92,9 @@ export async function askAssistant(threadId: string | null, message: string): Pr
   }
   const { data: earlier } = thread
     ? await admin.from("assistant_messages").select("role, content").eq("thread_id", thread.id)
-      .order("created_at", { ascending: false }).limit(HISTORY_TURNS)
+      // Rows stored before the answer was stamped after its question share one time; the
+      // answer is the later of the two.
+      .order("created_at", { ascending: false }).order("role", { ascending: true }).limit(HISTORY_TURNS)
     : { data: [] };
   const turns: AssistantTurn[] = ((earlier ?? []) as AssistantTurn[]).reverse();
 
@@ -252,7 +254,7 @@ export async function loadThread(threadId: string): Promise<Array<{ role: "user"
     .eq("id", threadId).eq("user_id", user.id).eq("workspace_id", workspace.id).maybeSingle();
   if (!thread) return [];
   const { data } = await admin.from("assistant_messages").select("role, content, citations, funded_by")
-    .eq("thread_id", threadId).order("created_at");
+    .eq("thread_id", threadId).order("created_at").order("role", { ascending: false });
   return (data ?? []).map((m) => ({ role: m.role as "user" | "assistant", content: m.content as string, citations: (m.citations as string[]) ?? [], fundedBy: (m.funded_by as string | null) ?? null }));
 }
 

@@ -29,7 +29,10 @@ export async function saveMemory(admin: SupabaseClient, m: {
     user_id: m.userId, workspace_id: m.workspaceId, key: m.key, value: check.value, source: m.source,
     source_message_id: m.sourceMessageId ?? null, expires_at: m.expiresAt ?? null,
   }).select("id").single();
-  if (error || !data) return { error: `Could not save that: ${error?.message ?? "no row"}` };
+  // The database refuses key-, link- and instruction-shaped values as well (0054); its
+  // constraint name means nothing to a person.
+  if (error?.code === "23514") return { error: "That looks like a key, a link or an instruction. Ask Novera does not store those." };
+  if (error || !data) return { error: "Could not save that just now. Try again in a minute." };
   await recordAudit(admin, {
     workspaceId: m.workspaceId, actorId: m.userId, action: "memory.created",
     detail: { key: m.key, scope: m.workspaceId ? "workspace" : "personal", source: m.source },

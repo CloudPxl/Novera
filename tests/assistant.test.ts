@@ -77,7 +77,9 @@ test("markdown emphasis is removed from a plain-text reply, and nothing else is"
 
 test("key-shaped text is recognised before it can be sent to a model", async () => {
   const { looksLikeSecret } = await import("../src/lib/assistant/core.ts");
-  for (const s of ["change it to sk-test-123abc", "gsk_ABCDEFGHIJ", "sk-or-v1-abcdef123", "AIzaSyA1234567890abcdef", "Bearer abcdefghijklmnop"]) {
+  for (const s of ["change it to sk-test-123abc", "gsk_ABCDEFGHIJ", "sk-or-v1-abcdef123", "AIzaSyA1234567890abcdef", "Bearer abcdefghijklmnop",
+    // Novera's own, which reached the model before 2026-10-08, and other platforms' tokens.
+    "here is my key nvk_Abc123def456ghi", "whsec_4f2c1aDEADbeef99", "ghp_abcdefghijklmnop1234", "AKIAABCDEFGHIJKLMNOP", "xoxb-1234567890-abcdef"]) {
     assert.ok(looksLikeSecret(s), s);
   }
   for (const s of ["What is a scenario?", "My run on skeleton-bot failed", "desk-top agent"]) {
@@ -105,4 +107,5 @@ test("a question and its answer are stored as rows with the same columns (PostgR
   assert.deepEqual(Object.keys(q).sort(), Object.keys(a).sort());
   assert.deepEqual(q.citations, [], "citations is NOT NULL: the question row carries an empty list");
   assert.equal(q.role, "user"); assert.equal(a.role, "assistant");
+  assert.ok(Date.parse(a.created_at) > Date.parse(q.created_at), "the answer is later than its question, so history never reads them the other way round");
 });

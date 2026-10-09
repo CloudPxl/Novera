@@ -1,5 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { RECOVERY_COOKIE, RECOVERY_COOKIE_OPTIONS, recoverySecret, sealRecovery } from "@/lib/auth/recovery.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
@@ -69,7 +71,13 @@ export async function completeAuth(url: URL, flow: Flow): Promise<NextResponse> 
     return problem("oauth_failed");
   }
 
-  if (flow === "recovery") return to("/reset-password");
+  if (flow === "recovery") {
+    // Spent with the PKCE verifier this browser holds: the link it asked for itself.
+    (await cookies()).set(RECOVERY_COOKIE, sealRecovery({ userId: data.user.id, issuedAt: Date.now(), bound: true }, recoverySecret()), {
+      ...RECOVERY_COOKIE_OPTIONS, secure: process.env.NODE_ENV === "production",
+    });
+    return to("/reset-password");
+  }
 
   if (flow === "link") {
     const provider = url.searchParams.get("provider");

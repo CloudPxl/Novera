@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { safeNext } from "./redirects.ts";
 import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -72,7 +73,11 @@ export const currentUser = cache(async (): Promise<User | null> => {
 
 export async function requireUser(): Promise<User> {
   const user = await currentUser();
-  if (!user) redirect("/sign-in");
+  if (!user) {
+    // Back to where they were going once signed in, when it is a page we send people to.
+    const wanted = safeNext((await headers()).get("x-novera-path"), "");
+    redirect(wanted && wanted !== "/dashboard" ? `/sign-in?next=${encodeURIComponent(wanted)}` : "/sign-in");
+  }
   return user;
 }
 

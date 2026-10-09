@@ -3984,3 +3984,7 @@ An app-wide audit (security, the evaluation loop, platform features, every page 
 - **Next 16.3.6 carried six high advisories** (`ee1f6ec`): 16.4.0, sharp 0.35.5; production dependencies audit at 0.
 
 The full findings, with what remains, are in `docs/audits/2026-10-08-full-app-audit.md`.
+
+## 2026-10-09 — Launch program, milestone 1: sign-in links bound to the browser that asked
+
+A `token_hash` link no longer signs a browser in: a confirmation confirms the address and starts no session (verified on a cookie-less client), magic-link and invite types are refused, and a reset needs a fifteen-minute, single-use recovery context set only where a recovery link is spent — an unbound one signs the browser out once the password is set. Sign-in returns to the page that asked (`safeNext` now covers the operator sections), and an invitation survives sign-in and lands invitees on the team's dashboard. Proven live on the local stack: 7/7 attacker-link, reset and invitation checks plus the PKCE reset via mailpit; 666 tests.

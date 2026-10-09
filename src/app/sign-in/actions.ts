@@ -1,6 +1,7 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { openRecovery, RECOVERY_COOKIE, recoverySecret } from "@/lib/auth/recovery.ts";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { sessionClient } from "@/lib/supabase/server.ts";
@@ -129,6 +130,12 @@ async function signIn(_prev: AuthState, form: FormData): Promise<AuthState> {
 const NEUTRAL_SIGNUP =
   "If that address is new, a confirmation link has been handed to our email provider. If you already have an account, no email is sent — sign in instead.";
 
+/** A destination to carry through an emailed link (an invitation, usually), from the fixed list. */
+function carried(form: FormData): string {
+  const next = safeNext(String(form.get("next") ?? ""), "");
+  return next && next !== "/dashboard" ? `&next=${encodeURIComponent(next)}` : "";
+}
+
 async function signUp(_prev: AuthState, form: FormData): Promise<AuthState> {
   const credentials = readCredentials(form, { enforceMinimum: true });
   if (typeof credentials === "string") return { error: credentials };
@@ -139,7 +146,7 @@ async function signUp(_prev: AuthState, form: FormData): Promise<AuthState> {
   const { data, error } = await (await sessionClient()).auth.signUp({
     ...credentials,
     // Without this the link went to Supabase's Site URL root, where nothing spent its code.
-    options: { emailRedirectTo: `${await origin()}/auth/callback?flow=signup` },
+    options: { emailRedirectTo: `${await origin()}/auth/callback?flow=signup${carried(form)}` },
   });
 
   if (error) {
@@ -174,7 +181,7 @@ async function resendConfirmation(_prev: AuthState, form: FormData): Promise<Aut
   const { error } = await (await sessionClient()).auth.resend({
     type: "signup",
     email,
-    options: { emailRedirectTo: `${await origin()}/auth/callback?flow=signup` },
+    options: { emailRedirectTo: `${await origin()}/auth/callback?flow=signup${carried(form)}` },
   });
   if (error) {
     const kind = classifyAuthError(error);
@@ -248,9 +255,12 @@ async function continueWithProvider(_prev: AuthState, form: FormData): Promise<A
 /**
  * Sets a new password for whoever the recovery link signed in.
  *
- * The session is the authorisation: the link was sent to the address that owns the
- * account and is spent on arrival, so there is no current password to ask for — and
- * asking for one would defeat the point of a reset.
+ * The authorisation is the session *and* a fresh recovery context for that same person,
+ * set only where a recovery link is spent and used once (src/lib/auth/recovery.ts). There
+ * is no current password to ask for — that is the point of a reset — so a session on its own
+ * is not enough. After a link that was not tied to this browser (a bare `token_hash`), the
+ * browser is signed out: a reset link someone else was sent never leaves it signed in to
+ * their account.
  */
 export async function setNewPassword(_prev: AuthState, form: FormData): Promise<AuthState> {
   const password = String(form.get("password") ?? "");
@@ -263,14 +273,21 @@ export async function setNewPassword(_prev: AuthState, form: FormData): Promise<
 
   const supabase = await sessionClient();
   const { data: session } = await supabase.auth.getUser();
-  if (!session.user) {
+  const jar = await cookies();
+  const recovery = session.user ? openRecovery(jar.get(RECOVERY_COOKIE)?.value, session.user.id, recoverySecret()) : null;
+  if (!session.user || !recovery) {
     return { error: "That reset link is no longer active. Ask for a new one from the sign-in page." };
   }
 
   const { error } = await supabase.auth.updateUser({ password });
   if (error) return { error: authErrorMessage(classifyAuthError(error), "password") };
+  jar.delete(RECOVERY_COOKIE);
 
   revalidatePath("/", "layout");
+  if (!recovery.bound) {
+    await supabase.auth.signOut({ scope: "local" });
+    redirect("/sign-in?problem=password_changed");
+  }
   redirect("/dashboard");
 }
 

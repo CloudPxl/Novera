@@ -6,12 +6,12 @@ import { authErrorMessage, classifyAuthError, type AuthErrorKind } from "../src/
 import { PROBLEMS, problemMessage } from "../src/app/auth/confirm/problems.ts";
 
 test("safeNext: only a fixed list of destinations, path only", () => {
-  for (const ok of ["/dashboard", "/welcome", "/settings/account", "/reset-password", "/builder"]) assert.equal(safeNext(ok), ok);
+  for (const ok of ["/dashboard", "/welcome", "/settings/account", "/reset-password", "/builder", "/settings/members", "/runs/3f1c2b9a-0000-4000-8000-000000000000", "/agents/new"]) assert.equal(safeNext(ok), ok);
   assert.equal(safeNext("/invite/abcdefghijklmnop1234"), "/invite/abcdefghijklmnop1234");
   assert.equal(safeNext("/dashboard?ws=11111111-2222"), "/dashboard", "a query string never rides along");
   for (const bad of [
     "//evil.example", "//evil.example/dashboard", "/\\evil.example", "https://evil.example/dashboard", "javascript:alert(1)",
-    "/settings/members", "/runs/123", "/invite/short", "/invite/../dashboard/../../x", "dashboard", "", null, undefined,
+    "/invite/short", "/api/v1/runs", "/report/abcdefghijklmnop", "/runs/a/b/c", "/runs/<script>", "/settings/../../etc", "/invite/../dashboard/../../x", "dashboard", "", null, undefined,
     "/%2F%2Fevil.example", "/dashboard\u0000", "/\tdashboard", "/" + "a".repeat(400),
   ]) assert.equal(safeNext(bad as string), "/dashboard", String(bad));
   assert.equal(safeNext("//evil", "/welcome"), "/welcome");
@@ -80,11 +80,32 @@ test("providers: only Google and GitHub", () => {
 
 test("every email-sending auth call names its return address; none passes a raw origin", () => {
   const actions = readFileSync(new URL("../src/app/sign-in/actions.ts", import.meta.url), "utf8");
-  assert.match(actions, /signUp\(\{[\s\S]*?emailRedirectTo: `\$\{await origin\(\)\}\/auth\/callback\?flow=signup`/);
-  assert.match(actions, /resend\(\{[\s\S]*?emailRedirectTo: `\$\{await origin\(\)\}\/auth\/callback\?flow=signup`/);
+  assert.match(actions, /signUp\(\{[\s\S]*?emailRedirectTo: `\$\{await origin\(\)\}\/auth\/callback\?flow=signup\$\{carried\(form\)\}`/);
+  assert.match(actions, /resend\(\{[\s\S]*?emailRedirectTo: `\$\{await origin\(\)\}\/auth\/callback\?flow=signup\$\{carried\(form\)\}`/);
   assert.match(actions, /resetPasswordForEmail\(email, \{\s*redirectTo: `\$\{await origin\(\)\}\/auth\/callback\?flow=recovery`/);
   assert.doesNotMatch(actions, /headers\(\)\)\.get\("origin"\) \?\?/, "the origin is checked by appOrigin, never used as sent");
   const methods = readFileSync(new URL("../src/lib/workflow/sign-in-methods.ts", import.meta.url), "utf8");
   assert.match(methods, /flow=link&provider=/);
   assert.doesNotMatch(methods, /provider_token|provider_refresh_token/, "provider tokens are never read");
+});
+
+test("recovery context: sealed for one person, fresh, single kind, and refused when touched", async () => {
+  const { sealRecovery, openRecovery, RECOVERY_TTL_MS } = await import("../src/lib/auth/recovery.ts");
+  const now = 1_800_000_000_000;
+  const sealed = sealRecovery({ userId: "u1", issuedAt: now, bound: false }, "k");
+  assert.deepEqual(openRecovery(sealed, "u1", "k", now + 1000), { userId: "u1", issuedAt: now, bound: false });
+  assert.equal(openRecovery(sealed, "u2", "k", now), null, "another person's session cannot use it");
+  assert.equal(openRecovery(sealed, "u1", "other-key", now), null, "a different key does not verify");
+  assert.equal(openRecovery(sealed, "u1", "k", now + RECOVERY_TTL_MS + 1), null, "expires after fifteen minutes");
+  assert.equal(openRecovery(sealed.replace(".u.", ".b."), "u1", "k", now), null, "an unbound link cannot be turned into a bound one");
+  for (const odd of ["", "x", "a.b.c", "u1.1.b.", null, undefined, "u1." + now + ".b." + "A".repeat(43)]) assert.equal(openRecovery(odd as string, "u1", "k", now), null, String(odd));
+});
+
+test("the confirm route never starts a session from a confirmation link, and refuses link kinds Novera does not send", () => {
+  const route = readFileSync(new URL("../src/app/auth/confirm/route.ts", import.meta.url), "utf8");
+  assert.match(route, /const CONFIRMATION: EmailOtpType\[\] = \["signup", "email", "email_change"\]/);
+  assert.match(route, /persistSession: false/, "confirmations are verified on a client that keeps no cookies");
+  assert.doesNotMatch(route, /"magiclink"|"invite"/, "magic links and Supabase invites are not accepted");
+  const reset = readFileSync(new URL("../src/app/reset-password/page.tsx", import.meta.url), "utf8");
+  assert.match(reset, /openRecovery\(/, "the reset page needs a recovery context, not only a session");
 });

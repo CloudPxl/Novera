@@ -24,6 +24,11 @@ export const PROBLEMS = {
   // Said conditionally: a link opened in another browser and a forged one fail the same way
   // here, and only the first means the address was confirmed (app-wide audit, 2026-10-08).
   confirmed_sign_in: "If you opened the confirmation link from your email, your address is confirmed: sign in to continue. If sign-in says it is not, send yourself a new link below.",
+  // Shown only after the token verified: the address is confirmed, and the link deliberately
+  // started no session in this browser (src/app/auth/confirm/route.ts).
+  email_confirmed: "Your email address is confirmed. Sign in to continue.",
+  // After a reset from a link that was not tied to this browser: signed out, by design.
+  password_changed: "Your password was changed. Sign in with the new one.",
   oauth_cancelled: "Sign-in was cancelled, so nothing changed. Choose a way to sign in.",
   oauth_failed: "That sign-in did not complete. Try again, or use another method.",
   oauth_verify_email: "That provider has not verified your email address, so we sent a confirmation link to it. Open the link, then continue with the provider again.",

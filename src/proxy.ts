@@ -119,6 +119,9 @@ export async function proxy(request: NextRequest) {
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  // Where the person was going, so a signed-out redirect to /sign-in can bring them back
+  // (`requireUser`). Path only; it is checked against a fixed list there (`safeNext`).
+  requestHeaders.set("x-novera-path", request.nextUrl.pathname);
   requestHeaders.set("Content-Security-Policy", csp);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });

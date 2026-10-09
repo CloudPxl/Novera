@@ -276,6 +276,9 @@ export async function holdInvitation(form: FormData): Promise<void> {
     (await cookies()).set(INVITE_COOKIE, token, {
       httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 7,
     });
+    // Straight back to the invitation once signed in; the cookie covers the longer ways round
+    // (a confirmation opened in another browser, a reset), see /sign-in.
+    redirect(`/sign-in?next=${encodeURIComponent(`/invite/${token}`)}`);
   }
   redirect("/sign-in");
 }
@@ -293,6 +296,12 @@ export async function acceptInvitation(_prev: IdentityState, form: FormData): Pr
   }
   (await cookies()).delete(INVITE_COOKIE);
   await setActiveWorkspace((data as { workspace_id: string }).workspace_id);
+  // Joining a team is not starting alone: the three solo questions are skipped, not answered,
+  // so the person can still choose a mode later (app-wide audit: every invitee was sent there).
+  const ctx = await requireContext();
+  if (ctx.profile.onboarding_status === "not_started") {
+    await serviceClient().from("user_profiles").update({ onboarding_status: "skipped" }).eq("user_id", ctx.user.id);
+  }
   revalidatePath("/", "layout");
   redirect("/dashboard");
 }

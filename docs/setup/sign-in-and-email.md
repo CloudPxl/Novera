@@ -114,8 +114,13 @@ the app forwards a code arriving there, but put the address on the list anyway.
 back to `/auth/callback` with a one-time code. Opening it in the browser that asked for it signs
 the person in; opening it elsewhere confirms the address and asks them to sign in by hand.
 
-If you want links that sign in on any device, change the templates under **Authentication →
-Emails → Templates**. Leave everything else in each template as it is:
+Optional `token_hash` templates make a confirmation link work on any device. They do not sign that
+device in: since 2026-10-09 a confirmation confirms the address and the person signs in by hand,
+because a link that is not tied to the browser that asked for it could otherwise sign a stranger's
+browser in to someone else's account (login CSRF). A reset link of this kind opens the reset page
+for the account it names, and the browser is signed out once the password is set. Magic-link and
+invite types are refused. To use them, change the templates under **Authentication → Emails →
+Templates**, leaving everything else in each template as it is:
 
 - **Confirm signup:** `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`
 - **Reset password:** `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery`

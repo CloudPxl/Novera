@@ -6,7 +6,7 @@ import { formatWhen } from "@/lib/format/when.ts";
 import { loadBillingView } from "@/lib/billing/load.ts";
 import { PLAN_CATALOG, isPlanKey } from "@/lib/billing/plans.ts";
 import type { EntitlementSource, Standing } from "@/lib/billing/entitlement.ts";
-import { SettingsNav, type SettingsSection } from "../nav.tsx";
+import { SettingsNav } from "../nav.tsx";
 import { CancellationButton, CheckoutButton, PortalButton } from "./forms.tsx";
 
 export const metadata: Metadata = { title: "Billing · Settings · Novera" };
@@ -58,8 +58,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
 
   return (
     <main className="w-full pb-10 text-ink">
-      {/* "billing" joins SettingsSection when the nav entry is added (see docs/BILLING-DECISIONS.md). */}
-      <SettingsNav current={"billing" as SettingsSection} role={ctx.role} mode={ctx.accountMode} members={members ?? 1} workspace={ctx.workspace.name}>
+      <SettingsNav current="billing" role={ctx.role} mode={ctx.accountMode} members={members ?? 1} workspace={ctx.workspace.name}>
         <div className="space-y-8">
           {!view.config.active && (
             <p role="status" className="rounded-control border border-line bg-sunken px-4 py-3 text-sm text-ink-soft">

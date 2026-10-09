@@ -127,12 +127,22 @@ begin
   delete from assistant_threads     where workspace_id = target;
   delete from workspace_invitations where workspace_id = target;
   delete from audit_events          where workspace_id = target;
+  -- 0061: export receipts. They name the workspace only; the files were never stored.
+  delete from workspace_exports     where workspace_id = target;
   -- 0062: counts only, but they name the workspace.
   delete from product_events        where workspace_id = target;
   -- A profile pointing here loses the default, not the profile.
   update user_profiles set default_workspace_id = null where default_workspace_id = target;
   update user_profiles set default_agent_id = null
    where default_agent_id in (select id from agents where workspace_id = target);
+
+  -- 0060: billing. Subscriptions before the customer they name.
+  delete from billing_events               where workspace_id = target;
+  delete from billing_webhook_events       where workspace_id = target;
+  delete from billing_subscription_history where workspace_id = target;
+  delete from billing_subscriptions        where workspace_id = target;
+  delete from billing_entitlement_grants   where workspace_id = target;
+  delete from billing_customers            where workspace_id = target;
 
 
   -- Before the endpoints they belong to.

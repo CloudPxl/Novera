@@ -80,7 +80,9 @@ export async function proxy(request: NextRequest) {
     // "Continue with Google/GitHub" is a form whose answer redirects to Supabase, which
     // redirects to the provider; browsers hold the whole redirect chain of a submission to
     // form-action. Named hosts only, the same three the sign-in can lead to.
-    `form-action 'self'${supabase ? ` ${supabase}` : ""} https://accounts.google.com https://github.com`,
+    // Billing (sandbox until activated): Checkout and the Customer Portal are Stripe-hosted
+    // pages the billing actions redirect to.
+    `form-action 'self'${supabase ? ` ${supabase}` : ""} https://accounts.google.com https://github.com https://checkout.stripe.com https://billing.stripe.com`,
     // A report is a document someone was sent, not a widget. It is never framed.
     "frame-ancestors 'none'",
     "upgrade-insecure-requests",

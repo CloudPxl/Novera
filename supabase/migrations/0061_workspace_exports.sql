@@ -86,8 +86,7 @@ comment on table workspace_exports is
 --
 -- Every table that refuses deletion needs an erasure path in the same migration.
 -- 0056's body exactly, plus workspace_exports beside the other 0054-era tables.
--- MERGE NOTE: if a migration numbered between 0056 and 0061 also redefines erase_workspace,
--- its additions must be folded into this body, or 0061 silently drops them.
+-- 0060's billing deletes are folded in (merged 2026-10-09): a later redefinition must keep them.
 
 create or replace function erase_workspace(target uuid, requested_by uuid default null)
 returns erasure_log
@@ -121,6 +120,14 @@ begin
   update user_profiles set default_workspace_id = null where default_workspace_id = target;
   update user_profiles set default_agent_id = null
    where default_agent_id in (select id from agents where workspace_id = target);
+
+  -- 0060: billing. Subscriptions before the customer they name.
+  delete from billing_events               where workspace_id = target;
+  delete from billing_webhook_events       where workspace_id = target;
+  delete from billing_subscription_history where workspace_id = target;
+  delete from billing_subscriptions        where workspace_id = target;
+  delete from billing_entitlement_grants   where workspace_id = target;
+  delete from billing_customers            where workspace_id = target;
 
 
   -- Before the endpoints they belong to.

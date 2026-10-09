@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { AccountMode } from "@/lib/auth/session.ts";
 import { can, ROLE_LABEL, type Role } from "@/lib/auth/permissions.ts";
 
-export type SettingsSection = "general" | "grading" | "developer" | "members" | "audit" | "profile" | "account";
+export type SettingsSection = "general" | "grading" | "developer" | "members" | "billing" | "audit" | "profile" | "account";
 
 /**
  * Settings, grouped by whom they concern — you, this workspace, its integrations, its security —
@@ -36,6 +36,7 @@ export function SettingsNav({ current, role, mode, members, workspace, children 
         { key: "general", href: "/settings", label: "General" },
         { key: "grading", href: "/settings/grading", label: "Grading and data routing" },
         ...(team ? [{ key: "members" as const, href: "/settings/members", label: "Members" }] : []),
+        { key: "billing", href: "/settings/billing", label: "Billing" },
       ],
     },
     { label: "Developer", items: [{ key: "developer", href: "/settings/developer", label: "API keys, MCP and webhooks" }] },

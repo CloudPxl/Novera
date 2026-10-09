@@ -11,6 +11,7 @@ import { callerAddress } from "@/lib/support/rate-limit.ts";
 import { authErrorMessage, classifyAuthError } from "@/lib/auth/errors.ts";
 import { appOrigin, isOAuthProvider, PROVIDER_LABEL, safeNext } from "@/lib/auth/redirects.ts";
 import { enabledProviders } from "@/lib/auth/providers.ts";
+import { track } from "@/lib/analytics/track.ts";
 
 export interface AuthState {
   error?: string;
@@ -157,6 +158,7 @@ async function signUp(_prev: AuthState, form: FormData): Promise<AuthState> {
     return { error: authErrorMessage(kind, "signup") };
   }
 
+  await track("signup_started", { userId: data.user?.id, properties: { method: "email" } });
   if (!data.session) return { notice: NEUTRAL_SIGNUP, awaiting: credentials.email };
 
   // Only when confirmations are switched off: Supabase signs the person straight in.

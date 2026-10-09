@@ -11,6 +11,7 @@ import type { VerdictReview } from "../evidence/reviews.ts";
 import { loadStability } from "../evidence/stability-history.ts";
 import { PROBE_INPUT } from "../agents/types.ts";
 import { discoverShape } from "../agents/discover.ts";
+import { track } from "../analytics/track.ts";
 import { fingerprintFromManifest } from "../report/manifest.ts";
 
 /**
@@ -51,6 +52,7 @@ export async function probeAgent(args: {
     .single();
 
   if (error) throw new Error(`Could not save the probe receipt: ${error.message}`);
+  await track("agent_probed", { workspaceId, properties: { ok: result.ok } });
   return { ok: result.ok, probeId: data.id as string, error: result.error ?? null };
 }
 

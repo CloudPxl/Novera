@@ -1,0 +1,95 @@
+# Continuous integration for every push and pull request.
+#
+# Fork-safe by construction: the token can only read the repository, no secret is used
+# anywhere, and pull requests run as `pull_request` (the fork's code, with no access to
+# this repository's secrets) — never `pull_request_target`. Actions are pinned to a commit,
+# not a tag, because a tag can be moved to different code after it was reviewed.
+#
+# Nothing here needs Supabase, a model key or the network beyond npm: the verifiers that
+# need a database (`verify:*`) run against a local stack or a deployment, by hand.
+# docs/setup/ci.md lists the checks to make required in branch protection.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, types, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Placeholders, so modules that read these at build time have a value. Nothing is
+      # reachable at these addresses and no secret is involved.
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.invalid
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # `LayoutProps` and the typed routes are generated, not committed.
+      - name: Generate route types
+        run: npx next typegen
+
+      - name: Typecheck (TypeScript 7)
+        run: npm run typecheck
+
+      - name: Typecheck (TypeScript 6)
+        run: npm run typecheck:6
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npx next build
+
+  repository:
+    name: Migrations and secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The whole history, so the base of a pull request or push is here to compare with.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Migration files
+        env:
+          # A pull request compares with its base; a push with the commit before it.
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node scripts/check-migrations.mts --base "$BASE"
+
+      - name: Secret scan
+        run: node scripts/scan-secrets.mts

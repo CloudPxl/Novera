@@ -4,6 +4,7 @@ import { scoreWithheldAs, obligationLabel, type ReportPayload } from "@/lib/repo
 import { categoryMeta } from "@/lib/evidence/categories.ts";
 import { loadReportByToken } from "@/lib/report/access.ts";
 import { ReportToolbar } from "./toolbar.tsx";
+import { track } from "@/lib/analytics/track.ts";
 
 const FINGERPRINT_LABELS: Record<string, string> = {
   agent_endpoint: "Agent endpoint",
@@ -52,6 +53,8 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
 
   if (result === null) notFound();
   if (result === "expired" || result === "revoked") return <Unavailable reason={result} />;
+  // A count, nothing else: no token, no workspace, no reader.
+  await track("report_viewed");
 
   const { payload, content_hash, expires_at } = result;
   const { subject, run, coverage, obligations, findings, comparison } = payload;

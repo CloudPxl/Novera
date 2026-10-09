@@ -1,0 +1,10 @@
+{
+  "updated_at": "2026-10-09T15:00:00Z",
+  "notice": null,
+  "components": {
+    "app": { "state": "unknown", "note": null },
+    "grading": { "state": "unknown", "note": null },
+    "email": { "state": "degraded", "note": "Sign-up confirmation, password-reset and invitation emails are not being delivered yet. Sign-in with an existing password works." },
+    "scheduled_jobs": { "state": "unknown", "note": null }
+  }
+}

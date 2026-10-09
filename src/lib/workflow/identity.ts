@@ -15,6 +15,7 @@ import { appOrigin } from "@/lib/auth/redirects.ts";
 import { fingerprint, rateLimit } from "@/lib/support/rate-limit.ts";
 import { isMemoryKey } from "@/lib/assistant/memory.ts";
 import { saveMemory } from "./memory.ts";
+import { actorHash } from "@/lib/analytics/track.ts";
 
 export interface IdentityState {
   error?: string;
@@ -391,6 +392,12 @@ export async function deleteAccount(_prev: IdentityState, form: FormData): Promi
   }
   const { error: accountError } = await admin.rpc("erase_account", { target: ctx.user.id });
   if (accountError) return { error: `Could not delete the account: ${accountError.message}` };
+  // Product events name the person only by a salted hash the database cannot compute (0062).
+  const hashed = actorHash(ctx.user.id);
+  if (hashed) {
+    const { error: eventsError } = await admin.rpc("erase_product_events_of_actor", { actor: hashed });
+    if (eventsError) return { error: `Could not delete the account's usage counts: ${eventsError.message}` };
+  }
   await recordAudit(admin, { workspaceId: null, actorId: ctx.user.id, action: "account.erased", detail: { workspaces_erased: ctx.memberships.filter((x) => x.role === "owner").length } });
   const { error: authError } = await admin.auth.admin.updateUserById(ctx.user.id, {
     email: `deleted-${ctx.user.id}@deleted.invalid`,

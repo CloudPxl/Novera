@@ -87,7 +87,7 @@ function agent(a: Row): Row {
   const config = (a.config ?? {}) as Row;
   const verification = a.verification as Row | null | undefined;
   return {
-    ...pick(a, ["id", "name", "kind", "is_production", "attested_by", "attested_at", "attestation_text", "created_at"]),
+    ...pick(a, ["id", "name", "kind", "is_production", "attested_by", "attested_at", "attestation_text", "created_at", "archived_at", "archived_by"]),
     endpoint: config.kind === "model"
       ? { kind: "model", provider: config.provider ?? null, model: config.model ?? null }
       : { kind: "http", host: hostOf(config.url) },

@@ -45,7 +45,7 @@ export async function loadExportSource(db: SupabaseClient, workspaceId: string, 
     all(db, "workspace_members", "user_id, role, created_at", workspaceId, "user_id"),
     all(db, "workspace_invitations", "id, role, invited_by, created_at, expires_at, accepted_at, accepted_by, revoked_at, revoked_by", workspaceId),
     // `config` is read for its url, kind, provider and model only; the builder keeps nothing else.
-    all(db, "agents", "id, name, kind, config, verification, is_production, attested_by, attested_at, attestation_text, created_at", workspaceId),
+    all(db, "agents", "id, name, kind, config, verification, is_production, attested_by, attested_at, attestation_text, created_at, archived_at, archived_by", workspaceId),
     all(db, "policies", "id, agent_id, version, body, derived_from, created_by, created_at", workspaceId),
     all(db, "suites", "id, key, version, name, cases, provenance, approval, created_at", workspaceId),
     all(db, "runs", "id, agent_id, policy_id, suite_id, baseline_run_id, status, judge_source, judge_provider, judge_model, agent_model, attestation_text, pass_threshold, manifest, manifest_hash, api_key_id, schedule_id, created_by, stopped_by, created_at, started_at, finished_at, error", workspaceId),

@@ -34,9 +34,19 @@ function tally(rows: Array<{ run_id?: unknown; status: unknown }>, runId?: strin
   return { passed: count("pass"), failed: count("fail"), no_result: count("error") };
 }
 
-export async function listAgents(db: Db, workspaceId: string) {
+/**
+ * Active agents by default. An archived agent takes no new run (0063), so a pipeline
+ * listing what it can test should not be offered one; `include` and `only` list them too,
+ * with `archived_at` set. Their runs stay readable by id either way.
+ */
+export type ArchivedFilter = "exclude" | "include" | "only";
+
+export async function listAgents(db: Db, workspaceId: string, archived: ArchivedFilter = "exclude") {
+  let query = db.from("agents").select("id, name, config, is_production, created_at, archived_at").eq("workspace_id", workspaceId);
+  if (archived === "exclude") query = query.is("archived_at", null);
+  if (archived === "only") query = query.not("archived_at", "is", null);
   const [{ data: agents }, { data: policies }] = await Promise.all([
-    db.from("agents").select("id, name, config, is_production, created_at").eq("workspace_id", workspaceId).order("created_at"),
+    query.order("created_at"),
     db.from("policies").select("agent_id, version").eq("workspace_id", workspaceId),
   ]);
   return (agents ?? []).map((a) => ({
@@ -46,6 +56,7 @@ export async function listAgents(db: Db, workspaceId: string) {
     is_production: a.is_production !== false,
     policy_version: Math.max(0, ...(policies ?? []).filter((p) => p.agent_id === a.id).map((p) => p.version as number)) || null,
     created_at: a.created_at as string,
+    archived_at: (a.archived_at as string | null) ?? null,
   }));
 }
 

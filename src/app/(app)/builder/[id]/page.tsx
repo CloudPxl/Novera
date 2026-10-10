@@ -99,7 +99,7 @@ export default async function BuildPage({ params, searchParams }: {
     admin.from("suite_obligations").select("*").eq("workspace_id", workspace.id).eq("build_id", id).order("created_at"),
     admin.from("suite_sources").select("id, kind, title, locator, status, parse_error, text, original_sha256, redaction, retrieval, extracted_parts, content_expired_at, created_at")
       .eq("workspace_id", workspace.id).eq("build_id", id).order("created_at"),
-    admin.from("agents").select("id, name, config").eq("workspace_id", workspace.id).order("created_at"),
+    admin.from("agents").select("id, name, config").eq("workspace_id", workspace.id).is("archived_at", null).order("created_at"),
     admin.from("scenario_drafts").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id)
       .eq("origin", "production").is("build_id", null).in("status", ["draft", "needs_review"]),
     admin.from("suites").select("id, version, created_at").eq("workspace_id", workspace.id).eq("approval", "exploratory")

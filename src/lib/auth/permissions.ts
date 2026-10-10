@@ -43,6 +43,8 @@ export const PERMISSIONS = {
   "agent.write": BUILD,
   // Marking an agent as a test target lets destructive and fixture-only scenarios reach it.
   "agent.environment": ADMIN,
+  // Archiving takes an agent out of every list and stops new runs and schedules (0063).
+  "agent.archive": ADMIN,
   "policy.write": BUILD,
   "run.start": BUILD,
   "run.stop": BUILD,

@@ -21,7 +21,7 @@ export async function portfolio(admin: SupabaseClient, memberships: Membership[]
   const ids = memberships.map((m) => m.workspace.id);
   if (!ids.length) return [];
   const [{ data: agents }, { data: runs }] = await Promise.all([
-    admin.from("agents").select("workspace_id").in("workspace_id", ids),
+    admin.from("agents").select("workspace_id").in("workspace_id", ids).is("archived_at", null),
     admin.from("runs").select("id, workspace_id, status, created_at").in("workspace_id", ids)
       .order("created_at", { ascending: false }).limit(300),
   ]);

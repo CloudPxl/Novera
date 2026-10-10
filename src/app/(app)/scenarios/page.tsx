@@ -52,7 +52,7 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
       .select("id, origin, import_provenance, production_failures(occurred_on, created_at, agent_reply, redaction), source_quote, scenario, duty_refs, risk_level, destructive, fixture_only, status, model, rejection_reason, approved_at, created_at, api_keys(name), policies(version), suites!scenario_drafts_included_in_suite_id_fkey(key, version)")
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: false }),
-    admin.from("agents").select("id, name, is_production").eq("workspace_id", workspace.id).order("created_at"),
+    admin.from("agents").select("id, name, is_production").eq("workspace_id", workspace.id).is("archived_at", null).order("created_at"),
     admin
       .from("suites").select("id, key, version, name")
       .or(`workspace_id.eq.${workspace.id},workspace_id.is.null`).neq("approval", "exploratory")

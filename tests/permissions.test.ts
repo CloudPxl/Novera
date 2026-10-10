@@ -68,3 +68,29 @@ test("the RLS write policies in 0054 grant the same roles as the code", () => {
 test("only the owner or an admin decides whether an agent is a test target", () => {
   for (const role of ROLES) assert.equal(can(role, "agent.environment"), role === "owner" || role === "admin", role);
 });
+
+test("only the owner or an admin archives or restores an agent; editing its connection is building", () => {
+  for (const role of ROLES) {
+    assert.equal(can(role, "agent.archive"), role === "owner" || role === "admin", `archive / ${role}`);
+    assert.equal(can(role, "agent.write"), role === "owner" || role === "admin" || role === "operator", `write / ${role}`);
+  }
+  // A reviewer or an auditor is refused by gate() with this sentence, before anything is read.
+  assert.match(refusalFor("agent.archive"), /owner or admin role/);
+  assert.match(refusalFor("agent.write"), /owner, admin or operator role/);
+});
+
+test("the agent edit and archive actions ask gate() for the right capability, first", () => {
+  const src = readFileSync("src/lib/workflow/agent-admin.ts", "utf8");
+  const body = (name: string) => {
+    const start = src.indexOf(`export async function ${name}`);
+    const end = src.indexOf("\nexport async function", start + 1);
+    return src.slice(start, end === -1 ? undefined : end);
+  };
+  for (const [fn, cap] of [["updateAgentConnection", "agent.write"], ["archiveAgent", "agent.archive"], ["restoreAgent", "agent.archive"]] as const) {
+    const text = body(fn);
+    const gateAt = text.indexOf(`gate(user.id, workspace.id, "${cap}")`);
+    assert.ok(gateAt > 0, `${fn} gates on ${cap}`);
+    // Nothing is read or written with the service role before the gate.
+    assert.equal(text.slice(0, gateAt).includes("admin."), false, `${fn} touches nothing before the gate`);
+  }
+});

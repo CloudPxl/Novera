@@ -1,15 +1,21 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { PROVIDER_TIMEOUT_MS, ProviderError, redactCredentials, retryAfterMs, type ChatRequest, type ChatResponse, type Provider } from "./types.ts";
 
-/** Default when a workspace supplies an Anthropic key without naming a model. */
-export const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5";
+/**
+ * Default when a workspace supplies an Anthropic key without naming a model. A grading model
+ * must accept `temperature: 0`; among current Claude models Haiku 4.5 does, and the Opus 5
+ * this used to name rejects sampling parameters (third-vendor review, 2026-10-10).
+ */
+export const DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5";
 
 export const anthropicProvider: Provider = {
   id: "anthropic",
   label: "Anthropic",
 
   async chat(request: ChatRequest, apiKey: string): Promise<ChatResponse> {
-    const client = new Anthropic({ apiKey });
+    // No retries inside the SDK: the router owns fallback and the circuit breaker, and an
+    // SDK-level retry hid a 429 from both while spending the case's deadline.
+    const client = new Anthropic({ apiKey, maxRetries: 0 });
 
     try {
       const response = await client.messages.create({

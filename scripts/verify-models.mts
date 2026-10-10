@@ -51,7 +51,7 @@ const results = new Map<string, { result: Result; detail: string; ms: number }>(
 for (const [key, candidate] of wanted) {
   const connection = connections.get(candidate.connection);
   if (!connection) {
-    results.set(key, { result: "no credential", detail: `no ${candidate.connection.toUpperCase()}_API_KEY`, ms: 0 });
+    results.set(key, { result: "no credential", detail: candidate.connection === "google" ? "no JUDGE_FREE_API_KEY" : `no ${candidate.connection.toUpperCase()}_API_KEY`, ms: 0 });
     console.log(`  ---  ${key.padEnd(46)} no credential configured`);
     continue;
   }

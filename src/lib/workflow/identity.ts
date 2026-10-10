@@ -1,5 +1,6 @@
 "use server";
 
+import { subscriptionBlocksErasure } from "@/lib/billing/erasure.ts";
 import { createHash, randomBytes } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -362,6 +363,8 @@ export async function eraseWorkspace(_prev: IdentityState, form: FormData): Prom
   const gated = await gate(user.id, workspace.id, "workspace.erase");
   if ("error" in gated) return { error: gated.error };
   if (text(form, "confirmName", 120) !== workspace.name) return { error: `Type the workspace's name exactly — ${workspace.name} — to erase it.` };
+  const billed = await subscriptionBlocksErasure(gated.admin, workspace.id, workspace.name);
+  if (billed) return { error: billed };
   // Runs in flight are stopped first: erasure removes their rows, and a slice still writing
   // would be writing into nothing.
   await gated.admin.from("runs").update({ status: "aborted", finished_at: new Date().toISOString(), error: "Stopped: the workspace was erased." })
@@ -384,6 +387,11 @@ export async function deleteAccount(_prev: IdentityState, form: FormData): Promi
   const ctx = await requireContext();
   if (text(form, "confirm", 40).toLowerCase() !== "delete my account") return { error: "Type “delete my account” to confirm." };
   const admin = serviceClient();
+  // Checked for every owned workspace before any is erased, so a refusal changes nothing.
+  for (const m of ctx.memberships.filter((x) => x.role === "owner")) {
+    const billed = await subscriptionBlocksErasure(admin, m.workspace.id, m.workspace.name);
+    if (billed) return { error: billed };
+  }
   for (const m of ctx.memberships.filter((x) => x.role === "owner")) {
     await admin.from("runs").update({ status: "aborted", finished_at: new Date().toISOString(), error: "Stopped: the workspace was erased." })
       .eq("workspace_id", m.workspace.id).in("status", ["queued", "running"]);

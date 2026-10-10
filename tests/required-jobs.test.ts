@@ -11,8 +11,8 @@ const healthyJobs = () => REQUIRED_JOBS.map((j) => ({
 const healthyRuns = () => REQUIRED_JOBS.map((j) => ({ jobname: j.name, status: "succeeded", start_time: ago(1), last_success: ago(1) }));
 const stateOf = (checks: ReturnType<typeof checkJobs>, name: string) => checks.find((c) => c.job.name === name)!.state;
 
-test("four jobs are required: three daily ones from the migrations and the clock", () => {
-  assert.deepEqual(REQUIRED_JOBS.map((j) => j.name), ["novera-raw-evidence-expiry", "novera-inbound-probe-expiry", "novera-stalled-runs", "novera-schedule-tick"]);
+test("five jobs are required: four daily ones from the migrations and the clock", () => {
+  assert.deepEqual(REQUIRED_JOBS.map((j) => j.name), ["novera-raw-evidence-expiry", "novera-inbound-probe-expiry", "novera-stalled-runs", "novera-schedule-tick", "novera-cron-history"]);
 });
 
 test("every job present, on schedule and recently successful is ok", () => {

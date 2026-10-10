@@ -36,6 +36,7 @@ export const REQUIRED_JOBS: RequiredJob[] = [
     why: "scheduled runs start and advance, and failed webhook deliveries are retried",
     fix: "Enable pg_cron and pg_net (Supabase dashboard → Database → Extensions), then: npm run schedules:clock -- install",
   },
+  daily("novera-cron-history", "47 3 * * *", "prune_cron_history", "0064", "pg_cron's own run history is kept 30 days, so it cannot grow without bound"),
 ];
 
 export type JobState = "ok" | "missing" | "inactive" | "wrong_schedule" | "wrong_command" | "never_run" | "last_failed" | "stale";
@@ -80,11 +81,16 @@ export async function readJobs(client: { query: (sql: string) => Promise<{ rows:
   const { rows: ext } = await client.query("select 1 from pg_extension where extname = 'pg_cron'");
   if (!ext.length) return null;
   const { rows: jobs } = await client.query("select jobname, schedule, active, command from cron.job");
+  // One lookup per job. The join this replaced computed a subquery for every history row and
+  // timed out in production once the per-minute clock had written 16,401 of them (2026-10-10).
   const { rows: lastRuns } = await client.query(`
-    select distinct on (j.jobname) j.jobname, d.status, d.start_time,
-           (select max(s.start_time) from cron.job_run_details s where s.jobid = j.jobid and s.status = 'succeeded') last_success
-      from cron.job j join cron.job_run_details d on d.jobid = j.jobid
-     order by j.jobname, d.start_time desc`);
+    select j.jobname, d.status, d.start_time, s.last_success
+      from cron.job j
+      join lateral (select status, start_time from cron.job_run_details
+                     where jobid = j.jobid order by start_time desc limit 1) d on true
+      left join lateral (select max(start_time) last_success from cron.job_run_details
+                          where jobid = j.jobid and status = 'succeeded') s on true
+     order by j.jobname`);
   return {
     jobs: jobs as Array<{ jobname: string; schedule: string; active: boolean; command: string }>,
     lastRuns: lastRuns as Array<{ jobname: string; status: string; start_time: Date; last_success: Date | null }>,

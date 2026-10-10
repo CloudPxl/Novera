@@ -4018,3 +4018,7 @@ Tab strips wrap below 640 px instead of scrolling (labels were cut mid-word and 
 ## 2026-10-10 — G1: agents are edited and archived, never deleted (0063)
 
 A connection can be edited (name, URL, body template, paths, timeout, auth header, write-only credential), re-probed on save, and audited by field name, never value; not while a run is in flight, because a run re-reads its connection every slice. An archived agent takes no run, retest, probe or active schedule — enforced by triggers, the service role included — its schedules are paused with a reason, and its runs and reports stay readable; restore brings it back. Live locally: edit, archive, refusal, restore, axe clean; `verify:identity` covers the database rules.
+
+## 2026-10-10 — pg_cron's history is pruned; `verify:cron` reads it in one lookup per job
+
+`verify:cron` timed out against production: its query joined every row of `cron.job_run_details` (16,401 after twelve days, the clock writing one a minute) with a subquery per row. It now reads the last run and last success per job with two lateral lookups. 0064 adds `prune_cron_history()` and the daily job `novera-cron-history` (03:47 UTC, 30 days kept), required by `verify:cron`. Production: applied, scheduled, the function proven in a rolled-back transaction (0 rows older than 30 days yet), every required job passing.

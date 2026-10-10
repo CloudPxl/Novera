@@ -57,6 +57,10 @@ someone with the service role, not merely someone using the application.
 | An exploratory scan of unapproved drafts is never a conformity report: only the Suite Builder starts one, it cannot be scheduled, and the database refuses it a report | 0056 `reports_not_exploratory`, `src/lib/workflow/start-run.ts` |
 | A curated pack is eu-support v5 scenarios byte for byte, its quality record computed from the labels; a pack without measured scenarios is not offered; observed agent behaviour is never written as policy | `src/lib/builder/packs.ts`, `tests/builder.test.ts`, `verify:builder` |
 | A sign-in never strands a person: a sign-up whose email could not be sent says no account was created, a reset never claims a link was sent over a mail failure, every emailed or provider link returns only to this deployment and to a fixed list of pages, Google and GitHub appear only when enabled, the last way in cannot be removed, and linking, unlinking, password changes and signing out everywhere are audited | `src/lib/auth/redirects.ts`, `src/lib/auth/errors.ts`, `src/app/auth/callback/`, `tests/auth.test.ts`; dashboard steps in `docs/setup/sign-in-and-email.md` |
+| An emailed link signs in only the browser that asked for it: a `token_hash` confirmation confirms the address and starts no session, magic-link and invite links are refused, and a password reset needs a fifteen-minute, single-use recovery context set where a recovery link is spent — an unbound one signs the browser out after | `src/app/auth/confirm/route.ts`, `src/lib/auth/recovery.ts`, `tests/auth.test.ts` |
+| A workspace with its own model key has all of its model work — grading, diagnosis, drafting, Suite Builder extraction, Ask Novera — served on that key, never ours, and each operation is recorded with funding, provider and model, never content; Ask Novera shows no figure its inputs do not contain | `src/lib/providers/model-work.ts` (`resolveConnections`), 0059, `tests/model-work.test.ts` |
+| Billing truth comes from Stripe's signed webhook, each event handled once, never from the browser returning from Checkout; live keys are refused unless explicitly allowed; a subscription change never deletes evidence | 0060, `src/lib/billing/`, `tests/billing.test.ts`, `docs/BILLING-DECISIONS.md` |
+| A workspace export is owner/admin, one-time and short-lived, carries no token, secret or key hash, and leaves a receipt with its SHA-256 — never the file | 0061, `src/lib/export/`, `verify:export` |
 | A destructive or fixture-only scenario never runs against a production agent; an agent is production until an owner or admin marks it a test target, confirmed and audited | `agents.is_production`, checked in the runner; `setAgentEnvironment`, 0057 |
 | A support reply goes draft → approved → sent, forward only; editing writes a new draft | 0009 |
 | A public form cannot be made free | 0024, counted in Postgres |
@@ -200,7 +204,13 @@ supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites + calibration labels
 data/docs/            the published documentation, seeded into the database
 docs/DECISIONS.md     append-only decision log — the reasoning behind everything here
-docs/setup/           what is configured in a dashboard rather than in code, step by step
+docs/setup/           what is configured in a dashboard rather than in code, step by step (CI, email, monitoring, status, events)
+src/lib/billing/      Stripe (sandbox until activated): config, webhook, entitlement, checkout and portal
+src/lib/export/       the workspace export: an allow-listed copy of each table
+src/lib/observability/ scrubbed error reporting (`onRequestError`), vendors off until configured
+src/lib/analytics/    first-party product events, guarded properties, no third party
+src/app/legal/ + data/legal/  draft legal documents for counsel review: noindex, not in force
+docs/LAUNCH-READINESS.md  every launch work item with its proof and status
 docs/COMPETITION.md   the market, what we took, what we declined
 ```
 
@@ -230,12 +240,13 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 664 unit tests | free |
+| `npm test` | 755 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
 | `verify:identity` | profiles, roles in RLS, invitations, removal revoking keys, the audit trail, private conversations, memory isolation, trial per owner, retention, account and workspace erasure — as real signed-in users (needs `npm run dev`) | free |
 | `verify:builder` | the Suite Builder: every pack, sources and their limits, verbatim passages, open questions holding approval, a hostile document, bulk approval with its audit line, discovery against the fixture, a scan that is never a report, a published suite that cannot change and runs, isolation, SSRF, retention, erasure (needs `npm run dev`) | free |
+| `verify:export` | the workspace export: role, one download, expiry, no secret or token, another workspace refused (needs `npm run dev`) | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
 | `verify:effect` · `verify:channel` · `verify:compiler` · `verify:conversation` | evidence rules, the metadata channel, the compiler's refusals, multi-turn scenarios | a few model calls |
 | `verify:throttle` | the public forms cannot be made free | free |
@@ -345,6 +356,7 @@ they drive the scripted fixture at `/api/test-agent`.
 - **A judge key stored before 2026-09-24 has no models recorded**, so it falls back to
   whatever `DEFAULT_ROUTES` measures on that connection — which is groq only. Any other
   provider's legacy key refuses the run with a sentence saying to reconnect it.
+- **Billing is built for the Stripe sandbox and is not active.** No Stripe keys are configured; runs are not gated by billing until decisions D2/D3 (`docs/BILLING-DECISIONS.md`). Legal pages under `/legal` are drafts, noindex and unlinked, until counsel signs off.
 - **Production sends no email** (audit 2026-10-08, `docs/setup/sign-in-and-email.md`). The
   Resend variables are empty in Vercel, and Resend refuses the local key because `nover.space`
   is not verified there. Supabase custom SMTP needs the same verified key, and manual identity

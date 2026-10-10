@@ -143,9 +143,10 @@ export async function TopBar() {
 
             <div className="border-t border-line py-1 lg:border-t-0">
               {can(role, "agent.write") && <Link href="/agents/new" className={menuItemClass}>Connect an agent</Link>}
-              <Link href="/settings" className={menuItemClass}>Workspace settings</Link>
+              {/* Settings is in the nav itself (above, stacked, below lg), and so is Audit in
+                  enterprise mode: listed twice on a phone before (UI audit, 2026-10-08). */}
               {(mode !== "personal" || multi) && <Link href="/settings/members" className={menuItemClass}>Members</Link>}
-              {can(role, "audit.view") && mode !== "personal" && <Link href="/settings/audit" className={menuItemClass}>Audit log</Link>}
+              {can(role, "audit.view") && mode === "agency" && <Link href="/settings/audit" className={menuItemClass}>Audit log</Link>}
               <Link href="/settings/profile" className={menuItemClass}>Your profile</Link>
               <Link href="/guide" className={menuItemClass}>Step-by-step guide</Link>
               <Link href="/docs" className={menuItemClass}>Documentation</Link>

@@ -125,7 +125,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                         name="suiteId"
                         aria-label="Suite to run"
                         defaultValue={(suites ?? []).find((s) => s.key === "eu-support")?.id}
-                        className="rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-ink focus:ring-1 focus:ring-ink"
+                        className="w-full min-w-0 max-w-full rounded-control border border-line-strong bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-ink focus:ring-1 focus:ring-ink sm:w-auto"
                       >
                         {(suites ?? []).map((s) => (
                           <option key={s.id as string} value={s.id as string}>

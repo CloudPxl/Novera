@@ -54,11 +54,11 @@ export function SettingsNav({ current, role, mode, members, workspace, children 
       </header>
       <div className="grid gap-8 lg:grid-cols-[14rem_minmax(0,1fr)] lg:items-start">
         <nav aria-label="Settings sections" className="min-w-0 lg:sticky lg:top-20">
-          <ul className="flex gap-1 overflow-x-auto border-b border-line pb-2 lg:block lg:space-y-5 lg:border-b-0 lg:pb-0">
+          <ul className="flex flex-wrap gap-1 border-b border-line pb-2 lg:block lg:space-y-5 lg:border-b-0 lg:pb-0">
             {groups.map((g) => (
-              <li key={g.label} className="shrink-0">
+              <li key={g.label} className="min-w-0 max-w-full">
                 <p className="hidden px-3 pb-1 type-eyebrow text-ink-faint lg:block">{g.label}</p>
-                <ul className="flex gap-1 lg:block lg:space-y-0.5">
+                <ul className="flex flex-wrap gap-1 lg:block lg:space-y-0.5">
                   {g.items.map((i) => (
                     <li key={i.key} className="shrink-0">
                       <Link

@@ -4004,3 +4004,7 @@ Diagnosis, drafting and Suite Builder extraction went to Novera's keys even for 
 ## 2026-10-09 — Milestone 3: a report names every grader, and never prints a runner's refusal as an observation
 
 Report format 14 adds `run.graders` (every model that voted, as first opinion, second opinion or settler, with its count; empty when only rules and read-backs settled the run) and, on a finding with no result, `no_result` (the stage — not sent, agent, grading, read-back, evidence, disagreement — from the run page's own classifier, `src/lib/evidence/repair.ts`), whose fixed sentence replaces the raw runner error as `observed`. Every format renders an errored finding as "Why there is no result", never "Observed"; formats 1–13 keep their sealed "Graded by". The run page's evidence chain says "not sent" instead of putting Novera's reason under "What the agent replied". All 9 local reports render; 755 tests.
+
+## 2026-10-10 — Milestone 4: phones from 320 px
+
+Tab strips wrap below 640 px instead of scrolling (labels were cut mid-word and the current tab hidden); the settings nav wraps at every phone width (it overflowed by up to 113 px at 320); the run trigger reads "Run" below 1280 px with the full name for screen readers (it wrapped inside the top bar); the phone menu no longer lists Settings and Audit twice; the agent page's suite selector fits at 320. Measured headless: 15 signed-in and public pages × 320/360/375/390/430 = 75 loads, no overflow, no clipped navigation, no axe violations; screenshots via the chrome-devtools MCP and Playwright.

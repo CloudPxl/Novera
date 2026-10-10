@@ -156,7 +156,9 @@ export function TabNav({ tabs, current, label }: {
 }) {
   return (
     <nav aria-label={label} className="border-b border-line">
-      <ul className="-mb-px flex gap-1 overflow-x-auto">
+      {/* Wrapped onto a second line on a phone rather than scrolled: a scrolled strip cut the
+          labels mid-word ("Evidenc") and hid the current tab (UI audit, 2026-10-08). */}
+      <ul className="-mb-px flex flex-wrap gap-x-1 sm:flex-nowrap sm:overflow-x-auto">
         {tabs.map((t) => (
           <li key={t.key} className="shrink-0">
             <Link

@@ -113,7 +113,7 @@ export async function askAssistant(threadId: string | null, message: string): Pr
   // secret or policy text is read — the snapshot is names, hosts, versions and counts.
   const [{ data: agents }, { data: policies }, { data: probes }, { data: runs }, { count: reports }, { data: pages }] =
     await Promise.all([
-      db.from("agents").select("id, name, config").eq("workspace_id", workspace.id).order("created_at"),
+      db.from("agents").select("id, name, config, archived_at").eq("workspace_id", workspace.id).order("created_at"),
       db.from("policies").select("agent_id, version").eq("workspace_id", workspace.id).order("version", { ascending: false }),
       db.from("probes").select("agent_id, error, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(60),
       db.from("runs").select("id, status, created_at, agent_id").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(5),
@@ -141,7 +141,8 @@ export async function askAssistant(threadId: string | null, message: string): Pr
     // A run button is offered only when one could start *and* this person's role may start it.
     canRun: entitlement.canRun && mayStartRuns,
     blockedReason: entitlement.blockedReason,
-    agents: (agents ?? []).map((a) => {
+    // An archived agent takes no new run (0063), so it is not offered; its runs below keep its name.
+    agents: (agents ?? []).filter((a) => !a.archived_at).map((a) => {
       const latestProbe = (probes ?? []).find((p) => p.agent_id === a.id);
       return {
         id: a.id as string,

@@ -54,8 +54,10 @@ export async function retestCase(args: {
   if (!policy) throw new Error("This agent has no policy version to test against.");
 
   const { data: agentRow } = await client
-    .from("agents").select("config, verification, is_production").eq("id", run.agent_id).maybeSingle();
+    .from("agents").select("config, verification, is_production, archived_at").eq("id", run.agent_id).maybeSingle();
   if (!agentRow) throw new Error("The agent this scenario was run against no longer exists.");
+  // A retest sends the scenario to the agent again, which an archived agent takes no more of.
+  if (agentRow.archived_at) throw new Error("This agent is archived, so nothing more is sent to it. Restore it to retest.");
 
   // The scenario comes from the suite version the run used, whole. It used to be
   // rebuilt from the stored row plus `forbidden` and `effect`, which quietly dropped the

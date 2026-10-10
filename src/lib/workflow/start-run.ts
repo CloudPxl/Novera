@@ -17,6 +17,8 @@ import { track } from "../analytics/track.ts";
 
 export class RunRefusal extends Error {}
 
+export const ARCHIVED_AGENT = "This agent is archived, so no new run can start for it. Its runs and reports are kept; an owner or admin can restore it from its Connection tab.";
+
 export async function startRun(args: {
   client: SupabaseClient;
   workspaceId: string;
@@ -51,8 +53,11 @@ export async function startRun(args: {
   const { client, workspaceId, agentId } = args;
 
   const { data: agent } = await client
-    .from("agents").select("attestation_text").eq("id", agentId).eq("workspace_id", workspaceId).maybeSingle();
+    .from("agents").select("attestation_text, archived_at").eq("id", agentId).eq("workspace_id", workspaceId).maybeSingle();
   if (!agent) throw new RunRefusal("That agent could not be found in this workspace.");
+  // Every entry point — the button, rerun, the API, MCP, a schedule, a Builder scan — comes
+  // through here, and 0063 refuses the row regardless.
+  if (agent.archived_at) throw new RunRefusal(ARCHIVED_AGENT);
 
   const { data: policy } = await client
     .from("policies").select("id").eq("agent_id", agentId).eq("workspace_id", workspaceId)
@@ -119,6 +124,8 @@ export async function startRun(args: {
   // The database counts the trial under a lock (0049): of several starts at once, the ones
   // past the third are refused here even though each passed the check above.
   if (error && /trial_exhausted/.test(error.message)) throw new RunRefusal(TRIAL_EXHAUSTED);
+  // Archived between the check above and the insert: the database decided (0063).
+  if (error && /agent_archived/.test(error.message)) throw new RunRefusal(ARCHIVED_AGENT);
   if (error || !run) throw new Error(`Could not start the run: ${error?.message ?? "no row returned"}`);
   await track("run_created", {
     workspaceId, userId: args.userId,

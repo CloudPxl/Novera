@@ -21,7 +21,8 @@ export type AuditAction =
   | "suite.bulk_approved" | "suite.published" | "suite.gaps_accepted" | "suite.source_fetched"
   | "identity.linked" | "identity.unlinked" | "agent.environment_changed" | "account.password_set" | "account.password_changed" | "account.signed_out_everywhere"
   | "billing.checkout_started" | "billing.portal_opened" | "billing.cancellation_scheduled" | "billing.cancellation_withdrawn"
-  | "workspace.export_requested" | "workspace.exported";
+  | "workspace.export_requested" | "workspace.exported"
+  | "agent.updated" | "agent.archived" | "agent.restored";
 
 export async function recordAudit(admin: SupabaseClient, event: {
   workspaceId: string | null;
@@ -86,4 +87,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   "billing.cancellation_withdrawn": "withdrew a scheduled cancellation",
   "workspace.export_requested": "asked for a copy of the workspace's data",
   "workspace.exported": "downloaded a copy of the workspace's data",
+  "agent.updated": "changed an agent's connection",
+  "agent.archived": "archived an agent",
+  "agent.restored": "restored an archived agent",
 };

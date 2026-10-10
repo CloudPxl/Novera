@@ -24,6 +24,7 @@ import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { spendModelCall } from "@/lib/workflow/model-budget.ts";
 import { track } from "@/lib/analytics/track.ts";
+import { DEFAULT_BODY_TEMPLATE, parseBodyTemplate } from "@/lib/agents/connection.ts";
 
 export interface FormState {
   error?: string;
@@ -60,18 +61,11 @@ export async function connectAgent(_prev: FormState, form: FormData): Promise<Fo
     return { error: "Confirm that you own this agent or are authorised to test it." };
   }
 
-  let bodyTemplate: Record<string, unknown>;
-  try {
-    bodyTemplate = JSON.parse(bodyTemplateRaw || '{"message":"{{input}}"}');
-    if (typeof bodyTemplate !== "object" || Array.isArray(bodyTemplate) || bodyTemplate === null) {
-      throw new Error();
-    }
-  } catch {
-    return { error: "The request body must be a JSON object, for example {\"message\": \"{{input}}\"}." };
-  }
-  if (!JSON.stringify(bodyTemplate).includes("{{input}}")) {
-    return { error: "The request body needs {{input}} somewhere, so we know where to put the scenario." };
-  }
+  // The same check the edit form uses (`src/lib/agents/connection.ts`), so the two cannot
+  // accept different templates.
+  const parsedTemplate = parseBodyTemplate(bodyTemplateRaw || DEFAULT_BODY_TEMPLATE);
+  if (!parsedTemplate.ok) return { error: parsedTemplate.error };
+  const bodyTemplate = parsedTemplate.value;
 
   const config: HttpAgentConfig = {
     kind: "http",
@@ -169,8 +163,10 @@ export async function reprobeAgent(_prev: FormState, form: FormData): Promise<Fo
   const admin = gated.admin;
 
   const { data: agent, error } = await admin
-    .from("agents").select("config").eq("id", agentId).eq("workspace_id", workspace.id).single();
+    .from("agents").select("config, archived_at").eq("id", agentId).eq("workspace_id", workspace.id).single();
   if (error || !agent) return { error: "That agent could not be found." };
+  // Archived means nothing new reaches it (0063), a probe included.
+  if (agent.archived_at) return { error: "This agent is archived, so Novera sends it nothing. Restore it to test the connection." };
 
   const result = await probeAgent({
     client: admin, workspaceId: workspace.id, agentId, config: agent.config as AgentConfig,
@@ -913,8 +909,9 @@ export async function applyResponsePath(_prev: FormState, form: FormData): Promi
   const admin = gated.admin;
 
   const { data: agent } = await admin
-    .from("agents").select("config").eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
+    .from("agents").select("config, archived_at").eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
   if (!agent) return { error: "That agent could not be found in this workspace." };
+  if (agent.archived_at) return { error: "This agent is archived. Restore it before changing its connection." };
 
   const config = agent.config as HttpAgentConfig;
   if (config.kind !== "http") {

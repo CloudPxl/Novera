@@ -29,9 +29,10 @@ export async function createSchedule(_prev: ScheduleFormState, form: FormData): 
   if ("error" in gated) return { error: gated.error };
   const admin = gated.admin;
 
-  const { data: agent } = await admin.from("agents").select("id")
+  const { data: agent } = await admin.from("agents").select("id, archived_at")
     .eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
   if (!agent) return { error: "That agent could not be found in this workspace." };
+  if (agent.archived_at) return { error: "This agent is archived. Restore it before scheduling runs of it." };
 
   const { data: policy } = await admin.from("policies").select("id")
     .eq("agent_id", agentId).eq("workspace_id", workspace.id).limit(1).maybeSingle();
@@ -90,6 +91,9 @@ async function changeSchedule(
     notice = "Paused. No run starts until you resume it.";
   } else if (change === "resume") {
     if (!s.paused_at) return { notice: "Already running on schedule." };
+    // 0063 refuses it too; this is the sentence.
+    const { data: agent } = await admin.from("agents").select("archived_at").eq("id", s.agent_id).maybeSingle();
+    if (agent?.archived_at) return { error: "This schedule's agent is archived. Restore the agent, then resume the schedule." };
     // From now, not from where it stopped: resuming never fires a missed run at once.
     const next = nextOccurrence({ cadence: s.cadence, hourUtc: s.hour_utc, weekday: s.weekday }, now);
     update = { paused_at: null, paused_reason: null, next_run_at: next.toISOString() };

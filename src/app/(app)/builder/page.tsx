@@ -24,7 +24,7 @@ export default async function BuilderPage() {
   const [{ data: builds }, { data: agents }, { data: counts }] = await Promise.all([
     admin.from("suite_builds").select("id, name, status, pack_key, pack_version, quick, prepared_for, created_at, published_suite_id, suites!suite_builds_published_suite_id_fkey(key, version)")
       .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
-    admin.from("agents").select("id, name").eq("workspace_id", workspace.id).order("created_at"),
+    admin.from("agents").select("id, name").eq("workspace_id", workspace.id).is("archived_at", null).order("created_at"),
     admin.from("scenario_drafts").select("build_id, status").eq("workspace_id", workspace.id).not("build_id", "is", null),
   ]);
 

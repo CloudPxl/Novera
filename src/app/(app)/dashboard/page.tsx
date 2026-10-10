@@ -57,7 +57,7 @@ export default async function DashboardPage() {
     { count: policyCount }, { data: reports }, { data: schedules }, { data: keys }, { data: proposals },
     { data: wsRow }, { count: failedDeliveries },
   ] = await Promise.all([
-    db.from("agents").select("id, name, config, attested_at, is_production").eq("workspace_id", workspace.id).order("created_at"),
+    db.from("agents").select("id, name, config, attested_at, is_production, archived_at").eq("workspace_id", workspace.id).order("created_at"),
     db.from("runs").select("id, status, created_at, agent_id, suite_id, schedule_id, api_key_id").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
     db.from("reports").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id),
     // Enough recent receipts to find the latest for each agent, in one query.
@@ -72,9 +72,10 @@ export default async function DashboardPage() {
     db.from("webhook_deliveries").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("status", "failed").gt("created_at", weekAgo),
   ]);
 
-  const agentList = agents ?? [];
+  // Archived agents are out of the checklist and the attention list; their runs keep their names.
+  const agentList = (agents ?? []).filter((a) => !a.archived_at);
   const runList = runs ?? [];
-  const agentName = new Map(agentList.map((a) => [a.id as string, a.name as string]));
+  const agentName = new Map((agents ?? []).map((a) => [a.id as string, a.name as string]));
   const keyName = new Map((keys ?? []).map((k) => [k.id as string, k.name as string]));
   const reportByRun = new Map((reports ?? []).map((r) => [r.run_id as string, r]));
 

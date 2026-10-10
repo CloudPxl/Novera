@@ -14,6 +14,7 @@ import { Card, Badge, EmptyState, inputClass } from "@/components/ui/primitives.
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { PolicyEditor, ReprobeButton, VerificationEndpoint, ResponsePathPicker, AgentEnvironment } from "./client.tsx";
 import { ScheduleCard, ScheduleForm, type ScheduleView } from "./schedules.tsx";
+import { ConnectionEditor, ArchiveAgent } from "./manage.tsx";
 import { summariseRun } from "../../dashboard/summary.ts";
 import { OtherWorkspace } from "@/components/shell/other-workspace.tsx";
 import { PageHeader, Panel, Rows, TabNav } from "@/components/ui/page.tsx";
@@ -32,19 +33,25 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
   const tab = (TABS as readonly string[]).includes(requested) ? (requested as (typeof TABS)[number]) : "overview";
   const { user, workspace, role, context } = await requireWorkspace();
   const db = await sessionClient();
-  const entitlement = await workspaceEntitlement({
-    client: await assertMembership(user.id, workspace.id),
-    workspaceId: workspace.id,
-  });
+  const member = await assertMembership(user.id, workspace.id);
+  const entitlement = await workspaceEntitlement({ client: member, workspaceId: workspace.id });
 
   const { data: agent } = await db
-    .from("agents").select("id, workspace_id, name, kind, config, verification, attestation_text, attested_at, is_production").eq("id", id).maybeSingle();
+    .from("agents").select("id, workspace_id, name, kind, config, verification, attestation_text, attested_at, is_production, archived_at").eq("id", id).maybeSingle();
   if (!agent) notFound();
   if (agent.workspace_id !== workspace.id) {
     const there = context.memberships.find((m) => m.workspace.id === agent.workspace_id);
     if (!there) notFound();
     return <OtherWorkspace thing="agent" workspace={there.workspace.name} workspaceId={there.workspace.id} next={`/agents/${id}`} />;
   }
+
+  // Whether a credential is stored — a count, never the value. `secrets` has no RLS policy,
+  // so this one read is the service role's.
+  const { count: credentialCount } = tab === "connection"
+    ? await member.from("secrets").select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspace.id).eq("scope", "agent_auth").eq("agent_id", id)
+    : { count: 0 };
+  const archivedAt = (agent.archived_at as string | null) ?? null;
 
   const [{ data: probes }, { data: policies }, { data: runs }, { data: suites }, { data: schedules }] = await Promise.all([
     db.from("probes").select("id, status_code, response_body, response_shape, latency_ms, error, created_at, content_expired_at")
@@ -111,9 +118,10 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
         back={{ href: "/agents", label: context.accountMode === "personal" ? "My agents" : "Agents" }}
         eyebrow={<span className="normal-case tracking-normal">{config.url}</span>}
         title={agent.name}
-        status={agent.attested_at ? <Badge tone="neutral">Authorisation recorded</Badge> : <Badge tone="error">No authorisation recorded</Badge>}
+        status={archivedAt ? <Badge tone="neutral">Archived</Badge> : agent.attested_at ? <Badge tone="neutral">Authorisation recorded</Badge> : <Badge tone="error">No authorisation recorded</Badge>}
         action={
-          !can(role, "run.start") ? undefined
+          archivedAt ? <ButtonLink href={`/agents/${agent.id}?tab=connection`} variant="secondary">Archived — restore</ButtonLink>
+          : !can(role, "run.start") ? undefined
           : !latestPolicy ? <ButtonLink href={`/agents/${agent.id}?tab=policy`}>Write the policy</ButtonLink>
           : !entitlement.canRun ? <ButtonLink href="/settings">Connect a key to run</ButtonLink>
           : <div className="w-full max-w-md">
@@ -285,7 +293,9 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                   {scheduleViews.map((s) => <li key={s.id}><ScheduleCard schedule={s} /></li>)}
                 </ul>
               )}
-              {latestPolicy ? (
+              {archivedAt ? (
+                <p className="mt-3 text-sm text-ink-soft">This agent is archived, so no schedule can be created or resumed. Restore it on the Connection tab.</p>
+              ) : latestPolicy ? (
                 <ScheduleForm
                   agentId={agent.id}
                   suites={(suites ?? []).map((s) => ({ id: s.id as string, label: suiteLabel(s.id as string) }))}
@@ -347,6 +357,21 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
               ) : (
                 <p className="mt-3 text-sm text-ink-soft">No connection receipt yet.</p>
               )}
+            {!archivedAt && can(role, "agent.write") && (config as { kind?: string }).kind === "http" && (
+              <ConnectionEditor
+                agentId={agent.id}
+                hasCredential={(credentialCount ?? 0) > 0}
+                current={{
+                  name: agent.name as string,
+                  url: config.url ?? "",
+                  bodyTemplate: JSON.stringify((agent.config as { bodyTemplate?: unknown }).bodyTemplate ?? { message: "{{input}}" }, null, 2),
+                  responsePath: config.responsePath ?? "",
+                  toolActivityPath: config.toolActivityPath ?? "",
+                  timeoutSeconds: (agent.config as { timeoutMs?: number }).timeoutMs ? String(Math.round((agent.config as { timeoutMs: number }).timeoutMs / 1000)) : "",
+                  authHeaderName: (agent.config as { authHeaderName?: string }).authHeaderName ?? "",
+                }}
+              />
+            )}
             </section>
             <section>
               <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Production or test target</h2><Help label="Production or test target">A destructive scenario (one that attempts something irreversible) and a scenario written against Novera&rsquo;s scripted test data are never sent to a production agent; they are recorded as not run. Mark a staging or test deployment as a test target to run them.</Help></div>
@@ -362,6 +387,10 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                 agentId={agent.id}
                 current={(agent.verification as { url?: string; authHeaderName?: string } | null) ?? null}
               />
+            </section>
+            <section>
+              <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">{archivedAt ? "Archived" : "Archive this agent"}</h2><Help label="Archiving">An archived agent is hidden from lists and takes no new run, retest or schedule. Nothing it produced is deleted, and it can be restored. Owner or admin.</Help></div>
+              <ArchiveAgent agentId={agent.id} name={agent.name as string} archived={archivedAt ? { at: archivedAt } : null} canArchive={can(role, "agent.archive")} />
             </section>
           </div>
         )}

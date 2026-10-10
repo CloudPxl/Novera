@@ -57,7 +57,7 @@ export default async function RegressionsPage() {
       .select("production_failure_id, status, rejection_reason, scenario, included_in_suite_id")
       .eq("workspace_id", workspace.id).eq("origin", "production"),
     admin.from("suites").select("id, key, version, cases").eq("workspace_id", workspace.id),
-    admin.from("agents").select("id, name").eq("workspace_id", workspace.id).order("created_at"),
+    admin.from("agents").select("id, name").eq("workspace_id", workspace.id).is("archived_at", null).order("created_at"),
   ]);
 
   const draftByFailure = new Map(((drafts ?? []) as DraftRow[]).map((d) => [d.production_failure_id, d]));

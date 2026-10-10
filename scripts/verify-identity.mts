@@ -1,7 +1,7 @@
 /**
  * Proves the identity model (0054, 0055) against the live database and app: profiles, roles,
  * invitations, removal, the audit trail, assistant history and memory, erasure of a workspace
- * and of an account, the trial per owner, and retention.
+ * and of an account, the trial per owner, archiving an agent (0063), and retention.
  *
  * Every check runs as a real signed-in user through the anon key — the browser's key — or
  * through the app's own HTTP routes. Inspecting the policies would not prove any of it.
@@ -190,6 +190,48 @@ try {
   const r1 = await run(A, agent!.id, pol!.id), r2 = await run(A, agent!.id, pol!.id), r3 = await run(B, agentB!.id, polB!.id), r4 = await run(B, agentB!.id, polB!.id);
   check(!r1.error && !r2.error && !r3.error && /trial_exhausted/.test(r4.error?.message ?? ""),
     "three trial runs per owner across two workspaces; the fourth is refused", r4.error?.message.slice(0, 70) ?? "fourth accepted");
+
+  section("Archiving an agent (0063)");
+  // Clients write no agents row (0057), the archive columns included, whatever the role.
+  const stamp63 = new Date().toISOString();
+  await rev.c.from("agents").update({ archived_at: stamp63, archived_by: rev.id }).eq("id", agent!.id);
+  await aud.c.from("agents").update({ archived_at: stamp63, archived_by: aud.id }).eq("id", agent!.id);
+  await out.c.from("agents").update({ archived_at: stamp63, archived_by: out.id, name: "outsider" }).eq("id", agent!.id);
+  const { data: notArchived } = await admin.from("agents").select("archived_at, name").eq("id", agent!.id).single();
+  check(notArchived?.archived_at === null && notArchived?.name === "identity agent",
+    "no client archives or edits an agent through the REST API — a reviewer, an auditor or another workspace's member");
+  const { data: outSees } = await out.c.from("agents").select("id").eq("id", agent!.id);
+  check((outSees ?? []).length === 0, "another workspace's member cannot even read the agent");
+  const { data: busy } = await admin.from("runs").insert({ workspace_id: A, agent_id: agent!.id, policy_id: pol!.id, suite_id: suite!.id, status: "queued", judge_source: "workspace_key", manifest_hash: `identity-${crypto.randomUUID()}` }).select("id").single();
+  const { error: busyArchive } = await admin.from("agents").update({ archived_at: stamp63, archived_by: owner.id }).eq("id", agent!.id);
+  const { error: busyConfig } = await admin.from("agents").update({ config: { url: "https://elsewhere.invalid/chat" } }).eq("id", agent!.id);
+  check(/agent_busy/.test(busyArchive?.message ?? "") && /agent_busy/.test(busyConfig?.message ?? ""),
+    "an agent is not archived, and its connection not changed, while a run of it is queued — even by the service role");
+  await admin.from("runs").update({ status: "aborted", finished_at: new Date().toISOString() }).eq("id", busy!.id);
+  const { data: sched } = await admin.from("run_schedules").insert({ workspace_id: A, agent_id: agent!.id, suite_id: suite!.id, cadence: "daily", hour_utc: 6, next_run_at: new Date(Date.now() + 86_400_000).toISOString(), created_by: owner.id }).select("id").single();
+  const { error: archiveErr } = await admin.from("agents").update({ archived_at: stamp63, archived_by: owner.id }).eq("id", agent!.id);
+  check(!archiveErr, "the agent archives once nothing of it is running", archiveErr?.message);
+  const { startRun, RunRefusal, ARCHIVED_AGENT } = await import("../src/lib/workflow/start-run.ts");
+  let refusal: unknown = null;
+  try {
+    await startRun({ client: admin, workspaceId: A, userId: owner.id, agentId: agent!.id, suiteId: suite!.id });
+  } catch (e) { refusal = e; }
+  check(refusal instanceof RunRefusal && (refusal as Error).message === ARCHIVED_AGENT, "startRun refuses an archived agent with a sentence", refusal instanceof Error ? refusal.message : "started");
+  const { error: directRun } = await admin.from("runs").insert({ workspace_id: A, agent_id: agent!.id, policy_id: pol!.id, suite_id: suite!.id, status: "aborted", judge_source: "workspace_key", manifest_hash: `identity-${crypto.randomUUID()}` });
+  check(/agent_archived/.test(directRun?.message ?? ""), "the database refuses a run of an archived agent, whoever inserts it");
+  await admin.from("run_schedules").update({ paused_at: new Date().toISOString(), paused_reason: "archived" }).eq("id", sched!.id);
+  const { error: resume } = await admin.from("run_schedules").update({ paused_at: null, paused_reason: null }).eq("id", sched!.id);
+  const { error: newSched } = await admin.from("run_schedules").insert({ workspace_id: A, agent_id: agent!.id, suite_id: suite!.id, cadence: "daily", hour_utc: 7, next_run_at: new Date(Date.now() + 86_400_000).toISOString(), created_by: owner.id });
+  check(/agent_archived/.test(resume?.message ?? "") && /agent_archived/.test(newSched?.message ?? ""), "an archived agent's schedule cannot be resumed, and no new one created");
+  const { error: redate } = await admin.from("agents").update({ archived_at: new Date(0).toISOString() }).eq("id", agent!.id);
+  const { error: del } = await admin.from("agents").delete().eq("id", agent!.id);
+  check(/agent_archive_frozen/.test(redate?.message ?? "") && Boolean(del), "an archive cannot be redated, and an agent cannot be deleted");
+  const { data: stillRuns } = await aud.c.from("runs").select("id").eq("agent_id", agent!.id);
+  check((stillRuns ?? []).length >= 2, "an archived agent's runs stay readable to members", `${stillRuns?.length} runs`);
+  const { error: restoreErr } = await admin.from("agents").update({ archived_at: null, archived_by: null }).eq("id", agent!.id);
+  const { error: resumeAfter } = await admin.from("run_schedules").update({ paused_at: null, paused_reason: null }).eq("id", sched!.id);
+  check(!restoreErr && !resumeAfter, "restored, its schedule resumes", restoreErr?.message ?? resumeAfter?.message);
+  await admin.from("run_schedules").update({ cancelled_at: new Date().toISOString(), cancelled_by: owner.id }).eq("id", sched!.id);
 
   section("Retention");
   await admin.from("assistant_threads").update({ last_message_at: new Date(Date.now() - 200 * 86_400_000).toISOString() }).eq("id", thread!.id);

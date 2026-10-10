@@ -31,7 +31,7 @@ row says which it was.
 | E2 | A model-kind agent uses no mismatched key and never falls back | Low | Code | PASS | `src/lib/agents/factory.ts` | — |
 | F1 | Report names every grader in its role | Medium | Code | PASS | Format 14 `run.graders`; tests for two judges, settler and rule-only | — |
 | F2 | A scenario not sent never shows Novera's refusal as the agent's reply | Medium | Code | PASS | Format 14 `no_result`; the label "Why there is no result" on every format; run-page evidence chain says "not sent"; all 9 local reports render | — |
-| G1 | Agents: edit connection, archive with confirmation | Medium | Code | see the G1 merge | — | — |
+| G1 | Agents: edit connection, archive with confirmation | Medium | Code | PASS | Local: edit audited by field name; archive by typing the name hides it, the database refuses its runs, restore works; `verify:identity` "Archiving an agent (0063)" passes; axe clean at 390/1440. 0063 applied in production | — |
 | G2 | An invitation survives sign-in and sign-up; invitees skip solo onboarding | Medium | Code | PASS | Local: from the invitation to sign-in, back to the invitation, accept, team dashboard; `next` kept through sign-in | — |
 | G3 | Ask Novera states only figures it was given; never raw output | Medium | Code | PASS | Local, 12 questions: 10 answered (5 after one retry), 2 factual fallbacks, 0 unreadable or unsupported shown. Limit: a correct computed figure can pass if it coincides with one in a sent doc | — |
 | G4 | Phones 320–430 | Low | Code | PASS | Local: 75 loads (15 pages × 5 widths): no overflow, no clipped navigation, axe clean | — |

@@ -56,3 +56,6 @@ next-env.d.ts
 
 # Local tooling state, not part of the project.
 claude_usage_state.json
+
+# Claude Code agent worktrees (separate checkouts)
+.claude/worktrees/

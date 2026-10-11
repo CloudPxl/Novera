@@ -20,7 +20,9 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Superseded branch and PR runs are cancelled; every commit on main keeps its result, because
+  # the ruleset's required check reads it and a cancelled run there is an unverified commit.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   checks:

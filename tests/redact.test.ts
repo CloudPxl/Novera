@@ -58,12 +58,16 @@ test("redaction takes linear time on inputs built to make its patterns backtrack
     "key-shaped prefix": (n) => `sk-${kb(n, "a")}`,
   };
   for (const [shape, make] of Object.entries(shapes)) {
-    const time = (n: number) => { const text = make(n); const t = performance.now(); redact(text); return performance.now() - t; };
+    // The fastest of three: one sample can land on a GC pause or a busy CI machine, and that is
+    // noise, not backtracking (a load-sensitive failure was seen 2026-10-11 at 185 ms).
+    const once = (text: string) => { const t = performance.now(); redact(text); return performance.now() - t; };
+    const time = (n: number) => { const text = make(n); return Math.min(once(text), once(text), once(text)); };
     time(8); // warm up
     const small = time(64), large = time(256);
     assert.ok(small < 250, `${shape}: 64 KB took ${small.toFixed(0)} ms`);
-    // Four times the input may take somewhat more than four times as long, never sixteen.
-    assert.ok(large < Math.max(8 * small, 120), `${shape}: 256 KB took ${large.toFixed(0)} ms against ${small.toFixed(0)} ms for 64 KB`);
+    // Four times the input may take somewhat more than four times as long, never sixteen. The
+    // floor stays far below what quadratic time costs here (seconds at 64 KB, C6).
+    assert.ok(large < Math.max(8 * small, 400), `${shape}: 256 KB took ${large.toFixed(0)} ms against ${small.toFixed(0)} ms for 64 KB`);
   }
 });
 

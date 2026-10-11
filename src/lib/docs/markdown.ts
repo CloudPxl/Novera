@@ -21,7 +21,9 @@ export type Span =
   | { kind: "text"; text: string }
   | { kind: "code"; text: string }
   | { kind: "em"; text: string }
-  | { kind: "strong"; text: string };
+  | { kind: "strong"; text: string }
+  /** `[text](href)`: a path on this site or an https address, nothing else. */
+  | { kind: "link"; text: string; href: string };
 
 export type Block =
   | { kind: "heading"; level: 2 | 3; spans: Span[] }
@@ -30,15 +32,23 @@ export type Block =
   /** A fenced block, kept verbatim — line breaks and blank lines included. */
   | { kind: "codeblock"; text: string };
 
-/** `**strong**`, `*em*` and `` `code` ``, in that precedence. */
-const INLINE = /(\*\*[^*]+\*\*|(?<!\*)\*[^*\n]+\*(?!\*)|`[^`\n]+`)/g;
+/**
+ * `[link](href)`, `**strong**`, `*em*` and `` `code` ``, in that precedence. A link's target is a
+ * path on this site (`/docs/api`, never `//host`) or an `https://` address; any other target —
+ * `javascript:`, `data:`, plain `http:` — is not a link and shows verbatim.
+ */
+const INLINE = /(\[[^\]\n]+\]\((?:\/(?!\/)[^\s()]*|https:\/\/[^\s()]+)\)|\*\*[^*]+\*\*|(?<!\*)\*[^*\n]+\*(?!\*)|`[^`\n]+`)/g;
+const LINK = /^\[([^\]\n]+)\]\(([^\s()]+)\)$/;
 
 export function parseSpans(text: string): Span[] {
   const spans: Span[] = [];
 
   for (const piece of text.split(INLINE)) {
     if (!piece) continue;
-    if (piece.startsWith("**") && piece.endsWith("**") && piece.length > 4) {
+    const link = LINK.exec(piece);
+    if (link && (/^\/(?!\/)/.test(link[2]) || /^https:\/\//.test(link[2]))) {
+      spans.push({ kind: "link", text: link[1], href: link[2] });
+    } else if (piece.startsWith("**") && piece.endsWith("**") && piece.length > 4) {
       spans.push({ kind: "strong", text: piece.slice(2, -2) });
     } else if (piece.startsWith("`") && piece.endsWith("`") && piece.length > 2) {
       spans.push({ kind: "code", text: piece.slice(1, -1) });

@@ -23,7 +23,7 @@ export function Workflow() {
   const motion = useSystemMotion();
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
       <ol className="relative space-y-2">
         <span aria-hidden className="absolute bottom-6 left-[1.0625rem] top-6 w-px bg-line" />
         {STEPS.map((s, i) => {

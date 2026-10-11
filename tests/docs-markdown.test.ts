@@ -91,3 +91,13 @@ test("a fenced block keeps its lines and blank lines, and its text stays text", 
   assert.deepEqual(blocks.map((b) => b.kind), ["paragraph", "codeblock", "paragraph"]);
   assert.equal((blocks[1] as { text: string }).text, "steps:\n  - run: a\n\n  - run: <script>b</script>");
 });
+
+test("a link is a site path or an https address, and anything else stays verbatim", () => {
+  assert.deepEqual(parseSpans("see [the API](/docs/api) now"), [
+    { kind: "text", text: "see " }, { kind: "link", text: "the API", href: "/docs/api" }, { kind: "text", text: " now" },
+  ]);
+  assert.deepEqual(parseSpans("[n8n](https://n8n.io)"), [{ kind: "link", text: "n8n", href: "https://n8n.io" }]);
+  for (const bad of ["[x](javascript:alert(1))", "[x](//evil.example)", "[x](http://plain.example)", "[x](data:text/html,hi)"]) {
+    assert.ok(parseSpans(bad).every((s) => s.kind !== "link"), bad);
+  }
+});

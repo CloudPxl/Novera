@@ -15,8 +15,17 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const db = await sessionClient();
-  const { data } = await db.from("doc_pages").select("title").eq("slug", slug).eq("published", true).maybeSingle();
-  return { title: data ? `${data.title} · Novera` : "Novera" };
+  const { data } = await db.from("doc_pages").select("title, body").eq("slug", slug).eq("published", true).maybeSingle();
+  if (!data) return { title: "Novera" };
+  return { title: `${data.title} · Novera`, description: describe(data.body as string), alternates: { canonical: `/docs/${slug}` } };
+}
+
+/** The page's first paragraph as plain text, for search results and link previews. */
+function describe(body: string): string | undefined {
+  const first = parseDocBody(body).find((b) => b.kind === "paragraph");
+  if (!first || first.kind !== "paragraph") return undefined;
+  const text = first.spans.map((s) => s.text).join("").replace(/\s+/g, " ").trim();
+  return text.length > 160 ? `${text.slice(0, 157).replace(/\s+\S*$/, "")}…` : text;
 }
 
 /**
@@ -39,6 +48,12 @@ function Spans({ spans }: { spans: Span[] }) {
         }
         if (span.kind === "em") return <em key={i}>{span.text}</em>;
         if (span.kind === "strong") return <strong key={i} className="font-semibold text-ink">{span.text}</strong>;
+        if (span.kind === "link") {
+          const cls = "font-medium text-ink underline underline-offset-2 [overflow-wrap:anywhere]";
+          return span.href.startsWith("/")
+            ? <Link key={i} href={span.href} className={cls}>{span.text}</Link>
+            : <a key={i} href={span.href} className={cls} rel="noopener noreferrer">{span.text}</a>;
+        }
         return <span key={i}>{span.text}</span>;
       })}
     </>

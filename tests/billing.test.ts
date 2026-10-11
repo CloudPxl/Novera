@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { billingConfig, keyMode } from "../src/lib/billing/config.ts";
+import { billingConfig, keyMode, storedLivemode } from "../src/lib/billing/config.ts";
 import { PLAN_CATALOG, PLAN_KEYS, READ_ONLY_FEATURES, planForPrice } from "../src/lib/billing/plans.ts";
-import { resolveEntitlement, type EntitlementInput, type SubscriptionRow } from "../src/lib/billing/entitlement.ts";
+import { resolveEntitlement, subscriptionMayCharge, type EntitlementInput, type SubscriptionRow } from "../src/lib/billing/entitlement.ts";
 import { checkoutRequest, decideCheckout, isStripeHostedUrl } from "../src/lib/billing/checkout.ts";
 import { handleStripeWebhook } from "../src/lib/billing/webhook.ts";
 import { can, ROLES } from "../src/lib/auth/permissions.ts";
@@ -492,4 +492,77 @@ test("sources do not add up: grant before subscription before own key before tri
   assert.equal(subscribed.runsUsed, 1);
   // Unknown Stripe status: stored, grants nothing.
   assert.equal(resolveEntitlement({ ...base, subscriptions: [{ ...sub, status: "something_new" }] }).subscription!.standing, "unrecognised");
+});
+
+// ------------------------------------------------------------------ 2026-10-11 audit
+
+test("each deployment reads only its own Stripe mode's rows: sandbox rows never count where billing is off or live", async () => {
+  assert.equal(storedLivemode(config), false, "a sandbox key reads test rows");
+  assert.equal(storedLivemode(billingConfig({})), true, "billing off reads live rows only");
+  assert.equal(storedLivemode(billingConfig({ ...ENV, STRIPE_SECRET_KEY: "sk_live_x", BILLING_ALLOW_LIVE: "1" })), true);
+
+  const { store, stripe, deliver } = setup();
+  stripe.current.set("sub_A1", subscription({}));
+  await deliver(signedEvent("customer.subscription.created", subscription({})));
+  assert.equal((await store.listSubscriptions(WS_A, false)).length, 1);
+  assert.equal((await store.listSubscriptions(WS_A, true)).length, 0, "a sandbox subscription is invisible to production");
+  assert.equal(await store.customerForWorkspace(WS_A, true), null, "and the workspace can still get a live customer");
+  await store.saveCustomer({ workspaceId: WS_A, stripeCustomerId: "cus_live_A", livemode: true });
+  assert.equal((await store.customerForWorkspace(WS_A, true))?.stripeCustomerId, "cus_live_A");
+  assert.equal((await store.customerForWorkspace(WS_A, false))?.stripeCustomerId, "cus_A");
+});
+
+test("0065 keys the customer mapping on workspace and mode", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0065_billing_customer_per_mode.sql", import.meta.url), "utf8");
+  assert.match(sql, /primary key \(workspace_id, livemode\)/);
+});
+
+test("erasure is refused while Stripe could still charge, including after the grace period and when unpaid or paused", () => {
+  const now = new Date(T0 * 1000 + 40 * DAY * 1000);
+  const row = (o: Partial<SubscriptionRow>): SubscriptionRow => ({
+    stripeSubscriptionId: "sub_A1", status: "active", planKey: "team_byok",
+    currentPeriodStart: iso(T0), currentPeriodEnd: iso(T0 + 60 * DAY), cancelAtPeriodEnd: false, cancelAt: null,
+    delinquentSince: null, stripeCreatedAt: iso(T0), ...o,
+  });
+  for (const status of ["active", "trialing", "unpaid", "incomplete", "paused"]) {
+    assert.equal(subscriptionMayCharge(row({ status }), now, 7), true, status);
+  }
+  assert.equal(subscriptionMayCharge(row({ status: "past_due", delinquentSince: iso(T0) }), now, 7), true, "restricted still retries");
+  assert.equal(subscriptionMayCharge(row({ planKey: null }), now, 7), true, "an unrecognised price still charges");
+  assert.equal(subscriptionMayCharge(row({ cancelAtPeriodEnd: true }), now, 7), false, "set to end");
+  assert.equal(subscriptionMayCharge(row({ status: "canceled" }), now, 7), false);
+  assert.equal(subscriptionMayCharge(row({ status: "incomplete_expired" }), now, 7), false);
+  assert.equal(subscriptionMayCharge(null, now, 7), false);
+});
+
+test("a slow read of an older state cannot overwrite a newer one: the observation is stamped before the read", async () => {
+  const { store, stripe } = setup();
+  let clock = T0 * 1000;
+  const now = () => new Date((clock += 1000));
+  // The first read is slow and returns the state as it was (active); the second is fast and newer (cancelling).
+  let call = 0;
+  const gateway = {
+    ...stripe,
+    createCustomer: stripe.createCustomer.bind(stripe), createCheckoutSession: stripe.createCheckoutSession.bind(stripe),
+    createPortalSession: stripe.createPortalSession.bind(stripe), setCancelAtPeriodEnd: stripe.setCancelAtPeriodEnd.bind(stripe),
+    async retrieveSubscription() {
+      const mine = ++call;
+      if (mine === 1) { await new Promise((r) => setTimeout(r, 30)); return subscription({}); }
+      return subscription({ cancelAtPeriodEnd: true });
+    },
+  };
+  const run = (e: { rawBody: string; signature: string }) => handleStripeWebhook({ ...e, config, store, gateway, now });
+  await Promise.all([
+    run(signedEvent("customer.subscription.updated", subscription({}))),
+    run(signedEvent("customer.subscription.updated", subscription({ cancelAtPeriodEnd: true }))),
+  ]);
+  assert.equal(store.subscriptions.get("sub_A1")!.cancelAtPeriodEnd, true);
+});
+
+test("a subscription Stripe returns unreadable is answered 500, so Stripe delivers it again", async () => {
+  const { store, stripe, deliver } = setup();
+  stripe.current.set("sub_A1", { id: "sub_A1", object: "subscription" });
+  const e = signedEvent("customer.subscription.updated", subscription({}), { id: "evt_unreadable" });
+  assert.equal((await deliver(e)).status, 500);
+  assert.equal(store.events.get("evt_unreadable")!.status, "failed");
 });

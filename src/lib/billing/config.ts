@@ -77,6 +77,15 @@ export function billingConfig(env: Record<string, string | undefined> = process.
   return { ...base, active: true, reason: null, mode, secretKey, webhookSecret };
 }
 
+/**
+ * Which Stripe mode's rows this deployment reads: the configured key's mode, and live when billing
+ * is off. Preview and production share one database, so a sandbox subscription must never show,
+ * block erasure or block a checkout where no sandbox key is configured — and never after go-live.
+ */
+export function storedLivemode(config: Pick<BillingConfig, "mode">): boolean {
+  return config.mode !== "test";
+}
+
 /** `sk_test_` / `rk_test_` → test, `sk_live_` / `rk_live_` → live, anything else (a publishable key) → null. */
 export function keyMode(key: string): BillingMode | null {
   if (/^(sk|rk)_test_/.test(key)) return "test";

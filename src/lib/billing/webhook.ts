@@ -174,9 +174,10 @@ async function syncSubscription(subscriptionId: string, snapshot: unknown, event
   let object: unknown;
   let observedAt: string;
   if (ctx.gateway) {
-    // The state now, whatever order the events arrive in.
-    object = await ctx.gateway.retrieveSubscription(subscriptionId);
+    // The state now, whatever order the events arrive in. Stamped before the read: a slow read
+    // of an older state must not carry a later time than a fast read of a newer one.
     observedAt = ctx.now().toISOString();
+    object = await ctx.gateway.retrieveSubscription(subscriptionId);
   } else if (snapshot) {
     object = snapshot;
     observedAt = isoFromUnix(event.created) ?? ctx.now().toISOString();
@@ -185,7 +186,8 @@ async function syncSubscription(subscriptionId: string, snapshot: unknown, event
   }
 
   const facts = subscriptionFacts(object);
-  if (!facts || facts.id !== subscriptionId) return { outcome: "failed", detail: "Stripe returned no readable subscription.", workspaceId: null };
+  // Thrown, so the event is answered 500 and Stripe delivers it again.
+  if (!facts || facts.id !== subscriptionId) throw new Error("Stripe returned no readable subscription.");
 
   const workspaceId = await ctx.store.workspaceForCustomer(facts.customerId);
   if (!workspaceId) return { outcome: "refused", detail: "Subscription for a customer Novera did not create.", workspaceId: null };

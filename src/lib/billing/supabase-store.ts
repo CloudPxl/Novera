@@ -101,8 +101,9 @@ export function supabaseBillingStore(db: SupabaseClient): BillingStore {
       return (data?.workspace_id as string | undefined) ?? null;
     },
 
-    async customerForWorkspace(workspaceId) {
-      const { data, error } = await db.from("billing_customers").select("stripe_customer_id, livemode").eq("workspace_id", workspaceId).maybeSingle();
+    async customerForWorkspace(workspaceId, livemode) {
+      const { data, error } = await db.from("billing_customers").select("stripe_customer_id, livemode")
+        .eq("workspace_id", workspaceId).eq("livemode", livemode).maybeSingle();
       if (error) throw new Error(`Could not read the customer: ${error.message}`);
       return data ? { stripeCustomerId: data.stripe_customer_id as string, livemode: data.livemode as boolean } : null;
     },
@@ -112,7 +113,7 @@ export function supabaseBillingStore(db: SupabaseClient): BillingStore {
         workspace_id: row.workspaceId, stripe_customer_id: row.stripeCustomerId, livemode: row.livemode, created_by: row.createdBy,
       });
       if (error && error.code !== "23505") throw new Error(`Could not save the customer: ${error.message}`);
-      const stored = await store.customerForWorkspace(row.workspaceId);
+      const stored = await store.customerForWorkspace(row.workspaceId, row.livemode);
       if (!stored) throw new Error("The customer was not saved.");
       return { stripeCustomerId: stored.stripeCustomerId };
     },
@@ -123,9 +124,9 @@ export function supabaseBillingStore(db: SupabaseClient): BillingStore {
       return data ? fromRow(data as Row) : null;
     },
 
-    async listSubscriptions(workspaceId) {
+    async listSubscriptions(workspaceId, livemode) {
       const { data, error } = await db.from("billing_subscriptions").select(SUB_COLUMNS)
-        .eq("workspace_id", workspaceId).order("stripe_created_at", { ascending: false });
+        .eq("workspace_id", workspaceId).eq("livemode", livemode).order("stripe_created_at", { ascending: false });
       if (error) throw new Error(`Could not read subscriptions: ${error.message}`);
       return (data ?? []).map((r) => fromRow(r as Row));
     },

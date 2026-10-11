@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "../auth/entitlement.ts";
-import { billingConfig, type BillingConfig } from "./config.ts";
+import { billingConfig, storedLivemode, type BillingConfig } from "./config.ts";
 import { currentSubscription, resolveEntitlement, subscriptionStanding, type BillingEntitlement, type SubscriptionRow } from "./entitlement.ts";
 import { supabaseBillingStore } from "./supabase-store.ts";
 
@@ -36,11 +36,12 @@ async function runTimesSince(db: SupabaseClient, workspaceId: string, from: stri
 export async function loadBillingView(db: SupabaseClient, workspaceId: string, now = new Date()): Promise<BillingView> {
   const config = billingConfig();
   const store = supabaseBillingStore(db);
+  const livemode = storedLivemode(config);
   const [base, stored, grants, customer, { count: totalRuns, error: countError }] = await Promise.all([
     workspaceEntitlement({ client: db, workspaceId }),
-    store.listSubscriptions(workspaceId),
+    store.listSubscriptions(workspaceId, livemode),
     store.listGrants(workspaceId),
-    store.customerForWorkspace(workspaceId),
+    store.customerForWorkspace(workspaceId, livemode),
     db.from("runs").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
   ]);
   if (countError) throw new Error(`Could not count runs: ${countError.message}`);

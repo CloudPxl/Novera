@@ -11,9 +11,9 @@ import type { CheckoutRequest, StripeGateway } from "./gateway.ts";
 export function stripeGateway(config: BillingConfig): StripeGateway | null {
   if (!config.active || !config.secretKey) return null;
   const stripe = new Stripe(config.secretKey, {
-    maxNetworkRetries: 2,
-    // Inside a 60 s function: a Stripe call that hangs must not hold the request.
-    timeout: 15_000,
+    // Two attempts of 10 s each fit the webhook route's 30 s with room to record the outcome.
+    maxNetworkRetries: 1,
+    timeout: 10_000,
     appInfo: { name: "Novera" },
   });
 

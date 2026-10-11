@@ -45,13 +45,13 @@ export class MemoryStore implements BillingStore {
     return this.customers.get(customerId)?.workspaceId ?? null;
   }
 
-  async customerForWorkspace(workspaceId: string) {
-    for (const [id, c] of this.customers) if (c.workspaceId === workspaceId) return { stripeCustomerId: id, livemode: c.livemode };
+  async customerForWorkspace(workspaceId: string, livemode: boolean) {
+    for (const [id, c] of this.customers) if (c.workspaceId === workspaceId && c.livemode === livemode) return { stripeCustomerId: id, livemode: c.livemode };
     return null;
   }
 
   async saveCustomer(row: { workspaceId: string; stripeCustomerId: string; livemode: boolean }) {
-    const existing = await this.customerForWorkspace(row.workspaceId);
+    const existing = await this.customerForWorkspace(row.workspaceId, row.livemode);
     if (existing) return { stripeCustomerId: existing.stripeCustomerId };
     this.customers.set(row.stripeCustomerId, { workspaceId: row.workspaceId, livemode: row.livemode });
     return { stripeCustomerId: row.stripeCustomerId };
@@ -62,8 +62,8 @@ export class MemoryStore implements BillingStore {
     return s ? { ...s } : null;
   }
 
-  async listSubscriptions(workspaceId: string) {
-    return [...this.subscriptions.values()].filter((s) => s.workspaceId === workspaceId).map((s) => ({ ...s }));
+  async listSubscriptions(workspaceId: string, livemode: boolean) {
+    return [...this.subscriptions.values()].filter((s) => s.workspaceId === workspaceId && s.livemode === livemode).map((s) => ({ ...s }));
   }
 
   /** The same refusals as 0060's trigger, so a test cannot pass on a write the database would refuse. */

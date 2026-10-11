@@ -188,6 +188,20 @@ export function subscriptionStanding(sub: SubscriptionRow | null, now: Date, gra
   }
 }
 
+/**
+ * Whether Stripe could still charge for this subscription: any status Stripe may yet collect on
+ * (active, trialing, past due — in grace or restricted —, unpaid, incomplete, paused) unless it is
+ * set to end. Erasure is refused while this holds: Stripe goes on retrying a restricted or unpaid
+ * subscription for weeks, and a paused one can resume, for a workspace that would no longer exist.
+ */
+export function subscriptionMayCharge(sub: SubscriptionRow | null, now: Date, graceDays: number): boolean {
+  if (!sub || !CHARGEABLE_STATUSES.has(sub.status)) return false;
+  const standing = subscriptionStanding(sub, now, graceDays);
+  return standing?.standing !== "cancelling" && standing?.standing !== "ended";
+}
+
+const CHARGEABLE_STATUSES = new Set(["active", "trialing", "past_due", "unpaid", "incomplete", "paused"]);
+
 interface Candidate {
   source: Exclude<EntitlementSource, "none">;
   planKey: PlanKey | null;

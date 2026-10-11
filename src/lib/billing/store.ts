@@ -46,11 +46,13 @@ export interface BillingStore {
   claimEvent(event: { id: string; type: string; livemode: boolean; createdAt: string }, now: Date): Promise<ClaimResult>;
   finishEvent(id: string, outcome: EventOutcome, detail: string | null, workspaceId: string | null): Promise<void>;
   workspaceForCustomer(stripeCustomerId: string): Promise<string | null>;
-  customerForWorkspace(workspaceId: string): Promise<{ stripeCustomerId: string; livemode: boolean } | null>;
+  /** The workspace's Stripe customer in one mode (0065: one per workspace per mode). */
+  customerForWorkspace(workspaceId: string, livemode: boolean): Promise<{ stripeCustomerId: string; livemode: boolean } | null>;
   /** Inserts the mapping; returns the mapping that is stored afterwards (a race keeps the first). */
   saveCustomer(row: { workspaceId: string; stripeCustomerId: string; livemode: boolean; createdBy: string | null }): Promise<{ stripeCustomerId: string }>;
   getSubscription(stripeSubscriptionId: string): Promise<StoredSubscription | null>;
-  listSubscriptions(workspaceId: string): Promise<StoredSubscription[]>;
+  /** The workspace's subscriptions in one Stripe mode; the other mode's rows are never read. */
+  listSubscriptions(workspaceId: string, livemode: boolean): Promise<StoredSubscription[]>;
   /** Writes the state and its history line, unless it is older than, or contradicts, what is stored. */
   writeSubscription(row: StoredSubscription, eventId: string | null): Promise<WriteResult>;
   listGrants(workspaceId: string): Promise<GrantRow[]>;

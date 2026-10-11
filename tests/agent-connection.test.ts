@@ -135,3 +135,14 @@ test("startRun refuses an archived agent with a sentence, at the one entry point
   assert.match(src, /if \(agent\.archived_at\) throw new RunRefusal\(ARCHIVED_AGENT\)/);
   assert.match(src, /agent_archived/);
 });
+
+test("a stored credential does not follow the address to a new host: paste it again or remove it", () => {
+  const stored = { authHeaderName: "authorization" };
+  const moved = parseConnectionEdit(form({ ...stored, url: "https://attacker.example/chat" }), true, "https://bot.example/chat");
+  assert.equal(moved.ok, false);
+  assert.match((moved as { error: string }).error, /different host/);
+  assert.equal(parseConnectionEdit(form({ ...stored, url: "https://bot.example/v2/chat" }), true, "https://bot.example/chat").ok, true, "same host, new path");
+  assert.equal(parseConnectionEdit(form({ ...stored, url: "https://attacker.example/chat", credential: "Bearer new" }), true, "https://bot.example/chat").ok, true, "pasted again");
+  assert.equal(parseConnectionEdit(form({ ...stored, url: "https://attacker.example/chat", removeCredential: "on" }), true, "https://bot.example/chat").ok, true, "removed");
+  assert.equal(parseConnectionEdit(form({ url: "https://attacker.example/chat" }), false, "https://bot.example/chat").ok, true, "nothing stored");
+});

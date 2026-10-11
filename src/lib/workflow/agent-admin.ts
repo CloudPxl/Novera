@@ -77,7 +77,7 @@ export async function updateAgentConnection(_prev: FormState, form: FormData): P
     responsePath: form.get("responsePath"), toolActivityPath: form.get("toolActivityPath"),
     timeoutSeconds: form.get("timeoutSeconds"), authHeaderName: form.get("authHeaderName"),
     credential: form.get("credential"), removeCredential: form.get("removeCredential"),
-  }, storedIds.length > 0);
+  }, storedIds.length > 0, current.url);
   if (!parsed.ok) return { error: parsed.error };
   const edit = parsed.value;
   if (edit.credential === "remove" && storedIds.length === 0) {

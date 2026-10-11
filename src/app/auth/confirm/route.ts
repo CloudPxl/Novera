@@ -1,8 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createClient, type EmailOtpType } from "@supabase/supabase-js";
-import { sessionClient } from "@/lib/supabase/server.ts";
-import { RECOVERY_COOKIE, RECOVERY_COOKIE_OPTIONS, recoverySecret, sealRecovery } from "@/lib/auth/recovery.ts";
+import { RECOVERY_COOKIE, RECOVERY_COOKIE_OPTIONS, recoverySecret, sealRecovery, sealRefreshToken } from "@/lib/auth/recovery.ts";
 import type { ProblemCode } from "./problems.ts";
 import { completeAuth } from "../callback/handle.ts";
 
@@ -18,9 +17,11 @@ import { completeAuth } from "../callback/handle.ts";
  *
  *   - a confirmation (`signup`, `email`, `email_change`) confirms the address and creates no
  *     session in this browser: the person signs in by hand, as themselves;
- *   - `recovery` creates a session, because setting a password needs one, but marks it
- *     unbound: the reset page names the account, and after the password is set this browser
- *     is signed out (src/lib/auth/recovery.ts);
+ *   - `recovery` is verified on the same kind of client and creates no session in this
+ *     browser either: the verified session's refresh token is sealed into the fifteen-minute
+ *     recovery context, which only the reset action opens, once (src/lib/auth/recovery.ts).
+ *     It used to set the session cookies, so an attacker's own reset link signed a victim's
+ *     browser into the attacker's account (security audit, 2026-10-11);
  *   - `magiclink` and `invite` are refused. Novera sends neither, so a link of either kind
  *     reaching here was made by someone else.
  *
@@ -42,12 +43,15 @@ export async function GET(request: NextRequest) {
 
   if (!tokenHash || !type || !/^[A-Za-z0-9_-]{8,256}$/.test(tokenHash)) return failed("link_invalid");
 
+  // Verified on a client that keeps no cookies: nothing below changes who this browser is
+  // signed in as.
+  const isolated = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+
   if (CONFIRMATION.includes(type)) {
-    // Verified on a client that keeps no cookies, then that session is ended: the address is
-    // confirmed and this browser stays exactly as it was — signed in as whoever it was, or not.
-    const isolated = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    });
+    // The address is confirmed and that session is ended: this browser stays exactly as it
+    // was — signed in as whoever it was, or not.
     const { data, error } = await isolated.auth.verifyOtp({ type, token_hash: tokenHash });
     if (error) return failed("link_spent");
     if (data.session) await isolated.auth.signOut({ scope: "local" });
@@ -55,10 +59,11 @@ export async function GET(request: NextRequest) {
   }
 
   if (type === "recovery") {
-    const supabase = await sessionClient();
-    const { data, error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
-    if (error || !data.user) return failed("reset_expired");
-    (await cookies()).set(RECOVERY_COOKIE, sealRecovery({ userId: data.user.id, issuedAt: Date.now(), bound: false }, recoverySecret()), {
+    const { data, error } = await isolated.auth.verifyOtp({ type, token_hash: tokenHash });
+    if (error || !data.user || !data.session?.refresh_token) return failed("reset_expired");
+    const issuedAt = Date.now();
+    const sealedRefresh = sealRefreshToken(data.session.refresh_token, data.user.id, issuedAt);
+    (await cookies()).set(RECOVERY_COOKIE, sealRecovery({ userId: data.user.id, issuedAt, bound: false, sealedRefresh }, recoverySecret()), {
       ...RECOVERY_COOKIE_OPTIONS, secure: process.env.NODE_ENV === "production",
     });
     return NextResponse.redirect(new URL("/reset-password", url.origin));

@@ -1,7 +1,8 @@
 "use server";
 
 import { cookies, headers } from "next/headers";
-import { openRecovery, RECOVERY_COOKIE, recoverySecret } from "@/lib/auth/recovery.ts";
+import { createClient } from "@supabase/supabase-js";
+import { openRefreshToken, readRecovery, RECOVERY_COOKIE, recoverySecret } from "@/lib/auth/recovery.ts";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { sessionClient } from "@/lib/supabase/server.ts";
@@ -255,14 +256,15 @@ async function continueWithProvider(_prev: AuthState, form: FormData): Promise<A
 }
 
 /**
- * Sets a new password for whoever the recovery link signed in.
+ * Sets a new password for the person a recovery link proved.
  *
- * The authorisation is the session *and* a fresh recovery context for that same person,
- * set only where a recovery link is spent and used once (src/lib/auth/recovery.ts). There
- * is no current password to ask for — that is the point of a reset — so a session on its own
- * is not enough. After a link that was not tied to this browser (a bare `token_hash`), the
- * browser is signed out: a reset link someone else was sent never leaves it signed in to
- * their account.
+ * The authorisation is a fresh recovery context, set only where a recovery link is spent and
+ * used once (src/lib/auth/recovery.ts). There is no current password to ask for — that is the
+ * point of a reset — so a session on its own is not enough.
+ *   - Bound (the link this browser asked for): the session must be that same person's.
+ *   - Unbound (a bare `token_hash`): the link's own session, sealed inside the context, sets
+ *     the password; this browser's cookies are never used or changed, so a reset link someone
+ *     else was sent cannot leave it signed in to their account. Sign in afterwards.
  */
 export async function setNewPassword(_prev: AuthState, form: FormData): Promise<AuthState> {
   const password = String(form.get("password") ?? "");
@@ -273,23 +275,36 @@ export async function setNewPassword(_prev: AuthState, form: FormData): Promise<
   }
   if (password !== confirm) return { error: "The two passwords are not the same." };
 
+  const jar = await cookies();
+  const recovery = readRecovery(jar.get(RECOVERY_COOKIE)?.value, recoverySecret());
+  const expired: AuthState = { error: "That reset link is no longer active. Ask for a new one from the sign-in page." };
+  if (!recovery) return expired;
+
+  if (!recovery.bound) {
+    // The link's own session, sealed in the context; this browser's session is never used.
+    const refreshToken = openRefreshToken(recovery);
+    if (!refreshToken) return expired;
+    const isolated = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+    const { data: refreshed, error: refreshError } = await isolated.auth.refreshSession({ refresh_token: refreshToken });
+    if (refreshError || refreshed.user?.id !== recovery.userId) return expired;
+    const { error } = await isolated.auth.updateUser({ password });
+    if (error) return { error: authErrorMessage(classifyAuthError(error), "password") };
+    jar.delete(RECOVERY_COOKIE);
+    await isolated.auth.signOut({ scope: "local" });
+    redirect("/sign-in?problem=password_changed");
+  }
+
   const supabase = await sessionClient();
   const { data: session } = await supabase.auth.getUser();
-  const jar = await cookies();
-  const recovery = session.user ? openRecovery(jar.get(RECOVERY_COOKIE)?.value, session.user.id, recoverySecret()) : null;
-  if (!session.user || !recovery) {
-    return { error: "That reset link is no longer active. Ask for a new one from the sign-in page." };
-  }
+  if (!session.user || session.user.id !== recovery.userId) return expired;
 
   const { error } = await supabase.auth.updateUser({ password });
   if (error) return { error: authErrorMessage(classifyAuthError(error), "password") };
   jar.delete(RECOVERY_COOKIE);
 
   revalidatePath("/", "layout");
-  if (!recovery.bound) {
-    await supabase.auth.signOut({ scope: "local" });
-    redirect("/sign-in?problem=password_changed");
-  }
   redirect("/dashboard");
 }
 

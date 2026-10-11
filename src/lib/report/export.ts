@@ -20,7 +20,11 @@ import { ciOutcome } from "./ci.ts";
  */
 
 function escapeCsv(value: string | number | null | undefined): string {
-  const text = value === null || value === undefined ? "" : String(value);
+  let text = value === null || value === undefined ? "" : String(value);
+  // A cell a spreadsheet would read as a formula is prefixed with an apostrophe: the agent under
+  // test can shape a grader's rationale, and the file is opened by an auditor (security audit,
+  // 2026-10-11). Numbers are written as numbers and are never prefixed.
+  if (typeof value === "string" && /^[=+\-@\t\r]/.test(text)) text = `'${text}`;
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 

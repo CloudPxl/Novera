@@ -829,6 +829,8 @@ export async function saveVerificationEndpoint(_prev: FormState, form: FormData)
     const { error } = await admin
       .from("agents").update({ verification: null }).eq("id", agentId).eq("workspace_id", workspace.id);
     if (error) return { error: `Could not remove it: ${error.message}` };
+    // Its credential goes with it: one left behind would be sent to whatever address is set next.
+    await admin.from("secrets").delete().eq("workspace_id", workspace.id).eq("scope", "verification_auth").eq("agent_id", agentId);
     revalidatePath(`/agents/${agentId}`);
     return { notice: "Removed. Scenarios expecting a change of state will report as unverified." };
   }
@@ -857,6 +859,18 @@ export async function saveVerificationEndpoint(_prev: FormState, form: FormData)
     ...(authHeaderName ? { authHeaderName } : {}),
   };
 
+  // A stored credential was given for one host and never follows the address to another
+  // (security audit, 2026-10-11): without a new one, a moved read-back runs without it.
+  const { data: currentAgent } = await admin.from("agents").select("verification")
+    .eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
+  const currentUrl = (currentAgent?.verification as { url?: string } | null)?.url;
+  let previousOrigin: string | null = null;
+  try { previousOrigin = currentUrl ? new URL(currentUrl).origin : null; } catch { previousOrigin = null; }
+  const { data: storedSecrets } = await admin.from("secrets").select("id")
+    .eq("workspace_id", workspace.id).eq("scope", "verification_auth").eq("agent_id", agentId);
+  const staleSecretIds = (storedSecrets ?? []).map((r) => r.id as string);
+  const dropStored = Boolean(credential) || previousOrigin !== parsed.origin;
+
   // Prove it answers before storing it, exactly as a model key is proved.
   const check = await httpVerificationConnector(config, credential || undefined).validate();
   if (!check.ok) return { error: `That endpoint did not answer: ${check.detail}` };
@@ -874,6 +888,10 @@ export async function saveVerificationEndpoint(_prev: FormState, form: FormData)
   const { error } = await admin
     .from("agents").update({ verification: config }).eq("id", agentId).eq("workspace_id", workspace.id);
   if (error) return { error: `Could not save it: ${error.message}` };
+  if (dropStored && staleSecretIds.length) {
+    // After the new one is stored, never before: the connector reads the newest credential.
+    await admin.from("secrets").delete().in("id", staleSecretIds);
+  }
 
   revalidatePath(`/agents/${agentId}`);
   return {

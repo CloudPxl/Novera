@@ -107,5 +107,35 @@ test("the confirm route never starts a session from a confirmation link, and ref
   assert.match(route, /persistSession: false/, "confirmations are verified on a client that keeps no cookies");
   assert.doesNotMatch(route, /"magiclink"|"invite"/, "magic links and Supabase invites are not accepted");
   const reset = readFileSync(new URL("../src/app/reset-password/page.tsx", import.meta.url), "utf8");
-  assert.match(reset, /openRecovery\(/, "the reset page needs a recovery context, not only a session");
+  assert.match(reset, /readRecovery\(/, "the reset page needs a recovery context, not only a session");
+});
+
+test("an unbound reset carries its own session sealed in the context, and never this browser's", async () => {
+  const { sealRecovery, readRecovery, openRecovery, sealRefreshToken, openRefreshToken } = await import("../src/lib/auth/recovery.ts");
+  const key = Buffer.alloc(32, 7);
+  const now = 1_790_000_000_000;
+  const sealedRefresh = sealRefreshToken("refresh-abc123", "u1", now, key);
+  assert.doesNotMatch(sealedRefresh, /refresh-abc123/, "the token is encrypted, not encoded");
+  const value = sealRecovery({ userId: "u1", issuedAt: now, bound: false, sealedRefresh }, "k");
+  const ctx = readRecovery(value, "k", now + 1000);
+  assert.ok(ctx && !ctx.bound && ctx.userId === "u1");
+  assert.equal(openRefreshToken(ctx!, key), "refresh-abc123");
+  assert.equal(openRefreshToken({ ...ctx!, userId: "u2" }, key), null, "bound to its person and moment");
+  assert.equal(openRecovery(value, "u2", "k", now), null);
+  assert.equal(readRecovery(value.replace(".u.", ".b."), "k", now), null, "cannot be turned into a bound context");
+  const parts = value.split(".");
+  assert.equal(readRecovery([...parts.slice(0, 3), sealRefreshToken("other", "u1", now, key), parts[4]].join("."), "k", now), null, "the sealed token cannot be swapped");
+});
+
+test("only a session GoTrue marked as recovered mints a recovery context; the confirm route sets no session cookie", async () => {
+  const { cameFromRecovery } = await import("../src/lib/auth/recovery.ts");
+  const jwt = (amr: unknown) => `h.${Buffer.from(JSON.stringify({ amr })).toString("base64url")}.s`;
+  assert.equal(cameFromRecovery(jwt([{ method: "recovery", timestamp: 1 }])), true);
+  for (const method of ["password", "oauth", "otp", "email/signup"]) assert.equal(cameFromRecovery(jwt([{ method }])), false, method);
+  assert.equal(cameFromRecovery("not-a-jwt"), false);
+  assert.equal(cameFromRecovery(undefined), false);
+  const callback = readFileSync(new URL("../src/app/auth/callback/handle.ts", import.meta.url), "utf8");
+  assert.match(callback, /if \(!cameFromRecovery\(data\.session\?\.access_token\)\)/);
+  const route = readFileSync(new URL("../src/app/auth/confirm/route.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(route, /sessionClient/, "no link verified here writes this browser's session cookies");
 });

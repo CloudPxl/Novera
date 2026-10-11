@@ -92,7 +92,7 @@ export interface ConnectionEdit {
 export function parseConnectionEdit(fields: {
   name: unknown; url: unknown; bodyTemplate: unknown; responsePath: unknown; toolActivityPath: unknown;
   timeoutSeconds: unknown; authHeaderName: unknown; credential: unknown; removeCredential: unknown;
-}, hasStoredCredential: boolean): Parsed<ConnectionEdit> {
+}, hasStoredCredential: boolean, currentUrl?: string): Parsed<ConnectionEdit> {
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   const name = str(fields.name).trim();
   const url = str(fields.url).trim();
@@ -150,6 +150,12 @@ export function parseConnectionEdit(fields: {
       return { ok: false, error: "A credential is one line, and not this long — check what was pasted." };
     }
   }
+  // A stored credential was given for one host. Moving the address to another would send it
+  // there on the next check, by whoever may edit agents, though nobody can read it back
+  // (security audit, 2026-10-11): a new host needs the credential pasted again, or removed.
+  if (change === "keep" && hasStoredCredential && currentUrl && originOf(currentUrl) !== parsedUrl.origin) {
+    return { ok: false, error: "The address moves to a different host, and the stored credential was given for the old one. Paste the credential for the new host, or tick “Remove the stored credential”." };
+  }
   if (change === "keep" && hasStoredCredential && !authHeaderName) {
     return { ok: false, error: "A credential is stored, so it needs a header name. Name the header, or tick “Remove the stored credential”." };
   }
@@ -163,6 +169,14 @@ export function parseConnectionEdit(fields: {
       ...(change === "replace" ? { newCredential: credential } : {}),
     },
   };
+}
+
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
 }
 
 /**

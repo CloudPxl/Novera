@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { RECOVERY_COOKIE, RECOVERY_COOKIE_OPTIONS, recoverySecret, sealRecovery } from "@/lib/auth/recovery.ts";
+import { cameFromRecovery, RECOVERY_COOKIE, RECOVERY_COOKIE_OPTIONS, recoverySecret, sealRecovery } from "@/lib/auth/recovery.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
@@ -21,7 +21,8 @@ import type { ProblemCode } from "../confirm/problems.ts";
  *
  * `flow` was put on the return address by us when the link was asked for; it only decides
  * which page follows and which sentence a failure shows. It grants nothing: the session
- * comes from the code alone, and the destination is from a fixed list (`safeNext`).
+ * comes from the code alone, the destination is from a fixed list (`safeNext`), and a
+ * recovery context needs GoTrue's own `recovery` mark on the session.
  */
 export type Flow = "signup" | "recovery" | "oauth" | "link";
 
@@ -73,6 +74,13 @@ export async function completeAuth(url: URL, flow: Flow): Promise<NextResponse> 
   }
 
   if (flow === "recovery") {
+    // `flow` is only a query parameter: the code from a sign-in or a link flow could be sent
+    // here with `flow=recovery` to set a password without the current one. Only a session
+    // GoTrue marked as recovered counts (security audit, 2026-10-11).
+    if (!cameFromRecovery(data.session?.access_token)) {
+      await supabase.auth.signOut({ scope: "local" });
+      return problem("reset_expired");
+    }
     // Spent with the PKCE verifier this browser holds: the link it asked for itself.
     (await cookies()).set(RECOVERY_COOKIE, sealRecovery({ userId: data.user.id, issuedAt: Date.now(), bound: true }, recoverySecret()), {
       ...RECOVERY_COOKIE_OPTIONS, secure: process.env.NODE_ENV === "production",

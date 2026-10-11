@@ -82,6 +82,7 @@ select event, count(*), count(distinct actor_hash) as people
 
 ## Status
 
-0062 is **not applied** anywhere. Until it is, every call logs
-`[novera:events] <event> not stored (PGRST205)` and the request carries on. Apply with
-`npm run migrate` after merging, then set `NOVERA_EVENTS_SALT` in Vercel.
+0062 is applied in production (2026-10-10) and events are recorded by default
+(`NOVERA_PRODUCT_EVENTS=off` turns them off). `NOVERA_EVENTS_SALT` was set in Vercel Production on
+2026-10-11; rows written before it carry no actor hash. On a database without 0062 every call
+logs `[novera:events] <event> not stored (PGRST205)` and the request carries on.

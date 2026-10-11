@@ -99,9 +99,16 @@ runs, every run/case/report stays readable and exportable.
   `workspaceEntitlement`, but it waits on decision D2 below, because a plan whose runs are
   graded on *Novera's* keys needs a new `judge_source` (the report states who funded the
   grading), and 0055's trial-cap trigger refuses every `trial_free` run past three.
-- **Erasing a workspace with a running subscription** does not cancel it at Stripe. The
-  erase action (`src/lib/workflow/identity.ts`) should call `subscriptions.cancel` first
-  when billing is active; not changed here because that file is shared.
+- **Erasing a workspace while Stripe could still charge** (active, trialing, past due — in
+  grace or restricted —, unpaid, incomplete, paused, unless set to end) is refused, with the
+  sentence to show (`subscriptionBlocksErasure`, `subscriptionMayCharge`). Erasure never
+  cancels at Stripe on its own: cancelling immediately, and any refund, is a person's decision.
+- **Preview and production share one database.** Every reader takes only the configured mode's
+  rows (`storedLivemode`: the key's mode, live when billing is off), and since 0065 a workspace
+  may hold one Stripe customer per mode. A sandbox subscription therefore never shows in
+  production, never blocks erasure there and never blocks a later live checkout. The sandbox
+  rows themselves stay (the tables are frozen) until the workspace is erased: run sandbox tests
+  in a throwaway workspace.
 - **No UI for manual grants.** The table, its rules and RLS exist; grants are inserted by
   an operator with the service role (reason and `granted_by` required by the database).
 - `workspaces.plan` (`trial`/`paid`, 0001) is unused and left alone.
@@ -182,7 +189,10 @@ Not legal or tax advice. Each needs a qualified answer before live activation.
 1. Create a **sandbox** in the Stripe dashboard. Use only its `sk_test_…` key.
 2. **Products and prices**: one product per plan key, one recurring monthly price each, in
    EUR. Placeholder amounts in the sandbox only. Copy the `price_…` ids into
-   `STRIPE_PRICE_TEAM_BYOK` and `STRIPE_PRICE_AGENCY_PRO`.
+   `STRIPE_PRICE_TEAM_BYOK` and `STRIPE_PRICE_AGENCY_PRO` — **these exact names**; any other
+   name (for example `STRIPE_PRICE_MONTHLY`) is never read. A plan has one price: monthly and
+   annual prices for one plan need a code change (a price list per plan, an interval on the
+   form, and a decision on how an annual period counts runs) and are not supported today.
 3. **Webhook (event destination)**: Workbench → Webhooks → *Create an event destination* →
    *Your account* → **Snapshot** payload, API version **2026-09-30.endive** (what
    `stripe@23.0.0` pins) → events: `checkout.session.completed`,
@@ -191,9 +201,18 @@ Not legal or tax advice. Each needs a qualified answer before live activation.
    `customer.subscription.resumed`, `invoice.paid`, `invoice.payment_failed` → URL
    `https://<deployment>/api/stripe/webhook`. Copy the `whsec_…` into `STRIPE_WEBHOOK_SECRET`.
    Locally: `stripe listen --forward-to localhost:3000/api/stripe/webhook`.
+   **Point it at the deployment that holds the sandbox keys.** Production has none, so a
+   destination at `https://www.nover.space/api/stripe/webhook` receives 503 for every event and
+   Stripe will retry, warn and eventually disable it. A Preview deployment sits behind Vercel
+   Authentication: generate *Protection Bypass for Automation* and append
+   `?x-vercel-protection-bypass=<secret>` to the destination URL, and use a stable branch alias.
+   Set `CANONICAL_HOST` (Preview) to that alias so Checkout returns to the preview, not to
+   production.
 4. **Customer portal** (Settings → Billing → Customer portal): allow updating payment
    methods and viewing invoices; allow cancellation **at end of billing period**; allow
-   switching between the two plan products (for upgrade/downgrade); turn on Tax ID only if
+   switching between the two plan products (for upgrade/downgrade) only when both prices are
+   on the allow-list — a switch to an unlisted price is stored as "not recognised" and grants
+   nothing; turn on Tax ID only if
    D9 = B2B. Optionally save a configuration and put its `bpc_…` in
    `STRIPE_PORTAL_CONFIGURATION`.
 5. **Subscriptions and emails** (Settings → Billing → Subscriptions and emails): Smart
@@ -202,7 +221,11 @@ Not legal or tax advice. Each needs a qualified answer before live activation.
 6. **Stripe Tax** only after §4 items 1–4: then `BILLING_AUTOMATIC_TAX=1`.
 7. **Branding and public details**: business name, support email, terms and privacy URLs
    (Phase 4 documents).
-8. Test with **test clocks** (Billing → Test clocks): create a customer on a clock, subscribe,
+8. Test with **test clocks** (Billing → Test clocks). **Not reachable today:** Novera creates its
+   own customer at Checkout and never attaches a clock, and a customer made on a clock in the
+   dashboard is not in `billing_customers`, so its events are refused. Until a clock option is
+   added, test a failed payment with card `4000 0000 0000 0341` in the portal and *Reset billing
+   cycle* in the dashboard. The intended walk: create a customer on a clock, subscribe,
    advance a month (renewal → `invoice.paid`), switch to card `4000 0000 0000 0341` and
    advance (failure → `past_due` → grace → restricted), schedule cancellation in the portal
    and advance past the period end (`customer.subscription.deleted`).
@@ -223,13 +246,11 @@ Not legal or tax advice. Each needs a qualified answer before live activation.
 Server-only: none of them has a `NEXT_PUBLIC_` prefix and none reaches a client bundle
 (checked in the build output).
 
-### Two changes outside this phase's files
+### Two changes outside this phase's files (done)
 
-- **CSP `form-action`** in `src/proxy.ts` must add `https://checkout.stripe.com
-  https://billing.stripe.com`. With JavaScript the server action navigates to Stripe and
-  is unaffected; without it, the form's redirect to Stripe is a form-action target and
-  browsers block it.
-- **Settings nav**: add the Billing entry (owner/admin see the buttons; every member may
+- **CSP `form-action`** in `src/proxy.ts` includes `https://checkout.stripe.com
+  https://billing.stripe.com`.
+- **Settings nav** has the Billing entry (owner/admin see the buttons; every member may
   see the page).
 
 ---
@@ -253,10 +274,11 @@ Novera sends **no billing email** (production sends no email at all today; see C
 
 **Sandbox (can be done now, by David, no approval of prices needed):**
 
-1. Apply migration 0060 (`npm run migrate`).
-2. Configure §5 steps 1–5 and 8 in a Stripe sandbox; set the sandbox variables in
-   `.env.local` and Vercel *Preview* only.
-3. Add the nav entry and the CSP change.
+1. Migrations 0060 and 0065 (applied with `npm run migrate`).
+2. Configure §5 steps 1–5 in a Stripe sandbox; set the sandbox variables in `.env.local` and
+   Vercel *Preview* only, then create a Preview deployment (a branch push) — Preview variables
+   do nothing until one exists. Never put the Stripe keys in Production.
+3. Use a throwaway workspace; its sandbox rows stay until it is erased.
 4. Run a test checkout with card `4242 4242 4242 4242`; confirm the page shows the plan only
    after the webhook, never on return. Walk the test-clock scenarios.
 
@@ -271,4 +293,5 @@ Novera sends **no billing email** (production sends no email at all today; see C
    (live mode has its own copies of both).
 5. Live keys set in Vercel *Production* with `BILLING_ALLOW_LIVE=1` — the last step, by David.
 6. Decide whether billing gates run starts (D2/D3) and wire `resolveEntitlement` in.
-7. Erasure cancels a running subscription first (section 1, "not done yet").
+7. Decide what erasure does with a live subscription beyond refusing (section 1): today a
+   person cancels first.

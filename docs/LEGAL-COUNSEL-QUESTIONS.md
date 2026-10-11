@@ -90,8 +90,9 @@ proposal.
     (seven days), `nv_recovery` (fifteen minutes) and the `novera.motion` local-storage preference
     all fall within Legea 506/2004 Art. 4(6)(b) / ePrivacy Art. 5(3) strict necessity, so that no
     banner is needed? Should the session lifetime be shortened? *(Cookies)*
-22. For planned first-party product measurement that stores nothing in the browser, is consent
-    needed? *(Cookies)*
+22. First-party product events are recorded in production (stored server-side, nothing in the
+    browser, the person only as a keyed hash, 13 months, including each view of a report). Is consent
+    needed? *(Cookies, Privacy)*
 
 ## AI Act
 
@@ -119,12 +120,16 @@ proposal.
 30. Governing law and forum for EU B2B customers. *(Terms)*
 31. Data Act Chapter VI (switching between data processing services, in force since 12 September
     2025): does a SaaS like Novera fall under it, and what must the Terms say about export, switching
-    and the deletion period? Novera has report exports but no full workspace export yet. *(Terms,
+    and the deletion period? Novera has report exports and a full workspace export (owner or admin). *(Terms,
     DPA)*
 32. How must acceptance of a new version of the Terms be recorded? The product records none today.
     *(Terms)*
 33. Sub-processor change notice: what period and channel, and what happens if a customer objects?
     *(DPA, Sub-processors)*
+
+35. A run's attestation names the attesting member's email address and is sealed into every report
+    for that agent, which the report's recipients see and which account deletion cannot remove. Is
+    that justified (Art. 6, Art. 17), or should future attestations name a role or an id? *(Privacy)*
 
 ## Email and marketing
 

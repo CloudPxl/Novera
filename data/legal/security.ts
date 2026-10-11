@@ -46,10 +46,11 @@ export const security: LegalDocument = {
 Said plainly, because a security page that lists only strengths is not useful:
 
 - no written incident response procedure;
-- no tested backup restore, and the database provider's backup terms are not yet documented;
-- no error monitoring;
-- no continuous integration on every change;
+- no tested restore of the production database (a restore has been tested on a local copy only), and the database provider's backup terms are not yet documented;
+- no external error monitoring or alerting: server errors are captured with secrets scrubbed, but only into the hosting provider's short-lived logs;
 - no independent security assessment or penetration test.
+
+Continuous integration (lint, type checks, tests, a production build, migration and secret checks) runs on every change.
 
 [FOUNDER TO UPDATE THIS LIST BEFORE PUBLICATION.]
 

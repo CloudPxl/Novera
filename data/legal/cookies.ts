@@ -7,9 +7,8 @@
  *
  * Every entry below was read from the code on 2026-10-09: src/lib/auth/session.ts and
  * src/lib/workflow/identity.ts (nv_ws, nv_invite), @supabase/ssr's defaults and
- * src/proxy.ts (sb-*), src/components/ui/motion.ts (localStorage). nv_recovery is in the
- * password-reset fix that is not yet merged; it is listed so the notice is current when
- * it ships. No analytics, advertising or monitoring script exists in the code.
+ * src/proxy.ts (sb-*), src/components/ui/motion.ts (localStorage), src/lib/auth/recovery.ts
+ * (nv_recovery). No analytics, advertising or monitoring script exists in the code.
  */
 import type { LegalDocument } from "./types.ts";
 
@@ -58,7 +57,7 @@ export const STORAGE: readonly StorageItem[] = [
   {
     name: "nv_recovery",
     kind: "cookie",
-    setBy: "Novera (with the password-reset change now in progress)",
+    setBy: "Novera",
     purpose: "Proves the browser arrived through a password-reset link a moment ago",
     duration: "About 15 minutes, used once; http-only",
     category: "strictly necessary",
@@ -109,7 +108,7 @@ Novera does not show a cookie banner, because the cookies above are, in Novera's
 
 ## Before anything else is added
 
-Analytics, monitoring or any other non-essential storage will not be added until this notice is updated and, where the law requires it, consent is asked for before anything is stored. A first-party product measurement that stores nothing in the browser is the approach currently planned. [COUNSEL TO CONFIRM WHETHER A CONSENT MECHANISM IS NEEDED FOR THE CHOSEN APPROACH.]
+Analytics, monitoring or any other non-essential storage will not be added until this notice is updated and, where the law requires it, consent is asked for before anything is stored. Novera records first-party product events on its own servers (for example that a report was viewed); they store nothing in the browser and are described in the privacy notice. [COUNSEL TO CONFIRM WHETHER A CONSENT MECHANISM IS NEEDED FOR THEM.]
 
 ## Contact
 

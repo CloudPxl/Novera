@@ -2,7 +2,7 @@
 title: Why the report can be trusted
 published: true
 ---
-Results, policy versions, probe receipts and reports are append-only in the database itself, enforced by triggers rather than by application code. A failing case cannot be edited into a passing one or deleted from a run — not by you, not by Novera, and not with the administrative key.
+Results, policy versions, probe receipts and reports are append-only in the database itself, enforced by triggers rather than by application code. A failing case cannot be edited into a passing one or deleted from a run — not by you, not by Novera, and not with the administrative key. The one change allowed is the retention pass: after your retention period it empties an agent's raw reply (and a probe receipt's reply after 90 days), keeping the verdict and a SHA-256 of what was removed.
 
 A policy version is immutable. Editing a policy creates a new version, so a report always names exactly the text the agent was tested against.
 

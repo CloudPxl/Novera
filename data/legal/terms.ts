@@ -66,7 +66,7 @@ A Novera report is evidence that a defined suite was run against a defined agent
 
 ## Model providers and your own key
 
-Grading and other features rely on third-party language model providers whose availability, behaviour and terms Novera does not control. On a workspace's own key, the customer chooses the provider and is responsible for its terms, cost and data handling; if the key cannot reach two vendors, verdicts are reported as not corroborated or corroborated within one vendor. Novera is not responsible for a provider's outage, rate limit, change of model or change of terms. [COUNSEL TO REVIEW THIS LIMITATION.]
+Grading and other features rely on third-party language model providers whose availability, behaviour and terms Novera does not control. On a workspace's own key, the customer chooses the provider and is responsible for its terms, cost and data handling; because one key is one provider, its verdicts are reported as corroborated within one vendor, or not corroborated. Novera is not responsible for a provider's outage, rate limit, change of model or change of terms. [COUNSEL TO REVIEW THIS LIMITATION.]
 
 ## Availability and support
 
@@ -87,7 +87,7 @@ The customer keeps its rights in its policies, scenarios, sources, agent replies
 ## Your data when the agreement ends
 
 - A workspace owner can erase a workspace at any time. Erasure removes its agents, policies, runs, verdicts, reports and other records at once, and leaves only a record that an erasure happened, without personal data. It cannot be undone.
-- Reports can be exported while the workspace exists. A complete workspace export is planned and not yet available. [COUNSEL TO CONFIRM WHAT DATA-EXPORT AND SWITCHING OBLIGATIONS APPLY, INCLUDING UNDER THE DATA ACT, AND THE PERIOD BEFORE DELETION AFTER TERMINATION.]
+- Reports can be exported while the workspace exists. An owner or admin can also download a complete workspace export (Settings → General). [COUNSEL TO CONFIRM WHAT DATA-EXPORT AND SWITCHING OBLIGATIONS APPLY, INCLUDING UNDER THE DATA ACT, AND THE PERIOD BEFORE DELETION AFTER TERMINATION.]
 
 ## Warranties and liability
 

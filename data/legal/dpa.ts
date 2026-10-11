@@ -68,7 +68,7 @@ The customer gives general authorisation for the sub-processors in Annex 2. Nove
 
 - Raw agent replies are emptied automatically at the end of the retention period the customer chooses (30 to 365 days).
 - Erasing a workspace deletes its data at once, leaving only a record that an erasure happened, without personal data.
-- A complete workspace export, for return before deletion, is not yet available. [COUNSEL TO CONFIRM WHETHER REPORT EXPORTS SUFFICE IN THE MEANTIME, AND THE TIME LIMIT FOR DELETION AFTER TERMINATION.]
+- An owner or admin can download a complete workspace export (Settings → General), for return before deletion; the download link works once and for 15 minutes. [COUNSEL TO CONFIRM WHETHER THIS MEETS THE RETURN OBLIGATION, AND THE TIME LIMIT FOR DELETION AFTER TERMINATION.]
 - Backups held by the database provider: [TO VERIFY RETENTION AND DELETION WITH SUPABASE].
 
 ## 10. International transfers
@@ -87,7 +87,8 @@ Some sub-processors in Annex 2 process data outside the European Economic Area. 
 - Outbound calls only to public addresses; private, loopback and metadata addresses refused.
 - Role-based access in each workspace; an append-only audit trail of access changes.
 - Retention passes that empty raw replies and erase support messages on schedule.
-- Not yet in place: an incident response procedure, a tested backup restore, error monitoring, and continuous integration. [STATUS AT SIGNATURE.]
+- Continuous integration (lint, types, tests, build, migration and secret checks) runs on every change; server errors are captured with secrets scrubbed, not yet sent to an external monitoring service.
+- Not yet in place: an incident response procedure, a tested restore of the production database (a restore has been tested on a local copy only), and external error monitoring and alerting. [STATUS AT SIGNATURE.]
 
 ## Annex 2: sub-processors
 

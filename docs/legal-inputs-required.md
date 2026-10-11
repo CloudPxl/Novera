@@ -46,9 +46,10 @@ verify in the provider's dashboard or published terms, then record the URL and d
 12. Lead supervisory authority (ANSPDCP is drafted as the Romanian authority). Counsel.
 13. Minimum age, if any. Counsel.
 
-**Depends on the code:** the sentence "diagnosis, scenario drafting and Suite Builder extraction
-still use Novera's own providers" on a workspace's own key describes launch-readiness item E. When
-E is fixed, update this notice and the Sub-processors page in the same commit.
+**Decided by the code, for counsel to review:** an attestation names the attesting member's email
+address and is sealed into every report of that agent's runs (`src/lib/workflow/actions.ts`,
+`src/lib/report/build.ts`); account deletion cannot remove it from a sealed report. The privacy
+draft now says so. Whether future attestations should name a person, a role or an id is open.
 
 ## Terms of Service (`/legal/terms`)
 
@@ -59,7 +60,7 @@ E is fixed, update this notice and the Sub-processors page in the same commit.
    planned, sandbox only). David + Accountant.
 5. Suspension and termination: grounds, notice, consequences. Counsel.
 6. Data export and switching obligations (Data Act Chapter VI), and the period before deletion after
-   termination. Counsel. A full workspace export is launch-readiness item O6, not yet built.
+   termination. Counsel. A full workspace export exists (O6: owner or admin, one download, 15 minutes).
 7. Warranty, liability cap, exclusions, indemnities. Counsel.
 8. Governing law and forum. David + Counsel.
 9. If consumers are served: complaint and alternative dispute resolution information. Counsel.
@@ -111,9 +112,8 @@ current terms (last read 2026-09-29), and decide the change-notice mechanism.
 1. Confirm each entry qualifies for the strictly-necessary exemption, in particular the 400-day
    Supabase session cookie lifetime (library default) and the `novera.motion` local-storage
    preference. Counsel.
-2. Whether the planned first-party product measurement (launch-readiness O3) needs consent. Counsel.
-3. `nv_recovery` is in the password-reset fix that is not yet merged; remove the row if that change
-   does not ship.
+2. Whether the first-party product events (launch-readiness O3, live in production, 13 months, a
+   `report_viewed` event on each report open) need consent. Counsel.
 
 ## Imprint (`/legal/imprint`)
 

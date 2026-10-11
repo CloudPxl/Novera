@@ -57,7 +57,7 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
   {
     provider: "Groq",
     service: "Language model inference (Novera's own key)",
-    purpose: "Grades scenarios on the trial allowance; drafts support replies; diagnoses failures; answers Ask Novera; Suite Builder extraction",
+    purpose: "Grades scenarios on the trial allowance; plays the simulated customer in persona scenarios; drafts scenarios from a policy; drafts support replies; diagnoses failures; answers Ask Novera; Suite Builder extraction",
     data: "Scenario text, agent replies, workspace summaries for Ask Novera, support message content. May include personal data",
     location: "Operated from the United States, per Novera's documentation. Processing location: [TO VERIFY WITH GROQ]",
     transfer: "[TRANSFER MECHANISM — COUNSEL TO CONFIRM]",
@@ -66,7 +66,7 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
   {
     provider: "Mistral AI",
     service: "Language model inference (Novera's own key)",
-    purpose: "Second, independent grading opinion; fallback for drafting, diagnosis and Ask Novera",
+    purpose: "Second, independent grading opinion; fallback for the simulated customer, drafting, diagnosis and Ask Novera",
     data: "As for Groq. May include personal data",
     location: "Operated from France, per Novera's documentation. Processing location: [TO VERIFY WITH MISTRAL AI]",
     transfer: "[TRANSFER MECHANISM, IF ANY — COUNSEL TO CONFIRM]",
@@ -75,7 +75,7 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
   {
     provider: "OpenRouter",
     service: "Language model inference (Novera's own key, free models)",
-    purpose: "Fallback for diagnosis",
+    purpose: "Novera's internal measurement scripts only. Approved only for material Novera wrote itself, and every product feature sends customer material, so the service sends it nothing",
     data: "Only material Novera wrote itself (documentation, test scenarios). The router refuses to send it customer data",
     location: "[TO VERIFY WITH OPENROUTER]",
     transfer: "[TRANSFER MECHANISM — COUNSEL TO CONFIRM]",
@@ -84,7 +84,7 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
   {
     provider: "Google (Gemini API, free tier)",
     service: "Language model inference (Novera's own key), when that key is configured",
-    purpose: "Fallback for diagnosis and drafting",
+    purpose: "Novera's internal measurement scripts only, as for OpenRouter",
     data: "Only material Novera wrote itself. The router refuses to send it customer data",
     location: "[TO VERIFY WITH GOOGLE]",
     transfer: "[TRANSFER MECHANISM — COUNSEL TO CONFIRM]",
@@ -122,7 +122,7 @@ A location is stated only where Novera's own configuration shows it. The databas
 
 ## Which model provider receives what
 
-Each model provider Novera uses on its own keys is approved for a kind of data, based on the provider's published terms for the plan used. Every request is classified before it is sent, and a provider that is not approved for what a request contains is not sent it. Groq and Mistral AI may receive personal data. OpenRouter and Google's free tier receive only material Novera wrote itself. The approvals were set from each provider's terms as read on 29 September 2026 and are [TO BE RE-VERIFIED BEFORE PUBLICATION].
+Each model provider Novera uses on its own keys is approved for a kind of data, based on the provider's published terms for the plan used. Every request is classified before it is sent, and a provider that is not approved for what a request contains is not sent it. Groq and Mistral AI may receive personal data. OpenRouter and Google's free tier are approved only for material Novera wrote itself, which no product feature sends; in practice they receive nothing from the service. The approvals were set from each provider's terms as read on 29 September 2026 and are [TO BE RE-VERIFIED BEFORE PUBLICATION].
 
 A workspace that has connected its own model key is served on that key alone for grading, diagnosis, scenario drafting, Suite Builder extraction and Ask Novera, with no fallback to Novera's providers (since 2026-10-09). Novera's providers above serve workspaces without their own key, and Novera's own support-reply drafting.
 

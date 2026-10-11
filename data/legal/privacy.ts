@@ -56,13 +56,13 @@ Where Novera acts as a processor, the customer is the controller and its own pri
 
 **Workspace membership.** Which workspaces a person belongs to and with which role (owner, admin, operator, reviewer, auditor). An invitation stores the invitee's email address, the role, who invited and when; the invitation link itself is stored only as a SHA-256 hash.
 
-**Run attestations.** Each test run records who declared that they own or are authorised to test the agent, when, and the text they declared.
+**Run attestations.** Each test run records who declared that they own or are authorised to test the agent, when, and the text they declared. That text names the declaring member's email address, and it is sealed into every report of that agent's runs, so anyone holding a report link sees it and it stays in sealed reports after the member's account is deleted. [COUNSEL TO CONFIRM THE LEGAL BASIS, AND WHETHER A NAME OR ROLE SHOULD REPLACE THE ADDRESS IN FUTURE ATTESTATIONS.]
 
 **Agent connections.** Agent names, web addresses and settings. Agent authentication headers and model API keys are encrypted before storage.
 
 **Test evidence.** The messages each scenario sent and what the agent replied, including whole conversations and tool activity. This is where personal data appears if the agent under test reveals it. Verdicts, the graders' reasons and a SHA-256 fingerprint of each reply are kept with it.
 
-**Sealed reports.** Verdicts, counts, coverage, model names and dates. Anything shaped like personal data that a grading model quoted is replaced with a placeholder before sealing. Reports do not contain the agent's replies.
+**Sealed reports.** Verdicts, counts, coverage, model names, dates and the run's attestation (above). Anything shaped like personal data that a grading model quoted is replaced with a placeholder before sealing. Reports do not contain the agent's replies.
 
 **Suite Builder sources.** The text of a document, page or tool list a customer adds, with email addresses, phone numbers, card numbers, IBANs and IP addresses replaced before it is saved. The file itself is not kept, only its SHA-256 hash.
 
@@ -71,6 +71,8 @@ Where Novera acts as a processor, the customer is the controller and its own pri
 **Support messages and trial applications.** Email address, organisation (optional), the message with any key, card number or IBAN removed before storage, the replies drafted for it and their approval and sending status.
 
 **Ask Novera.** The questions a person asks and the answers given, visible only to that person. Assistant memory exists only if the person turns it on, and holds only what they choose to save.
+
+**Product events.** Novera records what happens in the product — for example a sign-up confirmed, a run started, a report viewed — with the workspace, the time and a few fixed properties. The person is stored only as a keyed hash, never as an email address or name, and nothing is stored in the browser. Kept for 13 months.
 
 **API activity.** API keys are stored only as an HMAC. Each read of an agent's raw replies through the API or MCP is recorded with the key, the run and the route.
 
@@ -99,7 +101,7 @@ Novera sends no marketing email. Any future marketing email would be sent only w
 
 Grading, drafting support replies, diagnosing failures, Suite Builder extraction and Ask Novera send text to language model providers.
 
-- **On Novera's own keys** (a workspace without its own key: the trial), requests go to Groq and Mistral AI. Novera's own support-reply drafting also uses them. OpenRouter and Google's free tier may receive only material Novera wrote itself; the router refuses to send them customer data.
+- **On Novera's own keys** (a workspace without its own key: the trial), requests go to Groq and Mistral AI. Novera's own support-reply drafting also uses them. OpenRouter and Google's free tier are approved only for material Novera wrote itself, and every product feature sends customer material, so in practice they receive nothing from the service; they are used only by Novera's internal measurement scripts.
 - **On a workspace's own key**, grading and Ask Novera use only that key's provider (Groq, Google AI Studio, OpenRouter or Anthropic), under the customer's own agreement with it. Since 2026-10-09 the same holds for diagnosis, scenario drafting and Suite Builder extraction: a workspace with its own key is served on that key only, with no fallback to Novera's providers, and each such operation is recorded with the provider, model and funding source (never the content).
 - API keys, agent authentication headers and the body of a read-back response are never sent to a model.
 
@@ -127,6 +129,7 @@ Grading, drafting support replies, diagnosing failures, Suite Builder extraction
 | Ask Novera conversations | Deleted after 180 days without a new message, or when the person deletes them |
 | Assistant memory | Until the person deletes it or turns memory off |
 | Invitations | Usable for 7 days; the record, with the invited address, is kept until the workspace is erased. If the invited person deletes their Novera account, the address is replaced with a pseudonym. [COUNSEL TO CONFIRM THIS PERIOD FOR ADDRESSES OF PEOPLE WHO NEVER ACCEPTED] |
+| Product events | 13 months |
 | Rate-limit counters | About one day |
 | Audit trail | Until the workspace is erased; a person's own events until their account is deleted |
 | Account and profile | Until the account is deleted |
@@ -139,7 +142,7 @@ Grading, drafting support replies, diagnosing failures, Suite Builder extraction
 Under the GDPR you may ask for access to your personal data, its correction or erasure, restriction of processing, data portability, and you may object to processing based on legitimate interests. Where processing rests on consent, you may withdraw it at any time.
 
 - **Download my data** under Settings gives a signed-in person their profile, memberships, memory, conversations and own events as a file.
-- **Delete my account** under Settings erases the workspaces the person owns, ends their memberships elsewhere, revokes their keys there, and deletes their profile, conversations and memory. What they did in other people's workspaces stays as evidence, attributed to an identifier without their name or email.
+- **Delete my account** under Settings erases the workspaces the person owns, ends their memberships elsewhere, revokes their keys there, and deletes their profile, conversations and memory. What they did in other people's workspaces stays as evidence, attributed to an identifier without their name or email — except that an attestation they made names their email address, and a report already sealed with it cannot change.
 - Any other request: [PRIVACY CONTACT EMAIL]. [RESPONSE PROCESS AND TIME LIMIT — COUNSEL TO CONFIRM.]
 
 Where Novera processes data on a customer's behalf, Novera passes the request to that customer and helps it answer. [COUNSEL TO CONFIRM.]

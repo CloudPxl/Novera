@@ -57,10 +57,11 @@ someone with the service role, not merely someone using the application.
 | An exploratory scan of unapproved drafts is never a conformity report: only the Suite Builder starts one, it cannot be scheduled, and the database refuses it a report | 0056 `reports_not_exploratory`, `src/lib/workflow/start-run.ts` |
 | A curated pack is eu-support v5 scenarios byte for byte, its quality record computed from the labels; a pack without measured scenarios is not offered; observed agent behaviour is never written as policy | `src/lib/builder/packs.ts`, `tests/builder.test.ts`, `verify:builder` |
 | A sign-in never strands a person: a sign-up whose email could not be sent says no account was created, a reset never claims a link was sent over a mail failure, every emailed or provider link returns only to this deployment and to a fixed list of pages, Google and GitHub appear only when enabled, the last way in cannot be removed, and linking, unlinking, password changes and signing out everywhere are audited | `src/lib/auth/redirects.ts`, `src/lib/auth/errors.ts`, `src/app/auth/callback/`, `tests/auth.test.ts`; dashboard steps in `docs/setup/sign-in-and-email.md` |
-| An emailed link signs in only the browser that asked for it: a `token_hash` confirmation confirms the address and starts no session, magic-link and invite links are refused, and a password reset needs a fifteen-minute, single-use recovery context set where a recovery link is spent — an unbound one signs the browser out after | `src/app/auth/confirm/route.ts`, `src/lib/auth/recovery.ts`, `tests/auth.test.ts` |
+| An emailed link signs in only the browser that asked for it: a `token_hash` confirmation confirms the address and starts no session, magic-link and invite links are refused, and a password reset needs a fifteen-minute, single-use recovery context set where a recovery link is spent — a bare `token_hash` reset is verified without cookies and never signs the browser in (its session travels sealed inside the context), and a PKCE code mints one only when GoTrue stamped the session `recovery` | `src/app/auth/confirm/route.ts`, `src/app/auth/callback/handle.ts`, `src/lib/auth/recovery.ts`, `tests/auth.test.ts` |
 | A workspace with its own model key has all of its model work — grading, diagnosis, drafting, Suite Builder extraction, Ask Novera — served on that key, never ours, and each operation is recorded with funding, provider and model, never content; Ask Novera shows no figure its inputs do not contain | `src/lib/providers/model-work.ts` (`resolveConnections`), 0059, `tests/model-work.test.ts` |
-| Billing truth comes from Stripe's signed webhook, each event handled once, never from the browser returning from Checkout; live keys are refused unless explicitly allowed; a subscription change never deletes evidence | 0060, `src/lib/billing/`, `tests/billing.test.ts`, `docs/BILLING-DECISIONS.md` |
+| Billing truth comes from Stripe's signed webhook, each event handled once, never from the browser returning from Checkout; live keys are refused unless explicitly allowed; a deployment reads only its own Stripe mode's rows (preview and production share one database), so a sandbox subscription never shows, blocks erasure or blocks a live checkout; erasure is refused while Stripe could still charge; a subscription change never deletes evidence | 0060, 0065, `src/lib/billing/`, `tests/billing.test.ts`, `docs/BILLING-DECISIONS.md` |
 | A workspace export is owner/admin, one-time and short-lived, carries no token, secret or key hash, and leaves a receipt with its SHA-256 — never the file | 0061, `src/lib/export/`, `verify:export` |
+| A stored agent or read-back credential never follows its address to another host: moving an agent to a new host needs the credential pasted again or removed, and a moved or removed read-back drops its credential | `parseConnectionEdit` (`src/lib/agents/connection.ts`), `saveVerificationEndpoint`, `tests/agent-connection.test.ts` |
 | A destructive or fixture-only scenario never runs against a production agent; an agent is production until an owner or admin marks it a test target, confirmed and audited | `agents.is_production`, checked in the runner; `setAgentEnvironment`, 0057 |
 | A support reply goes draft → approved → sent, forward only; editing writes a new draft | 0009 |
 | A public form cannot be made free | 0024, counted in Postgres |
@@ -71,7 +72,7 @@ someone with the service role, not merely someone using the application.
 | An invitation works once, for its address only, for seven days, and stays revoked once revoked; removing a member takes effect on their next request and revokes the API keys they created there | 0054 `accept_invitation`, `remove_workspace_member`, `verify:identity` |
 | Who changed who may do what — members, roles, keys, webhooks, retention, withdrawal, account mode, memory — is an append-only audit trail, read by owner, admins and auditors | 0054 `audit_events`, `src/lib/audit/record.ts` |
 | A person's profile and preferences never reach grading, suites, policies or reports; assistant conversations are private to their person and expire after 180 idle days; assistant memory exists only by a person's action, refuses key-, link- and instruction-shaped values (also in the database), and a model's suggestion is stored only as a candidate the person accepts | 0054, `src/lib/assistant/memory.ts`, `tests/memory.test.ts`, `verify:identity` |
-| Deleting an account erases the workspaces it owns, ends its memberships and keys elsewhere, deletes its profile, conversations and memory, and pseudonymises the sign-in so evidence elsewhere stays attributed to an id without personal data | 0054 `erase_account`, `src/lib/workflow/identity.ts` |
+| Deleting an account erases the workspaces it owns, ends its memberships and keys elsewhere, deletes its profile, conversations and memory, and pseudonymises the sign-in so evidence elsewhere stays attributed to an id without personal data — except an attestation, whose text names the attester's email and is sealed into reports (open question for counsel) | 0054 `erase_account`, `src/lib/workflow/identity.ts` |
 | A row can refer only to rows in its own workspace — agents, policies, runs, cases, failures, suites (built-ins shared) — even for the service role | 0034 `refuse_cross_workspace()`, `verify:tenancy` |
 | An API key is stored only as an HMAC, reads by default, and starts runs or reads the agent's replies only if its creator chose that (never `run` or `responses` without `read`), cannot be altered, and once revoked stays revoked; a key reads only its own workspace, and a run it starts names it | 0033 + 0035 + 0052 + `src/lib/api/`, `verify:api` |
 | An assistant on MCP is offered only its key's scopes; with `write` it can ask for scenario drafts and diagnoses, which land as drafts and proposals naming the key — no scope approves, publishes, revokes, changes a policy or sends | 0039, `src/lib/mcp/tools.ts`, `src/lib/workflow/propose.ts`, `verify:mcp` |
@@ -240,7 +241,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 771 unit tests | free |
+| `npm test` | 781 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -292,7 +293,7 @@ they drive the scripted fixture at `/api/test-agent`.
 
 - **A report payload change breaks every document already in a client's hands.** An added
   field ships with its absence branch in the same commit. Two reports were returning 500
-  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 13); `novera report verify` re-hashes all of them.
+  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 14); `novera report verify` re-hashes all of them.
 - **A model's rendering of our data is not our data.** The judge echoed assertions back
   with the numbering the prompt added; storing that verbatim made every failed case render
   as fully passing.
@@ -361,9 +362,9 @@ they drive the scripted fixture at `/api/test-agent`.
   Resend variables are empty in Vercel, and Resend refuses the local key because `nover.space`
   is not verified there. Supabase custom SMTP needs the same verified key, and manual identity
   linking is off. The redirect allow list, Site URL, Google and GitHub are correct.
-- **`eu-support v5` has not had a full calibration sweep.** Its eight new scenarios
-  were measured on the route judges (no false pass; ministral-8b one false fail); T01–T41
-  are byte-identical to v4 and T01–T36 to v3, whose sweep is the current measurement.
+- **`eu-support v5` was swept on 2026-10-10** (local copy, 44 labelled cases): 0 false passes for
+  all five candidates, ministral-8b 2 false fails (T07, T49); route order unchanged
+  (`docs/setup/third-vendor.md`). The calibration harness does not send `earlier_turns`.
 - **Runs execute in resumable 42-second slices** because Vercel Hobby kills a function at
   60. The deadline is checked before a case starts, never during one; an incomplete run is
   never finished, so no report is published over partial evidence.

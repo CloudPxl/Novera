@@ -101,7 +101,7 @@ scheduled jobs) and the list of Vault secret **names** (`select name from vault.
 3. **Scheduled jobs and Vault.** The clock's secret lives in Vault, encrypted with the old
    project's key, and does not survive the move. Re-create it and the job:
    `npm run schedules:clock -- install` (with `SUPABASE_DB_URL` pointing at the new project).
-   The three daily jobs are created by migrations 0037/0038/0040 only when pg_cron was
+   The four daily jobs are created by migrations 0037/0038/0040/0064 only when pg_cron was
    installed at the time; `npm run verify:cron` lists any that are missing and prints the
    `cron.schedule(...)` statement for each.
 4. Run the checks in section 4 against the new project **before** pointing the app at it.
@@ -126,7 +126,7 @@ npm run migrate -- --check     # ledger exposure, pending migrations, ledger vs 
 npm run verify:db              # append-only, RLS, erasure paths
 npm run verify:access          # what anon and authenticated can and cannot reach
 npm run verify:tenancy         # cross-workspace references refused
-npm run verify:cron            # the four scheduled jobs exist and run
+npm run verify:cron            # the five scheduled jobs exist and run
 npm run novera -- report verify <link>   # for a sample of sealed reports, through the app
 ```
 

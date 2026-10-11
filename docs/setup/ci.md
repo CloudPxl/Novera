@@ -2,9 +2,14 @@
 
 `.github/workflows/ci.yml` runs on every push to any branch and on every pull request.
 
-**Branch protection is not active.** The workflow reports a result on each commit; nothing
-stops a red commit from being merged or pushed to `main` until the settings below are
-switched on in GitHub. Until then CI is advice, not a gate.
+**A ruleset, "Protect main", is active since 2026-10-11** (read unauthenticated from the API):
+pull request with 1 approval, review threads resolved, one required check
+(`Lint, types, tests, build`), no force push, no deletion. Bypass actors cannot be read without
+signing in. With no bypass, a one-person repository cannot merge anything (an author cannot
+approve their own pull request), so check the bypass list and see the recommended shape below.
+
+Superseded runs are cancelled on branches and pull requests only; every commit on `main` keeps its
+result, so a required check never reads a cancelled run.
 
 ## What runs
 
@@ -57,8 +62,8 @@ To update a pinned action: look up the new tag's commit (`git ls-remote https://
    3. *Fork pull request workflows from outside collaborators*: **Require approval for all
       outside collaborators** (the repository is public).
 2. **Settings → Branches → Add branch ruleset** (or classic protection) for `main`:
-   1. Require a pull request before merging (0 approvals is fine for a one-person repo; it
-      still forces CI to run on the change before it lands).
+   1. Require a pull request before merging: either off, or on with **0** required approvals.
+      With 1 approval and no second maintainer, nothing can ever merge.
    2. **Require status checks to pass**, and add both checks:
       - `Lint, types, tests, build`
       - `Migrations and secret scan`

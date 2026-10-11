@@ -29,15 +29,30 @@ export interface HttpVerificationConfig {
 
 const VERSION = "1.0.0";
 
-/** Never let a scenario's path escape the configured base. */
-function resolve(base: string, path?: string): URL | null {
+/**
+ * Never let a scenario's path escape the configured base: not to another host, and not out of
+ * the configured path either. The path is appended under the base (`/orders` + `NW-1` →
+ * `/orders/NW-1`, with or without a trailing slash), and anything that climbs out of it
+ * (`../admin`, `/admin`) or names another address is refused — the credential header travels
+ * with every read, and the settings page promises "only paths underneath this one" (end-to-end
+ * audit, 2026-10-11: a path used to resolve against the parent directory and anywhere on the
+ * host).
+ */
+export function resolveReadBack(base: string, path?: string): URL | null {
   try {
     const url = new URL(base);
     if (!path) return url;
-    const merged = new URL(path, url);
-    // A scenario is authored data. Without this, `path: "https://elsewhere"` would
-    // point the read-back at a host the customer never authorised.
-    if (merged.origin !== url.origin) return null;
+    // A scenario is authored data: `https://elsewhere`, `//elsewhere` or a leading `/` would
+    // point the read-back somewhere the customer never authorised.
+    if (/^[a-z][a-z0-9+.-]*:/i.test(path) || path.startsWith("/") || path.startsWith("\\")) return null;
+    const q = path.indexOf("?");
+    const pathPart = q === -1 ? path : path.slice(0, q);
+    const query = q === -1 ? "" : path.slice(q + 1);
+    const prefix = url.pathname.replace(/\/+$/, "");
+    const merged = new URL(url.origin);
+    merged.pathname = `${prefix}/${pathPart}`;
+    if (query) merged.search = `?${query}`;
+    if (merged.origin !== url.origin || !merged.pathname.startsWith(`${prefix}/`)) return null;
     return merged;
   } catch {
     return null;
@@ -51,7 +66,7 @@ export function httpVerificationConnector(
   const mode: ConnectorMode = "read_only";
 
   async function fetchBody(path?: string, reachableOnly = false): Promise<{ ok: true; text: string; status: number } | { ok: false; why: string }> {
-    const url = resolve(config.url, path);
+    const url = resolveReadBack(config.url, path);
     if (!url) return { ok: false, why: "The scenario's verification path does not resolve inside the configured endpoint." };
 
     const headers: Record<string, string> = { accept: "application/json, text/plain;q=0.9", ...config.headers };

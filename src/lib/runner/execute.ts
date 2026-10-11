@@ -714,6 +714,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
       // many of them there are.
       cases: saved.map((c) => ({
         status: c.status,
+        error: c.error,
         agreement: c.judgeAgreement,
         evidenceGap: c.evidenceGap,
         assertionCount: c.assertions.length,

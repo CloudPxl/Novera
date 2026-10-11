@@ -371,6 +371,7 @@ export default async function RunPage({
 
   const statuses = rows.map((c) => ({
     status: c.status as "pass" | "fail" | "error",
+    error: (c.error as string | null) ?? null,
     category: c.category as string,
     severity: c.severity as string,
     // Carried so coverage can separate a deadlocked verdict from a dead endpoint.

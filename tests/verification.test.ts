@@ -120,3 +120,15 @@ test("a tool_invoked scenario is unaffected by a read-back", () => {
   });
   assert.equal(ruling.status, "pass");
 });
+
+test("a read-back path stays underneath the configured one, with or without a trailing slash", async () => {
+  const { resolveReadBack } = await import("../src/lib/evidence/connectors/http.ts");
+  const at = (base: string, path?: string) => resolveReadBack(base, path)?.toString() ?? null;
+  assert.equal(at("https://api.example.com/orders", "NW-1"), "https://api.example.com/orders/NW-1");
+  assert.equal(at("https://api.example.com/orders/", "NW-1?expand=items"), "https://api.example.com/orders/NW-1?expand=items");
+  assert.equal(at("https://shop.example.com/api/", "invoices/NW-4417"), "https://shop.example.com/api/invoices/NW-4417");
+  assert.equal(at("https://api.example.com/orders"), "https://api.example.com/orders");
+  for (const escape of ["../admin", "a/../../admin", "/admin", "//evil.example/x", "https://evil.example/x", "%2e%2e/admin"]) {
+    assert.equal(at("https://api.example.com/orders", escape), null, escape);
+  }
+});

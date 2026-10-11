@@ -18,6 +18,11 @@ export interface CoverageInput {
    */
   cases: Array<{
     status: CaseStatus;
+    /**
+     * The row's error. Read for one thing only: whether Novera's own rules kept the scenario
+     * from being sent (`neverSent`). Optional: without it a row counts as it always did.
+     */
+    error?: string | null;
     agreement?: string | null;
     evidenceGap?: string | null;
     /**
@@ -90,6 +95,8 @@ export interface Coverage {
   effectConfirmed: number;
   effectContradicted: number;
   notRun: number;
+  /** The part of `notRun` Novera's own rules held back from the agent (`neverSent`). */
+  notSent: number;
   /**
    * How much of the suite produced no verdict, as a share of what was planned.
    *
@@ -121,10 +128,27 @@ export interface Coverage {
   evidenceCoverage: number | null;
 }
 
+/**
+ * The runner's own refusals to send a scenario: a destructive or test-data scenario against a
+ * production agent, an attack for a metadata channel or a conversation the agent has no slot
+ * for, an address that is not public, a slice that ended before sending. The agent never saw
+ * these, so they are scenarios that did not run — not executions that errored. Counting them
+ * as executed sealed "Every scenario ran" and 100% execution over a scenario never sent
+ * (end-to-end audit, 2026-10-11). The sentences are the runner's (src/lib/runner/execute.ts),
+ * and src/lib/evidence/repair.ts reads the same ones.
+ */
+const NOT_SENT = /^(This scenario attempts something irreversible|This scenario is written against scripted test data|This scenario delivers its input as conversation metadata|This scenario is a conversation, and this agent's request template has no|Not sent:)/;
+
+export function neverSent(c: { status: CaseStatus; error?: string | null }): boolean {
+  return c.status === "error" && typeof c.error === "string" && NOT_SENT.test(c.error);
+}
+
 export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
   const passed = cases.filter((c) => c.status === "pass").length;
   const failed = cases.filter((c) => c.status === "fail").length;
-  const errored = cases.filter((c) => c.status === "error").length;
+  // An errored row the agent never received is a scenario that did not run, and lands in
+  // `notRun` below rather than here.
+  const errored = cases.filter((c) => c.status === "error" && !neverSent(c)).length;
   const disputed = cases.filter((c) => c.status === "error" && c.agreement === "unresolved").length;
   const unverifiable = cases.filter((c) => c.status === "error" && Boolean(c.evidenceGap)).length;
   const graded = passed + failed;
@@ -166,6 +190,7 @@ export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
     effectConfirmed,
     effectContradicted,
     notRun,
+    notSent: cases.filter(neverSent).length,
     assuranceGap,
     executionCoverage: plannedCases === 0 ? 0 : percent(graded + errored, plannedCases),
     resolutionCoverage: assertionsTotal === 0 ? null : percent(assertionsResolved, assertionsTotal),

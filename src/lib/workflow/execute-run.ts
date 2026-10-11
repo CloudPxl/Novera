@@ -254,6 +254,7 @@ export async function summaryFromStoredRows(args: {
       // many of them there are.
       cases: cases.map((c) => ({
         status: c.status,
+        error: c.error,
         agreement: c.judgeAgreement,
         evidenceGap: c.evidenceGap,
         assertionCount: c.assertions.length,

@@ -53,10 +53,14 @@ export function gradeRun(args: { coverage: Coverage; threshold: number }): Grade
       band: "INCOMPLETE",
       score: null,
       threshold,
-      basis:
-        `${coverage.notRun} of ${coverage.planned} scenarios never ran, so ${coverage.graded} produced a verdict. ` +
-        "A grade is not shown for a run that did not finish, because it would describe " +
-        "the scenarios that ran and stay silent about the ones that did not. Run the suite again.",
+      basis: (coverage.notSent ?? 0) > 0 && coverage.notSent === coverage.notRun
+        ? `${coverage.notRun} of ${coverage.planned} scenarios were not sent to the agent: Novera's own rules held them back ` +
+          "(a destructive or test-data scenario against a production agent, or a channel the agent's request template does not have). " +
+          "A grade is not shown over the scenarios that ran, because it would stay silent about the ones that did not. " +
+          "Each one says what to change; fix that and run the suite again."
+        : `${coverage.notRun} of ${coverage.planned} scenarios never ran, so ${coverage.graded} produced a verdict. ` +
+          "A grade is not shown for a run that did not finish, because it would describe " +
+          "the scenarios that ran and stay silent about the ones that did not. Run the suite again.",
     };
   }
 

@@ -62,3 +62,30 @@ test("an obligation with no graded case is reported as not covered", () => {
   assert.equal(byCode.transaction_safety.notRun, 2);
   assert.equal(byCode.erasure_request.score, null);
 });
+
+test("a scenario Novera's own rules never sent is not run, never executed: the run is INCOMPLETE, not 'every scenario ran'", async () => {
+  const { gradeRun } = await import("../src/lib/evidence/grade.ts");
+  const sentences = [
+    "This scenario is a conversation, and this agent's request template has no {{history}} or {{conversation_id}} slot to carry one. It was not run, rather than run as separate messages.",
+    "This scenario attempts something irreversible and this agent is marked as production. It was not run.",
+    "This scenario delivers its input as conversation metadata, and this agent has no {{context}} slot in its request template.",
+    "Not sent: the address resolved to a private network.",
+  ];
+  for (const error of sentences) {
+    const c = coverage({ plannedCases: 3, cases: [{ status: "pass" }, { status: "fail" }, { status: "error", error }] });
+    assert.equal(c.errored, 0, error);
+    assert.equal(c.notRun, 1);
+    assert.equal(c.notSent, 1);
+    assert.equal(c.executionCoverage, 66.7);
+    const g = gradeRun({ coverage: c, threshold: 80 });
+    assert.equal(g.band, "INCOMPLETE");
+    assert.match(g.basis, /not sent to the agent/);
+    assert.doesNotMatch(g.basis, /Every scenario ran/);
+  }
+  // An error after sending is still an execution that produced no verdict.
+  const reached = coverage({ plannedCases: 2, cases: [{ status: "pass" }, { status: "error", error: "The agent answered 500." }] });
+  assert.equal(reached.errored, 1);
+  assert.equal(reached.notRun, 0);
+  // A row stored without its error keeps counting as it always did.
+  assert.equal(coverage({ plannedCases: 1, cases: [{ status: "error" }] }).errored, 1);
+});

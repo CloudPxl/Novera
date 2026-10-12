@@ -1,10 +1,16 @@
 /**
- * The plan catalog: keys, allowances and what each grants. Mirrored by `billing_plans` in
- * 0060 (tests/billing.test.ts holds them together). No price and no currency here — prices
- * live in Stripe and are undecided; this file says what a plan *grants*, not what it costs.
+ * The plan catalog: keys, approved list prices, allowances and what each grants. Mirrored by
+ * `billing_plans` (0060, prices and allowances from 0066; tests/billing.test.ts holds them
+ * together).
  *
- * Every plan is `draft`: sellable in a Stripe sandbox, never live. A plan becomes sellable
- * live only by a change to this file and a migration, both approved by David.
+ * Prices were approved by David on 2026-10-12 (docs/BILLING-DECISIONS.md §2). The price a
+ * workspace pays is Stripe's, through the server-side allow-list; the list price here is what
+ * the billing page shows, and checkout refuses a Stripe price that does not match it, so the
+ * page can never show one amount while Stripe charges another.
+ *
+ * Every plan is still `draft`: sellable in a Stripe sandbox, never live. A plan becomes
+ * sellable live only by a change to this file and a migration, both approved by David, after
+ * the live checklist (BILLING-DECISIONS §7).
  */
 
 export const PLAN_KEYS = ["team_byok", "agency_pro"] as const;
@@ -20,8 +26,19 @@ export const READ_ONLY_FEATURES: Feature[] = ["evidence.read", "reports.export"]
 export interface Plan {
   key: PlanKey;
   name: string;
-  /** Runs per billing period. */
-  runsPerPeriod: number;
+  /** Who the plan is for, in one line. */
+  audience: string;
+  /** The approved list price per month, in euro cents. Stripe's price must be exactly this. */
+  monthlyPriceCents: number;
+  currency: "eur";
+  interval: "month";
+  /**
+   * Runs graded on Novera's own model keys per billing period ("managed" runs). 0 means none:
+   * the plan grades on the workspace's own key.
+   */
+  managedRunsPerPeriod: number;
+  /** Runs graded on the workspace's own model key: unlimited on every plan. */
+  ownKeyRuns: "unlimited";
   features: readonly Feature[];
   status: "draft" | "disabled";
 }
@@ -29,15 +46,25 @@ export interface Plan {
 export const PLAN_CATALOG: Record<PlanKey, Plan> = {
   team_byok: {
     key: "team_byok",
-    name: "Team (bring your own model key) — placeholder",
-    runsPerPeriod: 30,
+    name: "Team BYOK",
+    audience: "Agencies and development teams grading on their own model key.",
+    monthlyPriceCents: 9_900,
+    currency: "eur",
+    interval: "month",
+    managedRunsPerPeriod: 0,
+    ownKeyRuns: "unlimited",
     features: FEATURES,
     status: "draft",
   },
   agency_pro: {
     key: "agency_pro",
-    name: "Agency Pro — placeholder",
-    runsPerPeriod: 150,
+    name: "Agency Pro",
+    audience: "Agencies delivering several client agents, with multi-model grading funded by Novera.",
+    monthlyPriceCents: 29_900,
+    currency: "eur",
+    interval: "month",
+    managedRunsPerPeriod: 100,
+    ownKeyRuns: "unlimited",
     features: FEATURES,
     status: "draft",
   },
@@ -52,4 +79,10 @@ export function planForPrice(priceId: string | null | undefined, prices: Partial
   if (!priceId) return null;
   for (const key of PLAN_KEYS) if (prices[key] === priceId) return key;
   return null;
+}
+
+/** "€99" — whole euros, as the catalog states them. */
+export function formatPlanPrice(plan: Plan): string {
+  const euros = plan.monthlyPriceCents / 100;
+  return `€${Number.isInteger(euros) ? euros : euros.toFixed(2)}`;
 }

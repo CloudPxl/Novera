@@ -7,7 +7,7 @@
  * draft and never in live mode until it is approved (no plan is).
  */
 import type { BillingConfig } from "./config.ts";
-import type { CheckoutRequest } from "./gateway.ts";
+import type { CheckoutRequest, PriceFacts } from "./gateway.ts";
 import { subscriptionStanding, type SubscriptionRow } from "./entitlement.ts";
 import { PLAN_CATALOG, isPlanKey, type PlanKey } from "./plans.ts";
 
@@ -69,4 +69,26 @@ export function isStripeHostedUrl(url: string | null | undefined, host: "checkou
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether the Stripe price on the allow-list is the plan's approved list price: active, in the
+ * configured mode, licensed, the same amount and currency, monthly. The billing page shows the
+ * catalog's price, so a Stripe price that differs — a placeholder left in a sandbox, a typo in
+ * the dashboard — would charge something the page never said. Refused instead, with what to fix.
+ */
+export function priceMismatch(price: PriceFacts, planKey: PlanKey, mode: "test" | "live"): string | null {
+  const plan = PLAN_CATALOG[planKey];
+  const want = `${plan.monthlyPriceCents / 100} ${plan.currency.toUpperCase()} per ${plan.interval}`;
+  const got = price.unitAmount === null
+    ? "a price without a fixed amount"
+    : `${price.unitAmount / 100} ${price.currency.toUpperCase()} per ${price.intervalCount && price.intervalCount > 1 ? `${price.intervalCount} ` : ""}${price.interval ?? "one-time payment"}`;
+  const problem =
+    !price.active ? "is archived in Stripe"
+    : price.livemode !== (mode === "live") ? "belongs to the other Stripe mode"
+    : price.unitAmount !== plan.monthlyPriceCents || price.currency !== plan.currency
+      || price.interval !== plan.interval || (price.intervalCount ?? 1) !== 1 || (price.usageType ?? "licensed") !== "licensed"
+      ? `is ${got}, not ${want}`
+      : null;
+  return problem ? `${plan.name} cannot be bought: its configured Stripe price ${problem}. Nothing was charged.` : null;
 }

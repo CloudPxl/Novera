@@ -2,9 +2,11 @@
 
 Phase 3 of the launch program (`docs/LAUNCH-READINESS.md`, P1–P5). Written 2026-10-09.
 
-**State: sandbox only.** Billing code exists and is off. It turns on only when Stripe *test*
-keys are configured, refuses live keys, offers no price anywhere, and does not yet decide
-whether a run may start. Nothing here is a published price, a sales term or legal advice.
+**State: sandbox only, prices approved.** Billing code exists and is off. It turns on only
+when Stripe *test* keys are configured, refuses live keys, and does not yet decide whether a
+run may start. The plan prices were approved by David on 2026-10-12 (§2) and are shown on
+Settings → Billing; nothing can be bought live until the §7 live checklist is done. Nothing
+here is a sales term or legal advice.
 
 ---
 
@@ -15,7 +17,7 @@ whether a run may start. Nothing here is a published price, a sales term or lega
 | Piece | Where | What it does |
 |---|---|---|
 | Config | `src/lib/billing/config.ts` | Billing is *not active* unless `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are both set. `sk_live_`/`rk_live_` is refused unless `BILLING_ALLOW_LIVE=1`. A publishable key is refused. Tax flags default off. |
-| Plan catalog | `src/lib/billing/plans.ts` + `billing_plans` (0060) | Two placeholder plan keys, run allowances, features. No price, no currency. Every plan is `draft`; the table's check constraint allows only `draft`/`disabled`. A test holds code and migration together. |
+| Plan catalog | `src/lib/billing/plans.ts` + `billing_plans` (0060, 0066) | Team BYOK and Agency Pro: approved list price (EUR, monthly), runs on your own key (unlimited) and on Novera's keys (0 / 100), features. Every plan is `draft`; the table's check constraint allows only `draft`/`disabled`. A test holds code and migrations together. |
 | Price allow-list | env `STRIPE_PRICE_TEAM_BYOK`, `STRIPE_PRICE_AGENCY_PRO` | Plan key → Stripe price id, server-side. The browser sends a plan key only; a price id, customer id or workspace id in a form is never read. A Stripe price not on the list maps to *no plan* and grants nothing. |
 | Schema | `supabase/migrations/0060_billing.sql` | Customers, subscriptions + history, manual grants, webhook ledger, billing audit trail, plans. Details below. |
 | Webhook | `src/app/api/stripe/webhook/route.ts` → `src/lib/billing/webhook.ts` | Raw body, signature check, idempotent per event id, out-of-order safe, workspace mapping, cross-workspace refusal. |
@@ -86,7 +88,10 @@ Why:
 
 Rules (`resolveEntitlement`): a source is *in force* or not; sources do **not** add up — the
 first in-force source with room wins, in the order **manual grant → subscription → own key
-→ trial**; if none has room, the highest in-force one says why. Allowances are windows over
+→ trial**. A plan counts two kinds of run differently: with a model key connected, runs on
+that key are **unlimited** (counted, never capped); without one, only the plan's **managed**
+allowance applies — runs graded on Novera's keys (`judge_source` not `workspace_key`), 0 on
+Team BYOK, 100 a period on Agency Pro; if none has room, the highest in-force one says why. Allowances are windows over
 the same `runs` rows, counted, never estimated. Grace: a `past_due` subscription keeps its
 plan for `BILLING_GRACE_DAYS` (default 7) from the first failure of that delinquency, then
 is *restricted*; `unpaid` is restricted at once. Restricted or nothing in force: no new
@@ -116,28 +121,57 @@ runs, every run/case/report stays readable and exportable.
 
 ---
 
-## 2. Proposed plan catalog (placeholders — nothing decided)
+## 2. Plan catalog (prices approved 2026-10-12)
 
-| Plan key | Working name | Runs / period (proposal) | Grading funded by | Price |
-|---|---|---|---|---|
-| — | Trial | 3 per account, across owned workspaces (today) | Novera's free-tier keys | free |
-| `team_byok` | Team (BYOK) | 30 | the customer's own key | **undecided** (research anchor: €79–149 / month) |
-| `agency_pro` | Agency Pro | 150 | **D2** | **undecided** (research anchor: €299–499 / month) |
-| — | Pilot / support / internal | per grant | per grant | manual grant, no charge |
+| Plan key | Name | Price | Runs on your own model key | Runs graded on Novera's keys | For |
+|---|---|---|---|---|---|
+| — | Trial | free | — (a key ends the trial) | 3 per account owner, across owned workspaces | a first sealed report |
+| `team_byok` | Team BYOK | **€99 / month** | unlimited | none | agencies and dev teams grading on their own key |
+| `agency_pro` | Agency Pro | **€299 / month** | unlimited | 100 per billing period, no rollover | agencies delivering several client agents, with Novera-funded multi-model consensus |
+| — | Pilot / support / internal | no charge | per grant | per grant | manual grant |
 
-Names, allowances and prices are placeholders. Changing an allowance means editing
-`PLAN_CATALOG` and a new migration (the test fails if they disagree).
+**Commercial rationale.**
 
----
+- **Price the evidence, not the people.** A subscription is per workspace (one per client in an
+  agency), never per seat: reviewers and auditors are who a report is for (§1).
+- **Team BYOK — €99.** The customer pays its own model provider, so Novera's cost per run is
+  runner time only; unlimited runs on the customer's key cost Novera little and remove the
+  reason to ration testing. €99 sits inside the €79–149 research anchor (`docs/COMPETITION.md`)
+  for a team tool that produces client-ready evidence.
+- **Agency Pro — €299.** The difference is grading Novera pays for: two models from different
+  vendors on Novera's keys, without the customer holding provider accounts. 100 managed runs a
+  month covers weekly re-evaluation of a handful of client agents (5 agents × 4 weekly runs = 20)
+  with headroom for release gates and retests. €299 is the bottom of the €299–499 anchor.
+- **Trial — 3 runs.** Enough for a first sealed report and a comparison, funded on free-tier
+  keys (0049, 0055: per owner, across workspaces, race-safe).
+
+**Where the catalog lives.** `PLAN_CATALOG` (`src/lib/billing/plans.ts`) and `billing_plans`
+(0060, prices and allowances from 0066) — a test fails if they disagree. Stripe holds the price
+that is charged; the catalog holds the price that was approved, which the billing page shows.
+**Checkout reads the allow-listed Stripe price first and refuses one that is not exactly the
+catalog's amount, currency and monthly interval** (`priceMismatch`, `src/lib/billing/checkout.ts`),
+so the page can never show €99 while Stripe charges something else. The browser sends a plan key
+only; never a price, an amount, a customer or a workspace.
+
+**What the catalog does not yet do (before live, §7):**
+
+- **Agency Pro's 100 managed runs cannot be spent yet.** Run start does not consult billing, and
+  past the 3 trial runs the database refuses any run graded on Novera's keys (0055). Selling it
+  live needs: a `judge_source` for plan-funded grading (the report states who paid), the trial
+  cap trigger to let a workspace with an in-force plan through, and `resolveEntitlement` wired into
+  `startRun`. Plus a funded grading budget for 100 runs × the number of Agency Pro workspaces.
+- **Team BYOK sells nothing a workspace cannot do free today** while D3 stays "yes": a workspace
+  with its own key runs unmetered without a plan, and the home page and docs say "there is nothing
+  to pay us". See D3.
 
 ## 3. Decisions David must make
 
 | # | Decision | Default in code until then |
 |---|---|---|
-| D1 | Prices, currency (EUR only?), monthly vs annual, VAT-inclusive or exclusive display | none shown anywhere |
-| D2 | Does any paid plan grade on Novera's keys? If yes, a funded vendor key and a new `judge_source` are needed first | no: paid plans are BYOK |
-| D3 | When billing goes live, does a BYOK workspace **without** a plan keep unmetered runs (today's rule)? | yes (`byokRequiresPlan: false`) |
-| D4 | Run allowances per plan; whether unused runs roll over (code: no) | 30 / 150, no rollover |
+| D1 | Prices, currency, interval — **decided 2026-10-12:** €99 / €299 a month, EUR, monthly only. **Open:** VAT-inclusive or exclusive display (accountant) | the page shows the list price and says VAT is confirmed before billing opens |
+| D2 | Does any paid plan grade on Novera's keys? — **decided 2026-10-12: yes, Agency Pro, 100 a period.** Needs a `judge_source`, the 0055 trigger change and run gating before live (§2) | not spendable yet: runs past the trial on Novera's keys are refused |
+| D3 | When billing goes live, does a BYOK workspace **without** a plan keep unmetered runs (today's rule)? **Still open, and now load-bearing:** if yes, Team BYOK grants nothing extra; if no, the run gate must ship with live billing and the public "nothing to pay us" copy must change first | yes (`byokRequiresPlan: false`) |
+| D4 | Run allowances — **decided 2026-10-12:** unlimited on your own key on both plans; managed runs 0 / 100 a period; no rollover | as decided |
 | D5 | Grace period length after a failed payment | 7 days |
 | D6 | Stripe "after all retries fail" setting: cancel, mark unpaid, or leave past_due | code handles all three |
 | D7 | Free trial on a paid plan (Stripe `trialing`) or only the 3-run trial | 3-run trial only |
@@ -188,7 +222,8 @@ Not legal or tax advice. Each needs a qualified answer before live activation.
 
 1. Create a **sandbox** in the Stripe dashboard. Use only its `sk_test_…` key.
 2. **Products and prices**: one product per plan key, one recurring monthly price each, in
-   EUR. Placeholder amounts in the sandbox only. Copy the `price_…` ids into
+   EUR, at exactly the catalog's amount: Team BYOK €99.00, Agency Pro €299.00 (licensed, every 1
+   month). Checkout refuses a price that differs. Copy the `price_…` ids into
    `STRIPE_PRICE_TEAM_BYOK` and `STRIPE_PRICE_AGENCY_PRO` — **these exact names**; any other
    name (for example `STRIPE_PRICE_MONTHLY`) is never read. A plan has one price: monthly and
    annual prices for one plan need a code change (a price list per plan, an interval on the
@@ -274,8 +309,9 @@ Novera sends **no billing email** (production sends no email at all today; see C
 
 **Sandbox (can be done now, by David, no approval of prices needed):**
 
-1. Migrations 0060 and 0065 (applied with `npm run migrate`).
-2. Configure §5 steps 1–5 in a Stripe sandbox; set the sandbox variables in `.env.local` and
+1. Migrations 0060, 0065 and 0066 (applied with `npm run migrate`).
+2. Configure §5 steps 1–5 in a Stripe sandbox, with prices of exactly **€99.00** and **€299.00**
+   EUR, recurring monthly, licensed — checkout refuses any other amount; set the sandbox variables in `.env.local` and
    Vercel *Preview* only, then create a Preview deployment (a branch push) — Preview variables
    do nothing until one exists. Never put the Stripe keys in Production.
 3. Use a throwaway workspace; its sandbox rows stay until it is erased.
@@ -284,7 +320,8 @@ Novera sends **no billing email** (production sends no email at all today; see C
 
 **Live (P5 — blocked until every item is signed off):**
 
-1. §3 decisions D1–D10 made; §4 items signed off by accountant and lawyer.
+1. §3 decisions made (D1 VAT display, D3, D5–D10 still open); §4 items signed off by accountant
+   and lawyer.
 2. Terms, privacy notice and sub-processor list (Phase 4) published with Stripe named.
 3. A migration adding an approved status to `billing_plans` and the code change in
    `PLAN_CATALOG`/`decideCheckout` that lets an approved plan sell live (no draft plan ever
@@ -292,6 +329,10 @@ Novera sends **no billing email** (production sends no email at all today; see C
 4. Live products and prices created; live webhook destination and portal configured
    (live mode has its own copies of both).
 5. Live keys set in Vercel *Production* with `BILLING_ALLOW_LIVE=1` — the last step, by David.
-6. Decide whether billing gates run starts (D2/D3) and wire `resolveEntitlement` in.
-7. Decide what erasure does with a live subscription beyond refusing (section 1): today a
+6. Wire billing into run starts: plan-funded `judge_source`, the 0055 trigger change, and
+   `resolveEntitlement` in `startRun`, so Agency Pro's managed runs can be spent (and, if D3 is
+   "no", so a key without a plan stops after the trial).
+7. Align the public copy with the catalog ("nothing to pay us" on the home page and in
+   `/docs/the-trial-and-your-own-key`).
+8. Decide what erasure does with a live subscription beyond refusing (section 1): today a
    person cancels first.

@@ -13,22 +13,32 @@ export interface BillingView {
   hasCustomer: boolean;
   entitlement: BillingEntitlement;
   subscriptions: SubscriptionRow[];
-  /** Which plan keys have a price in the allow-list (sandbox checkout buttons). Never the price. */
+  /** Which plan keys have a Stripe price on the server's allow-list. Never the price id. */
   sellablePlans: string[];
+  /** The owner's trial runs (every workspace they own), when this workspace has no model key. */
+  trial: { used: number; limit: number } | null;
 }
 
-/** Every run since `from`, paged so PostgREST's row cap can never turn into an undercount. */
-async function runTimesSince(db: SupabaseClient, workspaceId: string, from: string | null): Promise<string[]> {
-  if (!from) return [];
-  const out: string[] = [];
+/**
+ * Every run since `from`, and which of them were graded on Novera's keys (anything not on the
+ * workspace's own key, the cautious reading), paged so PostgREST's row cap can never turn into
+ * an undercount.
+ */
+async function runTimesSince(db: SupabaseClient, workspaceId: string, from: string | null): Promise<{ all: string[]; managed: string[] }> {
+  const all: string[] = [];
+  const managed: string[] = [];
+  if (!from) return { all, managed };
   for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await db.from("runs").select("created_at")
+    const { data, error } = await db.from("runs").select("created_at, judge_source")
       .eq("workspace_id", workspaceId).gte("created_at", from)
       .order("created_at", { ascending: true }).order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error) throw new Error(`Could not count runs: ${error.message}`);
-    out.push(...(data ?? []).map((r) => r.created_at as string));
-    if ((data ?? []).length < PAGE) return out;
+    for (const r of data ?? []) {
+      all.push(r.created_at as string);
+      if (r.judge_source !== "workspace_key") managed.push(r.created_at as string);
+    }
+    if ((data ?? []).length < PAGE) return { all, managed };
   }
 }
 
@@ -63,7 +73,7 @@ export async function loadBillingView(db: SupabaseClient, workspaceId: string, n
     subscriptionStanding(currentSubscription(subscriptions), now, config.graceDays)?.periodStart ?? null,
     ...grants.filter((g) => !g.revokedAt).map((g) => g.startsAt),
   ].filter((x): x is string => Boolean(x)).sort();
-  const runTimes = await runTimesSince(db, workspaceId, starts[0] ?? null);
+  const runs = await runTimesSince(db, workspaceId, starts[0] ?? null);
 
   const entitlement = resolveEntitlement({
     now,
@@ -74,7 +84,8 @@ export async function loadBillingView(db: SupabaseClient, workspaceId: string, n
     byokRequiresPlan: false,
     subscriptions,
     grants,
-    runTimes,
+    runTimes: runs.all,
+    managedRunTimes: runs.managed,
     totalRuns: totalRuns ?? 0,
   });
 
@@ -87,5 +98,6 @@ export async function loadBillingView(db: SupabaseClient, workspaceId: string, n
     entitlement,
     subscriptions,
     sellablePlans: Object.keys(config.prices),
+    trial: base.ownKey ? null : { used: base.runsUsed, limit: TRIAL_RUN_LIMIT },
   };
 }

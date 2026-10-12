@@ -5,7 +5,7 @@
  */
 import Stripe from "stripe";
 import type { GrantRow } from "../src/lib/billing/entitlement.ts";
-import type { CheckoutRequest, StripeGateway } from "../src/lib/billing/gateway.ts";
+import type { CheckoutRequest, PriceFacts, StripeGateway } from "../src/lib/billing/gateway.ts";
 import {
   TERMINAL_STATUSES, type BillingEventLine, type BillingStore, type ClaimResult, type EventOutcome,
   type StoredSubscription, type WriteResult,
@@ -95,6 +95,19 @@ export class FakeStripe implements StripeGateway {
   current = new Map<string, Record<string, unknown>>();
   calls: string[] = [];
   failNextRetrieve = false;
+
+  /** Prices as the sandbox holds them; by default each allow-listed id carries its catalog price. */
+  prices = new Map<string, PriceFacts>([
+    ["price_team", { id: "price_team", active: true, livemode: false, unitAmount: 9_900, currency: "eur", interval: "month", intervalCount: 1, usageType: "licensed" }],
+    ["price_agency", { id: "price_agency", active: true, livemode: false, unitAmount: 29_900, currency: "eur", interval: "month", intervalCount: 1, usageType: "licensed" }],
+  ]);
+
+  async retrievePrice(id: string) {
+    this.calls.push(`price ${id}`);
+    const p = this.prices.get(id);
+    if (!p) throw new Error(`No such price: ${id}`);
+    return { ...p };
+  }
 
   async retrieveSubscription(id: string) {
     this.calls.push(`retrieve ${id}`);

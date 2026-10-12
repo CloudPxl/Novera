@@ -22,6 +22,15 @@ export function stripeGateway(config: BillingConfig): StripeGateway | null {
       return stripe.subscriptions.retrieve(id);
     },
 
+    async retrievePrice(id) {
+      const p = await stripe.prices.retrieve(id);
+      return {
+        id: p.id, active: p.active, livemode: p.livemode, unitAmount: p.unit_amount, currency: p.currency,
+        interval: p.recurring?.interval ?? null, intervalCount: p.recurring?.interval_count ?? null,
+        usageType: p.recurring?.usage_type ?? null,
+      };
+    },
+
     async createCustomer({ workspaceId, name, idempotencyKey }) {
       // No email, no address: Checkout collects what Stripe needs, on Stripe's page.
       const customer = await stripe.customers.create(

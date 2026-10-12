@@ -59,7 +59,7 @@ someone with the service role, not merely someone using the application.
 | A sign-in never strands a person: a sign-up whose email could not be sent says no account was created, a reset never claims a link was sent over a mail failure, every emailed or provider link returns only to this deployment and to a fixed list of pages, Google and GitHub appear only when enabled, the last way in cannot be removed, and linking, unlinking, password changes and signing out everywhere are audited | `src/lib/auth/redirects.ts`, `src/lib/auth/errors.ts`, `src/app/auth/callback/`, `tests/auth.test.ts`; dashboard steps in `docs/setup/sign-in-and-email.md` |
 | An emailed link signs in only the browser that asked for it: a `token_hash` confirmation confirms the address and starts no session, magic-link and invite links are refused, and a password reset needs a fifteen-minute, single-use recovery context set where a recovery link is spent — a bare `token_hash` reset is verified without cookies and never signs the browser in (its session travels sealed inside the context), and a PKCE code mints one only when GoTrue stamped the session `recovery` | `src/app/auth/confirm/route.ts`, `src/app/auth/callback/handle.ts`, `src/lib/auth/recovery.ts`, `tests/auth.test.ts` |
 | A workspace with its own model key has all of its model work — grading, diagnosis, drafting, Suite Builder extraction, Ask Novera — served on that key, never ours, and each operation is recorded with funding, provider and model, never content; Ask Novera shows no figure its inputs do not contain | `src/lib/providers/model-work.ts` (`resolveConnections`), 0059, `tests/model-work.test.ts` |
-| Billing truth comes from Stripe's signed webhook, each event handled once, never from the browser returning from Checkout; live keys are refused unless explicitly allowed; a deployment reads only its own Stripe mode's rows (preview and production share one database), so a sandbox subscription never shows, blocks erasure or blocks a live checkout; erasure is refused while Stripe could still charge; a subscription change never deletes evidence | 0060, 0065, `src/lib/billing/`, `tests/billing.test.ts`, `docs/BILLING-DECISIONS.md` |
+| Billing truth comes from Stripe's signed webhook, each event handled once, never from the browser returning from Checkout; live keys are refused unless explicitly allowed; a plan sells only at its approved catalog price, checked against Stripe's before checkout; a deployment reads only its own Stripe mode's rows (preview and production share one database), so a sandbox subscription never shows, blocks erasure or blocks a live checkout; erasure is refused while Stripe could still charge; a subscription change never deletes evidence | 0060, 0065, 0066, `src/lib/billing/`, `tests/billing.test.ts`, `docs/BILLING-DECISIONS.md` |
 | A workspace export is owner/admin, one-time and short-lived, carries no token, secret or key hash, and leaves a receipt with its SHA-256 — never the file | 0061, `src/lib/export/`, `verify:export` |
 | A stored agent or read-back credential never follows its address to another host: moving an agent to a new host needs the credential pasted again or removed, and a moved or removed read-back drops its credential | `parseConnectionEdit` (`src/lib/agents/connection.ts`), `saveVerificationEndpoint`, `tests/agent-connection.test.ts` |
 | A destructive or fixture-only scenario never runs against a production agent; an agent is production until an owner or admin marks it a test target, confirmed and audited | `agents.is_production`, checked in the runner; `setAgentEnvironment`, 0057 |
@@ -241,7 +241,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 781 unit tests | free |
+| `npm test` | 787 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -339,8 +339,11 @@ they drive the scripted fixture at `/api/test-agent`.
 
 ## Open questions and known limits
 
-- **Price is undecided.** `docs/COMPETITION.md` holds the anchors and the argument for
-  pricing a verified run rather than model calls. Nothing is published.
+- **Prices are approved (2026-10-12), not live.** Team BYOK €99/month (unlimited on your own
+  key), Agency Pro €299/month (plus 100 runs a period on Novera's keys), trial 3 runs. Shown on
+  Settings → Billing; checkout refuses a Stripe price that differs from the catalog. Before live:
+  run gating and a plan-funded `judge_source` (Agency Pro's managed runs cannot be spent yet),
+  decision D3, VAT display, and the public "nothing to pay us" copy (`docs/BILLING-DECISIONS.md`).
 - **Two grading vendors, not three.** No OpenAI or Anthropic key is configured (the
   2026-09-22 OpenAI key had no credits). Independence currently means groq + mistral. A
   funded key is one env line; `verify:models` then prints the calibration command, and the

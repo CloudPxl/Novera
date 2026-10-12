@@ -63,7 +63,9 @@ row says which it was.
 | P1 | `docs/BILLING-DECISIONS.md` | Code | PASS | — | Decisions D1–D10 |
 | P2 | Schema: customers, subscriptions, grants, events, audit | Code | PASS | 0060 (27 refusals in a rolled-back transaction; RLS by role); applied in production | — |
 | P3 | Webhook, Checkout, Portal: signature-checked, idempotent | Code | PASS (offline) | 28 tests with signed payloads (now also mode isolation, the read race, a retried unreadable subscription). **Not run against a Stripe sandbox:** as configured on 2026-10-11 the price variables have names the code never reads, there is no Preview deployment, and the destination points at production, which holds no keys (503) | Sandbox setup corrected per `docs/BILLING-DECISIONS.md` §5/§7 |
-| P3b | Sandbox rows never count in production | Code | PASS | `storedLivemode`, 0065 (local); tests | Apply 0065 in production |
+| P3b | Sandbox rows never count in production | Code | PASS | `storedLivemode`, 0065 (production 2026-10-11); tests | — |
+| P3c | Approved prices: Team BYOK €99, Agency Pro €299 a month; cards, allowances, price check | Code | PASS | 0066; `priceMismatch`, `planAction`, entitlement tests; page rendered locally billing-off and sandbox at 390/1440, axe clean; a fake-key checkout refused with nothing created | Sandbox prices at exactly €99.00 / €299.00 |
+| P3d | Agency Pro's managed runs can be spent; billing decides run starts | Code + David | **BLOCKED** | Not wired: past the trial, runs on Novera's keys are refused (0055) | D3; plan-funded `judge_source`; a funded grading budget |
 | P4 | Billing page, off without configuration | Code | PASS | Production: `/settings/billing` behind sign-in; says "Billing is not active yet" without keys | — |
 | P4b | Erasure never orphans a subscription | Code | PASS | Local: refused while active; allowed once ending at period end | — |
 | P5 | Live activation | David | **BLOCKED** | — | Entity, tax registration, prices, lawyer and accountant sign-off |

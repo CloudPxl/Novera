@@ -66,6 +66,11 @@ export interface EntitlementInput {
    * row would be an undercount, so the loader pages through all of them.
    */
   runTimes: string[];
+  /**
+   * The subset of `runTimes` graded on Novera's own keys (`judge_source` not `workspace_key`):
+   * what a plan's managed allowance counts. Absent → every run counts, the cautious reading.
+   */
+  managedRunTimes?: string[];
   /** Every run this workspace ever started, counted by the database. */
   totalRuns: number;
 }
@@ -97,6 +102,11 @@ export interface BillingEntitlement {
   /** Null means unmetered. */
   runsAllowed: number | null;
   runsUsed: number;
+  /**
+   * What the allowance above counts: runs on the workspace's own model key, or runs graded on
+   * Novera's keys (the trial, a plan's managed runs). Null when nothing is in force.
+   */
+  runsOn: "own_key" | "novera" | null;
   /** When the allowance's window closes, if it has one. */
   windowEndsAt: string | null;
   canRun: boolean;
@@ -205,6 +215,7 @@ const CHARGEABLE_STATUSES = new Set(["active", "trialing", "past_due", "unpaid",
 interface Candidate {
   source: Exclude<EntitlementSource, "none">;
   planKey: PlanKey | null;
+  runsOn: "own_key" | "novera";
   runsAllowed: number | null;
   runsUsed: number;
   windowEndsAt: string | null;
@@ -229,6 +240,7 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
     candidates.push({
       source: "manual_grant",
       planKey: plan?.key ?? null,
+      runsOn: input.byok.connected ? "own_key" : "novera",
       runsAllowed: g.runsAllowed,
       runsUsed: used,
       windowEndsAt: g.endsAt,
@@ -240,23 +252,45 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
     });
   }
 
-  // 2. The subscription.
+  // 2. The subscription. Every plan grades on the workspace's own key without limit; without a
+  //    key, only the plan's managed allowance (runs on Novera's keys) counts — none on Team BYOK.
   const sub = subscriptionStanding(currentSubscription(input.subscriptions), now, input.graceDays);
   if (sub?.inForce && sub.planKey) {
     const plan = PLAN_CATALOG[sub.planKey];
-    const used = countBetween(runTimes, ts(sub.periodStart), ts(sub.periodEnd));
-    candidates.push({
-      source: "subscription",
-      planKey: plan.key,
-      runsAllowed: plan.runsPerPeriod,
-      runsUsed: used,
-      windowEndsAt: sub.periodEnd,
-      features: [...plan.features],
-      grantId: null,
-      exhausted: used >= plan.runsPerPeriod
-        ? `This billing period's ${plan.runsPerPeriod} runs have been used. The allowance renews${sub.periodEnd ? ` on ${sub.periodEnd.slice(0, 10)}` : " with the next period"}.`
-        : null,
-    });
+    const renews = `The allowance renews${sub.periodEnd ? ` on ${sub.periodEnd.slice(0, 10)}` : " with the next period"}.`;
+    if (input.byok.connected) {
+      candidates.push({
+        source: "subscription",
+        planKey: plan.key,
+        runsOn: "own_key",
+        runsAllowed: null,
+        runsUsed: countBetween(runTimes, ts(sub.periodStart), ts(sub.periodEnd)),
+        windowEndsAt: sub.periodEnd,
+        features: [...plan.features],
+        grantId: null,
+        exhausted: input.byok.routable
+          ? null
+          : `The ${input.byok.provider ?? "stored"} key in this workspace has no model recorded to grade with. Connect the key again naming a model.`,
+      });
+    } else {
+      const used = countBetween(input.managedRunTimes ?? runTimes, ts(sub.periodStart), ts(sub.periodEnd));
+      const allowed = plan.managedRunsPerPeriod;
+      candidates.push({
+        source: "subscription",
+        planKey: plan.key,
+        runsOn: "novera",
+        runsAllowed: allowed,
+        runsUsed: used,
+        windowEndsAt: sub.periodEnd,
+        features: [...plan.features],
+        grantId: null,
+        exhausted: allowed === 0
+          ? `${plan.name} grades on your own model key, and this workspace has none. Connect one under Settings → Grading; runs graded on Novera's keys come with Agency Pro.`
+          : used >= allowed
+            ? `This billing period's ${allowed} runs graded on Novera's keys have been used. ${renews} Runs on your own model key are not limited.`
+            : null,
+      });
+    }
   }
 
   // 3. The workspace's own model key: unmetered, as today, unless that rule is changed on purpose.
@@ -264,6 +298,7 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
     candidates.push({
       source: "byok",
       planKey: null,
+      runsOn: "own_key",
       runsAllowed: null,
       runsUsed: input.totalRuns,
       windowEndsAt: null,
@@ -280,6 +315,7 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
     candidates.push({
       source: "trial",
       planKey: null,
+      runsOn: "novera",
       runsAllowed: input.trialLimit,
       runsUsed: input.trialRunsUsed,
       windowEndsAt: null,
@@ -299,6 +335,7 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
       planKey: chosen.planKey,
       runsAllowed: chosen.runsAllowed,
       runsUsed: chosen.runsUsed,
+      runsOn: chosen.runsOn,
       windowEndsAt: chosen.windowEndsAt,
       canRun: true,
       blockedReason: null,
@@ -316,6 +353,7 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
       planKey: first.planKey,
       runsAllowed: first.runsAllowed,
       runsUsed: first.runsUsed,
+      runsOn: first.runsOn,
       windowEndsAt: first.windowEndsAt,
       canRun: false,
       blockedReason: first.exhausted,
@@ -332,6 +370,7 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
     planKey: null,
     runsAllowed: 0,
     runsUsed: input.totalRuns,
+    runsOn: null,
     windowEndsAt: null,
     canRun: false,
     blockedReason: sub && !sub.inForce

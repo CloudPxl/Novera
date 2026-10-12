@@ -7,7 +7,7 @@ import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { appOrigin } from "@/lib/auth/redirects.ts";
 import { billingConfig, storedLivemode } from "./config.ts";
-import { checkoutRequest, decideCheckout, isStripeHostedUrl } from "./checkout.ts";
+import { checkoutRequest, decideCheckout, isStripeHostedUrl, priceMismatch } from "./checkout.ts";
 import { currentSubscription, subscriptionStanding, type SubscriptionRow } from "./entitlement.ts";
 import { stripeGateway } from "./stripe-gateway.ts";
 import { supabaseBillingStore } from "./supabase-store.ts";
@@ -58,6 +58,12 @@ export async function startCheckout(_prev: BillingFormState, form: FormData): Pr
 
   let url: string | null;
   try {
+    // The page shows the catalog's price; Stripe charges its own. They must be the same price.
+    const mismatch = priceMismatch(await gateway.retrievePrice(decision.priceId), decision.planKey, config.mode === "live" ? "live" : "test");
+    if (mismatch) {
+      console.error(`[billing] ${mismatch}`);
+      return { error: mismatch };
+    }
     let customer = await store.customerForWorkspace(workspace.id, storedLivemode(config));
     if (!customer) {
       // Idempotent at Stripe: two clicks at once create one customer.

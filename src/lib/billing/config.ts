@@ -34,7 +34,8 @@ export interface BillingConfig {
 
 export const DEFAULT_GRACE_DAYS = 7;
 
-const PRICE_ENV: Record<PlanKey, string> = {
+/** The environment variable that holds each plan's Stripe price id. */
+export const PRICE_ENV: Record<PlanKey, string> = {
   team_byok: "STRIPE_PRICE_TEAM_BYOK",
   agency_pro: "STRIPE_PRICE_AGENCY_PRO",
 };

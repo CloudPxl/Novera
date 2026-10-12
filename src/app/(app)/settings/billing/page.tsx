@@ -4,8 +4,9 @@ import { can } from "@/lib/auth/permissions.ts";
 import { Card, Badge, type BadgeTone } from "@/components/ui/primitives.tsx";
 import { formatWhen } from "@/lib/format/when.ts";
 import { loadBillingView } from "@/lib/billing/load.ts";
-import { PLAN_CATALOG, isPlanKey } from "@/lib/billing/plans.ts";
-import type { EntitlementSource, Standing } from "@/lib/billing/entitlement.ts";
+import { PLAN_CATALOG, PLAN_KEYS, formatPlanPrice, isPlanKey, type Plan } from "@/lib/billing/plans.ts";
+import { planAction, type PlanAction } from "@/lib/billing/plan-action.ts";
+import type { BillingEntitlement, EntitlementSource, Standing } from "@/lib/billing/entitlement.ts";
 import { SettingsNav } from "../nav.tsx";
 import { CancellationButton, CheckoutButton, PortalButton } from "./forms.tsx";
 
@@ -33,10 +34,58 @@ const STANDING: Record<Standing, { label: string; tone: BadgeTone }> = {
   unrecognised: { label: "not recognised", tone: "error" },
 };
 
+/** The current allowance in words, from the computed entitlement only. */
+function runsLine(e: BillingEntitlement): string {
+  if (e.runsAllowed === null) {
+    const started = e.source === "subscription" ? `${e.runsUsed} this period` : `${e.runsUsed} started`;
+    return `${started} · unlimited on your own key`;
+  }
+  return `${e.runsUsed} of ${e.runsAllowed} on Novera's keys`;
+}
+
+function tierName(e: BillingEntitlement): string {
+  if ((e.source === "subscription" || e.source === "manual_grant") && e.planKey) return PLAN_CATALOG[e.planKey].name;
+  return SOURCE_LABEL[e.source];
+}
+
+function Included({ items }: { items: string[] }) {
+  return (
+    <ul className="mt-4 space-y-2 text-sm text-ink-soft">
+      {items.map((item) => (
+        <li key={item} className="flex gap-2">
+          <span aria-hidden className="mt-[0.45rem] size-1.5 shrink-0 rounded-full bg-ink-faint" />
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ActionArea({ plan, action }: { plan: Plan; action: PlanAction }) {
+  switch (action.kind) {
+    case "checkout":
+      return <CheckoutButton plan={plan.key} label={action.label} block />;
+    case "portal":
+      return <PortalButton label={action.label} disabled={action.disabled} block />;
+    case "unavailable":
+      return (
+        <div>
+          <button type="button" disabled className="inline-flex h-8 w-full cursor-not-allowed items-center justify-center rounded-control border border-line bg-sunken px-3 text-sm font-medium text-ink-faint">
+            {action.label}
+          </button>
+          <p className="mt-2 text-xs text-ink-faint">{action.reason}</p>
+        </div>
+      );
+    case "members":
+      return <p className="rounded-control bg-sunken px-3 py-2 text-xs text-ink-soft">{action.reason}</p>;
+  }
+}
+
 /**
- * What this workspace may do and what pays for it — every number computed on the server from
- * stored rows (src/lib/billing/load.ts). Prices are never shown: none is approved. When billing
- * is not configured the page says so and offers nothing to press.
+ * The workspace's tier, its allowance and the plans on offer — every number computed on the
+ * server from stored rows (src/lib/billing/load.ts), every price the approved catalog's
+ * (src/lib/billing/plans.ts), which checkout holds Stripe's price to. Without billing configured
+ * the plans still show, and their buttons say why they cannot be pressed.
  *
  * The return from Stripe (`?checkout=returned`, `?portal=returned`) only chooses a sentence; it
  * changes nothing. Only Stripe's signed webhook does.
@@ -55,6 +104,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const when = (iso: string | null) => (iso ? formatWhen(iso, ctx.profile, { date: true }) : null);
   const returned = params.checkout === "returned" ? "checkout" : params.checkout === "cancelled" ? "cancelled" : params.portal === "returned" ? "portal" : null;
   const planName = (key: string | null) => (key && isPlanKey(key) ? PLAN_CATALOG[key].name : null);
+  const currentPlan = sub && !["ended", "none"].includes(sub.standing) ? sub.planKey : null;
 
   return (
     <main className="w-full pb-10 text-ink">
@@ -84,19 +134,20 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
             </p>
           )}
 
-          <section aria-labelledby="entitlement-heading">
-            <h2 id="entitlement-heading" className="text-lg font-semibold tracking-tight">What this workspace may do</h2>
+          <section aria-labelledby="tier-heading">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 id="tier-heading" className="text-lg font-semibold tracking-tight">This workspace</h2>
+              {sub && <Badge tone={STANDING[sub.standing].tone}>{STANDING[sub.standing].label}</Badge>}
+            </div>
             <Card className="mt-3 divide-y divide-line p-0">
               <dl className="grid gap-4 p-5 sm:grid-cols-3">
                 <div>
-                  <dt className="text-xs text-ink-faint">Allowed by</dt>
-                  <dd className="mt-1 text-sm font-medium">{SOURCE_LABEL[e.source]}{e.planKey ? ` · ${planName(e.planKey)}` : ""}</dd>
+                  <dt className="text-xs text-ink-faint">Current tier</dt>
+                  <dd className="mt-1 text-sm font-medium">{tierName(e)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-ink-faint">Runs</dt>
-                  <dd className="tnum mt-1 text-sm font-medium">
-                    {e.runsAllowed === null ? `${e.runsUsed} started · no limit` : `${e.runsUsed} of ${e.runsAllowed} used`}
-                  </dd>
+                  <dd className="tnum mt-1 text-sm font-medium">{runsLine(e)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-ink-faint">{e.source === "subscription" ? "Allowance renews" : e.source === "manual_grant" ? "Grant ends" : "Window"}</dt>
@@ -107,12 +158,26 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                 {e.canRun
                   ? <p className="text-ink-soft">New runs can start.</p>
                   : <p role="status" className="text-fail-text">{e.blockedReason}</p>}
-                {e.trial && (
-                  <p className="mt-2 text-xs text-ink-faint">
-                    The trial covers {e.trial.limit} runs per account, across every workspace you own, graded on Novera&apos;s keys.
-                  </p>
+                {sub && (
+                  <div className="mt-3">
+                    <p className="font-medium">{planName(sub.planKey) ?? "Unrecognised plan"}</p>
+                    <p className="mt-1 text-ink-soft">{sub.sentence}</p>
+                    <ul className="mt-2 space-y-1 text-xs text-ink-faint">
+                      {sub.periodEnd && <li>Current period ends {when(sub.periodEnd)}</li>}
+                      {sub.endsAt && <li>Access under this plan ends {when(sub.endsAt)}</li>}
+                      {sub.graceEndsAt && <li>Grace period ends {when(sub.graceEndsAt)}</li>}
+                    </ul>
+                  </div>
                 )}
-                <p className="mt-2 text-xs text-ink-faint">
+                {manage && view.config.active && (view.hasCustomer || sub) && (
+                  <div className="mt-4 flex flex-wrap items-start gap-3">
+                    <PortalButton disabled={!view.hasCustomer} />
+                    {sub && ["active", "trialing", "cancelling", "grace"].includes(sub.standing) && (
+                      <CancellationButton cancelling={sub.standing === "cancelling"} />
+                    )}
+                  </div>
+                )}
+                <p className="mt-4 text-xs text-ink-faint">
                   Billing does not yet decide whether a run can start; the run launcher still applies the trial and model-key rules.
                   Every run, case and report stays readable and exportable whatever happens to a subscription.
                 </p>
@@ -120,56 +185,62 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
             </Card>
           </section>
 
-          <section aria-labelledby="subscription-heading">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 id="subscription-heading" className="text-lg font-semibold tracking-tight">Subscription</h2>
-              {sub && <Badge tone={STANDING[sub.standing].tone}>{STANDING[sub.standing].label}</Badge>}
-            </div>
-            <Card className="mt-3 p-5 text-sm">
-              {sub ? (
-                <>
-                  <p className="font-medium">{planName(sub.planKey) ?? "Unrecognised plan"}</p>
-                  <p className="mt-1 text-ink-soft">{sub.sentence}</p>
-                  <ul className="mt-3 space-y-1 text-xs text-ink-faint">
-                    {sub.periodEnd && <li>Current period ends {when(sub.periodEnd)}</li>}
-                    {sub.endsAt && <li>Access under this plan ends {when(sub.endsAt)}</li>}
-                    {sub.graceEndsAt && <li>Grace period ends {when(sub.graceEndsAt)}</li>}
-                  </ul>
-                </>
-              ) : (
-                <p className="text-ink-soft">This workspace has no subscription.</p>
-              )}
-
-              {manage ? (
-                <div className="mt-4 flex flex-wrap items-start gap-3">
-                  <PortalButton disabled={!view.config.active || !view.hasCustomer} />
-                  {view.config.active && sub && ["active", "trialing", "cancelling", "grace"].includes(sub.standing) && (
-                    <CancellationButton cancelling={sub.standing === "cancelling"} />
-                  )}
+          <section aria-labelledby="plans-heading">
+            <h2 id="plans-heading" className="text-lg font-semibold tracking-tight">Plans</h2>
+            <p className="mt-1 text-sm text-ink-soft">Billed monthly in euros through Stripe. Cancel at any time; a plan runs to the end of the paid month.</p>
+            <div className="mt-4 grid gap-4 lg:grid-cols-3">
+              <Card className="flex flex-col p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="font-semibold">Trial</h3>
+                  {e.source === "trial" && <Badge tone="neutral">Current</Badge>}
                 </div>
-              ) : (
-                <p className="mt-4 rounded-control bg-sunken px-3 py-2 text-xs text-ink-soft">The owner and admins manage billing.</p>
-              )}
-            </Card>
+                <p className="mt-3"><span className="tnum text-3xl font-semibold tracking-tight">Free</span></p>
+                <p className="mt-2 text-sm text-ink-soft">To see a first sealed report before choosing anything.</p>
+                <Included items={[
+                  "3 runs graded on Novera's keys, per account owner, across every workspace they own",
+                  "Every feature, and every report kept",
+                ]} />
+                <div className="mt-auto pt-5">
+                  {view.trial
+                    ? <p className="tnum rounded-control bg-sunken px-3 py-2 text-xs text-ink-soft">{Math.min(view.trial.used, view.trial.limit)} of {view.trial.limit} trial runs used</p>
+                    : <p className="rounded-control bg-sunken px-3 py-2 text-xs text-ink-soft">This workspace grades on its own model key.</p>}
+                </div>
+              </Card>
+
+              {PLAN_KEYS.map((key) => {
+                const plan = PLAN_CATALOG[key];
+                const action = planAction({
+                  plan: key, manage, config: view.config, sellable: view.sellablePlans.includes(key),
+                  hasCustomer: view.hasCustomer, subscription: sub,
+                });
+                const current = currentPlan === key;
+                return (
+                  <Card key={key} className={`flex flex-col p-5 ${current ? "ring-2 ring-ink" : ""}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="font-semibold">{plan.name}</h3>
+                      {current && <Badge tone="pass">Current plan</Badge>}
+                    </div>
+                    <p className="mt-3">
+                      <span className="tnum text-3xl font-semibold tracking-tight">{formatPlanPrice(plan)}</span>
+                      <span className="text-sm text-ink-faint"> / month</span>
+                    </p>
+                    <p className="mt-2 text-sm text-ink-soft">{plan.audience}</p>
+                    <Included items={[
+                      "Unlimited runs graded on your own model key",
+                      plan.managedRunsPerPeriod > 0
+                        ? `${plan.managedRunsPerPeriod} runs a month graded on Novera's keys, with multi-model consensus`
+                        : "No runs on Novera's keys: grading uses your key",
+                      "API, MCP, schedules, webhooks and exports",
+                    ]} />
+                    <div className="mt-auto pt-5"><ActionArea plan={plan} action={action} /></div>
+                  </Card>
+                );
+              })}
+            </div>
           </section>
 
-          {manage && view.config.active && view.config.mode === "test" && (!sub || ["ended", "none"].includes(sub.standing)) && view.sellablePlans.length > 0 && (
-            <section aria-labelledby="plans-heading">
-              <h2 id="plans-heading" className="text-lg font-semibold tracking-tight">Sandbox plans</h2>
-              <p className="mt-1 text-xs text-ink-faint">Placeholders for testing the flow. Names, allowances and prices are not decided and are not shown.</p>
-              <Card className="mt-3 divide-y divide-line p-0">
-                {view.sellablePlans.filter(isPlanKey).map((key) => (
-                  <div key={key} className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm">
-                    <span>{PLAN_CATALOG[key].name} · {PLAN_CATALOG[key].runsPerPeriod} runs per period</span>
-                    <CheckoutButton plan={key} label="Test checkout" />
-                  </div>
-                ))}
-              </Card>
-            </section>
-          )}
-
           <p className="text-xs leading-relaxed text-ink-faint">
-            Receipts and invoices come from Stripe, by email and in the billing portal. Novera sends no billing email.
+            How VAT applies is confirmed before billing opens. Receipts and invoices come from Stripe, by email and in the billing portal; Novera sends no billing email.
           </p>
         </div>
       </SettingsNav>

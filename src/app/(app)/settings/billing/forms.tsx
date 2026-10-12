@@ -11,23 +11,23 @@ function Message({ state }: { state: BillingFormState }) {
 }
 
 /** One plan key, nothing else: the price and the workspace are the server's to decide. */
-export function CheckoutButton({ plan, label }: { plan: string; label: string }) {
+export function CheckoutButton({ plan, label, block = false }: { plan: string; label: string; block?: boolean }) {
   const [state, submit] = useActionState<BillingFormState, FormData>(startCheckout, {});
   return (
     <form action={submit}>
       <input type="hidden" name="plan" value={plan} />
-      <SubmitButton size="sm" pendingLabel="Opening Stripe…">{label}</SubmitButton>
+      <SubmitButton size="sm" pendingLabel="Opening Stripe…" className={block ? "w-full justify-center" : ""}>{label}</SubmitButton>
       <Message state={state} />
     </form>
   );
 }
 
-export function PortalButton({ disabled }: { disabled: boolean }) {
+export function PortalButton({ disabled, label = "Payment method and invoices", block = false }: { disabled: boolean; label?: string; block?: boolean }) {
   const [state, submit] = useActionState<BillingFormState, FormData>(openBillingPortal, {});
   return (
     <form action={submit}>
-      <SubmitButton size="sm" variant="secondary" disabled={disabled} pendingLabel="Opening Stripe…">
-        Payment method and invoices
+      <SubmitButton size="sm" variant="secondary" disabled={disabled} pendingLabel="Opening Stripe…" className={block ? "w-full justify-center" : ""}>
+        {label}
       </SubmitButton>
       <Message state={state} />
     </form>

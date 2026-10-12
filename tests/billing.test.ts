@@ -2,9 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { billingConfig, keyMode, storedLivemode } from "../src/lib/billing/config.ts";
-import { PLAN_CATALOG, PLAN_KEYS, READ_ONLY_FEATURES, planForPrice } from "../src/lib/billing/plans.ts";
+import { PLAN_CATALOG, PLAN_KEYS, READ_ONLY_FEATURES, formatPlanPrice, planForPrice } from "../src/lib/billing/plans.ts";
 import { resolveEntitlement, subscriptionMayCharge, type EntitlementInput, type SubscriptionRow } from "../src/lib/billing/entitlement.ts";
-import { checkoutRequest, decideCheckout, isStripeHostedUrl } from "../src/lib/billing/checkout.ts";
+import { checkoutRequest, decideCheckout, isStripeHostedUrl, priceMismatch } from "../src/lib/billing/checkout.ts";
 import { handleStripeWebhook } from "../src/lib/billing/webhook.ts";
 import { can, ROLES } from "../src/lib/auth/permissions.ts";
 import { DAY, FakeStripe, MemoryStore, SECRET, T0, signedEvent, subscription } from "./billing-fakes.ts";
@@ -80,16 +80,39 @@ test("billing is off without both secrets, refuses live keys unless explicitly a
   assert.deepEqual(billingConfig({ ...ENV, STRIPE_PRICE_TEAM_BYOK: "prod_123" }).prices, { agency_pro: "price_agency" });
 });
 
-test("the code's plan catalog is the migration's, and every plan is a draft", () => {
+test("the code's plan catalog is the migrations': approved prices and allowances, every plan a draft", () => {
   const sql = readFileSync("supabase/migrations/0060_billing.sql", "utf8");
+  const prices = readFileSync("supabase/migrations/0066_billing_plan_prices.sql", "utf8");
   for (const key of PLAN_KEYS) {
-    const m = new RegExp(`\\('${key}',\\s*'[^']*',\\s*(\\d+),\\s*'(\\w+)'`).exec(sql);
-    assert.ok(m, `${key} is seeded`);
-    assert.equal(Number(m![1]), PLAN_CATALOG[key].runsPerPeriod, `${key} allowance`);
-    assert.equal(m![2], "draft");
-    assert.equal(PLAN_CATALOG[key].status, "draft");
+    const plan = PLAN_CATALOG[key];
+    const seeded = new RegExp(`\\('${key}',\\s*'[^']*',\\s*\\d+,\\s*'(\\w+)'`).exec(sql);
+    assert.ok(seeded, `${key} is seeded`);
+    assert.equal(seeded![1], "draft");
+    assert.equal(plan.status, "draft");
+    const statement = prices.split("update billing_plans set").find((part) => part.includes(`where key = '${key}'`)) ?? "";
+    const row = /name = '([^']+)', monthly_price_cents = (\d+), currency = '(\w+)',\s*managed_runs_per_period = (\d+)/.exec(statement);
+    assert.ok(row, `${key} is priced in 0066`);
+    assert.equal(row![1], plan.name);
+    assert.equal(Number(row![2]), plan.monthlyPriceCents, `${key} price`);
+    assert.equal(row![3], plan.currency);
+    assert.equal(Number(row![4]), plan.managedRunsPerPeriod, `${key} managed runs`);
   }
   assert.match(sql, /status in \('draft', 'disabled'\)/, "no plan row can be sellable");
+  assert.doesNotMatch(prices, /status\s*=/, "0066 changes no plan's status");
+});
+
+test("the approved catalog: Team BYOK EUR 99 and Agency Pro EUR 299 a month, unlimited on your own key", () => {
+  assert.equal(PLAN_CATALOG.team_byok.monthlyPriceCents, 9_900);
+  assert.equal(PLAN_CATALOG.agency_pro.monthlyPriceCents, 29_900);
+  assert.equal(formatPlanPrice(PLAN_CATALOG.team_byok), "€99");
+  assert.equal(formatPlanPrice(PLAN_CATALOG.agency_pro), "€299");
+  assert.equal(PLAN_CATALOG.team_byok.managedRunsPerPeriod, 0);
+  assert.equal(PLAN_CATALOG.agency_pro.managedRunsPerPeriod, 100);
+  for (const key of PLAN_KEYS) {
+    assert.equal(PLAN_CATALOG[key].ownKeyRuns, "unlimited");
+    assert.equal(PLAN_CATALOG[key].interval, "month");
+    assert.equal(PLAN_CATALOG[key].currency, "eur");
+  }
 });
 
 test("only the owner and admins manage billing", () => {
@@ -231,10 +254,11 @@ test("an abandoned checkout grants nothing, and neither does a completed one who
   // Payment clears: Stripe's subscription becomes active, and only that grants the plan.
   stripe.current.set("sub_A1", subscription({ status: "active" }));
   await deliver(signedEvent("invoice.paid", { id: "in_1", object: "invoice", parent: { type: "subscription_details", subscription_details: { subscription: "sub_A1" } } }));
-  const paid = entitlementAt(store, T0 + 120);
+  const paid = entitlementAt(store, T0 + 120, { byok: { connected: true, routable: true, provider: "groq" } });
   assert.equal(paid.source, "subscription");
   assert.equal(paid.planKey, "team_byok");
-  assert.equal(paid.runsAllowed, PLAN_CATALOG.team_byok.runsPerPeriod);
+  assert.equal(paid.runsAllowed, null, "unlimited on the workspace's own key");
+  assert.equal(paid.runsOn, "own_key");
   assert.equal(paid.canRun, true);
 });
 
@@ -261,11 +285,12 @@ test("a checkout or subscription naming another workspace is refused and logged,
 // ------------------------------------------------------------------ payment failure
 
 test("a failed payment keeps the plan through the grace period, then restricts — and deletes nothing", async () => {
+  // Agency Pro, no model key: the plan's runs on Novera's keys are what grace keeps.
   const { store, stripe, deliver } = setup();
-  stripe.current.set("sub_A1", subscription({ status: "active" }));
+  stripe.current.set("sub_A1", subscription({ status: "active", price: "price_agency" }));
   await deliver(signedEvent("customer.subscription.created", subscription({})));
 
-  stripe.current.set("sub_A1", subscription({ status: "past_due" }));
+  stripe.current.set("sub_A1", subscription({ status: "past_due", price: "price_agency" }));
   const failedAt = T0 + 30 * DAY;
   await deliver(signedEvent("invoice.payment_failed", { id: "in_2", object: "invoice", parent: { subscription_details: { subscription: "sub_A1" } } }, { created: failedAt }));
   const since = store.subscriptions.get("sub_A1")!.delinquentSince;
@@ -287,12 +312,12 @@ test("a failed payment keeps the plan through the grace period, then restricts �
   for (const f of READ_ONLY_FEATURES) assert.ok(after.features.includes(f), `evidence stays: ${f}`);
 
   // Stripe gives up and marks it unpaid: still restricted, still nothing deleted.
-  stripe.current.set("sub_A1", subscription({ status: "unpaid" }));
+  stripe.current.set("sub_A1", subscription({ status: "unpaid", price: "price_agency" }));
   await deliver(signedEvent("customer.subscription.updated", subscription({ status: "unpaid" })));
   assert.equal(entitlementAt(store, failedAt + 20 * DAY).subscription!.standing, "restricted");
 
   // Paid: back to active, the delinquency cleared.
-  stripe.current.set("sub_A1", subscription({ status: "active" }));
+  stripe.current.set("sub_A1", subscription({ status: "active", price: "price_agency" }));
   await deliver(signedEvent("invoice.paid", { id: "in_2", object: "invoice", parent: { subscription_details: { subscription: "sub_A1" } } }));
   assert.equal(store.subscriptions.get("sub_A1")!.delinquentSince, null);
   assert.equal(entitlementAt(store, failedAt + 21 * DAY).subscription!.standing, "active");
@@ -338,27 +363,35 @@ test("cancellation at period end keeps the plan until the end, then the deletion
 
 test("an upgrade and a downgrade change the allowance from Stripe's price, through the allow-list", async () => {
   const { store, stripe, deliver } = setup();
+  const ownKey = { byok: { connected: true, routable: true, provider: "groq" } };
   stripe.current.set("sub_A1", subscription({ price: "price_team" }));
   await deliver(signedEvent("customer.subscription.created", subscription({})));
-  assert.equal(entitlementAt(store, T0 + DAY).runsAllowed, PLAN_CATALOG.team_byok.runsPerPeriod);
+  assert.equal(entitlementAt(store, T0 + DAY, ownKey).runsAllowed, null, "Team BYOK: unlimited on the workspace's key");
+  const noKey = entitlementAt(store, T0 + DAY);
+  assert.equal(noKey.canRun, false, "Team BYOK grants no runs on Novera's keys");
+  assert.match(noKey.blockedReason!, /grades on your own model key/);
 
   stripe.current.set("sub_A1", subscription({ price: "price_agency" }));
   await deliver(signedEvent("customer.subscription.updated", subscription({})));
   assert.equal(entitlementAt(store, T0 + 2 * DAY).planKey, "agency_pro");
-  assert.equal(entitlementAt(store, T0 + 2 * DAY).runsAllowed, PLAN_CATALOG.agency_pro.runsPerPeriod);
+  assert.equal(entitlementAt(store, T0 + 2 * DAY).runsAllowed, PLAN_CATALOG.agency_pro.managedRunsPerPeriod);
+  assert.equal(entitlementAt(store, T0 + 2 * DAY).runsOn, "novera");
   const line = store.trail.findLast((l) => l.action === "subscription.synced")!;
   assert.equal(line.detail!.previous_plan_key, "team_byok");
   assert.equal(line.detail!.plan_key, "agency_pro");
 
+  // Only runs graded on Novera's keys count against the managed allowance; none is removed.
+  const managed = Array.from({ length: 100 }, (_, i) => iso(T0 + i * 600));
+  const ownKeyRuns = Array.from({ length: 40 }, (_, i) => iso(T0 + 7 + i * 600));
+  const full = entitlementAt(store, T0 + 2 * DAY, { runTimes: [...managed, ...ownKeyRuns], managedRunTimes: managed, totalRuns: 143 });
+  assert.equal(full.canRun, false);
+  assert.equal(full.runsUsed, 100);
+  assert.match(full.blockedReason!, /100 runs graded on Novera's keys have been used/);
+  assert.equal(entitlementAt(store, T0 + 2 * DAY, { ...ownKey, runTimes: [...managed, ...ownKeyRuns], managedRunTimes: managed }).canRun, true, "own key: not limited");
+
   stripe.current.set("sub_A1", subscription({ price: "price_team" }));
   await deliver(signedEvent("customer.subscription.updated", subscription({})));
   assert.equal(entitlementAt(store, T0 + 3 * DAY).planKey, "team_byok");
-  // Runs already in this period count against the smaller allowance; none of them is removed.
-  const runs = Array.from({ length: 31 }, (_, i) => iso(T0 + i * 3600));
-  const over = entitlementAt(store, T0 + 3 * DAY, { runTimes: runs, totalRuns: 34 });
-  assert.equal(over.canRun, false);
-  assert.equal(over.runsUsed, 31);
-  assert.match(over.blockedReason!, /runs have been used/);
 });
 
 test("a subscription on a price that is not on the allow-list is stored and grants nothing", async () => {
@@ -483,7 +516,7 @@ test("sources do not add up: grant before subscription before own key before tri
   assert.equal(resolveEntitlement({ ...base, grants: [{ ...grant, endsAt: iso(T0 + DAY) }] }).source, "trial");
   // A run before the subscription's period does not count against it.
   const sub: SubscriptionRow = {
-    stripeSubscriptionId: "sub_A1", status: "active", planKey: "team_byok",
+    stripeSubscriptionId: "sub_A1", status: "active", planKey: "agency_pro",
     currentPeriodStart: iso(T0 + 3 * DAY), currentPeriodEnd: iso(T0 + 33 * DAY),
     cancelAtPeriodEnd: false, cancelAt: null, delinquentSince: null, stripeCreatedAt: iso(T0),
   };
@@ -545,6 +578,7 @@ test("a slow read of an older state cannot overwrite a newer one: the observatio
     ...stripe,
     createCustomer: stripe.createCustomer.bind(stripe), createCheckoutSession: stripe.createCheckoutSession.bind(stripe),
     createPortalSession: stripe.createPortalSession.bind(stripe), setCancelAtPeriodEnd: stripe.setCancelAtPeriodEnd.bind(stripe),
+    retrievePrice: stripe.retrievePrice.bind(stripe),
     async retrieveSubscription() {
       const mine = ++call;
       if (mine === 1) { await new Promise((r) => setTimeout(r, 30)); return subscription({}); }
@@ -565,4 +599,88 @@ test("a subscription Stripe returns unreadable is answered 500, so Stripe delive
   const e = signedEvent("customer.subscription.updated", subscription({}), { id: "evt_unreadable" });
   assert.equal((await deliver(e)).status, 500);
   assert.equal(store.events.get("evt_unreadable")!.status, "failed");
+});
+
+// ------------------------------------------------------------------ 2026-10-12 approved prices
+
+test("checkout sells a plan only at its approved price: Stripe's price must match the catalog exactly", () => {
+  const good = { id: "price_team", active: true, livemode: false, unitAmount: 9_900, currency: "eur", interval: "month", intervalCount: 1, usageType: "licensed" };
+  assert.equal(priceMismatch(good, "team_byok", "test"), null);
+  assert.equal(priceMismatch({ ...good, unitAmount: 29_900 }, "agency_pro", "test"), null);
+  const refused: Array<[Partial<typeof good>, RegExp]> = [
+    [{ unitAmount: 100 }, /is 1 EUR per month, not 99 EUR per month/],
+    [{ unitAmount: 29_900 }, /not 99 EUR/],
+    [{ currency: "usd" }, /99 USD/],
+    [{ interval: "year" }, /per year/],
+    [{ intervalCount: 3 }, /per 3 month/],
+    [{ interval: null as unknown as string }, /one-time payment/],
+    [{ usageType: "metered" }, /not 99 EUR per month/],
+    [{ active: false }, /archived/],
+    [{ livemode: true }, /other Stripe mode/],
+  ];
+  for (const [change, why] of refused) {
+    const m = priceMismatch({ ...good, ...change }, "team_byok", "test");
+    assert.ok(m, JSON.stringify(change));
+    assert.match(m!, why);
+    assert.match(m!, /Nothing was charged/);
+  }
+});
+
+test("the checkout action reads one field from the form, and compares Stripe's price before creating anything", () => {
+  const actions = readFileSync("src/lib/billing/actions.ts", "utf8");
+  const start = actions.slice(actions.indexOf("export async function startCheckout"), actions.indexOf("export async function openBillingPortal"));
+  assert.deepEqual([...start.matchAll(/form\.get\("([^"]+)"\)/g)].map((m) => m[1]), ["plan"], "no price, amount, customer or workspace from the browser");
+  const price = start.indexOf("retrievePrice(decision.priceId)");
+  assert.ok(price > 0, "the allow-listed price is read from Stripe");
+  assert.ok(price < start.indexOf("createCustomer"), "before a customer is created");
+  assert.ok(price < start.indexOf("createCheckoutSession"), "before a session is created");
+});
+
+test("a plan without its own key grants only its managed allowance; with a key, it is unlimited there", () => {
+  const sub: SubscriptionRow = {
+    stripeSubscriptionId: "sub_A1", status: "active", planKey: "team_byok",
+    currentPeriodStart: iso(T0), currentPeriodEnd: iso(T0 + 30 * DAY),
+    cancelAtPeriodEnd: false, cancelAt: null, delinquentSince: null, stripeCreatedAt: iso(T0),
+  };
+  const base: EntitlementInput = {
+    now: new Date((T0 + DAY) * 1000), graceDays: 7, trialRunsUsed: 1, trialLimit: 3,
+    byok: { connected: false, routable: false, provider: null }, byokRequiresPlan: false,
+    subscriptions: [sub], grants: [], runTimes: [], totalRuns: 1,
+  };
+  // Team BYOK with no key: the plan says why, and the trial (still unused) is what can run.
+  const team = resolveEntitlement(base);
+  assert.equal(team.source, "trial");
+  assert.equal(team.runsOn, "novera");
+  const teamSpent = resolveEntitlement({ ...base, trialRunsUsed: 3 });
+  assert.equal(teamSpent.source, "subscription");
+  assert.equal(teamSpent.canRun, false);
+  assert.match(teamSpent.blockedReason!, /Team BYOK grades on your own model key/);
+  // Agency Pro with no key: 100 runs on Novera's keys, counted from runs graded there only.
+  const pro = resolveEntitlement({ ...base, trialRunsUsed: 3, subscriptions: [{ ...sub, planKey: "agency_pro" }], runTimes: [iso(T0 + 60), iso(T0 + 120)], managedRunTimes: [iso(T0 + 60)] });
+  assert.equal(pro.source, "subscription");
+  assert.deepEqual([pro.runsUsed, pro.runsAllowed, pro.runsOn], [1, 100, "novera"]);
+  // Either plan with a key that grades: unlimited, counted, never blocked by the count.
+  const keyed = resolveEntitlement({ ...base, byok: { connected: true, routable: true, provider: "groq" }, runTimes: Array.from({ length: 500 }, (_, i) => iso(T0 + i)) });
+  assert.deepEqual([keyed.source, keyed.runsAllowed, keyed.runsUsed, keyed.canRun], ["subscription", null, 500, true]);
+});
+
+test("each plan card offers exactly what can happen: subscribe, manage, change, or why not", async () => {
+  const { planAction } = await import("../src/lib/billing/plan-action.ts");
+  const off = { active: false, mode: null } as const;
+  const sandbox = { active: true, mode: "test" } as const;
+  const live = { active: true, mode: "live" } as const;
+  const base = { plan: "team_byok" as const, manage: true, config: sandbox, sellable: true, hasCustomer: false, subscription: null };
+  assert.deepEqual(planAction(base), { kind: "checkout", label: "Subscribe in the sandbox" });
+  assert.equal(planAction({ ...base, manage: false }).kind, "members");
+  assert.deepEqual(planAction({ ...base, config: off }), { kind: "unavailable", label: "Subscribe", reason: "Billing is not active yet." });
+  assert.match((planAction({ ...base, sellable: false }) as { reason: string }).reason, /STRIPE_PRICE_TEAM_BYOK/, "the sandbox names the missing variable");
+  assert.equal((planAction({ ...base, config: live }) as { label: string }).label, "Not on sale yet", "a draft plan is never sold live");
+  const view = (planKey: "team_byok" | "agency_pro", standing: "active" | "ended" | "restricted") => ({
+    stripeSubscriptionId: "sub_A1", status: "active", standing, inForce: standing === "active", planKey,
+    periodStart: null, periodEnd: null, endsAt: null, graceEndsAt: null, sentence: "",
+  });
+  assert.deepEqual(planAction({ ...base, hasCustomer: true, subscription: view("team_byok", "active") }), { kind: "portal", label: "Manage this plan", disabled: false });
+  assert.deepEqual(planAction({ ...base, plan: "agency_pro", hasCustomer: true, subscription: view("team_byok", "active") }), { kind: "portal", label: "Change plan in the billing portal", disabled: false });
+  assert.equal(planAction({ ...base, hasCustomer: true, subscription: view("team_byok", "restricted") }).kind, "portal", "a restricted plan is fixed in the portal, never bought twice");
+  assert.equal(planAction({ ...base, subscription: view("team_byok", "ended") }).kind, "checkout", "an ended plan can be bought again");
 });

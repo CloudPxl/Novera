@@ -81,7 +81,7 @@ export async function publishReport(args: {
   environment: string;
   attestation: string | null;
   suite: { key: string; version: number; name: string };
-  judgeSource: "trial_free" | "workspace_key";
+  judgeSource: "trial_free" | "workspace_key" | "plan_managed";
   /** The pass mark this run was measured against, read from the run row. */
   passThreshold: number;
   /** Wall time the customer actually waited, across every execution slice. */

@@ -157,6 +157,11 @@ async function startScheduled(client: SupabaseClient, s: ScheduleRow): Promise<O
     return { kind: "started", update: { last_outcome: "Started." } };
   } catch (thrown) {
     const message = thrown instanceof Error ? thrown.message : String(thrown);
+    if (thrown instanceof RunRefusal && thrown.blocker === "concurrency") {
+      // Runs already in flight finish on their own: this occurrence is skipped, not the
+      // schedule paused, and the next one starts as usual.
+      return { kind: "skipped", update: { last_outcome: `Skipped: ${message}` } };
+    }
     if (thrown instanceof RunRefusal) {
       // A refusal will be the same refusal tomorrow — no runs left, no policy. Pause
       // with the reason rather than failing silently every day.

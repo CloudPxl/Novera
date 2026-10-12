@@ -3,44 +3,59 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { revealSecret } from "../store/secrets.ts";
 import { connectionFor, modelsForStoredKey } from "../providers/workspace-connections.ts";
 import { DEFAULT_ROUTES, routesForConnection, type RouteTable } from "../router/routes.ts";
+import { serviceClient } from "../supabase/service.ts";
+import { loadBillingRows } from "../billing/rows.ts";
+import { fundingLine, resolveEntitlement, type BillingEntitlement, type Blocker, type JudgeSource } from "../billing/entitlement.ts";
 
 /**
  * What a workspace is allowed to do, in one place.
  *
- * Two server actions can start a run, and a limit that each checks in its own way is
- * a limit that eventually disagrees with itself. Both ask here.
+ * Every entry point that can start a run — the button, rerun, the API, MCP, a schedule, a
+ * Suite Builder scan — goes through `startRun`, which asks here; so do the top bar, the
+ * dashboard and Settings, so what they show is what a run start will decide.
  *
- * The trial is funded by our own free-tier key, so it is capped. Connecting your own
- * model key removes the cap, because from then on the grading is yours to pay for —
- * that is the whole of the "BYOK to leave trial" rule, and it is deliberately not a
- * payment wall: nothing is charged by us at any point.
+ * The decision itself is `resolveEntitlement` (src/lib/billing/entitlement.ts), over stored
+ * rows: a manual grant, a subscription, then the trial. Decision D3 (2026-10-12): the trial is
+ * the whole free tier — three runs per account owner, on Novera's keys or on the workspace's own
+ * key — and after it every run needs a plan or a grant, own key or not. Grading still runs on
+ * the workspace's own key whenever it has one: a plan pays for Novera, never for the grading.
  */
 export const TRIAL_RUN_LIMIT = 3; // also in 0049's runs_trial_cap, which enforces it under concurrency
 
-export const TRIAL_EXHAUSTED = `The trial covers ${TRIAL_RUN_LIMIT} runs and you have used all of them. Connect your own model key to keep running the suite — there is nothing to pay us, the grading simply runs on your key from then on.`;
+export const TRIAL_EXHAUSTED = `The trial covers ${TRIAL_RUN_LIMIT} runs and you have used all of them. Recurring testing needs a plan: Team BYOK grades on your own model key; Agency Pro adds 100 runs a month graded on Novera's keys.`;
 
 export interface Entitlement {
   /** True once the workspace has supplied its own model key. */
   ownKey: boolean;
   provider: string | null;
+  /** Runs counted against the trial: every run of every workspace the owner owns (0055). */
   runsUsed: number;
-  /** Null means unmetered. */
-  runsAllowed: number | null;
   canRun: boolean;
   /** Why not, in words a customer should read. Null when they can run. */
   blockedReason: string | null;
-  judgeSource: "trial_free" | "workspace_key";
+  /** The kind of block, for the next step offered beside it (src/lib/billing/remedy.ts). */
+  blocker: Blocker | null;
+  /** What a run started now is stamped with. When nothing funds one, what it would grade on. */
+  judgeSource: JudgeSource;
+  /** The subscription or grant a run started now names (0067). */
+  funding: { subscriptionId: string | null; grantId: string | null };
   /** For a workspace on its own key: the models it grades with, in order. */
   judgeModels: string[];
   /** When the key was stored. Null on the trial allowance. */
   keyStoredAt: string | null;
+  /** The whole billing decision: plan, allowance, window, subscription standing. */
+  billing: BillingEntitlement;
+  /** One line naming what funds runs here, for the top bar and page headers. */
+  fundingLine: string;
 }
 
 export async function workspaceEntitlement(args: {
   client: SupabaseClient;
   workspaceId: string;
+  now?: Date;
 }): Promise<Entitlement> {
   const { client, workspaceId } = args;
+  const now = args.now ?? new Date();
 
   const key = await revealSecret({ client, workspaceId, scope: "judge_key" });
 
@@ -55,46 +70,46 @@ export async function workspaceEntitlement(args: {
     .from("runs")
     .select("id", { count: "exact", head: true })
     .in("workspace_id", (owned ?? []).map((w) => w.id as string));
-
   const runsUsed = count ?? 0;
 
-  if (key) {
-    // A key that cannot be routed is worse than no key: the workspace is unmetered, so
-    // nothing stops it starting runs, and every case in every one of them would come
-    // back errored. Refusing here turns that into one sentence on the settings page.
-    const models = key.provider ? modelsForStoredKey(key.provider, key.models) : [];
-    const routable = Boolean(key.provider && connectionFor(key.provider, key.value)) && models.length > 0;
+  // A key that cannot be routed is worse than no key: every case of every run would come back
+  // errored. The decision below refuses the run and says what to fix.
+  const models = key?.provider ? modelsForStoredKey(key.provider, key.models) : [];
+  const routable = Boolean(key?.provider && connectionFor(key.provider, key.value)) && models.length > 0;
 
-    return {
-      ownKey: true,
-      provider: key.provider,
-      runsUsed,
-      runsAllowed: null,
-      canRun: routable,
-      blockedReason: routable
-        ? null
-        // Read on the dashboard, in the run launcher and on Settings itself, so it
-        // names no page: "open Settings" is wrong advice on Settings.
-        : `The ${key.provider ?? "stored"} key in this workspace has no model recorded to grade with, so nothing can be graded on it. Connect the key again naming a model — it is proved before it is saved.`,
-      judgeSource: "workspace_key",
-      /** The models this key grades with, in order. Empty only when it cannot grade. */
-      judgeModels: models,
-      keyStoredAt: key.createdAt,
-    };
-  }
-
-  const exhausted = runsUsed >= TRIAL_RUN_LIMIT;
+  // Billing tables have no client policy (0060): read with the service role, scoped to this
+  // workspace, which every caller has already resolved from the person's live membership.
+  const rows = await loadBillingRows(serviceClient(), workspaceId, now);
+  const billing = resolveEntitlement({
+    now,
+    graceDays: rows.config.graceDays,
+    trialRunsUsed: runsUsed,
+    trialLimit: TRIAL_RUN_LIMIT,
+    byok: { connected: Boolean(key), routable, provider: key?.provider ?? null },
+    byokRequiresPlan: true,
+    subscriptions: rows.subscriptions,
+    grants: rows.grants,
+    runTimes: rows.runTimes,
+    managedRunTimes: rows.managedRunTimes,
+    totalRuns: rows.totalRuns,
+    runsInFlight: rows.runsInFlight,
+    runsInWindow: rows.runsInWindow,
+  });
 
   return {
-    ownKey: false,
-    provider: null,
+    ownKey: Boolean(key),
+    provider: key?.provider ?? null,
     runsUsed,
-    runsAllowed: TRIAL_RUN_LIMIT,
-    canRun: !exhausted,
-    blockedReason: exhausted ? TRIAL_EXHAUSTED : null,
-    judgeSource: "trial_free",
-    judgeModels: [],
-    keyStoredAt: null,
+    canRun: billing.canRun,
+    blockedReason: billing.blockedReason,
+    blocker: billing.blocker,
+    judgeSource: billing.judgeSource ?? (key ? "workspace_key" : "trial_free"),
+    funding: billing.funding,
+    /** The models this key grades with, in order. Empty only when it cannot grade. */
+    judgeModels: models,
+    keyStoredAt: key?.createdAt ?? null,
+    billing,
+    fundingLine: fundingLine(billing, Boolean(key)),
   };
 }
 

@@ -49,7 +49,7 @@ export interface ReportInput {
   environment: string;
   suite: { key: string; version: number; name: string };
   attestation: string | null;
-  judge: { source: "trial_free" | "workspace_key" };
+  judge: { source: "trial_free" | "workspace_key" | "plan_managed" };
   cases: RunCaseRecord[];
   coverage: Coverage;
   byObligation: ObligationCoverage[];
@@ -287,7 +287,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       corroboration,
       pass_threshold: input.passThreshold,
       duration_ms: input.durationMs,
-      grading_funded_by: input.judge.source === "trial_free" ? "Novera trial allowance" : "customer-supplied model key",
+      grading_funded_by: gradingFundedBy(input.judge.source),
       manifest_hash: input.manifestHash ?? null,
       previous_report_hash: input.previousReportHash ?? null,
       ...(input.fingerprint ? { fingerprint: input.fingerprint } : {}),
@@ -390,4 +390,15 @@ export function buildReport(input: ReportInput): BuiltReport {
 
 function severityRank(severity: string): number {
   return { critical: 4, high: 3, medium: 2, low: 1 }[severity.toLowerCase()] ?? 0;
+}
+
+/**
+ * Who paid for a run's grading, as the report states it. A plan-funded run (0067) graded on
+ * Novera's keys is not the trial: a paying workspace's report saying "trial allowance" would be
+ * false, and so would "customer-supplied model key".
+ */
+export function gradingFundedBy(source: "trial_free" | "workspace_key" | "plan_managed"): string {
+  if (source === "workspace_key") return "customer-supplied model key";
+  if (source === "plan_managed") return "Novera, under the workspace's plan";
+  return "Novera trial allowance";
 }

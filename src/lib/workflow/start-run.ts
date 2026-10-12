@@ -5,6 +5,8 @@ import { manifestForNewRun } from "../report/manifest.ts";
 import { startRunExecution } from "./execute-run.ts";
 import { notifyRunFinished } from "../webhooks/deliver.ts";
 import { track } from "../analytics/track.ts";
+import type { Blocker } from "../billing/entitlement.ts";
+import { CONCURRENCY_REFUSAL, FAIR_USE_REFUSAL } from "../billing/limits.ts";
 
 /**
  * Starting a run, and advancing one — the single implementation behind the run button
@@ -15,7 +17,32 @@ import { track } from "../analytics/track.ts";
  * to anything outside it regardless.
  */
 
-export class RunRefusal extends Error {}
+export class RunRefusal extends Error {
+  /** The kind of refusal, when it is about funding or fair use: what the caller offers next. */
+  readonly blocker: Blocker | null;
+  constructor(message: string, blocker: Blocker | null = null) {
+    super(message);
+    this.blocker = blocker;
+  }
+}
+
+/**
+ * The database's own refusals (0049, 0055, 0067), raised when concurrent starts each passed the
+ * check in `startRun`. The prefix is the database's; the sentence is ours.
+ */
+function refusalFromInsert(message: string): RunRefusal | null {
+  if (/trial_exhausted/.test(message)) return new RunRefusal(TRIAL_EXHAUSTED, "trial_used");
+  if (/concurrent_runs_limit/.test(message)) return new RunRefusal(CONCURRENCY_REFUSAL, "concurrency");
+  if (/fair_use_limit/.test(message)) return new RunRefusal(FAIR_USE_REFUSAL, "fair_use");
+  if (/managed_allowance_exhausted/.test(message)) {
+    return new RunRefusal("This billing period's runs graded on Novera's keys have been used. Runs on your own model key are not limited.", "allowance_used");
+  }
+  if (/grant_exhausted/.test(message)) return new RunRefusal("The grant's runs have been used.", "grant_used");
+  if (/run_not_funded/.test(message)) {
+    return new RunRefusal("Nothing funds a new run in this workspace right now: the plan or grant it relied on changed. Open Billing to see what is in force.", "needs_plan");
+  }
+  return null;
+}
 
 export const ARCHIVED_AGENT = "This agent is archived, so no new run can start for it. Its runs and reports are kept; an owner or admin can restore it from its Connection tab.";
 
@@ -97,8 +124,12 @@ export async function startRun(args: {
     baselineId = (previous?.id as string | undefined) ?? null;
   }
 
+  // Billing decides (D3, 2026-10-12): the trial, then a plan or a grant, own key or not; then
+  // fair use. The same rows the billing page reads, and 0067 counts them again under a lock.
   const entitlement = await workspaceEntitlement({ client, workspaceId });
-  if (!entitlement.canRun) throw new RunRefusal(entitlement.blockedReason ?? "This workspace cannot start a run.");
+  if (!entitlement.canRun) {
+    throw new RunRefusal(entitlement.blockedReason ?? "This workspace cannot start a run.", entitlement.blocker);
+  }
 
   // Declared before anything runs, and frozen by the row (0016).
   const declared = await manifestForNewRun({
@@ -115,15 +146,20 @@ export async function startRun(args: {
       workspace_id: workspaceId, agent_id: agentId, policy_id: policy.id,
       suite_id: suite.id, baseline_run_id: baselineId, status: "queued",
       judge_source: entitlement.judgeSource, attestation_text: agent.attestation_text ?? null,
+      // What pays for this run (0067): checked against the workspace, frozen with the run.
+      funded_by_subscription: entitlement.funding.subscriptionId,
+      funded_by_grant: entitlement.funding.grantId,
       created_by: args.userId,
       api_key_id: args.apiKeyId ?? null,
       schedule_id: args.scheduleId ?? null,
       manifest: declared.manifest, manifest_hash: declared.manifest_hash,
     })
     .select("id").single();
-  // The database counts the trial under a lock (0049): of several starts at once, the ones
-  // past the third are refused here even though each passed the check above.
-  if (error && /trial_exhausted/.test(error.message)) throw new RunRefusal(TRIAL_EXHAUSTED);
+  // The database counts the trial (0049), fair use and plan allowances (0067) under locks: of
+  // several starts at once, the ones past a limit are refused here even though each passed the
+  // check above.
+  const refused = error ? refusalFromInsert(error.message) : null;
+  if (refused) throw refused;
   // Archived between the check above and the insert: the database decided (0063).
   if (error && /agent_archived/.test(error.message)) throw new RunRefusal(ARCHIVED_AGENT);
   if (error || !run) throw new Error(`Could not start the run: ${error?.message ?? "no row returned"}`);

@@ -61,7 +61,7 @@ export default async function Home() {
                   See how it works
                 </ButtonLink>
               </div>
-              <p className="mt-4 text-sm text-ink-faint">No card. About ten minutes to a first report. Bring your own model key to keep going.</p>
+              <p className="mt-4 text-sm text-ink-faint">No card. About ten minutes to a first report. Three free runs, then a plan for recurring testing.</p>
 
               <dl className="mt-10 grid max-w-lg grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-6">
                 {[
@@ -315,8 +315,8 @@ export default async function Home() {
             <Reveal>
               <h2 id="cta-heading" className="type-section">Run it against your own agent</h2>
               <p className="mx-auto mt-5 measure type-lede text-ink-soft">
-                Three runs on us, graded on our key. After that, connect your own model key and keep
-                going — there is nothing to pay us.
+                Three free runs to evaluate it, on our key or yours. Recurring testing after that needs a
+                plan: Team BYOK grades on your own model key; Agency Pro adds runs graded on ours.
               </p>
               <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
                 <ButtonLink href={start} className="px-6 py-3 text-[15px]">

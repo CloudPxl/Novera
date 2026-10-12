@@ -8,6 +8,9 @@ import { PLAN_CATALOG, PLAN_KEYS, formatPlanPrice, isPlanKey, type Plan } from "
 import { planAction, type PlanAction } from "@/lib/billing/plan-action.ts";
 import type { BillingEntitlement, EntitlementSource, Standing } from "@/lib/billing/entitlement.ts";
 import { SettingsNav } from "../nav.tsx";
+import Link from "next/link";
+import { BILLING_PATH, remedyFor } from "@/lib/billing/remedy.ts";
+import { FAIR_USE_RUNS, FAIR_USE_WINDOW_DAYS, MAX_RUNS_IN_FLIGHT } from "@/lib/billing/limits.ts";
 import { CancellationButton, CheckoutButton, PortalButton } from "./forms.tsx";
 
 export const metadata: Metadata = { title: "Billing · Settings · Novera" };
@@ -36,11 +39,12 @@ const STANDING: Record<Standing, { label: string; tone: BadgeTone }> = {
 
 /** The current allowance in words, from the computed entitlement only. */
 function runsLine(e: BillingEntitlement): string {
+  if (e.source === "trial" && e.trial) return `${Math.min(e.trial.used, e.trial.limit)} of ${e.trial.limit} trial runs used`;
   if (e.runsAllowed === null) {
     const started = e.source === "subscription" ? `${e.runsUsed} this period` : `${e.runsUsed} started`;
     return `${started} · unlimited on your own key`;
   }
-  return `${e.runsUsed} of ${e.runsAllowed} on Novera's keys`;
+  return e.runsOn === "novera" ? `${e.runsUsed} of ${e.runsAllowed} on Novera's keys` : `${e.runsUsed} of ${e.runsAllowed} runs`;
 }
 
 function tierName(e: BillingEntitlement): string {
@@ -105,6 +109,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const returned = params.checkout === "returned" ? "checkout" : params.checkout === "cancelled" ? "cancelled" : params.portal === "returned" ? "portal" : null;
   const planName = (key: string | null) => (key && isPlanKey(key) ? PLAN_CATALOG[key].name : null);
   const currentPlan = sub && !["ended", "none"].includes(sub.standing) ? sub.planKey : null;
+  const remedy = remedyFor(e.blocker);
 
   return (
     <main className="w-full pb-10 text-ink">
@@ -112,7 +117,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         <div className="space-y-8">
           {!view.config.active && (
             <p role="status" className="rounded-control border border-line bg-sunken px-4 py-3 text-sm text-ink-soft">
-              {view.config.reason ?? "Billing is not active yet."} Nothing is charged, and nothing on this page changes what you can do.
+              {view.config.reason ?? "Billing is not active yet."} Nothing can be bought or charged yet. After the trial, runs need a plan;
+              until billing opens, <Link href="/support" className="font-medium text-ink underline underline-offset-2">contact support</Link> for a pilot grant.
             </p>
           )}
           {view.config.active && view.config.mode === "test" && (
@@ -157,7 +163,11 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
               <div className="p-5 text-sm">
                 {e.canRun
                   ? <p className="text-ink-soft">New runs can start.</p>
-                  : <p role="status" className="text-fail-text">{e.blockedReason}</p>}
+                  : <p role="status" className="text-fail-text">
+                      {e.blockedReason}
+                      {/* On this page the plans below are the remedy for a billing block; any other is resolved elsewhere. */}
+                      {remedy && remedy.href !== BILLING_PATH && <> <Link href={remedy.href} className="font-medium text-ink underline underline-offset-2">{remedy.label}</Link></>}
+                    </p>}
                 {sub && (
                   <div className="mt-3">
                     <p className="font-medium">{planName(sub.planKey) ?? "Unrecognised plan"}</p>
@@ -177,8 +187,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                     )}
                   </div>
                 )}
-                <p className="mt-4 text-xs text-ink-faint">
-                  Billing does not yet decide whether a run can start; the run launcher still applies the trial and model-key rules.
+                <p className="mt-4 text-xs leading-relaxed text-ink-faint">
+                  After the trial, a plan or a grant decides whether a run can start, own model key or not. Fair use on every plan: at most{" "}
+                  {MAX_RUNS_IN_FLIGHT} runs in progress at once and {FAIR_USE_RUNS.toLocaleString("en-GB")} runs in {FAIR_USE_WINDOW_DAYS} days
+                  <span className="tnum"> (now: {view.usage.inFlight} in progress, {view.usage.inWindow} in the last {FAIR_USE_WINDOW_DAYS} days)</span>.
                   Every run, case and report stays readable and exportable whatever happens to a subscription.
                 </p>
               </div>
@@ -197,13 +209,13 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                 <p className="mt-3"><span className="tnum text-3xl font-semibold tracking-tight">Free</span></p>
                 <p className="mt-2 text-sm text-ink-soft">To see a first sealed report before choosing anything.</p>
                 <Included items={[
-                  "3 runs graded on Novera's keys, per account owner, across every workspace they own",
+                  "3 runs per account owner, across every workspace they own",
+                  "Graded on Novera's keys, or on your own model key once connected",
                   "Every feature, and every report kept",
+                  "Recurring testing after the trial needs a plan",
                 ]} />
                 <div className="mt-auto pt-5">
-                  {view.trial
-                    ? <p className="tnum rounded-control bg-sunken px-3 py-2 text-xs text-ink-soft">{Math.min(view.trial.used, view.trial.limit)} of {view.trial.limit} trial runs used</p>
-                    : <p className="rounded-control bg-sunken px-3 py-2 text-xs text-ink-soft">This workspace grades on its own model key.</p>}
+                  <p className="tnum rounded-control bg-sunken px-3 py-2 text-xs text-ink-soft">{Math.min(view.trial.used, view.trial.limit)} of {view.trial.limit} trial runs used</p>
                 </div>
               </Card>
 
@@ -231,6 +243,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                         ? `${plan.managedRunsPerPeriod} runs a month graded on Novera's keys, with multi-model consensus`
                         : "No runs on Novera's keys: grading uses your key",
                       "API, MCP, schedules, webhooks and exports",
+                      `Fair use: up to ${MAX_RUNS_IN_FLIGHT} runs at once and ${FAIR_USE_RUNS.toLocaleString("en-GB")} runs in ${FAIR_USE_WINDOW_DAYS} days`,
                     ]} />
                     <div className="mt-auto pt-5"><ActionArea plan={plan} action={action} /></div>
                   </Card>

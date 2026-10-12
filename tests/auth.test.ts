@@ -135,7 +135,27 @@ test("only a session GoTrue marked as recovered mints a recovery context; the co
   assert.equal(cameFromRecovery("not-a-jwt"), false);
   assert.equal(cameFromRecovery(undefined), false);
   const callback = readFileSync(new URL("../src/app/auth/callback/handle.ts", import.meta.url), "utf8");
-  assert.match(callback, /if \(!cameFromRecovery\(data\.session\?\.access_token\)\)/);
+  assert.match(callback, /const recovered = cameFromRecovery\(data\.session\?\.access_token\);/);
+  assert.match(callback, /if \(!recovered\) \{\n\s+await supabase\.auth\.signOut/, "flow=recovery without GoTrue's mark is refused");
+  assert.match(callback, /if \(flow === "recovery" \|\| \(recovered && flow !== "link"\)\)/, "a recovered session goes to the reset page from any flow but linking");
   const route = readFileSync(new URL("../src/app/auth/confirm/route.ts", import.meta.url), "utf8");
   assert.doesNotMatch(route, /sessionClient/, "no link verified here writes this browser's session cookies");
+});
+
+test("a reset link sent to another address still reaches the handler that spends it", async () => {
+  const { resetLinkTarget, RESET_ALIASES } = await import("../src/lib/auth/reset-links.ts");
+  const at = (path: string) => resetLinkTarget(new URL(path, "https://www.nover.space"));
+  assert.equal(at("/auth/update-password?code=abc123"), "/auth/callback?flow=recovery&code=abc123");
+  assert.equal(at("/update-password?error=access_denied&error_code=otp_expired"), "/auth/callback?flow=recovery&error=access_denied&error_code=otp_expired");
+  assert.equal(at("/auth/reset-password?token_hash=pkce_abcdef123456&type=recovery"), "/auth/confirm?token_hash=pkce_abcdef123456&type=recovery");
+  assert.equal(at("/password-reset?token_hash=pkce_abcdef123456"), "/auth/confirm?token_hash=pkce_abcdef123456&type=recovery");
+  assert.equal(at("/update-password"), "/reset-password", "a bare visit meets the page that refuses without a recovery context");
+  assert.equal(at("/forgot-password"), "/sign-in?mode=reset");
+  assert.equal(at("/update-password?token_hash=<script>"), "/reset-password", "a malformed token is not forwarded");
+  for (const path of RESET_ALIASES) {
+    const route = readFileSync(new URL(`../src/app${path}/route.ts`, import.meta.url), "utf8");
+    assert.match(route, /resetLinkTarget/, path);
+  }
+  // A link Supabase returned to its Site URL root is not assumed to be a sign-up.
+  assert.match(readFileSync(new URL("../src/proxy.ts", import.meta.url), "utf8"), /target\.searchParams\.set\("flow", "email"\)/);
 });

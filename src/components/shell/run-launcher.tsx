@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Menu } from "@/components/ui/menu.tsx";
 import { SubmitButton } from "@/components/ui/button.tsx";
@@ -34,6 +35,7 @@ export function RunLauncher({
   action,
   defaultAgentId,
   defaultSuiteKey,
+  blocked = null,
 }: {
   agents: LaunchAgent[];
   suites: LaunchSuite[];
@@ -41,6 +43,12 @@ export function RunLauncher({
   defaultAgentId?: string;
   /** The suite the person chose in their profile — their decision, so it may be preselected. */
   defaultSuiteKey?: string | null;
+  /**
+   * Why a run cannot start right now, and where that is resolved. Said before the person fills
+   * the form in, not after. `stillTry` keeps the form for a block that clears on its own (runs in
+   * flight finishing).
+   */
+  blocked?: { reason: string; remedy: { href: string; label: string } | null; stillTry: boolean } | null;
 }) {
   const [agentId, setAgentId] = useState(defaultAgentId && agents.some((a) => a.id === defaultAgentId) ? defaultAgentId : "");
   const [suiteId, setSuiteId] = useState(() => suites.find((s) => s.key === defaultSuiteKey)?.id ?? "");
@@ -56,7 +64,15 @@ export function RunLauncher({
       triggerClassName="whitespace-nowrap border border-line-strong bg-surface px-3 py-2 text-ink hover:bg-sunken active:scale-[0.98]"
       panelClassName="w-80 p-3"
     >
-      {agents.length === 0 ? (
+      {blocked && (
+        <div role="status" className="mb-3 rounded-control border border-fail-border bg-fail-surface px-3 py-2 text-sm leading-relaxed text-fail-text">
+          {blocked.reason}
+          {blocked.remedy
+            ? <> <Link href={blocked.remedy.href} className="font-medium text-ink underline underline-offset-2 hover:no-underline">{blocked.remedy.label}</Link></>
+            : " An owner or admin of this workspace can choose a plan."}
+        </div>
+      )}
+      {blocked && !blocked.stillTry ? null : agents.length === 0 ? (
         <p className="px-1 py-2 text-sm leading-relaxed text-ink-soft">
           No agent is connected yet. Connect one first — a run needs a live endpoint to
           send scenarios to.

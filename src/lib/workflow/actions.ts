@@ -15,6 +15,7 @@ import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts
 import { explainKeyFailure } from "@/lib/providers/key-failure.ts";
 import { REVIEW_NOTE_MIN, REVIEW_NOTE_MAX } from "@/lib/evidence/reviews.ts";
 import { RunRefusal, startRun } from "./start-run.ts";
+import { remedyFor, type Remedy } from "@/lib/billing/remedy.ts";
 import { cleanDeclared } from "@/lib/report/manifest.ts";
 import { assertPublicUrl, PrivateAddressError } from "@/lib/net/public-url.ts";
 import { diagnoseRunCase } from "./propose.ts";
@@ -29,6 +30,8 @@ import { DEFAULT_BODY_TEMPLATE, parseBodyTemplate } from "@/lib/agents/connectio
 export interface FormState {
   error?: string;
   notice?: string;
+  /** Where a refusal is resolved, when it has a place: Billing, Settings, the runs list. */
+  remedy?: Remedy;
 }
 
 /**
@@ -207,7 +210,10 @@ export async function createRun(_prev: FormState, formData: FormData): Promise<F
       customerDeclared,
     });
   } catch (e) {
-    if (e instanceof RunRefusal) return { error: e.message };
+    if (e instanceof RunRefusal) {
+      const remedy = remedyFor(e.blocker);
+      return { error: e.message, ...(remedy ? { remedy } : {}) };
+    }
     throw e;
   }
 
@@ -670,9 +676,12 @@ export async function retestOneCase(_prev: FormState, form: FormData): Promise<F
   if ("error" in gated) return { error: gated.error };
   const admin = gated.admin;
 
+  // A retest re-grades one scenario inside an existing run: it is not a new run, so fair use
+  // (runs in flight, runs this month) does not refuse it; funding does.
   const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
-  if (!entitlement.canRun) {
-    return { error: entitlement.blockedReason ?? "This workspace cannot run scenarios." };
+  if (!entitlement.canRun && entitlement.blocker !== "concurrency" && entitlement.blocker !== "fair_use") {
+    const remedy = remedyFor(entitlement.blocker);
+    return { error: entitlement.blockedReason ?? "This workspace cannot run scenarios.", ...(remedy ? { remedy } : {}) };
   }
 
   const { data: runCase } = await admin

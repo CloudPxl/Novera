@@ -42,7 +42,7 @@ export const EVENT_PROPERTIES: Record<ProductEvent, Record<string, Rule>> = {
   policy_saved: { version: { type: "int", min: 1, max: 10_000 } },
   run_created: {
     source: { type: "enum", values: ["button", "rerun", "api", "mcp", "schedule", "builder_scan"] },
-    judge_source: { type: "enum", values: ["trial_free", "workspace_key"] },
+    judge_source: { type: "enum", values: ["trial_free", "workspace_key", "plan_managed"] },
   },
   // Only a run marked completed; a stopped run is not a completion.
   run_completed: { cases: { type: "int", min: 0, max: 10_000 } },

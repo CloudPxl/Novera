@@ -55,7 +55,7 @@ export interface RunManifest {
   suite: { id: string; key: string; version: number; case_ids: string[] };
   /** The models this run intended to grade with, in the order it meant to ask them. */
   judge_plan: Array<{ connection: string; model: string; task: string }>;
-  judge_source: "trial_free" | "workspace_key";
+  judge_source: "trial_free" | "workspace_key" | "plan_managed";
   /**
    * A digest of the grading instructions themselves. Two runs graded under different
    * rubrics are not comparable, and the rubric is a string in this repository that
@@ -140,7 +140,7 @@ export function buildRunManifest(args: {
   suiteKey: string;
   suiteVersion: number;
   caseIds: string[];
-  judgeSource: "trial_free" | "workspace_key";
+  judgeSource: "trial_free" | "workspace_key" | "plan_managed";
   /**
    * The route this run will actually grade on. It is an argument rather than a read of
    * `DEFAULT_ROUTES` because a workspace on its own key grades on a route built from
@@ -219,7 +219,7 @@ export async function manifestForNewRun(args: {
   agentId: string;
   policyId: string;
   suiteId: string;
-  judgeSource: "trial_free" | "workspace_key";
+  judgeSource: "trial_free" | "workspace_key" | "plan_managed";
   /** The route the run will grade on; the default panel when the caller has none. */
   routes?: RouteTable;
   passThreshold?: number;

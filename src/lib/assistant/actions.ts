@@ -7,7 +7,7 @@ import { can } from "@/lib/auth/permissions.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { MEMORY_LABEL, memoryForPrompt, suggestionFromPerson, type MemoryKey, type SafeMemory } from "./memory.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
-import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
+import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
 import { extractJsonObject } from "@/lib/judge/parse.ts";
 import { rateLimit } from "@/lib/support/rate-limit.ts";
 import { fundingLabel, recordModelOperation, workspaceChat } from "@/lib/providers/model-work.ts";
@@ -135,9 +135,7 @@ export async function askAssistant(threadId: string | null, message: string): Pr
   const snapshot: AssistantSnapshot = {
     workspace: workspace.name,
     person: { role: ctx.role, accountMode: ctx.accountMode, mayStartRuns },
-    funding: entitlement.ownKey
-      ? `graded on the workspace's own ${entitlement.provider} key`
-      : `trial allowance: ${Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed)} of ${TRIAL_RUN_LIMIT} runs left`,
+    funding: `${entitlement.ownKey ? `graded on the workspace's own ${entitlement.provider} key` : "graded on Novera's keys"}; ${entitlement.fundingLine}`,
     // A run button is offered only when one could start *and* this person's role may start it.
     canRun: entitlement.canRun && mayStartRuns,
     blockedReason: entitlement.blockedReason,

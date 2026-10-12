@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, type ReactNode } from "react";
 
 interface RefusalState {
   error?: string;
+  /** Where the refusal is resolved — choosing a plan, connecting a key — when there is a place. */
+  remedy?: { href: string; label: string };
 }
 
 /**
@@ -30,6 +33,14 @@ export function RefusableForm({
       {state.error && (
         <p role="alert" className="mt-2 w-full text-sm leading-relaxed text-fail-text">
           {state.error}
+          {state.remedy && (
+            <>
+              {" "}
+              <Link href={state.remedy.href} className="font-medium text-ink underline underline-offset-2 hover:no-underline">
+                {state.remedy.label}
+              </Link>
+            </>
+          )}
         </p>
       )}
     </form>

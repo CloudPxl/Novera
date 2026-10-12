@@ -28,7 +28,7 @@ export default async function SignInPage({
   // A spent or broken confirmation link opens on "send a new one", which is what the alert says to do.
   const mode: Mode = query.problem === "link_spent" || query.problem === "link_invalid"
     ? "resend"
-    : query.problem === "reset_expired" ? "reset"
+    : query.problem === "reset_expired" || query.problem === "reset_other_browser" || query.problem === "email_link_failed" ? "reset"
     : query.mode === "signup" || query.mode === "reset" ? query.mode : "signin";
   const providers = await enabledProviders();
 

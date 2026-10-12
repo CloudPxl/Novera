@@ -2,10 +2,11 @@
  * Proves the trial boundary and the bring-your-own-key path against the live
  * database, on a throwaway workspace.
  *
- * Two claims are made to customers here and neither should rest on reading the code:
- * that the trial is capped, and that a workspace with its own key is graded on that
- * key alone — never quietly on ours, because the report states who funded the
- * grading and that statement has to stay true.
+ * Three claims are made to customers here and none should rest on reading the code:
+ * that the trial is capped; that after it a workspace's own key starts nothing without a
+ * plan or a grant (decision D3, 2026-10-12, enforced again by 0067); and that a workspace
+ * with its own key is graded on that key alone — never quietly on ours, because the report
+ * states who funded the grading and that statement has to stay true.
  *
  * Run: npm run verify:byok
  */
@@ -60,7 +61,7 @@ try {
 
   const fresh = await workspaceEntitlement({ client: db, workspaceId });
   report(fresh.canRun && !fresh.ownKey, "a new workspace may run on the trial allowance",
-    `${fresh.runsUsed}/${fresh.runsAllowed}`);
+    `${fresh.runsUsed}/${fresh.billing.runsAllowed}`);
   report(fresh.judgeSource === "trial_free", "a trial run is attributed to the trial allowance");
 
   // Fill the trial to one short of its limit; the last one is queued, because a queued run
@@ -99,10 +100,45 @@ try {
     plaintext: "sk-not-a-real-key-only-used-to-prove-resolution", provider: "groq",
   });
 
+  const keyOnly = await workspaceEntitlement({ client: db, workspaceId });
+  report(keyOnly.ownKey && !keyOnly.canRun && keyOnly.blocker === "trial_used",
+    "after the trial, its own key alone starts no run (D3)", keyOnly.blockedReason?.slice(0, 70) ?? "it could run");
+
+  // A grant funds runs on the key (a subscription does the same; tests/entitlement.test.ts).
+  const { data: grant, error: grantErr } = await db.from("billing_entitlement_grants").insert({
+    workspace_id: workspaceId, kind: "internal", runs_allowed: null, reason: "verify:byok", granted_by: userId,
+  }).select("id").single();
+  if (grantErr || !grant) throw new Error(`Could not create the grant: ${grantErr?.message}`);
   const byok = await workspaceEntitlement({ client: db, workspaceId });
-  report(byok.ownKey && byok.canRun, "its own key lifts the cap");
-  report(byok.runsAllowed === null, "a workspace on its own key is unmetered");
+  report(byok.ownKey && byok.canRun, "with a grant in force, its own key runs");
+  report(byok.billing.runsAllowed === null, "an unmetered grant counts no allowance on the key");
   report(byok.judgeSource === "workspace_key", "the run is attributed to the customer's key");
+  report(byok.funding.grantId === grant.id, "the run would name the grant that funds it");
+
+  // The database checks funding and fair use itself (0067), whoever inserts.
+  const insertRun = (extra: Record<string, unknown>) => db.from("runs").insert({
+    workspace_id: workspaceId, agent_id: agent!.id, policy_id: policy!.id, suite_id: suite!.id, ...extra,
+  }).select("id").single();
+  const { error: unfunded } = await insertRun({ status: "aborted", judge_source: "plan_managed" });
+  report(/run_not_funded/.test(unfunded?.message ?? ""), "a run on Novera's keys outside the trial that names no plan or grant is refused",
+    unfunded?.message.slice(0, 70) ?? "it was accepted");
+  const { error: wrongGrant } = await insertRun({ status: "aborted", judge_source: "workspace_key", funded_by_grant: crypto.randomUUID() });
+  report(/run_not_funded/.test(wrongGrant?.message ?? ""), "a run naming a grant that is not this workspace's is refused");
+  // One queued run is already in flight (the trial's third); two more reach the ceiling.
+  const inFlight: string[] = [];
+  for (let i = 0; i < 2; i++) {
+    const { data, error } = await insertRun({ status: "queued", judge_source: "workspace_key", funded_by_grant: grant.id });
+    if (data) inFlight.push(data.id as string);
+    report(!error, `a funded run ${i + 2} of 3 in flight is accepted`, error?.message.slice(0, 70) ?? "");
+  }
+  const { error: fourthInFlight } = await insertRun({ status: "queued", judge_source: "workspace_key", funded_by_grant: grant.id });
+  report(/concurrent_runs_limit/.test(fourthInFlight?.message ?? ""), "a fourth run in flight is refused by the database",
+    fourthInFlight?.message.slice(0, 70) ?? "it was accepted");
+  const busy = await workspaceEntitlement({ client: db, workspaceId });
+  report(!busy.canRun && busy.blocker === "concurrency", "and the application says so before trying");
+  await db.from("runs").update({ status: "aborted", finished_at: new Date().toISOString() }).eq("workspace_id", workspaceId).in("status", ["queued", "running"]);
+  const { error: frozen } = await db.from("runs").update({ funded_by_grant: null }).in("id", inFlight);
+  report(Boolean(frozen), "who funded a run cannot be changed afterwards");
 
   const { connections, source } = await connectionsForWorkspace({ client: db, workspaceId });
   report(source === "workspace_key", "grading resolves to the customer's credential");
@@ -172,10 +208,11 @@ try {
   report(Boolean(emptyModels), "a judge key cannot be stored with an empty model list",
     emptyModels ? "refused by the constraint" : "it was accepted, which is wrong");
 
-  // Removing it puts the workspace back on the capped allowance.
+  // Without the grant, and without the key, the used-up trial is all there is.
+  await db.from("billing_entitlement_grants").update({ revoked_at: new Date().toISOString(), revoked_by: userId, revoke_reason: "verify:byok done" }).eq("id", grant.id);
   await db.from("secrets").delete().eq("workspace_id", workspaceId).eq("scope", "judge_key");
   const removed = await workspaceEntitlement({ client: db, workspaceId });
-  report(!removed.ownKey && !removed.canRun, "removing the key restores the trial cap");
+  report(!removed.ownKey && !removed.canRun && removed.blocker === "trial_used", "removing the key and the grant leaves the used-up trial: no run starts");
 
   const { error: eraseErr } = await db.rpc("erase_workspace", { target: workspaceId });
   report(!eraseErr, "the verification workspace was erased", eraseErr?.message.slice(0, 70) ?? "");

@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
-import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
+import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
+import { needsBillingAction, remedyFor } from "@/lib/billing/remedy.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { Badge } from "@/components/ui/primitives.tsx";
 import { buildAttention } from "./attention.ts";
@@ -168,6 +169,9 @@ export default async function DashboardPage() {
 
   const admin = await assertMembership(user.id, workspace.id);
   const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
+  // A block about paying is resolved by an owner or admin; anyone else is told who can.
+  const billingBlock = needsBillingAction(entitlement.blocker);
+  const blockedRemedy = billingBlock && !can(role, "billing.manage") ? null : remedyFor(entitlement.blocker);
 
   // The first-run checklist, from stored rows only.
   const firstAgent = agentList[0]?.id as string | undefined;
@@ -211,6 +215,7 @@ export default async function DashboardPage() {
     topFinding: top ? { href: top.next.href, caseId: top.caseId, label: `${top.obligation ? (OBLIGATION_LABELS as Record<string, string>)[top.obligation] ?? top.obligation : "A scenario"} failed on ${top.agentName}. ${top.next.label}.` } : null,
     noVerdict: noVerdictNow, readyRunId: firstReady?.runId ?? null,
     blockedReason: entitlement.canRun ? null : entitlement.blockedReason,
+    blockedRemedy,
     may: { connect: can(role, "agent.write"), run: can(role, "run.start"), review: can(role, "workspace.view") },
   });
 
@@ -234,7 +239,12 @@ export default async function DashboardPage() {
 
   // At most five things that need someone, each linking to where it is resolved.
   const attentionItems = [
-    ...(!entitlement.canRun ? [{ text: entitlement.blockedReason ?? "Runs cannot start.", href: "/settings", action: "Connect a key", tone: "fail" as const }] : []),
+    ...(!entitlement.canRun ? [{
+      text: `${entitlement.blockedReason ?? "Runs cannot start."}${billingBlock && !blockedRemedy ? " An owner or admin of this workspace can choose a plan." : ""}`,
+      href: blockedRemedy?.href ?? "/settings/billing",
+      action: blockedRemedy?.label ?? "See billing",
+      tone: "fail" as const,
+    }] : []),
     ...attention.map((i) => ({ text: i.text, href: i.href, action: i.action, tone: i.tone })),
   ];
 
@@ -243,7 +253,7 @@ export default async function DashboardPage() {
       <PageHeader
         eyebrow={personal ? workspace.name : mode === "agency" ? "Client workspace" : "Workspace"}
         title={personal ? (context.profile.display_name ? `Hello, ${context.profile.display_name}` : "Overview") : workspace.name}
-        description={<>Times in {zoneLabel(context.profile.timezone)} · {entitlement.ownKey ? `graded on your ${entitlement.provider} key` : `trial, ${Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed)} of ${TRIAL_RUN_LIMIT} runs left`}</>}
+        description={<>Times in {zoneLabel(context.profile.timezone)} · {entitlement.ownKey ? `graded on your ${entitlement.provider} key` : "graded on Novera's keys"} · {entitlement.fundingLine}</>}
         action={<ButtonLink href={action.href}>{action.label}</ButtonLink>}
       />
 
@@ -279,7 +289,7 @@ export default async function DashboardPage() {
           events={(auditRows ?? []).map((e) => ({ id: e.id as string, action: e.action as string, created_at: e.created_at as string, who: e.actor_id ? actorNames.get(e.actor_id as string) ?? "A member" : "Novera" }))}
           retentionDays={retentionDays}
           rawReads={rawReads ?? 0}
-          funding={entitlement.ownKey ? `The workspace's own ${entitlement.provider} key` : "Novera's trial allowance"}
+          funding={entitlement.ownKey ? `The workspace's own ${entitlement.provider} key` : entitlement.billing.source === "trial" ? "Novera's trial allowance" : "Novera's keys, under the workspace's plan"}
           canAudit={can(role, "audit.view")}
         />
       )}

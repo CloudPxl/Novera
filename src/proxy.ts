@@ -37,14 +37,15 @@ export async function proxy(request: NextRequest) {
   // Supabase sends an emailed link to its Site URL root instead of `/auth/callback` when the
   // callback is missing from its redirect allow list — a dashboard setting, outside this
   // repository. The home page ignores a `code`, so the person landed signed out with no word
-  // about their confirmation. Forwarded rather than handled twice; treated as a sign-up.
+  // about their confirmation. Forwarded rather than handled twice, as an emailed link of unknown
+  // kind: a password reset lands there too, and the callback tells it apart by GoTrue's mark.
   if (request.nextUrl.pathname === "/" && (request.nextUrl.searchParams.has("code") || request.nextUrl.searchParams.has("error_code"))) {
     const target = new URL("/auth/callback", request.nextUrl.origin);
     for (const key of ["code", "error", "error_code", "error_description"]) {
       const value = request.nextUrl.searchParams.get(key);
       if (value) target.searchParams.set(key, value);
     }
-    target.searchParams.set("flow", "signup");
+    target.searchParams.set("flow", "email");
     return NextResponse.redirect(target, 307);
   }
 

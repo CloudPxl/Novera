@@ -20,6 +20,8 @@ export interface NextInput {
   noVerdict: number;
   readyRunId: string | null;
   blockedReason: string | null;
+  /** Where the block is resolved (src/lib/billing/remedy.ts). Absent: Settings, for a key. */
+  blockedRemedy?: { href: string; label: string } | null;
   may: { connect: boolean; run: boolean; review: boolean };
 }
 
@@ -46,7 +48,11 @@ export function nextAction(s: NextInput): NextAction {
     return { title: "Write the policy your agent should keep", body: "Every verdict is judged against this text, and each saved version is kept.", href: `/agents/${s.firstAgentId}`, label: "Write the policy" };
   }
   if (!s.hasRun) {
-    if (s.blockedReason) return { title: "Connect a model key to run", body: s.blockedReason, href: "/settings", label: "Open settings" };
+    if (s.blockedReason) {
+      const remedy = s.blockedRemedy;
+      if (!remedy || remedy.href === "/settings") return { title: "Connect a model key to run", body: s.blockedReason, href: "/settings", label: "Open settings" };
+      return { title: remedy.href === "/billing" ? "Choose a plan to keep testing" : "Runs cannot start yet", body: s.blockedReason, href: remedy.href, label: remedy.label };
+    }
     return s.may.run
       ? { title: "Run your first evaluation", body: "Forty-nine scenarios against your agent, graded against your policy, sealed into a dated report.", href: `/agents/${s.firstAgentId}`, label: "Run the suite" }
       : { title: "Waiting for the first run", body: "An operator, admin or owner starts runs. Its findings come to you for review.", href: "/review", label: "Open review" };
@@ -59,6 +65,10 @@ export function nextAction(s: NextInput): NextAction {
   }
   if (s.readyRunId) {
     return { title: "Your report is ready to share", body: "Sealed, intact, every scenario with a verdict. Send the private link or export it.", href: `/runs/${s.readyRunId}`, label: "Open the report" };
+  }
+  // Blocked after earlier runs: "run again" would be a step the person cannot take.
+  if (s.blockedReason && s.may.run && s.blockedRemedy) {
+    return { title: s.blockedRemedy.href === "/billing" ? "Choose a plan to keep testing" : "Runs cannot start yet", body: s.blockedReason, href: s.blockedRemedy.href, label: s.blockedRemedy.label };
   }
   return s.may.run
     ? { title: "Run it again after your next change", body: "A rerun compares scenario by scenario and says what newly broke, and why each verdict moved.", href: `/agents/${s.firstAgentId}`, label: "Run again" }

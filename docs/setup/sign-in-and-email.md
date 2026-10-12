@@ -123,6 +123,22 @@ confirmation confirms the address without signing that browser in, a reset signs
 once the password is set, and magic-link and invite types are refused (launch-readiness row B) —
 but they make every confirmation a sign-in by hand.
 
+**The reset email is the exception worth considering.** A default (`{{ .ConfirmationURL }}`) reset
+link works only in the browser that asked for it. Opened from a phone's mail app it fails, and the
+sign-in page says so (`reset_other_browser`, 2026-10-12). A `token_hash` reset link works in any
+browser and never signs that browser in (row C): the password is set with the session sealed
+inside the recovery context, and the person then signs in. To use it, set the **Reset password**
+template's button to:
+
+```html
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery">Choose a new password</a>
+```
+
+with the Site URL set to `https://www.nover.space`. Whichever link is used, a reset that comes
+back to the Site URL root or to `/update-password`, `/auth/update-password`,
+`/auth/reset-password` or `/password-reset` reaches `/reset-password`; GoTrue's `recovery` mark
+decides it, not the address.
+
 
 - **Invite user:** not used. Novera sends its own invitation emails.
 

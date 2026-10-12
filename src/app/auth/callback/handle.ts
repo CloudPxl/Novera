@@ -24,10 +24,15 @@ import type { ProblemCode } from "../confirm/problems.ts";
  * comes from the code alone, the destination is from a fixed list (`safeNext`), and a
  * recovery context needs GoTrue's own `recovery` mark on the session.
  */
-export type Flow = "signup" | "recovery" | "oauth" | "link";
+export type Flow = "signup" | "recovery" | "oauth" | "link" | "email";
 
+/**
+ * `email` is an emailed link whose kind is unknown: one Supabase sent to its Site URL root
+ * because the return address was not on its allow list (src/proxy.ts). It may be a
+ * confirmation or a password reset; GoTrue's `recovery` mark on the session tells them apart.
+ */
 export function flowOf(value: string | null): Flow {
-  return value === "signup" || value === "recovery" || value === "link" ? value : "oauth";
+  return value === "signup" || value === "recovery" || value === "link" || value === "email" ? value : "oauth";
 }
 
 export async function completeAuth(url: URL, flow: Flow): Promise<NextResponse> {
@@ -46,6 +51,7 @@ export async function completeAuth(url: URL, flow: Flow): Promise<NextResponse> 
     }
     if (flow === "recovery") return problem("reset_expired");
     if (flow === "signup") return problem(/expired|invalid/i.test(errorCode + description) ? "link_spent" : "link_invalid");
+    if (flow === "email") return problem("email_link_failed");
     // GoTrue creates the account unconfirmed and emails the address when the provider has
     // not verified it (observed 2026-10-06, GitHub); that is a next step, not a cancellation.
     if (errorCode === "provider_email_needs_verification") return problem("oauth_verify_email");
@@ -57,7 +63,7 @@ export async function completeAuth(url: URL, flow: Flow): Promise<NextResponse> 
   const code = url.searchParams.get("code");
   if (!code) {
     if (flow === "link") return settings("problem=link_failed");
-    return problem(flow === "recovery" ? "reset_expired" : flow === "signup" ? "link_invalid" : "oauth_failed");
+    return problem(flow === "recovery" ? "reset_expired" : flow === "signup" || flow === "email" ? "link_invalid" : "oauth_failed");
   }
 
   const supabase = await sessionClient();
@@ -68,16 +74,24 @@ export async function completeAuth(url: URL, flow: Flow): Promise<NextResponse> 
     // For a confirmation that still means the address was confirmed (Supabase only returns
     // a code after the token checked out); the person signs in by hand.
     if (flow === "signup") return problem("confirmed_sign_in");
-    if (flow === "recovery") return problem("reset_expired");
+    // A reset link opened in another browser (a phone's mail app) than the one that asked for
+    // it: the code is good, the verifier is not here. Said, rather than "expired".
+    if (flow === "recovery") return problem("reset_other_browser");
+    if (flow === "email") return problem("email_link_failed");
     if (flow === "link") return settings("problem=link_failed");
     return problem("oauth_failed");
   }
 
-  if (flow === "recovery") {
+  // GoTrue's own mark decides whether this was a password reset, not the address it came back
+  // to: a reset link Supabase returned to its Site URL root arrived as `flow=email` (or, before
+  // 2026-10-12, as `signup`) and signed the person in at the dashboard with no way to set the
+  // password they had asked to change.
+  const recovered = cameFromRecovery(data.session?.access_token);
+  if (flow === "recovery" || (recovered && flow !== "link")) {
     // `flow` is only a query parameter: the code from a sign-in or a link flow could be sent
     // here with `flow=recovery` to set a password without the current one. Only a session
     // GoTrue marked as recovered counts (security audit, 2026-10-11).
-    if (!cameFromRecovery(data.session?.access_token)) {
+    if (!recovered) {
       await supabase.auth.signOut({ scope: "local" });
       return problem("reset_expired");
     }

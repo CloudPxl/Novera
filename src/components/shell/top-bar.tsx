@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
-import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
+import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
+import { BILLING_PATH, needsBillingAction, remedyFor } from "@/lib/billing/remedy.ts";
 import { isStaff } from "@/lib/auth/staff.ts";
 import { can, ROLE_LABEL } from "@/lib/auth/permissions.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
@@ -8,6 +9,7 @@ import { createRun } from "@/lib/workflow/actions.ts";
 import { WorkspaceSwitcher } from "./workspace-switcher.tsx";
 import { signOut } from "@/app/sign-in/actions.ts";
 import { Badge } from "@/components/ui/primitives.tsx";
+import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { Menu } from "@/components/ui/menu.tsx";
 import { menuItemClass } from "@/components/ui/menu-item.ts";
 import { NavLinks, type NavEntry } from "./nav-links.tsx";
@@ -55,7 +57,10 @@ export async function TopBar() {
     caseCount: Array.isArray(s.cases) ? s.cases.length : 0,
   }));
 
-  const runsLeft = Math.max(0, TRIAL_RUN_LIMIT - entitlement.runsUsed);
+  // Billing is a place of its own for whoever can change the plan (owner and admin), in every
+  // mode: it decides whether runs start at all (D3), so it is not three clicks deep.
+  const mayBill = can(role, "billing.manage");
+  const billing = { href: BILLING_PATH, label: "Billing", also: ["/settings/billing"] };
   // Navigation by account mode (2026-10-02 IA refactor). Personal: five plain places.
   // Agency: work grouped by what you do with it. Enterprise: agency plus workspaces and audit.
   // Every existing URL still resolves; this only decides what is offered first.
@@ -67,6 +72,7 @@ export async function TopBar() {
         { href: "/agents", label: agents.length === 1 ? "My agent" : "My agents" },
         { href: "/runs", label: "My runs" },
         { href: "/reports", label: "My reports" },
+        ...(mayBill ? [billing] : []),
         { href: "/settings", label: "Settings" },
       ]
     : [
@@ -76,10 +82,14 @@ export async function TopBar() {
         { href: "/reports", label: "Reports" },
         library,
         ...(mode === "enterprise" && can(role, "audit.view") ? [{ href: "/settings/audit", label: "Audit" }] : []),
+        ...(mayBill ? [billing] : []),
         { href: "/settings", label: "Settings" },
       ];
   if (isStaff(user.email)) nav.push({ href: "/inbox", label: "Inbox" });
-  const funding = entitlement.ownKey ? `Own key · ${entitlement.provider}` : `Trial · ${runsLeft} of ${TRIAL_RUN_LIMIT} runs left`;
+  const funding = entitlement.fundingLine;
+  const fundingTone = !entitlement.canRun ? "fail" : entitlement.billing.source === "subscription" || entitlement.billing.source === "manual_grant" ? "pass" : "neutral";
+  // A run blocked on payment is the one thing in this bar a person must act on.
+  const upgrade = mayBill && needsBillingAction(entitlement.blocker) ? remedyFor(entitlement.blocker) : null;
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur">
@@ -113,8 +123,17 @@ export async function TopBar() {
           <span className="hidden xl:inline">
             {/* What is really stored, not an invented environment label: a report has
                 to say who funded the grading, so the bar says it too. */}
-            <Badge tone={entitlement.ownKey ? "pass" : "neutral"}>{funding}</Badge>
+            {mayBill
+              ? <Link href={BILLING_PATH} className="rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ink" aria-label={`${funding}. Open billing`}><Badge tone={fundingTone}>{funding}</Badge></Link>
+              : <Badge tone={fundingTone}>{funding}</Badge>}
           </span>
+          {upgrade && (
+            // Wrapped: the button's own inline-flex would override `hidden`. Below sm it is in the
+            // menu; in enterprise mode also from lg to xl, where its eight places fill the bar.
+            <span className={mode === "enterprise" ? "hidden sm:inline-flex lg:hidden xl:inline-flex" : "hidden sm:inline-flex"}>
+              <ButtonLink href={upgrade.href} size="sm" className="whitespace-nowrap">{upgrade.label}</ButtonLink>
+            </span>
+          )}
           {role !== "owner" && <span className="hidden xl:inline"><Badge tone="neutral">{ROLE_LABEL[role]}</Badge></span>}
 
           {can(role, "run.start") && (
@@ -122,6 +141,12 @@ export async function TopBar() {
               agents={agents}
               suites={suites}
               action={createRun}
+              blocked={entitlement.canRun ? null : {
+                reason: entitlement.blockedReason ?? "Runs cannot start in this workspace right now.",
+                // A member who cannot change the plan is told who can, not sent to a page that refuses them.
+                remedy: needsBillingAction(entitlement.blocker) && !mayBill ? null : remedyFor(entitlement.blocker),
+                stillTry: entitlement.blocker === "concurrency",
+              }}
               defaultAgentId={context.profile.default_agent_id ?? undefined}
               defaultSuiteKey={context.profile.preferred_suite_key}
             />
@@ -136,6 +161,11 @@ export async function TopBar() {
               <p className="truncate text-sm font-medium text-ink">{context.profile.display_name ?? user.email}</p>
               <p className="truncate text-xs text-ink-faint">{workspace.name} · {ROLE_LABEL[role].toLowerCase()}</p>
               <p className="mt-1.5 text-xs text-ink-soft xl:hidden">{funding}</p>
+              {upgrade && (
+                <Link href={upgrade.href} className={`mt-1 inline-block text-xs font-medium text-ink underline underline-offset-2 ${mode === "enterprise" ? "sm:hidden lg:inline-block xl:hidden" : "sm:hidden"}`}>
+                  {upgrade.label}
+                </Link>
+              )}
             </div>
 
             <div className="py-1 lg:hidden">

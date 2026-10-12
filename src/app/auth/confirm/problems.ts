@@ -16,6 +16,10 @@ export const PROBLEMS = {
   link_invalid: "That confirmation link is not valid. Send yourself a new one below.",
   link_spent: "That confirmation link has expired or was already used. Send yourself a new one below.",
   reset_expired: "That password reset link has expired or was already used. Ask for a new one below.",
+  // The PKCE verifier lives in the browser that asked for the reset; a mail app opens another.
+  reset_other_browser: "That password reset link has to be opened in the browser where you asked for it, or it has expired. Ask for a new one below, and open it in this browser.",
+  // An emailed link of unknown kind that could not be completed here (src/app/auth/callback/handle.ts).
+  email_link_failed: "That link could not be completed in this browser. If it was a password reset, ask for a new one below and open it in the browser you ask from. If it confirmed your address, sign in to continue.",
   signed_out: "You have been signed out.",
   signed_out_everywhere: "You have been signed out on every device.",
   // The address is confirmed by the time this is shown: Supabase only sends a code back after

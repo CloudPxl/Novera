@@ -6,6 +6,7 @@ import { SettingsNav } from "./nav.tsx";
 import { EraseWorkspaceForm, LeaveWorkspaceForm, RenameWorkspaceForm } from "./identity-forms.tsx";
 import { Disclosure } from "@/components/ui/page.tsx";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
+import { FAIR_USE_RUNS, FAIR_USE_WINDOW_DAYS, MAX_RUNS_IN_FLIGHT } from "@/lib/billing/limits.ts";
 import { suggestedModelsFor } from "@/lib/router/routes.ts";
 import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/providers/anthropic.ts";
 import { INDEPENDENCE_LABEL } from "@/lib/judge/independence.ts";
@@ -164,16 +165,16 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
       <Reveal>
         <section>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Grading</h2><Help label="Grading">Which AI models grade your runs. The trial uses ours for three runs; after that, connect your own model key. It is encrypted, used only to grade your runs, and never shown again.</Help></div>
+            <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Grading</h2><Help label="Grading">Which AI models grade your runs: ours, or your own model key once you connect one. It is encrypted, used only to grade your runs, and never shown again. The trial covers three runs; after it, a plan keeps runs going.</Help></div>
             <Badge tone={entitlement.ownKey ? (entitlement.canRun ? "pass" : "fail") : "neutral"}>
               {entitlement.ownKey ? `your ${entitlement.provider} key` : "trial allowance"}
             </Badge>
           </div>
 
-          {/* A key that cannot be routed is worse than none: the workspace is unmetered,
-              so nothing stops a run starting, and every case in it would error. Said
-              here, before the run, in the place where it can be fixed. */}
-          {entitlement.ownKey && !entitlement.canRun && entitlement.blockedReason && (
+          {/* A key that cannot be routed is worse than none: every case of every run would
+              error. Said here, before the run, in the place where it can be fixed. A block
+              about the plan is said on Billing, where that is fixed. */}
+          {entitlement.ownKey && entitlement.blocker === "key_unroutable" && entitlement.blockedReason && (
             <p
               role="alert"
               className="mt-3 rounded-lg border border-fail-border bg-fail-surface p-4 text-sm leading-relaxed text-fail-text"
@@ -186,9 +187,11 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
             {entitlement.ownKey ? (
               <>
                 <p className="text-sm leading-relaxed text-ink-soft">
-                  Runs in this workspace are graded on your own {entitlement.provider} key. There is
-                  no cap on how many you run, and every report says the grading was funded by your
-                  key rather than by our trial allowance.
+                  Runs in this workspace are graded on your own {entitlement.provider} key, and every
+                  report says the grading was funded by your key. After the trial, runs on your key
+                  need a plan; under Team BYOK or Agency Pro they are not counted against any
+                  allowance, within fair use ({MAX_RUNS_IN_FLIGHT} at once, {FAIR_USE_RUNS.toLocaleString("en-GB")} in {FAIR_USE_WINDOW_DAYS} days).{" "}
+                  <Link href="/billing" className="font-medium text-ink underline underline-offset-2">Billing</Link>
                 </p>
 
                 <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
@@ -252,7 +255,7 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
                     consequence={
                       trialLeft > 0
                         ? `Runs would go back to the trial allowance, which has ${trialLeft} of ${TRIAL_RUN_LIMIT} left.`
-                        : `This workspace has run ${entitlement.runsUsed} suites and the trial covers ${TRIAL_RUN_LIMIT}, so no further run could start until a key is connected.`
+                        : `The trial's ${TRIAL_RUN_LIMIT} runs are used, so runs would then grade on Novera's keys only under Agency Pro, which includes 100 a period. Team BYOK includes none.`
                     }
                   />
                 </div>}
@@ -265,9 +268,11 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
                   vendors.
                 </p>
                 <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-                  Connect your own model key to lift the cap. There is nothing to pay us — the
-                  grading simply runs on your key from then on, on your provider&apos;s free or paid
-                  tier, and stays inside your own account.
+                  Connect your own model key and runs grade on it instead, on your provider&apos;s
+                  free or paid tier, inside your own account. After the trial, recurring testing
+                  needs a plan: Team BYOK grades on your own key; Agency Pro adds 100 runs a month
+                  graded on ours.{" "}
+                  <Link href="/billing" className="font-medium text-ink underline underline-offset-2">See plans</Link>
                 </p>
                 <div className="mt-4 h-2 overflow-hidden rounded-full bg-sunken">
                   <div

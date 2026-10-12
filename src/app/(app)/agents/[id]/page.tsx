@@ -8,6 +8,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
+import { needsBillingAction, remedyFor } from "@/lib/billing/remedy.ts";
+import { MAX_RUNS_IN_FLIGHT } from "@/lib/billing/limits.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { createRun } from "@/lib/workflow/actions.ts";
 import { Card, Badge, EmptyState, inputClass } from "@/components/ui/primitives.tsx";
@@ -101,9 +103,17 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
       lastRun: last ? { id: last.id as string, status: last.status as string } : null,
     };
   });
-  const costNote = entitlement.ownKey
-    ? "Each run grades on your own model key."
-    : `Each run uses one of your trial runs (${entitlement.runsUsed} of ${entitlement.runsAllowed ?? "?"} used). When none are left, the schedule pauses and says why.`;
+  const plan = entitlement.billing;
+  const grading = entitlement.ownKey ? "grades on your own model key" : "grades on Novera's keys";
+  const costNote = plan.source === "trial"
+    ? `Each run ${grading} and uses one of the trial's runs (${plan.trial?.used ?? entitlement.runsUsed} of ${plan.trial?.limit ?? 3} used). When none are left, the schedule pauses and says why.`
+    : plan.source === "subscription" && plan.runsAllowed !== null
+      ? `Each run ${grading} and uses one of this period's ${plan.runsAllowed} runs (${plan.runsUsed} used). When none are left, the schedule pauses and says why.`
+      : plan.source === "subscription" || plan.source === "manual_grant"
+        ? `Each run ${grading}${plan.runsAllowed !== null ? `, counted against ${plan.runsAllowed} runs (${plan.runsUsed} used)` : ""}. Fair use applies: at most ${MAX_RUNS_IN_FLIGHT} runs at once.`
+        : "Runs need a plan in force. When none is, the schedule pauses and says why.";
+  // A block about paying is for an owner or admin to resolve; anyone else is told who can.
+  const blockedRemedy = needsBillingAction(entitlement.blocker) && !can(role, "billing.manage") ? null : remedyFor(entitlement.blocker);
 
   const latestProbe = probes?.[0];
   const latestPolicy = policies?.[0];
@@ -123,7 +133,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
           archivedAt ? <ButtonLink href={`/agents/${agent.id}?tab=connection`} variant="secondary">Archived — restore</ButtonLink>
           : !can(role, "run.start") ? undefined
           : !latestPolicy ? <ButtonLink href={`/agents/${agent.id}?tab=policy`}>Write the policy</ButtonLink>
-          : !entitlement.canRun ? <ButtonLink href="/settings">Connect a key to run</ButtonLink>
+          : !entitlement.canRun ? (blockedRemedy ? <ButtonLink href={blockedRemedy.href}>{blockedRemedy.label}</ButtonLink> : undefined)
           : <div className="w-full max-w-md">
 {latestPolicy && entitlement.canRun && (
                   <RefusableForm action={createRun} className="flex flex-wrap items-center gap-2">
@@ -211,10 +221,9 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                   className="mt-3 rounded-xl border border-warning-border bg-warning-surface px-4 py-3 text-sm leading-relaxed text-warning-text"
                 >
                   {entitlement.blockedReason}{" "}
-                  <Link href="/settings" className="font-medium underline underline-offset-2">
-                    Connect your key
-                  </Link>
-                  .
+                  {blockedRemedy
+                    ? <Link href={blockedRemedy.href} className="font-medium underline underline-offset-2">{blockedRemedy.label}</Link>
+                    : "An owner or admin of this workspace can choose a plan."}
                 </div>
               )}
 

@@ -151,7 +151,7 @@ export async function startRunExecution(args: {
     environment: reportEnvironment(agent.config),
     attestation: run.attestation_text ?? null,
     suite: { key: suite.key, version: suite.version, name: suite.name },
-    judgeSource: (run.judge_source as "trial_free" | "workspace_key" | null) ?? "trial_free",
+    judgeSource: (run.judge_source as "trial_free" | "workspace_key" | "plan_managed" | null) ?? "trial_free",
     baseline,
   });
 

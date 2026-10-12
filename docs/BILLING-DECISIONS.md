@@ -2,11 +2,14 @@
 
 Phase 3 of the launch program (`docs/LAUNCH-READINESS.md`, P1–P5). Written 2026-10-09.
 
-**State: sandbox only, prices approved.** Billing code exists and is off. It turns on only
-when Stripe *test* keys are configured, refuses live keys, and does not yet decide whether a
-run may start. The plan prices were approved by David on 2026-10-12 (§2) and are shown on
-Settings → Billing; nothing can be bought live until the §7 live checklist is done. Nothing
-here is a sales term or legal advice.
+**State: sandbox only, prices approved, runs gated (D3).** Checkout and the portal turn on only
+when Stripe *test* keys are configured, and live keys are refused. Since 2026-10-12 (0067) billing
+**decides whether a run may start**: the trial is the whole free tier, three runs per account
+owner, and after it every run needs a subscription or a manual grant, whether or not the workspace
+has its own key. Fair use applies on every plan. The plan prices were approved by David on
+2026-10-12 (§2) and are shown on Settings → Billing (`/billing`). Nothing can be bought live until
+the §7 live checklist is done. Until billing opens, a workspace past its trial runs only under a
+manual grant. Nothing here is a sales term or legal advice.
 
 ---
 
@@ -87,23 +90,51 @@ Why:
 - It matches `docs/COMPETITION.md`: price a verified run, not model calls or people.
 
 Rules (`resolveEntitlement`): a source is *in force* or not; sources do **not** add up — the
-first in-force source with room wins, in the order **manual grant → subscription → own key
-→ trial**. A plan counts two kinds of run differently: with a model key connected, runs on
-that key are **unlimited** (counted, never capped); without one, only the plan's **managed**
-allowance applies — runs graded on Novera's keys (`judge_source` not `workspace_key`), 0 on
-Team BYOK, 100 a period on Agency Pro; if none has room, the highest in-force one says why. Allowances are windows over
+first in-force source with room wins, in the order **manual grant → subscription → trial**
+(the old "own key, unmetered" source applies only with `byokRequiresPlan: false`, which no
+deployment uses since D3). A plan counts two kinds of run differently: with a model key connected,
+runs on that key are **unlimited** (counted, never capped); without one, only the plan's
+**managed** allowance applies — runs graded on Novera's keys under the plan
+(`judge_source = 'plan_managed'`, 0067), 0 on Team BYOK, 100 a period on Agency Pro. The trial
+runs on the workspace's own key when it has one, and on Novera's keys otherwise. If none has room,
+the highest in-force one says why, and the refusal names its kind (`blocker`) so every surface
+offers the same next step (`src/lib/billing/remedy.ts`): choose a plan, connect a key, wait for a
+run in progress, or contact support. Allowances are windows over
 the same `runs` rows, counted, never estimated. Grace: a `past_due` subscription keeps its
 plan for `BILLING_GRACE_DAYS` (default 7) from the first failure of that delinquency, then
 is *restricted*; `unpaid` is restricted at once. Restricted or nothing in force: no new
 runs, every run/case/report stays readable and exportable.
 
+### Run gating (0067, 2026-10-12)
+
+- **One decision for every entry point.** `workspaceEntitlement` (`src/lib/auth/entitlement.ts`)
+  feeds `resolveEntitlement` the stored rows with `byokRequiresPlan: true`, and `startRun` refuses a
+  run it does not fund. The button, rerun, the API, MCP, a schedule and a Suite Builder scan all
+  pass through `startRun`. The top bar, dashboard, agent page, run launcher and Settings read the
+  same answer, so none of them offers a run that would be refused.
+- **A run names what pays for it.** `runs.funded_by_subscription` (Stripe subscription id) or
+  `runs.funded_by_grant`, or neither for a trial run. Both are frozen with the run's attribution,
+  and so is `judge_source`. 0067's trigger checks that the subscription or grant belongs to the
+  run's workspace and is in force (subscription `active`/`trialing`/`past_due`; the application
+  applies the grace period on top). It also counts, under a per-workspace lock:
+  - a plan's managed runs in its current period, refused past the allowance;
+  - a grant's runs, refused past `runs_allowed`.
+- **Plan-funded grading is not the trial.** `judge_source = 'plan_managed'` is graded on Novera's
+  keys, shares the trial's two grading slots (`claim_run_slice_fenced`), and the report says
+  "Grading funded by Novera, under the workspace's plan". The trial cap (0055) is unchanged and
+  stays atomic per owner.
+- **Fair use, every plan** (`src/lib/billing/limits.ts`, mirrored in 0067): at most **3 runs in
+  progress** per workspace and at most **1,000 runs in any 30 days**.
+  - The API answers both with status 429 and `code: "concurrency"` or `code: "fair_use"`.
+  - A schedule meeting the in-progress limit skips that occurrence and is not paused.
+  - A retest re-grades inside an existing run, so fair use does not refuse it; funding does.
+  - Measured locally: of 12 concurrent starts, exactly 3 were accepted. The 101st managed run of a
+    period and the 1,001st run in 30 days were refused.
+- **Before billing opens**, a workspace past its trial runs only under a manual grant (below). The
+  billing page says to contact support for a pilot.
+
 ### Deliberately not done yet
 
-- **Run start is not gated by billing.** `src/lib/auth/entitlement.ts` (trial, then BYOK
-  unmetered) still decides. Wiring `resolveEntitlement` in is one call in
-  `workspaceEntitlement`, but it waits on decision D2 below, because a plan whose runs are
-  graded on *Novera's* keys needs a new `judge_source` (the report states who funded the
-  grading), and 0055's trial-cap trigger refuses every `trial_free` run past three.
 - **Erasing a workspace while Stripe could still charge** (active, trialing, past due — in
   grace or restricted —, unpaid, incomplete, paused, unless set to end) is refused, with the
   sentence to show (`subscriptionBlocksErasure`, `subscriptionMayCharge`). Erasure never
@@ -115,7 +146,17 @@ runs, every run/case/report stays readable and exportable.
   rows themselves stay (the tables are frozen) until the workspace is erased: run sandbox tests
   in a throwaway workspace.
 - **No UI for manual grants.** The table, its rules and RLS exist; grants are inserted by
-  an operator with the service role (reason and `granted_by` required by the database).
+  an operator with the service role (reason and `granted_by` required by the database). Since
+  D3 this is how a workspace keeps running before billing opens, for example a 30-day pilot of 50
+  runs:
+
+  ```sql
+  insert into billing_entitlement_grants (workspace_id, kind, runs_allowed, ends_at, reason, granted_by)
+  values ('<workspace id>', 'pilot', 50, now() + interval '30 days', 'Pilot before billing opens', '<your user id>');
+  ```
+
+  `kind = 'internal'` with `runs_allowed = null` is unmetered (Novera's own workspaces). With its
+  own key the workspace grades on that key; without one, on Novera's keys as `plan_managed`.
 - `workspaces.plan` (`trial`/`paid`, 0001) is unused and left alone.
 - No billing email from Novera — see section 6.
 
@@ -153,24 +194,24 @@ catalog's amount, currency and monthly interval** (`priceMismatch`, `src/lib/bil
 so the page can never show €99 while Stripe charges something else. The browser sends a plan key
 only; never a price, an amount, a customer or a workspace.
 
-**What the catalog does not yet do (before live, §7):**
+**What the catalog does since 0067:**
 
-- **Agency Pro's 100 managed runs cannot be spent yet.** Run start does not consult billing, and
-  past the 3 trial runs the database refuses any run graded on Novera's keys (0055). Selling it
-  live needs: a `judge_source` for plan-funded grading (the report states who paid), the trial
-  cap trigger to let a workspace with an in-force plan through, and `resolveEntitlement` wired into
-  `startRun`. Plus a funded grading budget for 100 runs × the number of Agency Pro workspaces.
-- **Team BYOK sells nothing a workspace cannot do free today** while D3 stays "yes": a workspace
-  with its own key runs unmetered without a plan, and the home page and docs say "there is nothing
-  to pay us". See D3.
+- **Agency Pro's 100 managed runs can be spent.** A workspace without its own key and with Agency
+  Pro in force grades on Novera's keys as `plan_managed`, counted against the period's 100 under a
+  lock. **Still needed before selling it live:** a funded grading budget, 100 runs × the number of
+  Agency Pro workspaces. Today's keys are free tiers measured at one clean run at a time.
+- **Team BYOK now sells something.** After the trial, a workspace with its own key needs a plan to
+  run (D3). The home page and `/docs/the-trial-and-your-own-key` say so instead of "nothing to pay
+  us". They name the plans, not the prices, because the prices are not published until billing
+  opens.
 
 ## 3. Decisions David must make
 
 | # | Decision | Default in code until then |
 |---|---|---|
 | D1 | Prices, currency, interval — **decided 2026-10-12:** €99 / €299 a month, EUR, monthly only. **Open:** VAT-inclusive or exclusive display (accountant) | the page shows the list price and says VAT is confirmed before billing opens |
-| D2 | Does any paid plan grade on Novera's keys? — **decided 2026-10-12: yes, Agency Pro, 100 a period.** Needs a `judge_source`, the 0055 trigger change and run gating before live (§2) | not spendable yet: runs past the trial on Novera's keys are refused |
-| D3 | When billing goes live, does a BYOK workspace **without** a plan keep unmetered runs (today's rule)? **Still open, and now load-bearing:** if yes, Team BYOK grants nothing extra; if no, the run gate must ship with live billing and the public "nothing to pay us" copy must change first | yes (`byokRequiresPlan: false`) |
+| D2 | Does any paid plan grade on Novera's keys? — **decided 2026-10-12: yes, Agency Pro, 100 a period.** `plan_managed` and its count in 0067 | spendable; needs a funded grading budget before live |
+| D3 | Does a BYOK workspace **without** a plan keep unmetered runs? — **decided 2026-10-12: no.** The trial (3 runs per owner, on any key) is the whole free tier; after it every run needs a plan or a grant. Public copy changed. A fair-use limit applies on every plan: 3 runs in progress, 1,000 per 30 days | `byokRequiresPlan: true`, enforced by `startRun` and 0067 |
 | D4 | Run allowances — **decided 2026-10-12:** unlimited on your own key on both plans; managed runs 0 / 100 a period; no rollover | as decided |
 | D5 | Grace period length after a failed payment | 7 days |
 | D6 | Stripe "after all retries fail" setting: cancel, mark unpaid, or leave past_due | code handles all three |
@@ -309,7 +350,7 @@ Novera sends **no billing email** (production sends no email at all today; see C
 
 **Sandbox (can be done now, by David, no approval of prices needed):**
 
-1. Migrations 0060, 0065 and 0066 (applied with `npm run migrate`).
+1. Migrations 0060, 0065, 0066 and 0067 (applied with `npm run migrate`).
 2. Configure §5 steps 1–5 in a Stripe sandbox, with prices of exactly **€99.00** and **€299.00**
    EUR, recurring monthly, licensed — checkout refuses any other amount; set the sandbox variables in `.env.local` and
    Vercel *Preview* only, then create a Preview deployment (a branch push) — Preview variables
@@ -320,7 +361,7 @@ Novera sends **no billing email** (production sends no email at all today; see C
 
 **Live (P5 — blocked until every item is signed off):**
 
-1. §3 decisions made (D1 VAT display, D3, D5–D10 still open); §4 items signed off by accountant
+1. §3 decisions made (D1 VAT display, D5–D10 still open); §4 items signed off by accountant
    and lawyer.
 2. Terms, privacy notice and sub-processor list (Phase 4) published with Stripe named.
 3. A migration adding an approved status to `billing_plans` and the code change in
@@ -329,10 +370,9 @@ Novera sends **no billing email** (production sends no email at all today; see C
 4. Live products and prices created; live webhook destination and portal configured
    (live mode has its own copies of both).
 5. Live keys set in Vercel *Production* with `BILLING_ALLOW_LIVE=1` — the last step, by David.
-6. Wire billing into run starts: plan-funded `judge_source`, the 0055 trigger change, and
-   `resolveEntitlement` in `startRun`, so Agency Pro's managed runs can be spent (and, if D3 is
-   "no", so a key without a plan stops after the trial).
-7. Align the public copy with the catalog ("nothing to pay us" on the home page and in
-   `/docs/the-trial-and-your-own-key`).
+6. ~~Wire billing into run starts~~ — done 2026-10-12 (0067). Before live: a funded grading
+   budget for Agency Pro's managed runs.
+7. ~~Align the public copy with D3~~ — done 2026-10-12. Publishing the prices themselves on the
+   home page waits for billing to open.
 8. Decide what erasure does with a live subscription beyond refusing (section 1): today a
    person cancels first.

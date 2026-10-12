@@ -98,7 +98,11 @@ export async function POST(request: Request) {
     return apiJson({ run: { id: run.id, status: "queued" }, next: next(run.id) }, 201);
   } catch (e) {
     if (claimedRunId && idempotencyKey) await releaseClaim(db, workspaceId, idempotencyKey, claimedRunId);
-    if (e instanceof RunRefusal) return apiJson({ error: e.message }, 409);
+    // Fair use is a rate, so a pipeline backs off and retries; anything else needs a person.
+    if (e instanceof RunRefusal && (e.blocker === "concurrency" || e.blocker === "fair_use")) {
+      return apiJson({ error: e.message, code: e.blocker }, 429);
+    }
+    if (e instanceof RunRefusal) return apiJson({ error: e.message, ...(e.blocker ? { code: e.blocker } : {}) }, 409);
     return apiJson({ error: "The run could not be started." }, 500);
   }
 }

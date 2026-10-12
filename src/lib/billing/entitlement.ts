@@ -15,13 +15,27 @@
  *      decides. If none has room, the highest-precedence in-force source says why.
  *   3. Nothing here deletes or hides evidence. A workspace with nothing in force keeps
  *      reading and exporting everything it has (`READ_ONLY_FEATURES`).
+ *   4. Decision D3 (2026-10-12): the trial is the whole free tier. Once its three runs are used,
+ *      a workspace on its own model key needs a plan or a grant like any other
+ *      (`byokRequiresPlan`). Fair use (src/lib/billing/limits.ts) then applies to every source.
  *
- * Not yet wired into starting a run: `src/lib/auth/entitlement.ts` still decides that, with
- * today's rules (trial, then BYOK unmetered). Wiring this in waits on the decisions listed in
- * docs/BILLING-DECISIONS.md — chiefly whether a paid plan's runs are graded on Novera's keys,
- * which would need a new `judge_source` and a change to the trial cap trigger (0055).
+ * This decides every run start: `workspaceEntitlement` (src/lib/auth/entitlement.ts) feeds it
+ * stored rows and `startRun` stamps the run with the `judgeSource` and `funding` it returns,
+ * which 0067 checks again under a lock.
  */
 import { FEATURES, PLAN_CATALOG, READ_ONLY_FEATURES, isPlanKey, type Feature, type PlanKey } from "./plans.ts";
+import { CONCURRENCY_REFUSAL, FAIR_USE_REFUSAL, FAIR_USE_RUNS, MAX_RUNS_IN_FLIGHT } from "./limits.ts";
+
+/** Who funded a run's grading, as the run row and its report record it (0001, 0067). */
+export type JudgeSource = "trial_free" | "workspace_key" | "plan_managed";
+
+/**
+ * Why a run cannot start, as a kind the interface can act on: a plan to choose, a key to
+ * connect, a run to wait for, support to contact. The sentence is `blockedReason`.
+ */
+export type Blocker =
+  | "trial_used" | "needs_plan" | "subscription_lapsed" | "allowance_used" | "grant_used"
+  | "needs_key" | "key_unroutable" | "concurrency" | "fair_use";
 
 export const DAY_MS = 86_400_000;
 
@@ -55,8 +69,16 @@ export interface EntitlementInput {
   trialLimit: number;
   /** A model key is stored, and whether it can actually grade (see auth/entitlement.ts). */
   byok: { connected: boolean; routable: boolean; provider: string | null };
-  /** Today's rule is false: a workspace on its own key is unmetered. A product decision, not a default to flip quietly. */
+  /**
+   * Decision D3 (2026-10-12): true. After the trial, a workspace on its own key needs a plan.
+   * False restores the old rule (own key unmetered); kept as an input so the rule is stated, not
+   * implied.
+   */
   byokRequiresPlan: boolean;
+  /** Runs in this workspace queued or running now (fair use: at most MAX_RUNS_IN_FLIGHT). */
+  runsInFlight?: number;
+  /** Runs this workspace started in the last FAIR_USE_WINDOW_DAYS days. */
+  runsInWindow?: number;
   /** Every subscription row of this workspace. The newest decides. */
   subscriptions: SubscriptionRow[];
   grants: GrantRow[];
@@ -67,8 +89,9 @@ export interface EntitlementInput {
    */
   runTimes: string[];
   /**
-   * The subset of `runTimes` graded on Novera's own keys (`judge_source` not `workspace_key`):
-   * what a plan's managed allowance counts. Absent → every run counts, the cautious reading.
+   * The subset of `runTimes` a plan's managed allowance counts: runs graded on Novera's keys
+   * under a plan (`judge_source = 'plan_managed'`, 0067). Absent → every run counts, the
+   * cautious reading.
    */
   managedRunTimes?: string[];
   /** Every run this workspace ever started, counted by the database. */
@@ -111,6 +134,12 @@ export interface BillingEntitlement {
   windowEndsAt: string | null;
   canRun: boolean;
   blockedReason: string | null;
+  /** What kind of block `blockedReason` is; null when a run can start. */
+  blocker: Blocker | null;
+  /** What a run started now is stamped with. Null when nothing funds one. */
+  judgeSource: JudgeSource | null;
+  /** The subscription or grant a run started now names (0067). Both null for a trial run. */
+  funding: { subscriptionId: string | null; grantId: string | null };
   features: Feature[];
   subscription: SubscriptionView | null;
   /** The grant in force, if one decided. */
@@ -221,8 +250,21 @@ interface Candidate {
   windowEndsAt: string | null;
   features: Feature[];
   grantId: string | null;
+  subscriptionId: string | null;
   /** Why this source has no room. Null when it has room. */
-  exhausted: string | null;
+  exhausted: { reason: string; blocker: Blocker } | null;
+}
+
+const unroutable = (provider: string | null) => ({
+  reason: `The ${provider ?? "stored"} key in this workspace has no model recorded to grade with. Connect the key again naming a model.`,
+  blocker: "key_unroutable" as const,
+});
+
+/** The judge_source a run started under this decision is stamped with (0067). */
+export function judgeSourceFor(source: EntitlementSource, runsOn: "own_key" | "novera" | null): JudgeSource | null {
+  if (runsOn === "own_key") return "workspace_key";
+  if (runsOn === "novera") return source === "trial" ? "trial_free" : "plan_managed";
+  return null;
 }
 
 export function resolveEntitlement(input: EntitlementInput): BillingEntitlement {
@@ -246,15 +288,17 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
       windowEndsAt: g.endsAt,
       features: [...(plan?.features ?? FEATURES)],
       grantId: g.id,
+      subscriptionId: null,
       exhausted: g.runsAllowed !== null && used >= g.runsAllowed
-        ? `The ${g.kind} grant's ${g.runsAllowed} runs have been used.`
-        : null,
+        ? { reason: `The ${g.kind} grant's ${g.runsAllowed} runs have been used.`, blocker: "grant_used" }
+        : input.byok.connected && !input.byok.routable ? unroutable(input.byok.provider) : null,
     });
   }
 
   // 2. The subscription. Every plan grades on the workspace's own key without limit; without a
   //    key, only the plan's managed allowance (runs on Novera's keys) counts — none on Team BYOK.
-  const sub = subscriptionStanding(currentSubscription(input.subscriptions), now, input.graceDays);
+  const current = currentSubscription(input.subscriptions);
+  const sub = subscriptionStanding(current, now, input.graceDays);
   if (sub?.inForce && sub.planKey) {
     const plan = PLAN_CATALOG[sub.planKey];
     const renews = `The allowance renews${sub.periodEnd ? ` on ${sub.periodEnd.slice(0, 10)}` : " with the next period"}.`;
@@ -268,9 +312,8 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
         windowEndsAt: sub.periodEnd,
         features: [...plan.features],
         grantId: null,
-        exhausted: input.byok.routable
-          ? null
-          : `The ${input.byok.provider ?? "stored"} key in this workspace has no model recorded to grade with. Connect the key again naming a model.`,
+        subscriptionId: sub.stripeSubscriptionId,
+        exhausted: input.byok.routable ? null : unroutable(input.byok.provider),
       });
     } else {
       const used = countBetween(input.managedRunTimes ?? runTimes, ts(sub.periodStart), ts(sub.periodEnd));
@@ -284,16 +327,18 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
         windowEndsAt: sub.periodEnd,
         features: [...plan.features],
         grantId: null,
+        subscriptionId: sub.stripeSubscriptionId,
         exhausted: allowed === 0
-          ? `${plan.name} grades on your own model key, and this workspace has none. Connect one under Settings → Grading; runs graded on Novera's keys come with Agency Pro.`
+          ? { reason: `${plan.name} grades on your own model key, and this workspace has none. Connect one under Settings → Grading; runs graded on Novera's keys come with Agency Pro.`, blocker: "needs_key" }
           : used >= allowed
-            ? `This billing period's ${allowed} runs graded on Novera's keys have been used. ${renews} Runs on your own model key are not limited.`
+            ? { reason: `This billing period's ${allowed} runs graded on Novera's keys have been used. ${renews} Runs on your own model key are not limited.`, blocker: "allowance_used" }
             : null,
       });
     }
   }
 
-  // 3. The workspace's own model key: unmetered, as today, unless that rule is changed on purpose.
+  // 3. The workspace's own model key, unmetered — only where D3 does not apply (byokRequiresPlan
+  //    false), which no deployment does since 2026-10-12. Kept so the rule stays a stated input.
   if (input.byok.connected && !input.byokRequiresPlan) {
     candidates.push({
       source: "byok",
@@ -304,32 +349,45 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
       windowEndsAt: null,
       features: [...FEATURES],
       grantId: null,
-      exhausted: input.byok.routable
-        ? null
-        : `The ${input.byok.provider ?? "stored"} key in this workspace has no model recorded to grade with. Connect the key again naming a model.`,
+      subscriptionId: null,
+      exhausted: input.byok.routable ? null : unroutable(input.byok.provider),
     });
   }
 
-  // 4. The trial, which belongs to the owner across their workspaces; only without a key.
-  if (!input.byok.connected) {
+  // 4. The trial, which belongs to the owner across their workspaces. Under D3 it is the whole
+  //    free tier: three runs, on Novera's keys or on the workspace's own key if it has one.
+  if (!input.byok.connected || input.byokRequiresPlan) {
+    const onKey = input.byok.connected;
     candidates.push({
       source: "trial",
       planKey: null,
-      runsOn: "novera",
+      runsOn: onKey ? "own_key" : "novera",
       runsAllowed: input.trialLimit,
       runsUsed: input.trialRunsUsed,
       windowEndsAt: null,
       features: [...FEATURES],
       grantId: null,
+      subscriptionId: null,
       exhausted: input.trialRunsUsed >= input.trialLimit
-        ? `The trial covers ${input.trialLimit} runs and they have been used.`
-        : null,
+        ? {
+            reason: onKey
+              ? `The trial covers ${input.trialLimit} runs and they have been used. From here, runs on your own model key need a plan: Team BYOK, or Agency Pro, which adds runs graded on Novera's keys.`
+              : `The trial covers ${input.trialLimit} runs and they have been used. Recurring testing needs a plan: Team BYOK grades on your own model key; Agency Pro adds 100 runs a month graded on Novera's keys.`,
+            blocker: "trial_used",
+          }
+        : onKey && !input.byok.routable ? unroutable(input.byok.provider) : null,
     });
   }
 
   const chosen = candidates.find((c) => !c.exhausted);
   const trialOf = (c: Candidate | undefined) => (c?.source === "trial" ? { used: input.trialRunsUsed, limit: input.trialLimit } : null);
   if (chosen) {
+    // Fair use applies whatever funds the run (0067 counts the same under a lock).
+    const guard = (input.runsInWindow ?? 0) >= FAIR_USE_RUNS
+      ? { reason: FAIR_USE_REFUSAL, blocker: "fair_use" as const }
+      : (input.runsInFlight ?? 0) >= MAX_RUNS_IN_FLIGHT
+        ? { reason: CONCURRENCY_REFUSAL, blocker: "concurrency" as const }
+        : null;
     return {
       source: chosen.source,
       planKey: chosen.planKey,
@@ -337,8 +395,11 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
       runsUsed: chosen.runsUsed,
       runsOn: chosen.runsOn,
       windowEndsAt: chosen.windowEndsAt,
-      canRun: true,
-      blockedReason: null,
+      canRun: !guard,
+      blockedReason: guard?.reason ?? null,
+      blocker: guard?.blocker ?? null,
+      judgeSource: judgeSourceFor(chosen.source, chosen.runsOn),
+      funding: { subscriptionId: chosen.subscriptionId, grantId: chosen.grantId },
       features: chosen.features,
       subscription: sub,
       grantId: chosen.grantId,
@@ -346,8 +407,11 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
     };
   }
 
+  // Nothing has room. A subscription that stopped counting explains more than "the trial is
+  // used": it is what the person was paying for.
   const first = candidates[0];
-  if (first) {
+  const lapsed = sub && !sub.inForce && first?.source === "trial";
+  if (first && !lapsed) {
     return {
       source: first.source,
       planKey: first.planKey,
@@ -356,7 +420,10 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
       runsOn: first.runsOn,
       windowEndsAt: first.windowEndsAt,
       canRun: false,
-      blockedReason: first.exhausted,
+      blockedReason: first.exhausted!.reason,
+      blocker: first.exhausted!.blocker,
+      judgeSource: null,
+      funding: { subscriptionId: null, grantId: null },
       // Out of runs is not out of evidence: everything else the source grants stays.
       features: first.features.filter((f) => f !== "runs.start"),
       subscription: sub,
@@ -374,11 +441,34 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
     windowEndsAt: null,
     canRun: false,
     blockedReason: sub && !sub.inForce
-      ? sub.sentence
+      ? `${sub.sentence} Runs need a plan in force; the trial's ${input.trialLimit} runs have been used.`
       : "Nothing allows new runs in this workspace. Every run and report already here stays readable.",
+    blocker: sub && !sub.inForce ? "subscription_lapsed" : "needs_plan",
+    judgeSource: null,
+    funding: { subscriptionId: null, grantId: null },
     features: [...READ_ONLY_FEATURES],
     subscription: sub,
     grantId: null,
-    trial: null,
+    trial: lapsed ? { used: input.trialRunsUsed, limit: input.trialLimit } : null,
   };
+}
+
+/** One line naming what funds runs in this workspace, from the decision above. */
+export function fundingLine(e: BillingEntitlement, ownKey: boolean): string {
+  const plan = e.planKey ? PLAN_CATALOG[e.planKey].name : null;
+  const left = (allowed: number, used: number) => `${Math.max(0, allowed - used)} of ${allowed}`;
+  switch (e.source) {
+    case "trial":
+      return `Trial${ownKey ? " · own key" : ""} · ${left(e.trial?.limit ?? e.runsAllowed ?? 0, e.trial?.used ?? e.runsUsed)} runs left`;
+    case "subscription":
+      return e.runsOn === "own_key" || e.runsAllowed === null
+        ? `${plan} · own key`
+        : `${plan} · ${left(e.runsAllowed, e.runsUsed)} managed runs left`;
+    case "manual_grant":
+      return e.runsAllowed === null ? "Grant from Novera" : `Grant · ${left(e.runsAllowed, e.runsUsed)} runs left`;
+    case "byok":
+      return "Own key";
+    case "none":
+      return "No plan";
+  }
 }

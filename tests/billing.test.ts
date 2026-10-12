@@ -495,9 +495,11 @@ test("sources do not add up: grant before subscription before own key before tri
   assert.equal(unroutable.canRun, false);
   assert.match(unroutable.blockedReason!, /no model recorded/);
 
-  const requiresPlan = resolveEntitlement({ ...base, byok: { connected: true, routable: true, provider: "groq" }, byokRequiresPlan: true });
-  assert.equal(requiresPlan.source, "none");
-  assert.deepEqual(requiresPlan.features, READ_ONLY_FEATURES, "with nothing in force, evidence stays readable and exportable");
+  // D3: with a key, the trial still applies first; once used, a key alone starts nothing.
+  const requiresPlan = resolveEntitlement({ ...base, trialRunsUsed: 3, byok: { connected: true, routable: true, provider: "groq" }, byokRequiresPlan: true });
+  assert.deepEqual([requiresPlan.source, requiresPlan.canRun, requiresPlan.blocker], ["trial", false, "trial_used"]);
+  assert.ok(requiresPlan.features.includes("evidence.read") && requiresPlan.features.includes("reports.export"), "out of runs, evidence stays readable and exportable");
+  assert.ok(!requiresPlan.features.includes("runs.start"));
 
   const grant = {
     id: "g1", kind: "pilot" as const, planKey: "agency_pro", runsAllowed: 2,
@@ -684,3 +686,5 @@ test("each plan card offers exactly what can happen: subscribe, manage, change, 
   assert.equal(planAction({ ...base, hasCustomer: true, subscription: view("team_byok", "restricted") }).kind, "portal", "a restricted plan is fixed in the portal, never bought twice");
   assert.equal(planAction({ ...base, subscription: view("team_byok", "ended") }).kind, "checkout", "an ended plan can be bought again");
 });
+
+

@@ -15,7 +15,7 @@ const INVITE = /^\/invite\/[A-Za-z0-9_-]{16,128}$/;
 // `/settings/members`). Five fixed pages were too few: a signed-out person opening a run lost
 // where they were going and landed on the dashboard (app-wide audit, 2026-10-08). Still path
 // only, from a fixed set of first segments, with nothing but ids after them.
-const SECTION = /^\/(?:agents|runs|reports|review|scenarios|regressions|builder|workspaces|settings|inbox)(?:\/[A-Za-z0-9-]{1,64}){0,2}$/;
+const SECTION = /^\/(?:agents|runs|reports|review|scenarios|regressions|builder|workspaces|settings|inbox|billing)(?:\/[A-Za-z0-9-]{1,64}){0,2}$/;
 
 export function safeNext(raw: string | null | undefined, fallback = "/dashboard"): string {
   if (!raw || typeof raw !== "string" || raw.length > 300) return fallback;

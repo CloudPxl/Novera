@@ -33,3 +33,17 @@ test("someone delivering to clients starts with a client workspace", () => {
   assert.equal(nextAction({ ...base, goal: "client_delivery", hasAgent: false }).href, "/workspaces");
   assert.equal(nextAction({ ...base, goal: "client_delivery", hasAgent: false, workspaces: 2 }).href, "/agents/new");
 });
+
+test("a run blocked on payment points at Billing, not at Settings", () => {
+  const reason = "The trial covers 3 runs and they have been used. Recurring testing needs a plan…";
+  const billing = nextAction({ ...base, hasRun: false, blockedReason: reason, blockedRemedy: { href: "/billing", label: "Choose a plan" } });
+  assert.deepEqual([billing.href, billing.label, billing.title], ["/billing", "Choose a plan", "Choose a plan to keep testing"]);
+  const key = nextAction({ ...base, hasRun: false, blockedReason: reason, blockedRemedy: { href: "/settings", label: "Connect a model key" } });
+  assert.equal(key.href, "/settings");
+});
+
+test("after earlier runs, a blocked workspace is not told to run again", () => {
+  const blocked = nextAction({ ...base, blockedReason: "The trial covers 3 runs…", blockedRemedy: { href: "/billing", label: "Choose a plan" } });
+  assert.equal(blocked.href, "/billing");
+  assert.equal(nextAction(base).label, "Run again");
+});

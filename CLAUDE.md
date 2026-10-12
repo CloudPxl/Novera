@@ -60,6 +60,7 @@ someone with the service role, not merely someone using the application.
 | An emailed link signs in only the browser that asked for it: a `token_hash` confirmation confirms the address and starts no session, magic-link and invite links are refused, and a password reset needs a fifteen-minute, single-use recovery context set where a recovery link is spent — a bare `token_hash` reset is verified without cookies and never signs the browser in (its session travels sealed inside the context), and a PKCE code mints one only when GoTrue stamped the session `recovery` | `src/app/auth/confirm/route.ts`, `src/app/auth/callback/handle.ts`, `src/lib/auth/recovery.ts`, `tests/auth.test.ts` |
 | A workspace with its own model key has all of its model work — grading, diagnosis, drafting, Suite Builder extraction, Ask Novera — served on that key, never ours, and each operation is recorded with funding, provider and model, never content; Ask Novera shows no figure its inputs do not contain | `src/lib/providers/model-work.ts` (`resolveConnections`), 0059, `tests/model-work.test.ts` |
 | Billing truth comes from Stripe's signed webhook, each event handled once, never from the browser returning from Checkout; live keys are refused unless explicitly allowed; a plan sells only at its approved catalog price, checked against Stripe's before checkout; a deployment reads only its own Stripe mode's rows (preview and production share one database), so a sandbox subscription never shows, blocks erasure or blocks a live checkout; erasure is refused while Stripe could still charge; a subscription change never deletes evidence | 0060, 0065, 0066, `src/lib/billing/`, `tests/billing.test.ts`, `docs/BILLING-DECISIONS.md` |
+| After the trial, a run starts only when a subscription or grant in force funds it, own key or not (D3), and the run names which, frozen; a plan's managed runs on Novera's keys are `plan_managed` (never called the trial) and counted against its period allowance; fair use on every plan — 3 runs in progress, 1,000 per 30 days — counted under a per-workspace lock however many starts race; every refusal names its kind and the place it is resolved | 0067, `resolveEntitlement` via `workspaceEntitlement` in `startRun`, `src/lib/billing/limits.ts`, `remedy.ts`, `tests/entitlement.test.ts`, `verify:byok` |
 | A workspace export is owner/admin, one-time and short-lived, carries no token, secret or key hash, and leaves a receipt with its SHA-256 — never the file | 0061, `src/lib/export/`, `verify:export` |
 | A stored agent or read-back credential never follows its address to another host: moving an agent to a new host needs the credential pasted again or removed, and a moved or removed read-back drops its credential | `parseConnectionEdit` (`src/lib/agents/connection.ts`), `saveVerificationEndpoint`, `tests/agent-connection.test.ts` |
 | A destructive or fixture-only scenario never runs against a production agent; an agent is production until an owner or admin marks it a test target, confirmed and audited | `agents.is_production`, checked in the runner; `setAgentEnvironment`, 0057 |
@@ -158,7 +159,8 @@ the attack in its message instead: that would be a different test under the same
 
 Next.js 16 (App Router, `src/`, TypeScript) · Tailwind 4 · Supabase (Postgres + auth +
 RLS, **Frankfurt / eu-central-1**) · Vercel Hobby, functions pinned to `fra1` · Resend.
-Judge funding is hybrid: our free-tier key for trials, the customer's own key otherwise —
+Judge funding is hybrid: our free-tier key for trials and for Agency Pro's managed runs
+(`plan_managed`), the customer's own key otherwise —
 and **a workspace with its own key is graded on that key alone**, because the report
 states who funded the grading. That key's route is built from the models the customer
 named and we proved, not from `DEFAULT_ROUTES`, which names *our* connections: pairing
@@ -241,7 +243,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 787 unit tests | free |
+| `npm test` | 797 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -341,9 +343,10 @@ they drive the scripted fixture at `/api/test-agent`.
 
 - **Prices are approved (2026-10-12), not live.** Team BYOK €99/month (unlimited on your own
   key), Agency Pro €299/month (plus 100 runs a period on Novera's keys), trial 3 runs. Shown on
-  Settings → Billing; checkout refuses a Stripe price that differs from the catalog. Before live:
-  run gating and a plan-funded `judge_source` (Agency Pro's managed runs cannot be spent yet),
-  decision D3, VAT display, and the public "nothing to pay us" copy (`docs/BILLING-DECISIONS.md`).
+  Settings → Billing (`/billing`); checkout refuses a Stripe price that differs from the catalog.
+  D3 decided 2026-10-12: after the trial every run needs a plan or grant (0067). Before live: VAT
+  display, a funded grading budget for Agency Pro's managed runs, and publishing prices on the
+  home page (it names the plans only) (`docs/BILLING-DECISIONS.md`).
 - **Two grading vendors, not three.** No OpenAI or Anthropic key is configured (the
   2026-09-22 OpenAI key had no credits). Independence currently means groq + mistral. A
   funded key is one env line; `verify:models` then prints the calibration command, and the
@@ -360,7 +363,7 @@ they drive the scripted fixture at `/api/test-agent`.
 - **A judge key stored before 2026-09-24 has no models recorded**, so it falls back to
   whatever `DEFAULT_ROUTES` measures on that connection — which is groq only. Any other
   provider's legacy key refuses the run with a sentence saying to reconnect it.
-- **Billing is built for the Stripe sandbox and is not active.** No Stripe keys are configured; runs are not gated by billing until decisions D2/D3 (`docs/BILLING-DECISIONS.md`). Legal pages under `/legal` are drafts, noindex and unlinked, until counsel signs off.
+- **Billing is built for the Stripe sandbox and is not active, but it gates runs (D3, 0067).** No Stripe keys are configured, so nothing can be bought: a workspace past its trial runs only under a manual grant (SQL in `docs/BILLING-DECISIONS.md` §1). Legal pages under `/legal` are drafts, noindex and unlinked, until counsel signs off.
 - **Production sends no email** (audit 2026-10-08, `docs/setup/sign-in-and-email.md`). The
   Resend variables are empty in Vercel, and Resend refuses the local key because `nover.space`
   is not verified there. Supabase custom SMTP needs the same verified key, and manual identity

@@ -65,7 +65,7 @@ row says which it was.
 | P3 | Webhook, Checkout, Portal: signature-checked, idempotent | Code | PASS (offline) | 28 tests with signed payloads (now also mode isolation, the read race, a retried unreadable subscription). **Not run against a Stripe sandbox:** as configured on 2026-10-11 the price variables have names the code never reads, there is no Preview deployment, and the destination points at production, which holds no keys (503) | Sandbox setup corrected per `docs/BILLING-DECISIONS.md` §5/§7 |
 | P3b | Sandbox rows never count in production | Code | PASS | `storedLivemode`, 0065 (production 2026-10-11); tests | — |
 | P3c | Approved prices: Team BYOK €99, Agency Pro €299 a month; cards, allowances, price check | Code | PASS | 0066; `priceMismatch`, `planAction`, entitlement tests; page rendered locally billing-off and sandbox at 390/1440, axe clean; a fake-key checkout refused with nothing created | Sandbox prices at exactly €99.00 / €299.00 |
-| P3d | Agency Pro's managed runs can be spent; billing decides run starts | Code + David | **BLOCKED** | Not wired: past the trial, runs on Novera's keys are refused (0055) | D3; plan-funded `judge_source`; a funded grading budget |
+| P3d | Agency Pro's managed runs can be spent; billing decides run starts | Code + David | PASS (code) | 0067 (D3 decided 2026-10-12): `startRun` refuses an unfunded run; `plan_managed` counted per period under a lock; fair use 3 in progress / 1,000 per 30 days. Local: 12 racing starts → 3 accepted, 101st managed and 1,001st run refused, `verify:byok` 30/30, UI walk 40/40 | A funded grading budget before Agency Pro is sold live; manual grants for anyone past the trial until billing opens |
 | P4 | Billing page, off without configuration | Code | PASS | Production: `/settings/billing` behind sign-in; says "Billing is not active yet" without keys | — |
 | P4b | Erasure never orphans a subscription | Code | PASS | Local: refused while active; allowed once ending at period end | — |
 | P5 | Live activation | David | **BLOCKED** | — | Entity, tax registration, prices, lawyer and accountant sign-off |
@@ -77,7 +77,7 @@ row says which it was.
 | L1 | Privacy, terms, DPA, sub-processors, imprint, cookies, acceptable use, security, AI testing scope, refunds | Counsel | **BLOCKED** (drafts done) | Production: `/legal/*` 200, `noindex`, draft banner; `tests/legal.test.ts` (no compliance wording; placeholders) | `docs/legal-inputs-required.md`; not linked from the site until approved |
 | L2 | Questions for counsel and accountant | Code | PASS | `docs/LEGAL-COUNSEL-QUESTIONS.md` (35 questions; 35: the attester's email in sealed reports) | — |
 | L3 | A privacy notice where personal data is collected (sign-up, support, apply) | Counsel + David | **BLOCKED** | No page links a privacy notice; `/legal` is draft and unlinked | Approved privacy notice, then link it from those forms |
-| L4 | Public commercial copy matches the pricing decision | David | **BLOCKED** | Home page and docs say "there is nothing to pay us" on your own key; D3 undecided | Decide D3, then align the copy |
+| L4 | Public commercial copy matches the pricing decision | David | PASS | D3 decided 2026-10-12. The home page and `/docs/the-trial-and-your-own-key` say: 3 free runs, then a plan (Team BYOK or Agency Pro). No prices published yet | Publish prices when billing opens |
 
 ## External steps (David), in order
 

@@ -178,3 +178,65 @@ one of them is a proposal for counsel, not a decision.
 Answers for Romania may not hold elsewhere. Flag where German (imprint, consumer, liability), UK
 (UK GDPR, transfers back to the EU) or other targeted countries' rules differ, so the drafts can say
 which jurisdiction each clause assumes.
+
+## Everything still pending (as of 2026-10-13)
+
+Every item below is open, waiting, or not yet confirmed. The questions above are unanswered; this list
+is everything else that stands between today and a pilot or a paid launch. Live status:
+the staff-only `/readiness` page. Ledger: `docs/LAUNCH-READINESS.md`.
+
+### For counsel
+
+- Questions 1–42 above: none answered yet.
+- Review and approve every draft legal text (L1): privacy, terms, DPA, sub-processors, imprint, cookies, acceptable use, security, AI testing scope, refunds. All are `noindex` with the draft banner until approved.
+- A privacy notice linked wherever personal data is collected: sign-up, support, apply (L3). Needs the approved privacy notice first.
+- Governing law and forum (Romanian law, Bucharest courts proposed; no arbitration).
+- How and how early changes to the terms and sub-processors are announced.
+- The effective date of the legal texts (after sign-off).
+- Whether an attestation names a person, a role or an id (it is sealed into reports and survives account deletion).
+- Consent for first-party product events (the analytics salt question).
+- The public page `/solutions/eu-ai-act` names AI Act articles (counted from the suite's duty references) and is live: review its wording.
+- The report wording "testing evidence, not a certification" across reports, exports, `/verify` and the print footer: confirm it is enough.
+
+### For the accountant
+
+- Legal form: PFA, SRL or another (with David).
+- VAT: prices shown with or without VAT (D1); reverse-charge invoice wording; VIES validation; invalid VAT numbers; non-EU customers (question 42). Stripe Tax stays off until answered.
+- Romanian VAT registration status and any recapitulative statements.
+
+### For David: the legal entity and the paid launch
+
+- Register the entity and fill `data/legal/entity.ts`: legal name, form, registered office, Trade Register number, CUI, VAT ID if any, share capital for an SRL, representative, phone (L7). Live checkout refuses until it is complete.
+- Live activation (P5): Stripe account for the entity, live products and prices, live webhook and Customer Portal, then `BILLING_ALLOW_LIVE`.
+- Publish prices only after the entity exists and billing is live (no prices on any public page, structured data or card until then).
+- Commercial decisions still open: grace period after a failed payment (D5); Stripe's "after all retries fail" setting (D6); a free trial on a paid plan (D7); proration on upgrades and downgrades (D8); features gated by plan (D10); a funded grading budget for Agency Pro's managed runs.
+- Service level, support hours and response targets.
+- Hosting tier that allows a paid product: Vercel Pro before charging (O12).
+
+### For David: configuration and operations
+
+- Remove `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_TEAM_BYOK` and `STRIPE_PRICE_AGENCY_PRO` from Vercel Production; keep them in Preview (L8). Production currently refuses the test key, so billing there is off.
+- Point the Stripe sandbox webhook at a Preview deployment with a protection bypass, then run the sandbox end to end with a throwaway workspace.
+- Production email (A1): Resend domain verified, Supabase custom SMTP, then a live test of confirmation, reset, invitation and support reply.
+- Mailboxes for `support@` and `dmarc@nover.space`: there is no MX record, so mail to them bounces (O13).
+- Google and GitHub identity linking: the setting is reported on but not independently proven in production (D).
+- Production backups and a restore point; RTO and RPO (O11).
+- An uptime check on `/api/health` and an error destination, such as a Sentry EU DSN (O10).
+- A third, independent grading vendor: a funded key, then calibration before it grades (O8).
+- `npm run seed:docs` against production, so the three integration guides answer (they are in the sitemap and `llms.txt` already).
+- Manual grants for the two production workspaces past their trial, or not (`docs/BILLING-DECISIONS.md` §1).
+- Search Console and Bing Webmaster verification (a DNS TXT record).
+- GitHub `main` branch protection: confirm the ruleset is active and enforced.
+- Delete the 2026-10-08 audit account (only on David's explicit word).
+- Publish the CLI package (`novera-cli`), or keep it private.
+
+### Not yet confirmed in code or production
+
+- The production deploys of `4a1d6e6` and `e355347` were not checked after pushing.
+- `/readiness` reads three repo documents at request time; the build traces them, but reading them on Vercel is unproven until the first visit there.
+- Print and PDF were checked as print-media screenshots only; no PDF was rendered to images. The run page's "Not sealed" print line has not been seen in a browser.
+- Scheduled jobs in production (`verify:cron`) were last checked on 2026-10-11.
+- `reports.content_hash` has no index; `/verify` scans the table (fine at today's size; a migration when it grows).
+- An agency workspace with one client workspace: the dashboard's main button says "Add a client workspace" while the setup rail says "Connect your agent".
+- Web manifest and Apple touch icon (SEO track) not added.
+- The new `/support` and `/apply` page descriptions were written by Claude and are not yet reviewed by David.

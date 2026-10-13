@@ -30,7 +30,7 @@ export type Block =
   | { kind: "paragraph"; spans: Span[] }
   | { kind: "list"; ordered: boolean; items: Span[][] }
   /** A fenced block, kept verbatim — line breaks and blank lines included. */
-  | { kind: "codeblock"; text: string };
+  | { kind: "codeblock"; text: string; /** The word after the opening fence, if any. */ lang: string | null };
 
 /**
  * `[link](href)`, `**strong**`, `*em*` and `` `code` ``, in that precedence. A link's target is a
@@ -70,14 +70,16 @@ const ORDERED = /^\s*\d+\.\s+(.*)$/;
  * A fenced block is cut out before anything else, because it may contain blank lines
  * (a workflow file does) and the prose below is split on exactly those.
  */
-const FENCE = /^```[^\n]*\n([\s\S]*?)\n```[ \t]*$/gm;
+const FENCE = /^```([^\n]*)\n([\s\S]*?)\n```[ \t]*$/gm;
 
 export function parseDocBody(body: string): Block[] {
   const blocks: Block[] = [];
   let last = 0;
   for (const match of body.matchAll(FENCE)) {
     parseProse(body.slice(last, match.index), blocks);
-    blocks.push({ kind: "codeblock", text: match[1] });
+    // The language is a label, not an instruction: only a plain word is kept.
+    const lang = /^[A-Za-z][\w+-]{0,19}$/.exec(match[1].trim())?.[0] ?? null;
+    blocks.push({ kind: "codeblock", text: match[2], lang });
     last = match.index + match[0].length;
   }
   parseProse(body.slice(last), blocks);

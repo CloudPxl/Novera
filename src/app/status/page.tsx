@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo/site.ts";
 import Link from "next/link";
 import { SiteHeader } from "@/app/_home/site-header.tsx";
 import { currentUser } from "@/lib/auth/session.ts";
 import { currentStatus, overall, type ComponentState } from "@/lib/status/status.ts";
 
-export const metadata: Metadata = {
-  title: "Status · Novera",
+export const metadata: Metadata = pageMetadata({
+  title: "Status",
   description: "The state of Novera's components, as last set by the operator.",
-};
+  path: "/status",
+});
 // Per request, like every page: the CSP nonce comes from the request (src/proxy.ts).
 export const dynamic = "force-dynamic";
 

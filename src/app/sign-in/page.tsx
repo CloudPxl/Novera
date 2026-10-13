@@ -1,3 +1,4 @@
+import { pageMetadata } from "@/lib/seo/site.ts";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -8,7 +9,12 @@ import { problemMessage } from "../auth/confirm/problems.ts";
 import { enabledProviders } from "@/lib/auth/providers.ts";
 import { safeNext } from "@/lib/auth/redirects.ts";
 
-export const metadata: Metadata = { title: "Sign in · Novera" };
+export const metadata: Metadata = pageMetadata({
+  title: "Sign in",
+  description: "Sign in to Novera or create an account to test an AI support agent you operate.",
+  path: "/sign-in",
+  index: false,
+});
 
 export default async function SignInPage({
   searchParams,

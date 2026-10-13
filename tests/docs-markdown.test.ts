@@ -78,6 +78,8 @@ test("every published page in the corpus parses, and none renders its own syntax
     assert.ok(blocks.length > 0, `${file} produced no blocks`);
 
     for (const block of blocks) {
+      // A fenced block is code: a backtick or a leading `#` is the code's own.
+      if (block.kind === "codeblock") continue;
       const text = plainText(block);
       assert.doesNotMatch(text, /`/, `${file} renders a literal backtick: ${text.slice(0, 60)}`);
       assert.doesNotMatch(text, /^#{1,6} /, `${file} renders a literal heading marker`);

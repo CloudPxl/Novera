@@ -27,7 +27,9 @@ proceed without them.
 3. Decide on manual grants for the two production workspaces past their trial (`docs/BILLING-DECISIONS.md` §1).
 4. Search Console and Bing Webmaster verification: a DNS TXT record (track 1).
 
-## Track 1: technical SEO (first)
+## Track 1: technical SEO (first) — built 2026-10-13
+
+Done: metadataBase, title template, canonicals and OG/Twitter on public pages, `/api/og`, JSON-LD (SoftwareApplication, TechArticle, BreadcrumbList), sitemap and robots, starter SVGs removed, `tests/seo.test.ts`. Also `/verify`, `/solutions/*`, `/llms.txt`, `/api/v1/openapi.json` and three integration guides. Left: web manifest and Apple touch icon; prices in JSON-LD once published; Search Console.
 
 Measured 2026-10-13:
 - `robots.ts` and `sitemap.ts` exist and are correct about what is private.

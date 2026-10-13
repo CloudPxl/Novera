@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo/site.ts";
 import Link from "next/link";
 import { SiteHeader } from "@/app/_home/site-header.tsx";
 import { currentUser } from "@/lib/auth/session.ts";
 import { GUIDE_STEPS, GUIDE_TERMS } from "@/lib/guide/content.ts";
 
-export const metadata: Metadata = {
-  title: "How to use Novera · Guide",
+export const metadata: Metadata = pageMetadata({
+  title: "How to use Novera: guide",
   description: "Step by step: connect an agent, write its policy, run the suite, read the results and share the report.",
-};
+  path: "/guide",
+});
 export const dynamic = "force-dynamic";
 
 export default async function GuidePage() {

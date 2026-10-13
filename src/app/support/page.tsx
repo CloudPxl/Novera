@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo/site.ts";
 import Link from "next/link";
 import { SiteHeader } from "@/app/_home/site-header.tsx";
 import { currentUser } from "@/lib/auth/session.ts";
@@ -8,7 +9,11 @@ import { InboundForm } from "./form.tsx";
 // rendering, and a page built once at build time has no request to take one from.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "Support · Novera" };
+export const metadata: Metadata = pageMetadata({
+  title: "Support",
+  description: "Ask a question about Novera. Answers draw only on the published documentation and cite it; anything else goes to a person.",
+  path: "/support",
+});
 
 export default async function SupportPage() {
   const signedIn = Boolean(await currentUser());

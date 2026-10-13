@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
+import { DEFAULT_DESCRIPTION, pageMetadata } from "@/lib/seo/site.ts";
+import { JsonLd } from "@/components/seo/json-ld.tsx";
+import { breadcrumbLd, techArticleLd } from "@/lib/seo/json-ld.ts";
 import Link from "next/link";
 import { SiteHeader } from "@/app/_home/site-header.tsx";
 import { currentUser } from "@/lib/auth/session.ts";
 import { notFound } from "next/navigation";
 import { sessionClient } from "@/lib/supabase/server.ts";
+import { CodeBlock } from "@/components/docs/code-block.tsx";
 import { parseDocBody, type Span } from "@/lib/docs/markdown.ts";
 
 export const dynamic = "force-dynamic";
@@ -16,8 +20,13 @@ export async function generateMetadata({
   const { slug } = await params;
   const db = await sessionClient();
   const { data } = await db.from("doc_pages").select("title, body").eq("slug", slug).eq("published", true).maybeSingle();
-  if (!data) return { title: "Novera" };
-  return { title: `${data.title} · Novera`, description: describe(data.body as string), alternates: { canonical: `/docs/${slug}` } };
+  if (!data) return { title: "Not found", robots: { index: false, follow: false } };
+  return pageMetadata({
+    title: data.title as string,
+    description: describe(data.body as string) ?? DEFAULT_DESCRIPTION,
+    path: `/docs/${slug}`,
+    type: "article",
+  });
 }
 
 /** The page's first paragraph as plain text, for search results and link previews. */
@@ -78,6 +87,19 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
 
   return (
     <>
+      <JsonLd data={[
+        techArticleLd({
+          headline: page.title as string,
+          description: describe(page.body as string),
+          path: `/docs/${slug}`,
+          dateModified: page.updated_at ? new Date(page.updated_at as string).toISOString() : null,
+        }),
+        breadcrumbLd([
+          { name: "Novera", path: "/" },
+          { name: "Documentation", path: "/docs" },
+          { name: page.title as string, path: `/docs/${slug}` },
+        ]),
+      ]} />
       <SiteHeader signedIn={signedIn} />
       <main id="main" className="mx-auto w-full max-w-2xl bg-surface px-6 py-10 text-ink sm:px-8">
         <Link href="/docs" className="text-sm text-ink-faint underline-offset-2 hover:underline">
@@ -127,17 +149,7 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
             }
 
             if (block.kind === "codeblock") {
-              // Verbatim text in a text node — never markup. Focusable so a keyboard
-              // user can scroll a line wider than the column.
-              return (
-                <pre
-                  key={i}
-                  tabIndex={0}
-                  className="overflow-x-auto rounded-control border border-line bg-sunken p-3 font-mono text-[13px] leading-relaxed text-ink"
-                >
-                  <code>{block.text}</code>
-                </pre>
-              );
+              return <CodeBlock key={i} id={`code-${i}`} text={block.text} lang={block.lang} />;
             }
 
             return (

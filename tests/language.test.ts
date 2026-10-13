@@ -71,8 +71,15 @@ const SURFACES = [
   "src/app/page.tsx",
   "src/app/sample-report.tsx",
   ...readdirSync("src/app/_home").filter((f) => f.endsWith(".tsx")).map((f) => `src/app/_home/${f}`),
+  ...readdirSync("src/app/solutions", { recursive: true, encoding: "utf8" })
+    .filter((f) => /\.tsx?$/.test(f))
+    .map((f) => `src/app/solutions/${f}`),
   "src/app/support/page.tsx",
   "src/app/apply/page.tsx",
+  "src/app/verify/page.tsx",
+  "src/app/verify/[hash]/page.tsx",
+  "src/app/verify/digest-form.tsx",
+  "src/lib/report/public-verify.ts",
   ...readdirSync("data/docs").filter((f) => f.endsWith(".md")).map((f) => `data/docs/${f}`),
 ];
 

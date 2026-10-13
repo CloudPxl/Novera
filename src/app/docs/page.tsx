@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo/site.ts";
+import { JsonLd } from "@/components/seo/json-ld.tsx";
+import { breadcrumbLd, collectionPageLd } from "@/lib/seo/json-ld.ts";
 import Link from "next/link";
 import { SiteHeader } from "@/app/_home/site-header.tsx";
 import { currentUser } from "@/lib/auth/session.ts";
@@ -7,7 +10,11 @@ import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card } from "@/components/ui/primitives.tsx";
 import { parseDocBody, plainText } from "@/lib/docs/markdown.ts";
 
-export const metadata: Metadata = { title: "Documentation · Novera" };
+export const metadata: Metadata = pageMetadata({
+  title: "Documentation",
+  description: "How Novera works: connecting an agent, policies and scenarios, reports and their limits, the API, MCP server and CLI.",
+  path: "/docs",
+});
 export const dynamic = "force-dynamic";
 
 export default async function DocsIndex() {
@@ -18,6 +25,10 @@ export default async function DocsIndex() {
 
   return (
     <>
+      <JsonLd data={[
+        collectionPageLd({ name: "Documentation", description: "How Novera works: connecting an agent, policies and scenarios, reports and their limits, the API, MCP server and CLI.", path: "/docs" }),
+        breadcrumbLd([{ name: "Novera", path: "/" }, { name: "Documentation", path: "/docs" }]),
+      ]} />
       <SiteHeader signedIn={signedIn} />
       <main id="main" className="mx-auto w-full max-w-3xl bg-surface px-6 py-10 text-ink sm:px-8">
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">Documentation</h1>

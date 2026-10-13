@@ -4,15 +4,24 @@ import type { ReactNode } from "react";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { currentUser } from "@/lib/auth/session.ts";
 import { Reveal } from "@/components/ui/reveal.tsx";
+import { JsonLd } from "@/components/seo/json-ld.tsx";
+import { softwareApplicationLd } from "@/lib/seo/json-ld.ts";
+import { DEFAULT_TITLE, pageMetadata } from "@/lib/seo/site.ts";
 import { SampleReport } from "./sample-report.tsx";
 import { SiteHeader } from "./_home/site-header.tsx";
 import { Instruments } from "./_home/instruments.tsx";
 import { Workflow } from "./_home/workflow.tsx";
 
 export const metadata: Metadata = {
-  title: "Novera — evidence your AI agent behaves as your policies require",
-  description:
-    "Run a versioned scenario suite against an AI support agent you operate and produce a dated, hash-sealed report you can hand to a client.",
+  ...pageMetadata({
+    title: DEFAULT_TITLE,
+    description:
+      "Run a versioned scenario suite against an AI support agent you operate and produce a dated, hash-sealed report you can hand to a client.",
+    path: "/",
+    cardTitle: "Evidence your AI agent behaves as your policies require",
+  }),
+  // The layout's template would append the site name to a title that already carries it.
+  title: { absolute: DEFAULT_TITLE },
 };
 
 /**
@@ -35,6 +44,7 @@ export default async function Home() {
 
   return (
     <div className="bg-surface text-ink">
+      <JsonLd data={softwareApplicationLd()} />
       <SiteHeader signedIn={signedIn} />
 
       <main id="main">
@@ -338,7 +348,7 @@ export default async function Home() {
             <p className="flex items-center gap-2 font-semibold"><span aria-hidden className="grid size-6 place-items-center rounded-[0.375rem] bg-ink text-[11px] font-bold text-on-ink">N</span>Novera</p>
             <p className="mt-3 max-w-xs leading-relaxed text-ink-faint">Evidence that an AI support agent behaves as its written policy requires. Database in Frankfurt (EU).</p>
           </div>
-          <FooterCol title="Product" links={[["How it works", "/#how-it-works"], ["Step-by-step guide", "/guide"], ["Sign in", "/sign-in"]]} />
+          <FooterCol title="Product" links={[["How it works", "/#how-it-works"], ["Step-by-step guide", "/guide"], ["Solutions", "/solutions"], ["Verify a report", "/verify"], ["Sign in", "/sign-in"]]} />
           <FooterCol title="Documentation" links={[["All documentation", "/docs"], ["Data and privacy", "/docs/data-and-privacy"], ["Limitations", "/docs/limitations"], ["CLI and CI", "/docs/cli-and-ci"]]} />
           <FooterCol title="People" links={[["Support", "/support"], ["Talk to us first", "/apply"]]} />
         </div>

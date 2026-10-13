@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 
-export const metadata: Metadata = { title: "Not found · Novera" };
+export const metadata: Metadata = { title: "Not found", robots: { index: false, follow: false } };
 
 /**
  * Every unknown path, and every run or agent a signed-in person cannot see.

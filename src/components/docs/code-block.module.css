@@ -1,0 +1,26 @@
+/* Token colours come from the design tokens in globals.css; all are 4.5:1 or better on
+   --color-sunken, which is the block's background. Classes, not inline styles: the CSP is
+   nonce-based and a style attribute is not what it is for. */
+.t-comment { color: var(--color-ink-faint); font-style: italic; }
+.t-string { color: var(--color-pass-text); }
+.t-number { color: var(--color-high-text); }
+.t-keyword { color: var(--color-fail-text); }
+.t-key { color: var(--color-info-text); }
+.t-variable { color: var(--color-high-text); }
+.t-plain { color: var(--color-ink); }
+
+/* The copy button sits in the header bar, always visible: a control that appears only on
+   hover is unreachable on a phone. Keyboard focus gets the global focus ring from globals.css. */
+.copy {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0.35rem 0.6rem;
+  min-height: 28px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.copy:hover { background: var(--color-ground); border-color: var(--color-ink-faint); }

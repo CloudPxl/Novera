@@ -17,15 +17,16 @@ The audit started at HEAD `e4a7f50`. Its fixes are in the commit that adds this 
 | `npm run lint` | exit 0 |
 | `npm run build` | exit 0, 68 routes |
 | `migrate -- --check`, production | 0 pending, 0 disagreements between ledger and files |
-| `verify:free`, local | 15 verifiers pass. `verify:retention` and `verify:cron` exit 2 (no pg_cron locally, as always). `verify:schedules` refused to start: see below |
+| `verify:free`, local | 15 verifiers pass. `verify:retention` and `verify:cron` exit 2 (no pg_cron locally, as always). `verify:schedules` passes after the leftover schedule was paused: see below |
 | `verify:billing` (new), local | 27/27 |
 | `verify:effect`, `verify:channel`, `verify:compiler`, `verify:conversation`, local | all pass (real free-tier model calls) |
 
-**`verify:schedules` did not run.** It refuses to tick while any schedule outside a verifier
-workspace is due, because a local tick would start it. One test schedule left over from the
-2026-10-08 walk is overdue in the local database. Pausing it was outside this audit's
-permissions. To rerun, pause it, or run the verifier once it has been handled. This is the
-guard working, not a product defect.
+**`verify:schedules` passed on the second attempt.** It first refused to tick, because a test
+schedule left over from the 2026-10-08 walk was overdue in the local database and a local tick
+would have started it. That was the guard working. David paused the schedule, and the rerun
+passed every check: three racing ticks start one run, the run is driven to the end, skip and
+pause, frozen fields, RLS, and erasure. CI and the Vercel deploy for this audit's commit
+succeeded.
 
 ## Proof matrix
 

@@ -135,6 +135,7 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
               return (
                 <Tag
                   key={i}
+                  start={block.ordered ? block.start : undefined}
                   className={`space-y-1 pl-5 text-[15px] leading-relaxed text-ink-soft ${
                     block.ordered ? "list-decimal" : "list-disc"
                   }`}

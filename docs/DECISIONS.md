@@ -4104,3 +4104,7 @@ Seal inspector (what the SHA-256 covers, derived from each payload format; copy;
 ## 2026-10-13: Search visibility and developer discovery
 
 Public `/verify` (digest recomputed from the stored payload; receipts noindex, never in the sitemap; nothing customer-identifying), `/solutions` + three pages (AI Act article counts recounted from eu-support duty_refs in a test), `/llms.txt`, OpenAPI 3.1 for the six real `/api/v1` operations (no reports endpoint exists, none invented), three integration guides with server-side highlighting and copy buttons, metadataBase/template/canonicals/OG card/JSON-LD/sitemap/robots. Held back from the brief: prices in JSON-LD (not published), a "Verified Compliance" badge (language rule), legal drafts in the sitemap (noindex until counsel).
+
+## 2026-10-13: Launch readiness as a web page
+
+The legal brief was already built (0068 and the `/legal` drafts); its tracker, launch gates, open decisions and counsel questions now render on a staff-only `/readiness` page. Status is computed from code and configuration (entity fields, publication controls, billing mode, mail settings, provider register), never showing a secret; gates that code cannot know read their row from `docs/LAUNCH-READINESS.md` and count only an exact PASS. No prices on public surfaces until the legal entity exists.

@@ -113,7 +113,7 @@ export function LegalBody({ blocks }: { blocks: LegalBlock[] }) {
         if (block.kind === "list") {
           const Tag = block.ordered ? "ol" : "ul";
           return (
-            <Tag key={i} className={`space-y-1.5 pl-5 text-[15px] leading-relaxed text-ink-soft ${block.ordered ? "list-decimal" : "list-disc"}`}>
+            <Tag key={i} start={block.ordered ? block.start : undefined} className={`space-y-1.5 pl-5 text-[15px] leading-relaxed text-ink-soft ${block.ordered ? "list-decimal" : "list-disc"}`}>
               {block.items.map((item, j) => <li key={j}><Spans spans={item} /></li>)}
             </Tag>
           );

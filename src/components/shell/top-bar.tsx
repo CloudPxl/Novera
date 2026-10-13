@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/primitives.tsx";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { Menu } from "@/components/ui/menu.tsx";
 import { menuItemClass } from "@/components/ui/menu-item.ts";
-import { NavLinks, type NavEntry } from "./nav-links.tsx";
+import { NavLinks, type NavEntry, type NavItem } from "./nav-links.tsx";
 import { fundingBadge } from "./funding-badge.ts";
 import { RunLauncher, type LaunchAgent, type LaunchSuite } from "./run-launcher.tsx";
 
@@ -83,7 +83,12 @@ export async function TopBar() {
         ...(mode === "enterprise" && can(role, "audit.view") ? [{ href: "/settings/audit", label: "Audit" }] : []),
         { href: "/settings", label: "Settings", also: ["/billing"] },
       ];
-  if (isStaff(user.email)) nav.push({ href: "/inbox", label: "Inbox" });
+  // Staff places (src/lib/auth/staff-list.ts): the inbound queue and launch readiness. Kept out of
+  // `nav` so they can leave the bar where it is full: agency and enterprise mode fill it at 1024
+  // (Readiness pushed it 77 px past the edge in enterprise mode), so there they sit in the bar
+  // from xl and in the menu below it. The compact personal bar has room from lg.
+  const staff: NavItem[] = isStaff(user.email) ? [{ href: "/inbox", label: "Inbox" }, { href: "/readiness", label: "Readiness" }] : [];
+  const compactNav = mode === "personal" && !multi;
   const funding = entitlement.fundingLine;
   const badge = fundingBadge(entitlement);
   // The complete sentence behind the short badge: what funds runs, and why runs are refused.
@@ -117,6 +122,9 @@ export async function TopBar() {
             785 px in a 720 px bar; below lg they are in the menu, as on a phone. */}
         <nav aria-label="Primary" className="hidden items-center gap-0.5 lg:flex">
           <NavLinks items={nav} variant="bar" />
+          {staff.length > 0 && (
+            <span className={compactNav ? "contents" : "hidden xl:contents"}><NavLinks items={staff} variant="bar" /></span>
+          )}
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
@@ -172,6 +180,11 @@ export async function TopBar() {
             <div className="py-1 lg:hidden">
               <NavLinks items={nav} variant="stack" />
             </div>
+            {staff.length > 0 && (
+              <div className={`py-1 ${compactNav ? "lg:hidden" : "xl:hidden"}`}>
+                <NavLinks items={[{ label: "Staff", items: staff }]} variant="stack" />
+              </div>
+            )}
 
             <div className="border-t border-line py-1 lg:border-t-0">
               {can(role, "agent.write") && <Link href="/agents/new" className={menuItemClass}>Connect an agent</Link>}

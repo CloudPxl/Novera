@@ -18,6 +18,11 @@ added from the brief). Missing facts are in `docs/legal-inputs-required.md`.
 
 ## Brief section → implementation
 
+The same rows are the typed module `src/lib/legal/framework.ts`, rendered for staff at `/readiness`
+("Brief tracker") beside the live status, the §23 launch gates and the §22 decisions.
+`tests/launch-readiness.test.ts` fails if this table and the module list different sections: change
+both together.
+
 | Brief | What exists | Where | Status |
 |---|---|---|---|
 | §2 Article 1203 acceptance | Three separate checkboxes, none pre-ticked: the documents; express acceptance of Terms §§2, 8, 10, 12, 14, 15, 17, each listed with what it covers; business purpose and authority. Each text is fingerprinted, and so is the unusual-clause text on its own | `src/lib/legal/contract.ts`, `src/app/(app)/settings/billing/terms-form.tsx` | Built; wording for counsel (question 36) |
@@ -75,3 +80,7 @@ Controlled B2B pilot and paid launch both still need, from David:
 
 The paid launch also needs the accountant's VAT answer. Everything in the code that these gates
 depend on now exists and refuses to proceed without them.
+
+Each gate, computed where the code can know and otherwise read from its row in
+`docs/LAUNCH-READINESS.md`, is on the staff page `/readiness` ("Launch gates",
+`src/lib/readiness/gates.ts`).

@@ -28,7 +28,8 @@ export type Span =
 export type Block =
   | { kind: "heading"; level: 2 | 3; spans: Span[] }
   | { kind: "paragraph"; spans: Span[] }
-  | { kind: "list"; ordered: boolean; items: Span[][] }
+  /** `start` only on a numbered list that does not begin at 1, so its numbers stay the ones written. */
+  | { kind: "list"; ordered: boolean; items: Span[][]; start?: number }
   /** A fenced block, kept verbatim — line breaks and blank lines included. */
   | { kind: "codeblock"; text: string; /** The word after the opening fence, if any. */ lang: string | null };
 
@@ -109,10 +110,14 @@ function parseProse(body: string, blocks: Block[]): void {
     const bullets = lines.every((l) => BULLET.test(l));
     const numbers = lines.every((l) => ORDERED.test(l));
     if ((bullets || numbers) && lines.length > 0) {
+      const start = numbers ? Number(/^\s*(\d+)\./.exec(lines[0])![1]) : 1;
       blocks.push({
         kind: "list",
         ordered: numbers,
         items: lines.map((l) => parseSpans((l.match(bullets ? BULLET : ORDERED) as RegExpMatchArray)[1])),
+        // A list split by a heading continues its numbering (questions 5 and 6 under their own
+        // heading are not questions 1 and 2), so where it starts is kept.
+        ...(start !== 1 ? { start } : {}),
       });
       continue;
     }

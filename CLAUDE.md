@@ -254,7 +254,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 889 unit tests | free |
+| `npm test` | 905 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -375,7 +375,7 @@ they drive the scripted fixture at `/api/test-agent`.
 - **A judge key stored before 2026-09-24 has no models recorded**, so it falls back to
   whatever `DEFAULT_ROUTES` measures on that connection — which is groq only. Any other
   provider's legacy key refuses the run with a sentence saying to reconnect it.
-- **Legal texts are drafts (`docs/LEGAL-FRAMEWORK.md`).** Terms 0.2, Privacy, DPA, Refunds, Imprint and the rest stay `noindex` and unlinked until counsel approves them and `data/legal/entity.ts` (all `null`) is filled. The acceptance ledger, B2B gate, report notice, provider register and retention schedule are built around them.
+- **Legal texts are drafts (`docs/LEGAL-FRAMEWORK.md`; live status on the staff-only `/readiness` page).** Terms 0.2, Privacy, DPA, Refunds, Imprint and the rest stay `noindex` and unlinked until counsel approves them and `data/legal/entity.ts` (all `null`) is filled. The acceptance ledger, B2B gate, report notice, provider register and retention schedule are built around them.
 - **Billing is built for the Stripe sandbox and is not active, but it gates runs (D3, 0067).** No Stripe keys are configured, so nothing can be bought: a workspace past its trial runs only under a manual grant (SQL in `docs/BILLING-DECISIONS.md` §1). Legal pages under `/legal` are drafts, noindex and unlinked, until counsel signs off.
 - **Production sends no email** (audit 2026-10-08, `docs/setup/sign-in-and-email.md`). The
   Resend variables are empty in Vercel, and Resend refuses the local key because `nover.space`

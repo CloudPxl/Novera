@@ -17,7 +17,7 @@ export default function robots(): MetadataRoute.Robots {
       disallow: [
         "/api/", "/auth/", "/report/", "/invite/", "/reset-password", "/sign-in",
         "/dashboard", "/agents", "/runs/", "/runs", "/reports", "/review", "/scenarios", "/regressions",
-        "/builder", "/workspaces", "/settings/", "/settings", "/inbox", "/welcome",
+        "/builder", "/workspaces", "/settings/", "/settings", "/inbox", "/readiness", "/welcome",
       ],
     },
     sitemap: `${SITE_ORIGIN}/sitemap.xml`,

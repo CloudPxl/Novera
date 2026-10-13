@@ -14,7 +14,7 @@ row says which it was.
 | BLOCKED | Waiting on something outside the code: a dashboard, a credential or a decision |
 | N/A | Does not apply |
 
-**Last checked:** 2026-10-11, reconciliation audit against HEAD `f7875c4` and production, plus the fixes after it (see DECISIONS 2026-10-11).
+**Last checked:** 2026-10-13, the V1 final audit against HEAD `e4a7f50`, locally and read-only in production (`docs/audits/2026-10-13-v1-final-audit.md`). V1 is closed. What remains is either waiting on the legal entity or is V2 fine-tuning (`docs/V2-PLAN.md`).
 
 ## Phase 1: security, auth, truthfulness, product, mobile
 

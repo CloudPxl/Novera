@@ -26,6 +26,7 @@
     "verify:throttle": "node --conditions=react-server --env-file=.env.local scripts/verify-throttle.mts",
     "verify:models": "node --conditions=react-server --env-file=.env.local scripts/verify-models.mts",
     "verify:byok": "node --conditions=react-server --env-file=.env.local scripts/verify-byok.mts",
+    "verify:billing": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/verify-billing.mts",
     "seed:docs": "node --conditions=react-server --env-file=.env.local scripts/seed-docs.mts",
     "novera": "node --no-warnings bin/novera.mts",
     "verify:imports": "node --conditions=react-server --env-file=.env.local scripts/verify-imports.mts",

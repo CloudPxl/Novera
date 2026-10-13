@@ -430,6 +430,23 @@ test("format 14 names every grader in the role it voted in, not only the first j
   assert.equal(gradedByLine(run as never), "groq/gpt-oss-20b (first opinion on 2); mistral/ministral-8b (second opinion on 2); groq/gpt-oss-120b (settled disagreements on 1)");
 });
 
+test("a vote that returned no verdict is not credited as grading: an unreachable settler settled nothing", () => {
+  const voted = [
+    caseRecord({ caseId: "U1", status: "error", judgeModel: "groq/gpt-oss-20b", judgeAgreement: "unresolved", judgeVotes: [
+      { model: "groq/gpt-oss-20b", status: "pass", rationale: null }, { model: "mistral/ministral-8b", status: "fail", rationale: null },
+      { model: "unknown", status: "error", rationale: "no model could be reached" }] }),
+    caseRecord({ caseId: "U2", judgeModel: "mistral/ministral-8b", judgeAgreement: "unconfirmed", judgeVotes: [
+      { model: "groq/gpt-oss-20b", status: "error", rationale: "timed out" }, { model: "mistral/ministral-8b", status: "pass", rationale: null }] }),
+  ];
+  const { payload } = buildReport(input({ cases: voted, coverage: coverage({ plannedCases: 2, cases: voted }) }));
+  const graders = (payload as { run: { graders: Array<{ model: string; role: string; cases: number }> } }).run.graders;
+  assert.deepEqual(graders, [
+    { model: "groq/gpt-oss-20b", role: "first", cases: 1 },
+    { model: "mistral/ministral-8b", role: "second", cases: 2 },
+  ]);
+  assert.ok(!graders.some((g) => g.model === "unknown" || g.role === "settler"));
+});
+
 test("a run settled entirely by rules says no model was asked; an older report keeps its own line", async () => {
   const { gradedByLine } = await import("../src/lib/report/graders.ts");
   const ruled = [caseRecord({ caseId: "R1", status: "fail", judgeModel: null, settledBy: "deterministic", judgeAgreement: null, judgeVotes: [] })];

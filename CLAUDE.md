@@ -19,6 +19,10 @@ and urgent.
 measurement behind it, is in `docs/DECISIONS.md` in dated order. The current plan is
 `~/.claude/plans/this-is-project-novera-shiny-yeti.md`.
 
+**V1 closed on 2026-10-13** (`docs/audits/2026-10-13-v1-final-audit.md`). V2 is fine-tuning (SEO
+first, then speed, search content and polish) and the steps that wait on the legal entity:
+`docs/V2-PLAN.md`.
+
 ## Non-negotiable product rules
 
 Load-bearing: the product's value *is* that its output can be trusted.
@@ -246,7 +250,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 808 unit tests | free |
+| `npm test` | 809 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -254,6 +258,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 | `verify:builder` | the Suite Builder: every pack, sources and their limits, verbatim passages, open questions holding approval, a hostile document, bulk approval with its audit line, discovery against the fixture, a scan that is never a report, a published suite that cannot change and runs, isolation, SSRF, retention, erasure (needs `npm run dev`) | free |
 | `verify:export` | the workspace export: role, one download, expiry, no secret or token, another workspace refused (needs `npm run dev`) | free |
 | `verify:byok` | the trial cap, and that our keys are never a silent fallback | free |
+| `verify:billing` | Stripe's signed webhook through the real store (local database only, Stripe offline): ledger idempotency, the four lifecycle events, `plan_managed` attribution, 12 racing starts → 3, the 101st managed run and the 1,001st run refused, erasure | free |
 | `verify:effect` · `verify:channel` · `verify:compiler` · `verify:conversation` | evidence rules, the metadata channel, the compiler's refusals, multi-turn scenarios | a few model calls |
 | `verify:throttle` | the public forms cannot be made free | free |
 | `verify:imports` | an imported case is a draft with frozen provenance, held to the same approval | free |

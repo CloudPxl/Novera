@@ -177,11 +177,14 @@ export function buildReport(input: ReportInput): BuiltReport {
       ?.filter((v): v is { model: string; status: "pass" | "fail" | "error" } =>
         typeof v?.model === "string" && typeof v?.status === "string") ?? [];
   // Format 14: every model that voted, by the role it voted in (votes are stored in order:
-  // the first opinion, the second, then the settler a disagreement went to).
+  // the first opinion, the second, then the settler a disagreement went to). A vote that
+  // returned no verdict is not a grader's work: an unreachable settler is stored as
+  // "unknown"/error, and was being credited with "settled disagreements" it never settled.
   const ROLES = ["first", "second", "settler"] as const;
   const graderTally = new Map<string, { model: string; role: (typeof ROLES)[number]; cases: number }>();
   for (const c of input.cases) {
     votesOf(c).slice(0, 3).forEach((v, i) => {
+      if (v.status === "error") return;
       const key = `${ROLES[i]}|${v.model}`;
       const entry = graderTally.get(key) ?? { model: v.model, role: ROLES[i], cases: 0 };
       entry.cases += 1;

@@ -4076,3 +4076,19 @@ From the legal build brief of the same date. The texts stay drafts for counsel; 
 - **Found and fixed:** production held a Stripe test key, so a test card could have bought a plan there. A production deployment now refuses a test key. David removes the keys from Production.
 
 Local: 33 of 33 browser checks (accessibility clean at 390 and 1440); `verify:db` and `verify:access` pass. 808 tests.
+
+## 2026-10-13: V1 closed; the final audit; V2 is fine-tuning
+
+The V1 final audit measured every boundary the brief listed, locally and read-only in production (`docs/audits/2026-10-13-v1-final-audit.md`):
+- 809 tests;
+- both typechecks, lint and the build;
+- every free verifier;
+- the four engine verifiers;
+- 144 page loads at 390, 1024 and 1440, all axe-clean with no overflow and no console error;
+- roles and RLS from a signed-in browser client;
+- the 18 live production reports re-verified.
+
+- **Fixed:** format 14's "Graded by" credited an unreachable settler, stored as `unknown`/error, with "settled disagreements". It now counts only votes that returned a verdict. No production report was affected; sealed local reports keep their text.
+- **Added:** `verify:billing`. The real webhook handler goes through the real Supabase store on a local database, with Stripe offline. It covers ledger idempotency, the four lifecycle events, attribution, concurrency, the managed allowance, fair use and erasure, 27/27. The unit tests prove the same rules against a memory store; this proves the tables agree.
+- **Decided:** the steps that need a real company (PFA or SRL) wait for it: company details, counsel's approval, VAT, live Stripe and published prices. The code already refuses to go live without them. V2 is fine-tuning, starting with technical SEO (`docs/V2-PLAN.md`).
+

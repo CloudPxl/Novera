@@ -49,6 +49,8 @@ someone with the service role, not merely someone using the application.
 | An errored case cannot be a pass; an evidence gap cannot sit on a verdict; a rule-settled case cannot name a judge | 0019 |
 | A run's inputs were declared *before* it executed — suite version and case ids in order, policy version, agent host, judge plan, pass mark, runner version, rubric digest — and its evidence is only those scenarios, each recorded once, while it runs: a completed run takes no new row, and a run is marked completed only when every declared scenario has one | 0016, frozen by trigger; 0043; 0048 |
 | A report was not edited after sealing, and chains to the previous report for that agent | SHA-256 content hash + `previous_report_hash` |
+| Every report and export says it is testing evidence, not a certification, conformity assessment or notified-body approval — beside the sealed content, never inside it, so no hash changes | `src/lib/legal/notices.ts`, report page, `src/lib/report/export.ts`, `tests/ci.test.ts` |
+| No paid plan starts without a business's details and an acceptance of the current legal texts, with the Civil Code art. 1203 clauses accepted separately; the record names each text's version and SHA-256, cannot be edited, stores no IP, never calls a VAT number validated, and leaves with its workspace; live billing also needs approved texts and complete company details, and a production deployment refuses a Stripe test key | 0068, `src/lib/legal/contract.ts`, `startCheckout`, `billingConfig`, `tests/legal-framework.test.ts` |
 | A withdrawn report stays withdrawn, its link and exports refuse at once, and the row names who withdrew it; whether a report is ready to send is computed from the sealed document and never raised because someone wants to share it | 0053, `src/lib/report/readiness.ts`, `verify:db` |
 | A policy version is immutable; editing creates a new one | 0001 + append-only trigger |
 | A diagnosis is a proposal: the model cannot quote policy text that is not in the policy, and a proposal whose target moved is refused rather than applied nearby | 0007 |
@@ -212,7 +214,8 @@ src/lib/billing/      Stripe (sandbox until activated): config, webhook, entitle
 src/lib/export/       the workspace export: an allow-listed copy of each table
 src/lib/observability/ scrubbed error reporting (`onRequestError`), vendors off until configured
 src/lib/analytics/    first-party product events, guarded properties, no third party
-src/app/legal/ + data/legal/  draft legal documents for counsel review: noindex, not in force
+src/app/legal/ + data/legal/  draft legal documents for counsel review: noindex, not in force; the entity record, provider register, retention schedule, approved-version archive
+src/lib/legal/        contract acceptance (fingerprints, art. 1203 clauses, B2B gate), publication rules, the report notice
 docs/LAUNCH-READINESS.md  every launch work item with its proof and status
 docs/COMPETITION.md   the market, what we took, what we declined
 ```
@@ -243,7 +246,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 797 unit tests | free |
+| `npm test` | 808 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -363,6 +366,7 @@ they drive the scripted fixture at `/api/test-agent`.
 - **A judge key stored before 2026-09-24 has no models recorded**, so it falls back to
   whatever `DEFAULT_ROUTES` measures on that connection — which is groq only. Any other
   provider's legacy key refuses the run with a sentence saying to reconnect it.
+- **Legal texts are drafts (`docs/LEGAL-FRAMEWORK.md`).** Terms 0.2, Privacy, DPA, Refunds, Imprint and the rest stay `noindex` and unlinked until counsel approves them and `data/legal/entity.ts` (all `null`) is filled. The acceptance ledger, B2B gate, report notice, provider register and retention schedule are built around them.
 - **Billing is built for the Stripe sandbox and is not active, but it gates runs (D3, 0067).** No Stripe keys are configured, so nothing can be bought: a workspace past its trial runs only under a manual grant (SQL in `docs/BILLING-DECISIONS.md` §1). Legal pages under `/legal` are drafts, noindex and unlinked, until counsel signs off.
 - **Production sends no email** (audit 2026-10-08, `docs/setup/sign-in-and-email.md`). The
   Resend variables are empty in Vercel, and Resend refuses the local key because `nover.space`

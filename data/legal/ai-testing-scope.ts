@@ -12,14 +12,15 @@
  * (errored, disputed and unexecuted cases; the assurance gap; fixtures; read-back).
  */
 import type { LegalDocument } from "./types.ts";
+import { REPORT_NOTICE_PARAGRAPHS, REPORT_NOTICE_TITLE } from "../../src/lib/legal/notices.ts";
 
 export const aiTestingScope: LegalDocument = {
   slug: "ai-testing-scope",
   title: "AI Testing Scope and Limitations",
   summary: "What a Novera report does and does not show, and where Novera itself uses AI.",
   status: "draft",
-  version: "0.1 draft",
-  lastReviewed: "2026-10-09",
+  version: "0.2 draft",
+  lastReviewed: "2026-10-13",
   sources: ["ai-act", "ai-omnibus", "ai-art50-faq", "gdpr"],
   body: `This notice forms part of the Terms of Service and is meant to be read by anyone who relies on a Novera report. It is a draft for review by counsel.
 
@@ -30,9 +31,13 @@ export const aiTestingScope: LegalDocument = {
 - **Authorised targets.** Each run stores a member's declaration that they own or are authorised to test the agent. Novera does not verify that declaration independently.
 - **Obligation codes organise evidence.** They group scenarios under duties many organisations have to account for. They do not decide which laws apply to an organisation, and Novera does not give legal advice.
 
-## Evidence, not certification
+## ${REPORT_NOTICE_TITLE}
 
-A Novera report is not a certification, a conformity assessment under any law, or a statement that an organisation or its AI system complies with the GDPR, the AI Act or any other law. It is evidence that a defined suite was executed against a defined agent on a defined date, with the results kept as they occurred.
+Every report, every export of it and the page where its link is shared carry this notice:
+
+${REPORT_NOTICE_PARAGRAPHS.join("\n\n")}
+
+Novera does not call a report a "conformity assessment report", and does not describe itself as an assessor, auditor, certification provider or notified body. Where a report groups evidence under obligation codes, that grouping organises evidence; it is not a determination of which obligations apply.
 
 ## How verdicts are reached, and how they can be wrong
 

@@ -12,14 +12,15 @@
  * allocation are proposals for counsel, never conclusions.
  */
 import type { LegalDocument } from "./types.ts";
+import { retentionTable } from "./retention.ts";
 
 export const privacy: LegalDocument = {
   slug: "privacy",
   title: "Privacy Notice",
   summary: "What personal data Novera processes, why, with whom, for how long, and the rights people have.",
   status: "draft",
-  version: "0.1 draft",
-  lastReviewed: "2026-10-09",
+  version: "0.2 draft",
+  lastReviewed: "2026-10-13",
   sources: ["gdpr", "edpb-07-2020", "ai-act", "ai-art50-faq", "anspdcp"],
   body: `This notice explains how Novera handles personal data. It describes what the product does today, read from its code. It is a draft: the company details, the legal bases and the allocation of roles must be completed and confirmed by counsel before it is published.
 
@@ -67,6 +68,8 @@ Where Novera acts as a processor, the customer is the controller and its own pri
 **Suite Builder sources.** The text of a document, page or tool list a customer adds, with email addresses, phone numbers, card numbers, IBANs and IP addresses replaced before it is saved. The file itself is not kept, only its SHA-256 hash.
 
 **Production failures sent through the API.** Stored redacted; the original only as a hash.
+
+**Contract acceptance and business details.** Before a paid plan starts, an owner or admin gives the organisation's legal name, registered address, country and, if it has one, VAT number, their own name and title, and confirms business purpose and authority. Novera records that with the person's account, the time, the browser's user agent and the version and SHA-256 fingerprint of each document accepted, as evidence of the contract. The legal name and address also go to the payment provider as billing details. Novera does not record the IP address here. [COUNSEL TO CONFIRM THE LEGAL BASIS — LIKELY CONTRACT AND LEGAL OBLIGATION — AND THE RETENTION PERIOD.]
 
 **Support messages and trial applications.** Email address, organisation (optional), the message with any key, card number or IBAN removed before storage, the replies drafted for it and their approval and sending status.
 
@@ -119,21 +122,7 @@ Grading, drafting support replies, diagnosing failures, Suite Builder extraction
 
 ## How long data is kept
 
-| Data | Kept for |
-| --- | --- |
-| Agent replies, conversations and tool activity | The workspace's retention period: 30, 90, 180 or 365 days, default 180. Then emptied by a daily pass |
-| Verdicts, reasons, scenarios, reply fingerprints, reports | Until the workspace is erased |
-| Suite Builder source text | 180 days, then emptied; quoted passages and hashes stay with the suite |
-| Support messages and trial applications, with their drafts | Erased 90 days after the conversation last changed; a record without content remains that an erasure happened |
-| Connection check receipts | The agent's reply emptied after 90 days |
-| Ask Novera conversations | Deleted after 180 days without a new message, or when the person deletes them |
-| Assistant memory | Until the person deletes it or turns memory off |
-| Invitations | Usable for 7 days; the record, with the invited address, is kept until the workspace is erased. If the invited person deletes their Novera account, the address is replaced with a pseudonym. [COUNSEL TO CONFIRM THIS PERIOD FOR ADDRESSES OF PEOPLE WHO NEVER ACCEPTED] |
-| Product events | 13 months |
-| Rate-limit counters | About one day |
-| Audit trail | Until the workspace is erased; a person's own events until their account is deleted |
-| Account and profile | Until the account is deleted |
-| Backups held by the database provider | [TO VERIFY WITH SUPABASE] |
+${retentionTable()}
 
 [COUNSEL TO CONFIRM THAT KEEPING VERDICTS AND REPORTS UNTIL WORKSPACE ERASURE, WITH NO FIXED END, IS JUSTIFIED.]
 

@@ -12,6 +12,12 @@ import Link from "next/link";
 import { BILLING_PATH, remedyFor } from "@/lib/billing/remedy.ts";
 import { FAIR_USE_RUNS, FAIR_USE_WINDOW_DAYS, MAX_RUNS_IN_FLIGHT } from "@/lib/billing/limits.ts";
 import { CancellationButton, CheckoutButton, PortalButton } from "./forms.tsx";
+import { TermsAcceptanceForm } from "./terms-form.tsx";
+import { serviceClient } from "@/lib/supabase/service.ts";
+import { storedLivemode } from "@/lib/billing/config.ts";
+import { acceptanceIsCurrent, contractSet, UNUSUAL_CLAUSES } from "@/lib/legal/contract.ts";
+import { latestAcceptance } from "@/lib/legal/acceptance-store.ts";
+import { headingId } from "@/lib/legal/document.ts";
 
 export const metadata: Metadata = { title: "Billing · Settings · Novera" };
 export const dynamic = "force-dynamic";
@@ -103,6 +109,14 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
     searchParams,
   ]);
   const manage = can(ctx.role, "billing.manage");
+  // The business details and terms (0068): what this workspace accepted, and whether it is the
+  // current text. Read with the service role — the page already resolved the person's membership.
+  const set = contractSet();
+  const mayReadAcceptance = manage || ctx.role === "auditor";
+  const acceptance = mayReadAcceptance
+    ? await latestAcceptance(serviceClient(), ctx.workspace.id, storedLivemode({ mode: view.config.mode }))
+    : null;
+  const termsCurrent = Boolean(acceptance && acceptanceIsCurrent(acceptance, set));
   const e = view.entitlement;
   const sub = e.subscription;
   const when = (iso: string | null) => (iso ? formatWhen(iso, ctx.profile, { date: true }) : null);
@@ -197,6 +211,41 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
             </Card>
           </section>
 
+          {mayReadAcceptance && (
+            <section aria-labelledby="terms-heading">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 id="terms-heading" className="text-lg font-semibold tracking-tight">Business details and terms</h2>
+                {termsCurrent ? <Badge tone="pass">Accepted</Badge> : acceptance ? <Badge tone="medium">Terms changed</Badge> : <Badge tone="neutral">Not yet given</Badge>}
+              </div>
+              <p className="mt-1 text-sm text-ink-soft">
+                Novera is offered to businesses only. Before a plan starts, an owner or admin gives the organisation&apos;s details and accepts the terms; the record names the exact versions accepted.
+              </p>
+              <Card className="mt-3 p-5">
+                {acceptance && (
+                  <div className={termsCurrent ? "" : "mb-5 border-b border-line pb-5"}>
+                    <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                      <div><dt className="text-xs text-ink-faint">Organisation</dt><dd className="mt-0.5 font-medium [overflow-wrap:anywhere]">{acceptance.legal_entity_name_at_acceptance} · {acceptance.country}</dd></div>
+                      <div><dt className="text-xs text-ink-faint">Accepted by</dt><dd className="mt-0.5 [overflow-wrap:anywhere]">{acceptance.signer_name_at_acceptance}, {acceptance.signer_title_at_acceptance} · {when(acceptance.accepted_at)}</dd></div>
+                      <div><dt className="text-xs text-ink-faint">Terms</dt><dd className="mt-0.5">Version {acceptance.terms_version}{acceptance.documents_status === "draft" ? " (draft text)" : ""}</dd></div>
+                      <div><dt className="text-xs text-ink-faint">VAT number</dt><dd className="mt-0.5">{acceptance.vat_id_declared ? `${acceptance.vat_id_declared}, as declared` : "None given"}</dd></div>
+                    </dl>
+                    <a href={`/settings/billing/acceptance/${acceptance.id}`} className="mt-3 inline-block text-sm font-medium text-ink underline underline-offset-2">Download the record</a>
+                    {!termsCurrent && <p role="status" className="mt-3 text-sm text-warning-text">The terms have changed since this was accepted. Accept the current versions to choose a plan.</p>}
+                  </div>
+                )}
+                {manage && !termsCurrent && (
+                  <TermsAcceptanceForm
+                    set={set.setSha256}
+                    draft={!set.allApproved}
+                    documents={set.documents.map((d) => ({ slug: d.slug, title: d.title, version: d.version }))}
+                    clauses={UNUSUAL_CLAUSES.map((c) => ({ ...c, anchor: headingId([{ kind: "text", text: c.heading }]) }))}
+                  />
+                )}
+                {!manage && !acceptance && <p className="text-sm text-ink-soft">The owner and admins give these details.</p>}
+              </Card>
+            </section>
+          )}
+
           <section aria-labelledby="plans-heading">
             <h2 id="plans-heading" className="text-lg font-semibold tracking-tight">Plans</h2>
             <p className="mt-1 text-sm text-ink-soft">Billed monthly in euros through Stripe. Cancel at any time; a plan runs to the end of the paid month.</p>
@@ -223,7 +272,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                 const plan = PLAN_CATALOG[key];
                 const action = planAction({
                   plan: key, manage, config: view.config, sellable: view.sellablePlans.includes(key),
-                  hasCustomer: view.hasCustomer, subscription: sub,
+                  hasCustomer: view.hasCustomer, subscription: sub, termsAccepted: termsCurrent,
                 });
                 const current = currentPlan === key;
                 return (

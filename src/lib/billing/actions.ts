@@ -11,6 +11,8 @@ import { checkoutRequest, decideCheckout, isStripeHostedUrl, priceMismatch } fro
 import { currentSubscription, subscriptionStanding, type SubscriptionRow } from "./entitlement.ts";
 import { stripeGateway } from "./stripe-gateway.ts";
 import { supabaseBillingStore } from "./supabase-store.ts";
+import { acceptanceIsCurrent, contractSet, livePublicationProblems } from "@/lib/legal/contract.ts";
+import { latestAcceptance } from "@/lib/legal/acceptance-store.ts";
 
 export interface BillingFormState {
   error?: string;
@@ -56,6 +58,21 @@ export async function startCheckout(_prev: BillingFormState, form: FormData): Pr
   const decision = decideCheckout({ config, requestedPlan: form.get("plan"), subscriptions: rows(await store.listSubscriptions(workspace.id, storedLivemode(config))) });
   if (!decision.ok) return { error: decision.error };
 
+  // Business only, with the terms accepted first (legal build brief §20.2): the business details
+  // and the separate acceptance of the unusual clauses (Civil Code art. 1203) are recorded before
+  // any Stripe object exists. Live billing also needs approved documents and the company details.
+  const set = contractSet();
+  if (config.mode === "live") {
+    const problems = livePublicationProblems(set);
+    if (problems.length) return { error: `Live billing cannot start yet. ${problems.join(" ")}` };
+  }
+  const acceptance = await latestAcceptance(gated.admin, workspace.id, storedLivemode(config));
+  if (!acceptance || !acceptanceIsCurrent(acceptance, set)) {
+    return { error: acceptance
+      ? "The terms changed since they were accepted for this workspace. Review and accept the current versions above, then choose a plan."
+      : "Give the organisation's business details and accept the terms above before choosing a plan." };
+  }
+
   let url: string | null;
   try {
     // The page shows the catalog's price; Stripe charges its own. They must be the same price.
@@ -67,7 +84,8 @@ export async function startCheckout(_prev: BillingFormState, form: FormData): Pr
     let customer = await store.customerForWorkspace(workspace.id, storedLivemode(config));
     if (!customer) {
       // Idempotent at Stripe: two clicks at once create one customer.
-      const created = await gateway.createCustomer({ workspaceId: workspace.id, name: workspace.name, idempotencyKey: `novera-customer-${workspace.id}` });
+      // The billing name is the organisation's legal name as accepted, not the workspace's label.
+      const created = await gateway.createCustomer({ workspaceId: workspace.id, name: acceptance.legal_entity_name_at_acceptance, idempotencyKey: `novera-customer-${workspace.id}` });
       const saved = await store.saveCustomer({ workspaceId: workspace.id, stripeCustomerId: created.id, livemode: created.livemode, createdBy: user.id });
       customer = { stripeCustomerId: saved.stripeCustomerId, livemode: created.livemode };
     }
@@ -76,6 +94,7 @@ export async function startCheckout(_prev: BillingFormState, form: FormData): Pr
     }
     const session = await gateway.createCheckoutSession(checkoutRequest({
       config, decision, customer: customer.stripeCustomerId, workspaceId: workspace.id, origin: await origin(),
+      contractAcceptanceId: acceptance.id,
     }));
     url = session.url;
     await store.recordEvent({

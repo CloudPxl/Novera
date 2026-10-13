@@ -45,6 +45,7 @@ export function checkoutRequest(args: {
   customer: string;
   workspaceId: string;
   origin: string;
+  contractAcceptanceId?: string | null;
 }): CheckoutRequest {
   const { config, decision, customer, workspaceId, origin } = args;
   return {
@@ -57,6 +58,7 @@ export function checkoutRequest(args: {
     cancelUrl: `${origin}/settings/billing?checkout=cancelled`,
     automaticTax: config.automaticTax,
     taxIdCollection: config.taxIdCollection,
+    contractAcceptanceId: args.contractAcceptanceId ?? null,
   };
 }
 

@@ -11,14 +11,15 @@
  * src/lib/crypto.ts). It is a skeleton for counsel, not a contract.
  */
 import type { LegalDocument } from "./types.ts";
+import { PROVIDER_REGISTER, REGISTER_VERSION } from "./register.ts";
 
 export const dpa: LegalDocument = {
   slug: "dpa",
   title: "Data Processing Agreement",
   summary: "The terms for personal data Novera processes on a customer's behalf. A skeleton for counsel, not a final agreement.",
   status: "draft",
-  version: "0.1 draft",
-  lastReviewed: "2026-10-09",
+  version: "0.2 draft",
+  lastReviewed: "2026-10-13",
   sources: ["gdpr", "edpb-07-2020", "edpb-opinion-22-2024", "edpb-dpia"],
   body: `**This draft is not final and is not sufficient on its own.** It records what Novera's service does with personal data, arranged under the headings a processing agreement needs. It must be completed and reviewed by counsel, and may be replaced by standard contractual clauses or by the customer's own form.
 
@@ -26,6 +27,17 @@ export const dpa: LegalDocument = {
 
 - Customer: [CUSTOMER LEGAL NAME AND ADDRESS], acting as [CONTROLLER OR PROCESSOR — COUNSEL TO CONFIRM; AN AGENCY TESTING A CLIENT'S AGENT MAY ITSELF BE A PROCESSOR].
 - Novera: [LEGAL ENTITY NAME], [REGISTERED ADDRESS], acting as [PROCESSOR OR SUB-PROCESSOR — COUNSEL TO CONFIRM].
+
+The likely allocation, for counsel to confirm against how the product is actually configured — a contract cannot declare a role the facts do not support:
+
+| Activity | Likely role of Novera | Why |
+| --- | --- | --- |
+| Testing the customer's agent: scenarios, replies, policies, sources, verdicts, reports | Processor (the customer is usually the controller) | The customer decides why its data is evaluated |
+| Accounts, billing, contract acceptance, security and abuse records, product events | Independent controller | Novera decides these purposes |
+| Support conversations with Novera | Controller | Novera's own relationship with the person asking |
+| Routing a workspace's model work to the customer's own key | Processor acting on the customer's configuration | The customer chose the provider |
+| Grading on Novera's keys (trial, Agency Pro managed runs) | Processor, with Novera choosing the model providers | Novera selects part of the means; listed in Annex 2 |
+| A shared report link | Processor for the content, controller for its own access security | The customer decides who receives the link |
 
 [LAWYER REVIEW REQUIRED: THE ROLE ALLOCATION, INCLUDING FOR THE AUDIT TRAIL AND RUN ATTESTATIONS, WHICH THE PRIVACY NOTICE ALSO LEAVES OPEN.]
 
@@ -92,5 +104,9 @@ Some sub-processors in Annex 2 process data outside the European Economic Area. 
 
 ## Annex 2: sub-processors
 
-The list on the Sub-processors page, as at the date of signature. [ATTACH THE DATED LIST.]`,
+The list on the Sub-processors page (register version ${REGISTER_VERSION}), as at the date of signature:
+
+${PROVIDER_REGISTER.filter((p) => p.status !== "planned").map((p) => `- **${p.provider}** (${p.status === "core" ? "core" : "optional"}) — ${p.service}. Location: ${p.location}`).join("\n")}
+
+[ATTACH THE DATED LIST AT SIGNATURE.]`,
 };

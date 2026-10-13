@@ -346,7 +346,7 @@ export function ScanForm({ buildId, agents, defaultAgent, scenarios }: { buildId
         </Field>
         <SubmitButton variant="secondary" pendingLabel="Starting…">Run an exploratory scan ({scenarios})</SubmitButton>
       </div>
-      <p className="text-xs text-ink-soft">Exploratory scan — not a conformity report. It runs the drafts as they are, uses one run, and never seals a report.</p>
+      <p className="text-xs text-ink-soft">Exploratory scan — not a sealed evaluation report. It runs the drafts as they are, uses one run, and never seals a report.</p>
       <Message state={state} />
     </form>
   );

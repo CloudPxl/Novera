@@ -4057,3 +4057,22 @@ David decided D3. The trial is the whole free tier: 3 runs per owner, on Novera'
 - **Reset links.** A reset link that Supabase returned to its Site URL root was forwarded as a sign-up confirmation. It landed on the dashboard, signed in, with no way to set the new password. The callback now goes by GoTrue's `recovery` mark whatever the flow, and the root forwards as `flow=email`. `/update-password`, `/auth/update-password`, `/auth/reset-password`, `/password-reset` and `/forgot-password` forward to the handler that spends the link. A reset opened in a different browser now says so instead of "expired". Local walks: 5 of 5 new, and 17 of 17 of the earlier reset walk.
 
 Before billing opens, a workspace past its trial runs only under a manual grant (`docs/BILLING-DECISIONS.md` §1 has the SQL). 797 tests.
+
+## 2026-10-13 — The legal framework's machinery: acceptance ledger, B2B checkout gate, report notice, publication controls (0068)
+
+From the legal build brief of the same date. The texts stay drafts for counsel; what changed is everything around them (`docs/LEGAL-FRAMEWORK.md`).
+
+- **Acceptance before a paid plan.** An owner or admin gives the organisation's legal name, registered address and country (validated with the runtime's `Intl` region data, not a list kept here), an optional VAT number recorded as declared, and their own name and title. They then tick three separate boxes, none pre-ticked: the documents; an express, separate acceptance of the Terms clauses Civil Code art. 1203 names (§§2, 8, 10, 12, 14, 15, 17); and business purpose with authority. `contract_acceptances` (0068) stores it with the version and SHA-256 of every text and of those sections:
+  - append-only for the service role too, written only by the server;
+  - no IP address;
+  - `vat_id_verified` fixed false;
+  - erased with the workspace;
+  - a downloadable record and an audit line.
+
+  Checkout refuses without a current acceptance, before any Stripe object exists. Live mode also refuses while a document is a draft or a company detail is missing.
+- **Terms 0.2 draft** proposes the brief's clauses (business only, renewal, liability capped at three months' fees, indemnities, Romanian law and the Bucharest courts). Refunds, Privacy, DPA, Imprint, Sub-processors and AI scope are updated, all still drafts.
+- **Report notice.** "Testing evidence, not certification" is on every report's cover and in full, in all four exports (outside the hashed payload) and beside the report link. New reports' sealed limitations add "not a statutory conformity assessment; Novera is not a notified body". The remaining "conformity report" labels are renamed.
+- **One provider register**, machine-readable at `/legal/subprocessors.json`, with "in use" read from each deployment's configuration. **One retention schedule**, tested against the code that enforces each period. **Publication controls:** noindex and the draft banner until a document is approved, archived and the company details are complete.
+- **Found and fixed:** production held a Stripe test key, so a test card could have bought a plan there. A production deployment now refuses a test key. David removes the keys from Production.
+
+Local: 33 of 33 browser checks (accessibility clean at 390 and 1440); `verify:db` and `verify:access` pass. 808 tests.

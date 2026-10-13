@@ -117,6 +117,22 @@ export const SOURCES: readonly LegalSource[] = [
     note: "Consolidated form dated 27.03.2026. Article 2 (consumer: a natural person), Article 9 (14-day withdrawal from a distance contract), Article 16 (exception after full performance with prior express consent). Applies only if consumers are served.",
   },
   {
+    id: "ro-civil-code-1203",
+    title: "Codul civil (Legea nr. 287/2009), art. 1202–1203 — clauze standard și clauze neuzuale (text as published on codulcivil.ro)",
+    url: "https://www.codulcivil.ro/art-1203-clauze-neuzuale/",
+    kind: "non-authoritative",
+    fetched: "2026-10-13",
+    note: "Read the article text on a non-official mirror; the official consolidated Civil Code is on legislatie.just.ro, and counsel must confirm against it. Article 1203: standard clauses favouring the proposer that limit liability, allow unilateral termination or suspension, cause loss of rights or of the benefit of time, limit defences or the freedom to contract with others, provide tacit renewal, choose the applicable law, or provide arbitration or derogate from court jurisdiction take effect only if expressly accepted in writing by the other party.",
+  },
+  {
+    id: "ro-31-1990",
+    title: "Legea nr. 31/1990 privind societățile (republicată), art. 74, Portal Legislativ",
+    url: "https://legislatie.just.ro/public/DetaliiDocument/798",
+    kind: "primary",
+    fetched: "2026-10-13",
+    note: "Article 74: invoices, offers, orders, price lists, brochures and similar commercial documents state the company name, legal form, registered office, trade-register number and unique registration code; a limited liability company also states its share capital; a company with a website publishes the same information there.",
+  },
+  {
     id: "anspdcp",
     title: "Autoritatea Națională de Supraveghere a Prelucrării Datelor cu Caracter Personal (ANSPDCP), contact page",
     url: "https://www.dataprotection.ro/?page=contact&lang=ro",

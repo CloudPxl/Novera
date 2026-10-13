@@ -417,7 +417,7 @@ export default async function BuildPage({ params, searchParams }: {
                 {(scanRuns ?? []).map((r) => (
                   <li key={r.id as string} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
                     <Link href={`/runs/${r.id}`} className="font-medium text-ink underline-offset-2 hover:underline">Exploratory scan · {formatWhen(r.created_at as string, context.profile)}</Link>
-                    <span className="text-ink-soft">{r.status as string} · not a conformity report</span>
+                    <span className="text-ink-soft">{r.status as string} · not a sealed evaluation report</span>
                   </li>
                 ))}
               </Rows></Panel>

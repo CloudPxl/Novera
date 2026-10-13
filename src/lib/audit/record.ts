@@ -21,6 +21,7 @@ export type AuditAction =
   | "suite.bulk_approved" | "suite.published" | "suite.gaps_accepted" | "suite.source_fetched"
   | "identity.linked" | "identity.unlinked" | "agent.environment_changed" | "account.password_set" | "account.password_changed" | "account.signed_out_everywhere"
   | "billing.checkout_started" | "billing.portal_opened" | "billing.cancellation_scheduled" | "billing.cancellation_withdrawn"
+  | "contract.accepted"
   | "workspace.export_requested" | "workspace.exported"
   | "agent.updated" | "agent.archived" | "agent.restored";
 
@@ -85,6 +86,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   "billing.portal_opened": "opened the billing portal",
   "billing.cancellation_scheduled": "asked to cancel the subscription at the end of the period",
   "billing.cancellation_withdrawn": "withdrew a scheduled cancellation",
+  "contract.accepted": "accepted the terms for the organisation",
   "workspace.export_requested": "asked for a copy of the workspace's data",
   "workspace.exported": "downloaded a copy of the workspace's data",
   "agent.updated": "changed an agent's connection",

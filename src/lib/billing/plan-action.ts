@@ -24,6 +24,8 @@ export function planAction(args: {
   sellable: boolean;
   hasCustomer: boolean;
   subscription: SubscriptionView | null;
+  /** The current terms are accepted for this workspace (0068). Absent: not asked. */
+  termsAccepted?: boolean;
 }): PlanAction {
   const { plan, manage, config, sellable, hasCustomer, subscription: sub } = args;
   if (!manage) return { kind: "members", reason: "The owner and admins choose the plan." };
@@ -41,6 +43,9 @@ export function planAction(args: {
     return config.mode === "test"
       ? { kind: "unavailable", label: "Subscribe", reason: `No Stripe price is set for this plan (${PRICE_ENV[plan]}).` }
       : { kind: "unavailable", label: "Not on sale yet", reason: "This plan is not on sale yet." };
+  }
+  if (args.termsAccepted === false) {
+    return { kind: "unavailable", label: config.mode === "test" ? "Subscribe in the sandbox" : "Subscribe", reason: "Give the business details and accept the terms above first." };
   }
   return { kind: "checkout", label: config.mode === "test" ? "Subscribe in the sandbox" : "Subscribe" };
 }

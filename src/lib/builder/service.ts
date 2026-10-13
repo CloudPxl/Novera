@@ -486,7 +486,7 @@ export async function runExploratoryScan(ctx: Ctx, input: { buildId: string; age
     workspace_id: ctx.workspaceId, key, version, name: assembled.suite.name, cases: assembled.suite.cases,
     approval: "exploratory",
     provenance: {
-      build_id: state.build.id, label: "Exploratory scan — not a conformity report",
+      build_id: state.build.id, label: "Exploratory scan — not a sealed evaluation report",
       candidates: live.length, approved: live.filter((c) => c.status === "approved").length,
       undecided: live.filter((c) => c.status !== "approved").length,
       started_by: ctx.userId, started_at: new Date().toISOString(),

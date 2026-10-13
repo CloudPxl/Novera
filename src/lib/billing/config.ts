@@ -5,7 +5,9 @@
  * Billing is "not active" unless a secret key AND a webhook signing secret are set. A live key
  * (`sk_live_` / `rk_live_`) is refused unless `BILLING_ALLOW_LIVE=1`, and that variable must
  * stay unset until David has signed off live activation (docs/BILLING-DECISIONS.md): a live key
- * pasted into the wrong environment then turns billing off instead of charging someone.
+ * pasted into the wrong environment then turns billing off instead of charging someone. The
+ * mirror rule: a test key on the production deployment (`VERCEL_ENV=production`) turns billing
+ * off too, so a test card can never buy a plan there.
  *
  * Nothing here is ever sent to a browser. The page reads `active`, `mode` and `reason` only.
  */
@@ -74,6 +76,12 @@ export function billingConfig(env: Record<string, string | undefined> = process.
     return off("Billing is not active: a live payment key is configured, and live billing has not been approved.", "live");
   }
   if (!webhookSecret.startsWith("whsec_")) return off("Billing is not active: the webhook signing secret is not a Stripe one.", mode);
+  // A sandbox key on the production deployment would let anyone subscribe with Stripe's test
+  // card and, since D3 (0067), run on a paid plan for free: production reads test-mode rows
+  // whenever its key is a test key. Production takes live keys only, once live is approved.
+  if (mode === "test" && env.VERCEL_ENV === "production") {
+    return off("Billing is not active: a Stripe test key is configured on the production deployment, which takes live keys only. The sandbox belongs on Preview.");
+  }
 
   return { ...base, active: true, reason: null, mode, secretKey, webhookSecret };
 }

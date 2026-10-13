@@ -75,8 +75,12 @@ row says which it was.
 | # | Work item | Owner | Status | Proof | Decision |
 |---|---|---|---|---|---|
 | L1 | Privacy, terms, DPA, sub-processors, imprint, cookies, acceptable use, security, AI testing scope, refunds | Counsel | **BLOCKED** (drafts done) | Production: `/legal/*` 200, `noindex`, draft banner; `tests/legal.test.ts` (no compliance wording; placeholders) | `docs/legal-inputs-required.md`; not linked from the site until approved |
-| L2 | Questions for counsel and accountant | Code | PASS | `docs/LEGAL-COUNSEL-QUESTIONS.md` (35 questions; 35: the attester's email in sealed reports) | — |
+| L2 | Questions for counsel and accountant | Code | PASS | `docs/LEGAL-COUNSEL-QUESTIONS.md` (42 questions; 36–42 from the 2026-10-13 brief) | — |
 | L3 | A privacy notice where personal data is collected (sign-up, support, apply) | Counsel + David | **BLOCKED** | No page links a privacy notice; `/legal` is draft and unlinked | Approved privacy notice, then link it from those forms |
+| L5 | Contract acceptance before a paid plan: B2B details, Civil Code art. 1203 clauses accepted separately, record per version | Code | PASS (code) | 0068, `tests/legal-framework.test.ts`; local walk 33/33 (refused, recorded, unchangeable, receipt, checkout gated, erased) | Counsel on question 36; texts approved before live |
+| L6 | Every report and export says testing evidence, not certification | Code | PASS | `src/lib/legal/notices.ts`; export tests; report page at 390/1440 | Counsel on question 39 |
+| L7 | Company details on site and invoices (Law 365/2002 art. 5; Law 31/1990 art. 74) | David | **BLOCKED** | `data/legal/entity.ts` all null; live checkout refuses until complete | Entity details |
+| L8 | No Stripe test key in production | David | **ACTION** | Production had test keys (billing active in test mode). Code now refuses a test key on production | Delete the Stripe variables from Production |
 | L4 | Public commercial copy matches the pricing decision | David | PASS | D3 decided 2026-10-12. The home page and `/docs/the-trial-and-your-own-key` say: 3 free runs, then a plan (Team BYOK or Agency Pro). No prices published yet | Publish prices when billing opens |
 
 ## External steps (David), in order

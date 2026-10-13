@@ -1,5 +1,6 @@
 "use client";
 
+import { REPORT_NOTICE_SHORT } from "@/lib/legal/notices.ts";
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -245,6 +246,8 @@ export function LiveRun({
             <span className="text-xs text-ink-faint">
               {hasBaseline ? "Includes a comparison with the previous run." : "First run for this agent, so there is nothing to compare against yet."}
             </span>
+            {/* Said where the link is handed on, as well as on the report itself. */}
+            <p className="w-full text-xs leading-relaxed text-ink-faint">{REPORT_NOTICE_SHORT}</p>
           </div>
         )}
       </Card>

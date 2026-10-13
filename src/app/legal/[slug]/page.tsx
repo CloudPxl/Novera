@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { LEGAL_DOCUMENTS, legalDocument } from "../../../../data/legal/index.ts";
 import { sourceById } from "../../../../data/legal/sources.ts";
 import { parseLegalBody } from "@/lib/legal/document.ts";
+import { isPublished } from "@/lib/legal/publication.ts";
 import { Contents, DraftBanner, LegalBody, SourcesConsulted } from "../legal-body.tsx";
 
 // Every page under the nonce CSP in src/proxy.ts is rendered per request.
@@ -11,7 +12,12 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: PageProps<"/legal/[slug]">): Promise<Metadata> {
   const doc = legalDocument((await params).slug);
-  return { title: doc ? `${doc.title} (draft) · Novera` : "Novera" };
+  if (!doc) return { title: "Novera" };
+  // The layout keeps every legal page out of search; a document counsel approved, with the
+  // company details complete, is the one exception (src/lib/legal/publication.ts).
+  return isPublished(doc)
+    ? { title: `${doc.title} · Novera`, robots: { index: true, follow: true } }
+    : { title: `${doc.title} (draft) · Novera` };
 }
 
 export default async function LegalPage({ params }: PageProps<"/legal/[slug]">) {
@@ -26,7 +32,9 @@ export default async function LegalPage({ params }: PageProps<"/legal/[slug]">) 
       <Link href="/legal" className="text-sm text-ink-faint underline-offset-2 hover:text-ink hover:underline">← Legal documents</Link>
       <h1 className="mt-4 type-h1">{doc.title}</h1>
       <div className="mt-4">
-        <DraftBanner lastReviewed={doc.lastReviewed} version={doc.version} />
+        {isPublished(doc) && doc.approval
+          ? <p className="text-sm text-ink-soft">Version {doc.version} · in force from {doc.approval.effectiveDate}</p>
+          : <DraftBanner lastReviewed={doc.lastReviewed} version={doc.version} />}
       </div>
       <Contents blocks={blocks} />
       <LegalBody blocks={blocks} />

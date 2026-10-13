@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { REPORT_NOTICE_PARAGRAPHS, REPORT_NOTICE_SHORT, REPORT_NOTICE_TITLE, REPORT_NOTICE_VERSION } from "@/lib/legal/notices.ts";
 import { notFound } from "next/navigation";
 import { scoreWithheldAs, obligationLabel, type ReportPayload } from "@/lib/report/payload.ts";
 import { findingLead, gradedByLine } from "@/lib/report/graders.ts";
@@ -78,6 +79,14 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           </p>
         )}
         <h1 className="mt-3 text-3xl font-semibold tracking-tight [overflow-wrap:anywhere] sm:text-4xl">{subject.client}</h1>
+        {/* Novera's standing notice, at cover level on every report, sealed before it existed or
+            after: it is a statement about every report, kept outside the sealed payload so no
+            hash changes (src/lib/legal/notices.ts). */}
+        <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+          <strong className="font-semibold text-ink">{REPORT_NOTICE_TITLE}.</strong>{" "}
+          {REPORT_NOTICE_SHORT.replace(/^Testing evidence, not certification: /, "")}{" "}
+          <a href="#standing-notice" className="underline underline-offset-2 print:no-underline">Full notice</a>
+        </p>
         <dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 text-sm sm:grid-cols-3">
           <Field label="Agent" value={subject.agent} />
           <Field label="Policy version" value={`v${subject.policy_version}`} />
@@ -413,6 +422,11 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         <p className="rounded-lg border border-line bg-ground p-4 text-sm leading-relaxed text-ink-soft">
           {payload.limitations}
         </p>
+        <div id="standing-notice" className="mt-4 rounded-lg border border-line p-4 text-sm leading-relaxed text-ink-soft">
+          <p className="font-semibold text-ink">{REPORT_NOTICE_TITLE}</p>
+          {REPORT_NOTICE_PARAGRAPHS.map((p) => <p key={p.slice(0, 24)} className="mt-2">{p}</p>)}
+          <p className="mt-2 text-xs text-ink-faint">Novera&apos;s standing notice ({REPORT_NOTICE_VERSION}), shown with every report. It is not part of the sealed content above and does not change its hash.</p>
+        </div>
         <dl className="mt-4 space-y-2 text-sm text-ink-soft">
           <Line label="Authorisation" value={subject.authorisation} />
           <Line label="Graded by" value={gradedByLine(run)} />

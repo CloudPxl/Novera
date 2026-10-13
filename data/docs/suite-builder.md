@@ -94,7 +94,7 @@ An agency can prepare a build for a client, then invite the client as a reviewer
 
 ## Try it first: an exploratory scan
 
-**Run an exploratory scan** runs the drafts as they stand against your agent. It is labelled *Exploratory scan — not a conformity report* everywhere it appears. It never seals a report: the database refuses one. A pipeline reads it as incomplete. It cannot be scheduled, and it uses one run.
+**Run an exploratory scan** runs the drafts as they stand against your agent. It is labelled *Exploratory scan — not a sealed evaluation report* everywhere it appears. It never seals a report: the database refuses one. A pipeline reads it as incomplete. It cannot be scheduled, and it uses one run.
 
 ## Publish
 

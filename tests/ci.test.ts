@@ -138,3 +138,20 @@ test("two models of one vendor still pass, and the reason says so", () => {
   assert.equal(out.code, 0);
   assert.match(out.reason, /3 of the verdicts were corroborated by two models from one vendor/);
 });
+
+test("every export carries the standing notice outside the sealed payload, and the hash still verifies", async () => {
+  const { REPORT_NOTICE, REPORT_NOTICE_SHORT } = await import("../src/lib/legal/notices.ts");
+  const { reportToCsv, reportToMarkdown } = await import("../src/lib/report/export.ts");
+  const hash = contentHash(FAILED as unknown as Json);
+  const exported = JSON.parse(reportToJson(FAILED, hash, "https://x/report/t"));
+  assert.equal(exported.notice.text, REPORT_NOTICE);
+  assert.equal(contentHash(exported.payload), hash, "the notice is beside the payload, never inside it");
+  assert.match(reportToJunit(FAILED, hash, "u"), /name="novera\.notice"/);
+  assert.ok(reportToCsv(FAILED, hash).includes("not a notified body"));
+  assert.doesNotMatch(reportToCsv(FAILED, hash), /conformity report/i);
+  assert.ok(reportToMarkdown(FAILED, hash, "u").includes("Testing evidence, not certification"));
+  for (const phrase of ["not a legal opinion", "statutory conformity assessment", "Novera is not a notified body"]) {
+    assert.ok(REPORT_NOTICE.includes(phrase), phrase);
+  }
+  assert.match(REPORT_NOTICE_SHORT, /^Testing evidence, not certification/);
+});

@@ -47,8 +47,16 @@ export function stripeGateway(config: BillingConfig): StripeGateway | null {
         customer: req.customer,
         client_reference_id: req.workspaceId,
         line_items: [{ price: req.priceId, quantity: 1 }],
-        metadata: { workspace_id: req.workspaceId, plan_key: req.planKey },
-        subscription_data: { metadata: { workspace_id: req.workspaceId, plan_key: req.planKey } },
+        metadata: {
+          workspace_id: req.workspaceId, plan_key: req.planKey,
+          ...(req.contractAcceptanceId ? { contract_acceptance_id: req.contractAcceptanceId } : {}),
+        },
+        subscription_data: {
+          metadata: {
+            workspace_id: req.workspaceId, plan_key: req.planKey,
+            ...(req.contractAcceptanceId ? { contract_acceptance_id: req.contractAcceptanceId } : {}),
+          },
+        },
         success_url: req.successUrl,
         cancel_url: req.cancelUrl,
         ...(req.automaticTax ? { automatic_tax: { enabled: true } } : {}),

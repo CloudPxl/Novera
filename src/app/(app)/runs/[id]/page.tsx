@@ -566,7 +566,7 @@ export default async function RunPage({
 
       {exploratory && (
         <div role="note" className="mt-4 rounded-panel border border-warning-border bg-warning-surface px-4 py-3 text-warning-text">
-          <p className="font-semibold">Exploratory scan — not a conformity report</p>
+          <p className="font-semibold">Exploratory scan — not a sealed evaluation report</p>
           <p className="mt-1 text-sm">
             This run includes scenarios nobody has approved yet. No report is sealed for it, and a pipeline reads it as
             incomplete. Use it to see what the agent does, then decide each scenario

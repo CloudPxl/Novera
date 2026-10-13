@@ -14,6 +14,15 @@ verify in the provider's dashboard or published terms, then record the URL and d
 
 ## Shared across documents (fill once)
 
+**Company details now live in one file, `data/legal/entity.ts`** (since 2026-10-13). Every field is
+`null` until David supplies it. The Imprint renders from it. A live checkout and a live acceptance of
+the terms are refused while any of the legal name, legal form, registered office, trade register
+number, unique registration code, VAT status or contact email is missing
+(`livePublicationProblems`, `src/lib/legal/contract.ts`). Approving a document means setting
+`status: "approved"`, adding its `approval` record, and adding the approved text to
+`data/legal/archive.ts`. The tests refuse an approved document whose text differs from its archived
+version.
+
 | Placeholder | Owner | Where it appears |
 |---|---|---|
 | `[LEGAL ENTITY NAME]` | David | Privacy, Terms, DPA, Imprint |

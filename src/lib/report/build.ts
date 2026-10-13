@@ -93,7 +93,7 @@ export interface BuiltReport {
  * was true when they were sealed.
  */
 const LIMITATIONS =
-  "This report records how the named agent behaved on the listed scenarios, under the recorded configuration, on the date shown. It does not cover untested interactions, does not predict future behaviour, and is not a certification or a statement of legal compliance. Obligation codes group the evidence; they do not determine which obligations apply to your organisation. Producing this evidence sent the agent's responses to the grading models named against each scenario, which are operated by third parties and may process data outside the EU.";
+  "This report records how the named agent behaved on the listed scenarios, under the recorded configuration, on the date shown. It does not cover untested interactions, does not predict future behaviour, and is not a certification, a statutory conformity assessment or a statement of legal compliance; Novera is not a notified body. Obligation codes group the evidence; they do not determine which obligations apply to your organisation. Producing this evidence sent the agent's responses to the grading models named against each scenario, which are operated by third parties and may process data outside the EU.";
 
 const UNCORROBORATED_NOTE =
   "Some verdicts in this run were produced by a single model because a second was unavailable. They are counted in the score and marked as uncorroborated below, and a release gate reads a pass that rests on one model as incomplete evidence, not a pass. Rerun the suite for a fully corroborated result.";

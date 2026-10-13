@@ -131,6 +131,43 @@ proposal.
     for that agent, which the report's recipients see and which account deletion cannot remove. Is
     that justified (Art. 6, Art. 17), or should future attestations name a role or an id? *(Privacy)*
 
+## Added 2026-10-13 (legal build brief; the drafts now carry its proposed clauses)
+
+The Terms (version 0.2 draft) now propose the brief's clauses: business customers only (§2), customer
+responsibility for the tested system (§7), the report's limits (§8), model variance (§9), monthly
+auto-renewal with no refunds for unused time (§10), suspension (§12), liability capped at three
+months' fees with exclusions of indirect and regulatory losses (§14), customer indemnities including
+for regulatory fines (§15), BYOK warranties (§16), Romanian law and the Bucharest courts (§17). Every
+one of them is a proposal for counsel, not a decision.
+
+36. **Article 1203 acceptance.** Before a paid plan, an owner or admin ticks three separate boxes
+    (none pre-ticked): the documents; an express, separate acceptance of Terms sections 2, 8, 10, 12,
+    14, 15 and 17, each listed with what it covers; and business purpose with authority to bind. Novera
+    stores who, when, the organisation's details and the SHA-256 of each text and of those sections
+    (0068), and offers a downloadable record. Does an online checkbox of this kind satisfy "expressly
+    accepted in writing" (Civil Code art. 1203), or is a qualified electronic signature or a signed
+    order form needed for some clauses? *(Terms)*
+37. **B2B verification.** The gate asks for the legal name, registered address, country, an optional
+    VAT number (recorded as declared; Novera does not validate it) and the declarations. What
+    verification is adequate for a B2B-only service, and what follows if a consumer gets through?
+    *(Terms §2)*
+38. **Liability cap.** Is three months' fees defensible under Romanian law, with or without a fixed
+    floor, and which exclusions in §14 cannot be enforced? *(Terms §14)*
+39. **Report terminology.** Novera's own surfaces now say "agent evaluation report" and carry a
+    standing notice that a report is not a conformity assessment, certification or notified-body
+    approval. Does any remaining use of "obligation" or "evidence" language still risk appearing as a
+    statutory conformity assessment? *(AI testing scope, reports)*
+40. **Acceptance records after erasure.** Erasing a workspace deletes its acceptance records with it,
+    as it deletes everything else. Must they be kept as evidence of the contract, and for how long?
+    The records name the signer and their title. *(Privacy, retention)*
+41. **Roles per data flow.** The DPA now proposes a role per activity (processor for testing,
+    controller for accounts, billing and acceptance). Confirm or correct. *(DPA §1)*
+42. **Accountant: VAT on cross-border B2B.** Directive 2006/112/EC Art. 196 (reverse charge) and Fiscal
+    Code Art. 307(2): exact invoice wording, VIES validation, what happens with an invalid VAT number,
+    prices net or gross, OSS if consumers ever buy, and non-EU customers. Stripe Tax stays off until
+    this is answered. *(Refunds, Terms §10)* EUR-Lex could not be read when the drafts were updated,
+    so neither text is among the dated sources.
+
 ## Email and marketing
 
 34. Novera sends only transactional email. If lifecycle or product-update emails are added, does Legea

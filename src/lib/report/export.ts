@@ -1,3 +1,4 @@
+import { REPORT_NOTICE, REPORT_NOTICE_PARAGRAPHS, REPORT_NOTICE_SHORT, REPORT_NOTICE_TITLE, REPORT_NOTICE_VERSION } from "../legal/notices.ts";
 import { obligationLabel, scoreWithheldAs, type ReportPayload } from "./payload.ts";
 import { findingLead, gradedByLine } from "./graders.ts";
 import { ciOutcome } from "./ci.ts";
@@ -38,7 +39,8 @@ export function reportToCsv(payload: ReportPayload, contentHash: string): string
   const { subject, run, coverage, findings, limitations } = payload;
   const rows: Array<Array<string | number | null | undefined>> = [];
 
-  rows.push(["Novera conformity report"]);
+  rows.push(["Novera agent evaluation report"]);
+  rows.push(["Notice", REPORT_NOTICE_SHORT]);
   rows.push(["Client", subject.client]);
   rows.push(["Agent", subject.agent]);
   rows.push(["Policy version", subject.policy_version]);
@@ -145,6 +147,8 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
   const out: string[] = [];
 
   out.push(`# Agent evaluation report — ${subject.agent}`);
+  out.push("");
+  out.push(`> **${REPORT_NOTICE_TITLE}.** ${REPORT_NOTICE_PARAGRAPHS.join(" ")}`);
   out.push("");
   out.push(`**Client:** ${subject.client}  `);
   out.push(`**Agent:** ${subject.agent}  `);
@@ -383,6 +387,8 @@ export function reportToJson(payload: ReportPayload, contentHash: string, url: s
         canonicalisation: "UTF-8 JSON, object keys sorted, no whitespace, array order kept",
       },
       ci: ciOutcome(payload),
+      // Novera's standing notice, outside the payload: the hash does not cover it.
+      notice: { title: REPORT_NOTICE_TITLE, version: REPORT_NOTICE_VERSION, text: REPORT_NOTICE },
       payload,
     },
     null,
@@ -444,6 +450,7 @@ export function reportToJunit(payload: ReportPayload, contentHash: string, url: 
     property("novera.ci_exit_code", ci.code),
     property("novera.ci_reason", ci.reason),
     property("novera.limitations", payload.limitations),
+    property("novera.notice", REPORT_NOTICE_SHORT),
   ];
 
   const byObligation = new Map<string, typeof findings>();

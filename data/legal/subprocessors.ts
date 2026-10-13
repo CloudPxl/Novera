@@ -14,6 +14,7 @@
  * listed only under "planned".
  */
 import type { LegalDocument } from "./types.ts";
+import { CUSTOMER_CONFIGURED, PROVIDER_REGISTER } from "./register.ts";
 
 export interface Subprocessor {
   provider: string;
@@ -26,71 +27,10 @@ export interface Subprocessor {
   use: "core" | "optional";
 }
 
-export const SUBPROCESSORS: readonly Subprocessor[] = [
-  {
-    provider: "Supabase",
-    service: "Postgres database, authentication, scheduled jobs",
-    purpose: "Stores accounts, workspaces, agents, policies, runs, evidence, reports and every other record; signs people in",
-    data: "All categories in the Privacy Notice",
-    location: "Project region eu-central-1 (Frankfurt, Germany), per project configuration. Location of backups, logs and support access: [TO VERIFY WITH SUPABASE]",
-    transfer: "[TRANSFER MECHANISM, IF ANY — COUNSEL TO CONFIRM]",
-    use: "core",
-  },
-  {
-    provider: "Vercel",
-    service: "Application hosting, server functions, content delivery network",
-    purpose: "Serves the pages and runs the server code",
-    data: "All categories in transit; request metadata such as IP address and user agent in platform logs",
-    location: "Server functions pinned to region fra1 (Frankfurt, Germany) in vercel.json. Static files and the edge network may serve a request from a location near the visitor, worldwide. Build and log storage location: [TO VERIFY WITH VERCEL]",
-    transfer: "[TRANSFER MECHANISM — COUNSEL TO CONFIRM]",
-    use: "core",
-  },
-  {
-    provider: "Resend",
-    service: "Transactional email",
-    purpose: "Sends invitations and approved support replies; sign-in emails once connected to the authentication service",
-    data: "Recipient email address, message content",
-    location: "[TO VERIFY WITH RESEND]",
-    transfer: "[TRANSFER MECHANISM — COUNSEL TO CONFIRM]",
-    use: "core",
-  },
-  {
-    provider: "Groq",
-    service: "Language model inference (Novera's own key)",
-    purpose: "Grades scenarios on the trial allowance; plays the simulated customer in persona scenarios; drafts scenarios from a policy; drafts support replies; diagnoses failures; answers Ask Novera; Suite Builder extraction",
-    data: "Scenario text, agent replies, workspace summaries for Ask Novera, support message content. May include personal data",
-    location: "Operated from the United States, per Novera's documentation. Processing location: [TO VERIFY WITH GROQ]",
-    transfer: "[TRANSFER MECHANISM — COUNSEL TO CONFIRM]",
-    use: "core",
-  },
-  {
-    provider: "Mistral AI",
-    service: "Language model inference (Novera's own key)",
-    purpose: "Second, independent grading opinion; fallback for the simulated customer, drafting, diagnosis and Ask Novera",
-    data: "As for Groq. May include personal data",
-    location: "Operated from France, per Novera's documentation. Processing location: [TO VERIFY WITH MISTRAL AI]",
-    transfer: "[TRANSFER MECHANISM, IF ANY — COUNSEL TO CONFIRM]",
-    use: "core",
-  },
-  {
-    provider: "OpenRouter",
-    service: "Language model inference (Novera's own key, free models)",
-    purpose: "Novera's internal measurement scripts only. Approved only for material Novera wrote itself, and every product feature sends customer material, so the service sends it nothing",
-    data: "Only material Novera wrote itself (documentation, test scenarios). The router refuses to send it customer data",
-    location: "[TO VERIFY WITH OPENROUTER]",
-    transfer: "[TRANSFER MECHANISM — COUNSEL TO CONFIRM]",
-    use: "optional",
-  },
-  {
-    provider: "Google (Gemini API, free tier)",
-    service: "Language model inference (Novera's own key), when that key is configured",
-    purpose: "Novera's internal measurement scripts only, as for OpenRouter",
-    data: "Only material Novera wrote itself. The router refuses to send it customer data",
-    location: "[TO VERIFY WITH GOOGLE]",
-    transfer: "[TRANSFER MECHANISM — COUNSEL TO CONFIRM]",
-    use: "optional",
-  },
-];
+/** Engaged by Novera today, from the one register (./register.ts). Planned providers are not here. */
+export const SUBPROCESSORS: readonly Subprocessor[] = PROVIDER_REGISTER
+  .filter((p) => p.status !== "planned")
+  .map((p) => ({ provider: p.provider, service: p.service, purpose: p.purpose, data: p.data, location: p.location, transfer: p.transfer, use: p.status as "core" | "optional" }));
 
 const cell = (s: string) => s.replace(/\|/g, "/").replace(/\n/g, " ");
 
@@ -107,12 +47,12 @@ export const subprocessors: LegalDocument = {
   title: "Sub-processors",
   summary: "Every third party that processes data for Novera, what it receives and where — locations only where verified.",
   status: "draft",
-  version: "0.1 draft",
-  lastReviewed: "2026-10-09",
+  version: "0.2 draft",
+  lastReviewed: "2026-10-13",
   sources: ["gdpr", "edpb-07-2020", "edpb-opinion-22-2024"],
   body: `This list names the third parties that process personal data when Novera provides its service. It is a draft: the transfer mechanism for each provider, and every location marked as a placeholder, still has to be verified with the provider and confirmed by counsel.
 
-**Last updated:** 9 October 2026. **Effective date:** [EFFECTIVE DATE].
+**Last updated:** 13 October 2026. **Effective date:** [EFFECTIVE DATE].
 
 ## Active sub-processors
 
@@ -132,19 +72,17 @@ These are chosen and configured by the customer. Whether any of them is a sub-pr
 
 | Service | What it receives | Who chooses it |
 | --- | --- | --- |
-| The customer's own model provider (Groq, Google AI Studio, OpenRouter or Anthropic) | Everything that workspace's grading and Ask Novera send: scenarios, agent replies, workspace summaries | The customer, under its own agreement with the provider |
-| The agent under test | Each scenario's messages, and any conversation history or context the scenario declares | The customer |
-| A read-back endpoint | A read-only request to check a claimed action; its response body is not stored | The customer |
-| Webhook receivers | Run counts and links; never agent replies, inputs, policy text or keys | The customer |
-| Google or GitHub sign-in | The sign-in request, when a person chooses that way in | The person signing in |
+${CUSTOMER_CONFIGURED.map((c) => `| ${cell(c.service)} | ${cell(c.receives)} | ${cell(c.chosenBy)} |`).join("\n")}
 
 ## Planned, not active
 
 None of the following processes any data today. Each would be added to the table above, with notice under the change procedure below, before it does.
 
-- Stripe, for billing. Only a sandbox integration is planned; no live payments are taken.
-- An error-monitoring service. No vendor has been chosen.
-- OpenAI or Anthropic on Novera's own keys, as a third grading vendor. No funded key is configured.
+${PROVIDER_REGISTER.filter((p) => p.status === "planned").map((p) => `- **${p.provider}** — ${p.purpose}.`).join("\n")}
+
+## Machine-readable copy
+
+The same register, with whether each provider is in use on the deployment that serves it (read from that deployment's configuration), is at /legal/subprocessors.json.
 
 ## Changes to this list
 

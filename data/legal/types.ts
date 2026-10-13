@@ -34,8 +34,13 @@ export interface LegalDocument {
   title: string;
   /** One sentence for the index. */
   summary: string;
-  /** Every page is a draft until counsel signs it off; nothing else is offered. */
-  status: "draft";
+  /**
+   * Every page is a draft until counsel signs it off. "approved" needs an `approval` record,
+   * and an approved version is frozen in ./archive.ts (src/lib/legal/publication.ts checks it).
+   */
+  status: "draft" | "approved";
+  /** Who signed this version off and when it takes effect. Present only when approved. */
+  approval?: { approvedBy: string; approvedAt: string; effectiveDate: string };
   /** Version label of the draft, not of any legal act. */
   version: string;
   /** ISO date the draft was last checked against the code and the sources. */

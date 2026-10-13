@@ -12,6 +12,8 @@ export interface CheckoutRequest {
   cancelUrl: string;
   automaticTax: boolean;
   taxIdCollection: boolean;
+  /** The contract acceptance (0068) this checkout rests on, carried in Stripe's metadata. */
+  contractAcceptanceId: string | null;
 }
 
 /** A Stripe price, as far as checkout compares it with the catalog. */

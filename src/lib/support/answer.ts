@@ -5,7 +5,7 @@ import { checkEscalation } from "./escalate.ts";
 /**
  * Drafting a support answer from the published documentation and nothing else.
  *
- * The same rule the conformity suite grades a customer's agent on — answer only from
+ * The same rule the evaluation suite grades a customer's agent on — answer only from
  * approved documentation, and say so when it does not cover the question — applies to
  * our own support agent. It would be difficult to sell evidence of source grounding
  * while running an unsourced support bot.

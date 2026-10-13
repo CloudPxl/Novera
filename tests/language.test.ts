@@ -61,6 +61,8 @@ test("each finding says where it is and why it is refused", () => {
  */
 const SURFACES = [
   "src/app/report/[token]/page.tsx",
+  "src/lib/report/seal.ts",
+  "src/components/ui/seal-inspector.tsx",
   "src/lib/report/export.ts",
   "src/lib/report/payload.ts",
   "src/lib/report/build.ts",

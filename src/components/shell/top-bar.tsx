@@ -92,7 +92,7 @@ export async function TopBar() {
   const upgrade = mayBill && needsBillingAction(entitlement.blocker) ? remedyFor(entitlement.blocker) : null;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur">
+    <header className="print-hide sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-[80rem] items-center gap-2 px-4 sm:px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2 rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ink">
           <span aria-hidden className="grid size-7 place-items-center rounded-control bg-ink text-xs font-bold text-on-ink">N</span>

@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentConfig } from "../agents/types.ts";
 import { buildAgentAdapter } from "../agents/factory.ts";
 import { buildVerifier } from "../evidence/connectors/index.ts";
-import { executeRun, type RunSummary } from "../runner/execute.ts";
+import { AGENT_PACE_MS, executeRun, type RunSummary } from "../runner/execute.ts";
 import type { RunCaseRecord } from "../runner/types.ts";
 import { coverage, coverageByObligation, coverageByCategory } from "../evidence/coverage.ts";
 import type { Suite } from "../runner/types.ts";
@@ -93,6 +93,7 @@ export async function startRunExecution(args: {
     // true one. The column has a value for every agent, so pass it.
     agentIsProduction: agent.is_production !== false,
     deadline,
+    paceMs: AGENT_PACE_MS,
   });
 
   // Out of time, not out of luck: the caller invokes this again and it picks up.

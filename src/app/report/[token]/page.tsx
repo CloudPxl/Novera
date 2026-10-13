@@ -7,6 +7,8 @@ import { categoryMeta } from "@/lib/evidence/categories.ts";
 import { loadReportByToken } from "@/lib/report/access.ts";
 import { ReportToolbar } from "./toolbar.tsx";
 import { track } from "@/lib/analytics/track.ts";
+import { SealInspector } from "@/components/ui/seal-inspector.tsx";
+import { SEAL_ATTRIBUTION, sealContents } from "@/lib/report/seal.ts";
 
 const FINGERPRINT_LABELS: Record<string, string> = {
   agent_endpoint: "Agent endpoint",
@@ -58,11 +60,21 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
   // A count, nothing else: no token, no workspace, no reader.
   await track("report_viewed");
 
-  const { payload, content_hash, expires_at } = result;
+  const { payload, content_hash, expires_at, created_at } = result;
   const { subject, run, coverage, obligations, findings, comparison } = payload;
+  // Stored beside the payload, not inside it: when the seal was applied. The run's own date
+  // and duration are the sealed fields; this says when that evidence was fixed.
+  const sealedAt = created_at ? `${new Date(created_at).toISOString().slice(0, 16).replace("T", " ")} UTC` : null;
 
   return (
     <main className="mx-auto w-full max-w-4xl bg-surface px-6 py-12 text-ink print:px-0 print:py-0 sm:px-8">
+      {/* Print only, and outside the sealed content: the payload is what is hashed, never this
+          page's markup, so nothing here changes the digest it prints. */}
+      <PrintSealLine
+        className="mb-6 border-b"
+        hash={content_hash}
+        detail={`Run ${run.id} · run date ${run.date}${run.duration_ms != null ? ` · ran ${(run.duration_ms / 1000).toFixed(1)} s` : ""}${sealedAt ? ` · sealed ${sealedAt}` : ""} · format ${payload.novera?.format ?? "?"}`}
+      />
       <header className="border-b border-line pb-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint">
@@ -95,6 +107,12 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           <Field label="Environment" value={subject.environment} />
           <Field label="Run reference" value={run.id} mono />
         </dl>
+        <SealInspector
+          className="mt-6"
+          hash={content_hash}
+          items={sealContents(payload)}
+          exportPath={`/api/reports/${encodeURIComponent(token)}/export?format=json`}
+        />
       </header>
 
       <Section title="Coverage">
@@ -552,7 +570,23 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           Access to this link expires on {new Date(expires_at).toISOString().slice(0, 10)}.
         </p>
       </footer>
+      <PrintSealLine
+        className="mt-8 border-t"
+        hash={content_hash}
+        detail={`Printed from the sealed report for run ${run.id}${sealedAt ? `, sealed ${sealedAt}` : ""}. This line is outside the sealed content.`}
+      />
     </main>
+  );
+}
+
+/** The attribution and the full digest, on paper only (the screen has the seal button). */
+function PrintSealLine({ hash, detail, className }: { hash: string; detail: string; className: string }) {
+  return (
+    <div className={`hidden border-line py-3 text-xs leading-relaxed text-ink-soft print:block ${className}`}>
+      <p className="font-semibold text-ink">{SEAL_ATTRIBUTION}</p>
+      <p className="mt-1 break-all font-mono text-ink">SHA-256 {hash}</p>
+      <p className="mt-1">{detail}</p>
+    </div>
   );
 }
 

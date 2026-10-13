@@ -36,6 +36,43 @@ export interface ExecuteRunArgs {
    * with half its evidence and no explanation.
    */
   deadline?: number;
+  /**
+   * The minimum gap, in ms, between successive sends to the agent across every worker of
+   * this slice. Default 0 (no pacing). A customer's endpoint is not ours to hammer.
+   */
+  paceMs?: number;
+}
+
+/** Production pacing between sends to a customer's agent (ms). */
+export const AGENT_PACE_MS = 250;
+
+/** Consecutive transport failures that end a run. */
+export const TRANSPORT_HALT_AFTER = 3;
+
+export const TRANSPORT_HALT_MESSAGE =
+  "Target endpoint unreachable or rate-limited; run halted. Three scenarios in a row could not reach the agent "
+  + "(HTTP 429/5xx or no connection). They are recorded as errors, never as failures of the agent; the remaining "
+  + "scenarios were not sent, and no report is sealed.";
+
+const TRANSPORT_STATUS = new Set([408, 429, 502, 503, 504]);
+
+/**
+ * Whether an agent result is a transport failure: the request did not get a usable answer
+ * from the agent's server (408/429/502/503/504, or no HTTP status at all — refused, reset,
+ * DNS, timeout). Not transport: Novera's own refusals ("Not sent"), a wait cut by Novera's
+ * time slice, and anything the agent did answer (other statuses, invalid JSON, wrong path).
+ */
+export function isTransportFailure(result: Partial<AgentResult> & { ok: boolean }): boolean {
+  if (result.ok || result.cutByNovera) return false;
+  if (result.statusCode !== undefined) return TRANSPORT_STATUS.has(result.statusCode);
+  return !(result.error ?? "").startsWith("Not sent");
+}
+
+// In memory only, for the halt decision: never persisted, never part of a record.
+const transportOutcomes = new WeakSet<object>();
+function flagTransport<T extends object>(outcome: T, result: AgentResult): T {
+  if (isTransportFailure(result)) transportOutcomes.add(outcome);
+  return outcome;
 }
 
 export interface RunSummary {
@@ -277,11 +314,11 @@ export async function executeCase(args: {
 
     transcript.push({ role: "customer", content: message, ...(simulatedBy ? { simulated: true, model: simulatedBy } : {}) });
     if (!result.ok || result.responseText === null) {
-      return unfinished(
+      return flagTransport(unfinished(
         `Turn ${turnNumber} of the conversation got no reply: ${result.error ?? "the agent produced no response."}`,
         result.latencyMs,
         result.toolActivity,
-      );
+      ), result);
     }
     transcript.push({ role: "agent", content: result.responseText, latencyMs: result.latencyMs });
     history.push({ role: "customer", content: message }, { role: "agent", content: result.responseText });
@@ -297,7 +334,7 @@ export async function executeCase(args: {
   const finalTranscript = isConversation ? transcript : null;
 
   if (!agentResult.ok || agentResult.responseText === null) {
-    return {
+    return flagTransport({
       responseText: null,
       transcript: finalTranscript,
       toolActivity: agentResult.toolActivity ?? null,
@@ -318,7 +355,7 @@ export async function executeCase(args: {
       settledBy: null,
       observation: null,
       error: agentResult.error ?? "The agent produced no response.",
-    };
+    }, agentResult);
   }
 
   // Deterministic first. A rule that is true or false about the transcript does not
@@ -536,6 +573,7 @@ function everyJudgeRateLimited(record: RunCaseRecord): boolean {
  */
 export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   const { runId, suite, agent, policy, judge, store, concurrency = 3, skipCaseIds, deadline } = args;
+  const paceMs = Math.max(0, args.paceMs ?? 0);
 
   await store.markRunning(runId);
 
@@ -571,6 +609,11 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   let stopped = false;
   // Another slice took the run over (0047): it sends and records what is left.
   let lostLease = false;
+  // Pacing: the next moment a send may start, reserved synchronously so workers queue.
+  let nextSendAt = 0;
+  // Consecutive agent transport failures, in completion order.
+  let consecutiveTransport = 0;
+  let transportHalted = false;
 
   async function worker(): Promise<void> {
     while (true) {
@@ -592,6 +635,21 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         return;
       }
 
+      if (transportHalted) return;
+
+      if (paceMs > 0) {
+        const slot = Math.max(Date.now(), nextSendAt);
+        // Waiting out the gap must not carry the send past the slice.
+        if ((deadline !== undefined && slot >= deadline) || (hardStop !== undefined && slot >= hardStop)) {
+          ranOutOfTime = true;
+          return;
+        }
+        nextSendAt = slot + paceMs;
+        const wait = slot - Date.now();
+        if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+        if (transportHalted) return;
+      }
+
       // A person pressed Stop: no further message goes to their agent.
       if (stopped || (store.isStopped && await store.isStopped(runId))) {
         stopped = true;
@@ -610,6 +668,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
       }
       startedThisSlice++;
 
+      let outcome: CaseOutcome;
       records[index] = {
         runId,
         caseId: testCase.id,
@@ -619,7 +678,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         input: testCase.input,
         expected: testCase.expected_behavior,
         assertions: testCase.assertions,
-        ...(await executeCase({
+        ...(outcome = await executeCase({
           testCase, agent, policy, judge,
           verifier: args.verifier,
           agentIsProduction: args.agentIsProduction,
@@ -637,6 +696,13 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
           return;
         }
         continue;
+      }
+
+      if (transportOutcomes.has(outcome)) {
+        consecutiveTransport++;
+        if (consecutiveTransport >= TRANSPORT_HALT_AFTER) transportHalted = true;
+      } else {
+        consecutiveTransport = 0;
       }
 
       if (everyJudgeRateLimited(records[index])) {
@@ -658,6 +724,13 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
     // The run is aborted and says so; the cases already saved remain valid evidence.
     status = "aborted";
     error = thrown instanceof Error ? thrown.message : String(thrown);
+  }
+
+  // Three in a row could not reach the agent: the run ends here, aborted, never sealed.
+  // A catch-path error, a stop or a lost lease keeps its own precedence below.
+  if (transportHalted && status === "completed" && !stopped && !lostLease) {
+    status = "aborted";
+    error = TRANSPORT_HALT_MESSAGE;
   }
 
   const saved = records.filter(Boolean);

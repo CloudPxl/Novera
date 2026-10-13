@@ -6,6 +6,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Badge, ProgressBar, inputClass } from "@/components/ui/primitives.tsx";
 import { gradingNote } from "./grading-note.ts";
 import { rulesLine } from "./chain.ts";
+import Link from "next/link";
+import { SEVERITIES, parseSeverities, severityCounts, toggleSeverity, whyNotPassed } from "./triage.ts";
 import type { AgentEvent } from "@/lib/agents/trajectory.ts";
 
 export interface CaseRow {
@@ -67,8 +69,6 @@ const VERDICTS = [
   { key: "pass", label: "Passed" },
 ] as const;
 
-const SEVERITIES = ["critical", "high", "medium", "low"] as const;
-
 export type { Lens } from "./lenses.ts";
 import { LENSES, type Lens } from "./lenses.ts";
 
@@ -98,13 +98,23 @@ export function CaseTable({
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
-  const [severities, setSeverities] = useState<string[]>([]);
   // The lens lives in the address, so a filtered view can be bookmarked, shared with a
   // colleague, or linked from the review queue. Anything unknown there is ignored.
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const fromUrl = params.get("lens");
+  // Severity is an address too: `?severity=critical,high`. Read straight from the URL, with no
+  // copy in state, so a link and the back button always agree with what is showing.
+  const severityParam = params.get("severity");
+  const severities = useMemo(() => parseSeverities(severityParam), [severityParam]);
+  const severityHref = (s: (typeof SEVERITIES)[number]) => {
+    const q = new URLSearchParams(params.toString());
+    const next = toggleSeverity(severities, s);
+    if (next) q.set("severity", next); else q.delete("severity");
+    return q.size ? `${pathname}?${q}` : pathname;
+  };
+  const bySeverity = useMemo(() => severityCounts(cases), [cases]);
   // `?verdict=fail` opens on that tab, so "review the failures" can be a link.
   const verdictFromUrl = params.get("verdict");
   const [verdict, setVerdict] = useState<Verdict>(() =>
@@ -155,7 +165,7 @@ export function CaseTable({
       if (active && !active.match(c)) return false;
       if (verdict !== "all" && c.status !== verdict) return false;
       if (category !== "all" && c.category !== category) return false;
-      if (severities.length && !severities.includes(c.severity)) return false;
+      if (severities.length && !(severities as string[]).includes(c.severity)) return false;
       if (!q) return true;
       return (
         c.caseId.toLowerCase().includes(q) ||
@@ -165,10 +175,6 @@ export function CaseTable({
       );
     });
   }, [cases, query, verdict, category, severities, lens]);
-
-  function toggleSeverity(s: string) {
-    setSeverities((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
-  }
 
   const filtered = shown.length !== cases.length;
 
@@ -257,20 +263,23 @@ export function CaseTable({
         <span className="type-pill mr-1 text-ink-faint">Severity</span>
         {SEVERITIES.map((s) => {
           const on = severities.includes(s);
+          const n = bySeverity[s];
           return (
-            <button
+            <Link
               key={s}
-              type="button"
-              aria-pressed={on}
-              onClick={() => toggleSeverity(s)}
+              href={severityHref(s)}
+              replace
+              scroll={false}
+              aria-current={on ? "true" : undefined}
               className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink ${
                 on
                   ? "bg-ink text-on-ink ring-ink"
                   : "bg-surface text-ink-soft ring-line-strong hover:bg-sunken"
               }`}
             >
-              {s}
-            </button>
+              {s} <span className="tnum font-normal">{n.total}</span>
+              {n.notPassed > 0 && <span className="font-normal"> · <span className="tnum">{n.notPassed}</span> not passed</span>}
+            </Link>
           );
         })}
 
@@ -312,6 +321,10 @@ export function CaseTable({
                   <span className="mt-1.5 block min-w-0 md:mt-0">
                     <span className="hidden type-mono text-xs text-ink-faint md:block">{c.caseId}</span>
                     <span className="block truncate text-sm text-ink">{c.input}</span>
+                    {(() => {
+                      const why = whyNotPassed(c);
+                      return why ? <span className="mt-1 block"><Badge tone={why.tone}>{why.label}</Badge></span> : null;
+                    })()}
                   </span>
 
                   <span className="mt-1.5 flex flex-wrap items-center gap-1.5 md:mt-0 md:block">

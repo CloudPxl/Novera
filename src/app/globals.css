@@ -494,6 +494,52 @@ body {
   footer {
     break-inside: avoid-page;
   }
+
+  /* The operator app, printed (a run page, 2026-10-13). The top bar, Ask Novera and every
+     action carry `print-hide`; what is left is the evidence, black on white. Panels keep
+     their borders but lose the warm ground, shadows and the sticky/blurred chrome, and
+     nothing scrolls inside a box on paper, where the part out of view would be lost. */
+  [data-shell="app"] {
+    background: #ffffff;
+    padding-bottom: 0;
+  }
+  [data-shell="app"] #main {
+    max-width: none;
+    padding: 0;
+  }
+  [data-shell="app"] .bg-ground,
+  [data-shell="app"] .bg-sunken {
+    background: #ffffff;
+  }
+  [data-shell="app"] *,
+  [data-shell="app"] *::before {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+  [data-shell="app"] .sticky,
+  [data-shell="app"] .fixed {
+    position: static;
+  }
+  [data-shell="app"] main [class*="overflow-x-auto"],
+  [data-shell="app"] main [class*="overflow-y-auto"],
+  [data-shell="app"] main .overflow-hidden {
+    overflow: visible;
+    max-height: none;
+  }
+  /* A truncated line on screen is a lost line on paper: wrap it instead. */
+  [data-shell="app"] main .truncate {
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+  }
+  /* A search box or a picker on paper is a field nobody can type into. */
+  [data-shell="app"] main :is(input, select, textarea) {
+    display: none;
+  }
+  /* A "?" disclosure prints as a stray circle; its text is on screen for whoever needs it. */
+  [data-shell="app"] main details.inline-block {
+    display: none;
+  }
 }
 
 /*

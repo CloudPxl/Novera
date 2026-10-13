@@ -47,3 +47,24 @@ test("after earlier runs, a blocked workspace is not told to run again", () => {
   assert.equal(blocked.href, "/billing");
   assert.equal(nextAction(base).label, "Run again");
 });
+
+import { onboardingRail } from "../src/app/(app)/dashboard/next-action.ts";
+
+test("the rail's current step is the header's step, in every state a person can act on", () => {
+  const may = { connect: true, run: true, review: true };
+  for (const [hasAgent, hasPolicy, expected] of [[false, false, 0], [true, false, 1], [true, true, 2]] as const) {
+    const input = { ...base, hasAgent, hasPolicy, hasRun: false, firstAgentId: hasAgent ? "a1" : null, runInFlight: null, blockedReason: null, may };
+    const rail = onboardingRail(input);
+    assert.deepEqual(rail.map((s) => s.state), [0, 1, 2].map((i) => (i < expected ? "done" : i === expected ? "current" : "pending")));
+    assert.equal(rail[expected].href, nextAction(input).href);
+    // Pending steps are never links.
+    for (const s of rail.slice(expected + 1)) assert.equal(s.href, null);
+  }
+});
+
+test("a step the role cannot take names who can, and does not link", () => {
+  const rail = onboardingRail({ hasAgent: true, firstAgentId: "a1", hasPolicy: true, hasRun: false, may: { connect: false, run: false, review: true } });
+  assert.equal(rail[2].state, "current");
+  assert.equal(rail[2].href, null);
+  assert.match(rail[2].note, /operator, admin or owner/);
+});

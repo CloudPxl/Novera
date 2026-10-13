@@ -37,6 +37,8 @@ import { Scorecard, type Corroboration } from "./scorecard.tsx";
 import { CaseTable, CategoryCard, type CaseRow } from "./case-table.tsx";
 import { BaselinePicker } from "./baseline-picker.tsx";
 import { OtherWorkspace } from "@/components/shell/other-workspace.tsx";
+import { SealInspector } from "@/components/ui/seal-inspector.tsx";
+import { NOVERA_ATTRIBUTION, SEAL_ATTRIBUTION, sealContents } from "@/lib/report/seal.ts";
 import { DiagnoseButton, ProposalCard, RetestButton, RetestHistory, type Proposal, type Retest } from "./diagnose.tsx";
 
 export const metadata: Metadata = { title: "Run · Novera" };
@@ -60,7 +62,7 @@ export default async function RunPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ compare?: string; tab?: string; case?: string; lens?: string; verdict?: string }>;
+  searchParams: Promise<{ compare?: string; tab?: string; case?: string; lens?: string; verdict?: string; severity?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -70,7 +72,7 @@ export default async function RunPage({
   const TABS = ["overview", "cases", "comparison", "evidence", "activity"] as const;
   type Tab = (typeof TABS)[number];
   const tab: Tab = (TABS as readonly string[]).includes(sp.tab ?? "") ? (sp.tab as Tab)
-    : sp.case || sp.lens || sp.verdict ? "cases" : compare ? "comparison" : "overview";
+    : sp.case || sp.lens || sp.verdict || sp.severity ? "cases" : compare ? "comparison" : "overview";
   const { user: viewer, workspace: activeWorkspace, context } = await requireWorkspace();
   const viewerId = viewer.id;
   const db = await sessionClient();
@@ -556,9 +558,37 @@ export default async function RunPage({
   const caseIdOf = new Map(rows.map((c) => [c.id as string, c.case_id as string]));
   const suiteLabel = suite ? `${suite.name} v${suite.version}` : "Suite";
 
+  // The seal, as stored: the newest report's digest, or none. Never a placeholder digest.
+  const utc = (at: unknown) => (typeof at === "string" ? `${at.slice(0, 16).replace("T", " ")} UTC` : null);
+  const reportGone = report?.revoked_at
+    ? `This report was withdrawn on ${utc(report.revoked_at)}, so its link and exports no longer answer.`
+    : report && new Date(report.expires_at as string) < new Date()
+      ? `This report's link expired on ${utc(report.expires_at)}, so its exports no longer answer.`
+      : null;
+  const sealLine = report
+    ? `SHA-256 ${report.content_hash as string} · sealed ${utc(report.created_at)}${report.revoked_at ? ` · withdrawn ${utc(report.revoked_at)}` : ""}`
+    : exploratory
+      ? "Not sealed: an exploratory scan is never sealed as a report."
+      : "Not sealed: no report was sealed for this run.";
+  const executed = run.started_at
+    ? `Executed ${utc(run.started_at)}${run.finished_at ? ` to ${utc(run.finished_at)}` : ", not finished"} · status ${run.status as string}`
+    : `Created ${utc(run.created_at)} · not started · status ${run.status as string}`;
+  const sectionName = { overview: "Overview", cases: "Cases", comparison: "Comparison", evidence: "Evidence", activity: "Activity" }[tab];
+
   return (
-    <main className="w-full py-8 text-ink">
-      <Link href={`/agents/${run.agent_id}`} className="text-sm text-ink-soft underline-offset-2 hover:underline">
+    <main className="w-full py-8 text-ink print:py-0">
+      {/* Print only. Everything in it is read from the run and report rows; it is outside any
+          sealed content (a report's digest covers its payload, never this page). */}
+      <PrintRunLine
+        className="mb-5 border-b"
+        lines={[
+          `${agent?.name ?? "Agent"} · ${suiteLabel} · run ${run.id}${settled ? ` · ${sectionName}` : ""}`,
+          executed,
+        ]}
+        seal={sealLine}
+        sealed={Boolean(report)}
+      />
+      <Link href={`/agents/${run.agent_id}`} className="print-hide text-sm text-ink-soft underline-offset-2 hover:underline">
         ← {agent?.name ?? "Agent"}
       </Link>
 
@@ -593,7 +623,7 @@ export default async function RunPage({
       ) : (
         <>
           {/* --------------------------------------------------- tier 1: grade */}
-          <div className="mt-4">
+          <div className="mt-4 print:break-inside-avoid">
             <Scorecard
               grade={grade}
               coverage={runCoverage}
@@ -613,7 +643,7 @@ export default async function RunPage({
           </div>
 
           {/* The primary action and its two quieter neighbours, under the outcome they act on. */}
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="print-hide mt-4 flex flex-wrap items-center gap-3">
             {report?.token && (
               <Link
                 href={`/report/${report.token}`}
@@ -658,10 +688,18 @@ export default async function RunPage({
                 Rerun and compare against this
               </SubmitButton>
             </form>
+            {report?.content_hash && (
+              <SealInspector
+                hash={report.content_hash as string}
+                items={sealContents(report.payload as unknown as ReportPayload)}
+                exportPath={reportGone ? null : `/api/reports/${encodeURIComponent(report.token as string)}/export?format=json`}
+                unavailable={reportGone ?? undefined}
+              />
+            )}
           </div>
 
 
-          <div className="mt-8">
+          <div className="print-hide mt-8">
             <TabNav
               label="Run sections"
               current={tab}
@@ -701,7 +739,7 @@ export default async function RunPage({
                 A percentage can look healthy while the one case that mattered is the one
                 that failed, so a failed critical scenario is marked on its category.
               </p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 print:[&>*]:break-inside-avoid">
                 {categories.map((c) => {
                   const meta = categoryMeta(c.category);
                   return (
@@ -978,7 +1016,19 @@ export default async function RunPage({
           )}
         </>
       )}
+      <PrintRunLine className="mt-8 border-t" lines={[`Run ${run.id} · ${executed}`]} seal={sealLine} sealed={Boolean(report)} />
     </main>
+  );
+}
+
+/** The attribution, the run's own timestamps and its seal (or "not sealed"), on paper only. */
+function PrintRunLine({ lines, seal, sealed, className }: { lines: string[]; seal: string; sealed: boolean; className: string }) {
+  return (
+    <div className={`hidden border-line py-3 text-xs leading-relaxed text-ink-soft print:block ${className}`}>
+      <p className="font-semibold text-ink">{sealed ? SEAL_ATTRIBUTION : NOVERA_ATTRIBUTION}</p>
+      {lines.map((l) => <p key={l} className="mt-1">{l}</p>)}
+      <p className="mt-1 break-all font-mono text-ink">{seal}</p>
+    </div>
   );
 }
 

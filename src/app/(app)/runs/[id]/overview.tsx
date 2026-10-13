@@ -21,7 +21,7 @@ export function RunOverview({ runId, readiness, findings, comparison, canCompare
   const ready = readiness?.state === "READY_TO_SHARE";
   return (
     <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:items-start">
-      <section aria-labelledby="ov-findings">
+      <section aria-labelledby="ov-findings" className="print:break-inside-avoid">
         <div className="flex items-baseline justify-between gap-3">
           <h2 id="ov-findings" className="type-h2">What needs a look</h2>
           {findings.length > 5 && <Link href={`/runs/${runId}?tab=cases`} className="text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">All {findings.length} →</Link>}
@@ -51,7 +51,7 @@ export function RunOverview({ runId, readiness, findings, comparison, canCompare
       </section>
 
       <div className="space-y-6">
-        <section aria-labelledby="ov-ready">
+        <section aria-labelledby="ov-ready" className="break-inside-avoid">
           <h2 id="ov-ready" className="type-h2">The report</h2>
           <div className="mt-3 rounded-shell border border-line bg-surface px-5 py-4">
             {readiness ? (
@@ -66,7 +66,7 @@ export function RunOverview({ runId, readiness, findings, comparison, canCompare
           </div>
         </section>
 
-        <section aria-labelledby="ov-changed">
+        <section aria-labelledby="ov-changed" className="break-inside-avoid">
           <h2 id="ov-changed" className="type-h2">What changed</h2>
           <div className="mt-3 rounded-shell border border-line bg-surface px-5 py-4 text-sm">
             {comparison ? (

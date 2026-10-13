@@ -17,7 +17,8 @@ import { can } from "@/lib/auth/permissions.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { portfolio } from "@/lib/workspaces/portfolio.ts";
 import { formatWhen, zoneLabel } from "@/lib/format/when.ts";
-import { nextAction } from "./next-action.ts";
+import { nextAction, onboardingRail } from "./next-action.ts";
+import { OnboardingRail } from "./onboarding-rail.tsx";
 import { ChannelNote, ClientStrip, GovernancePanel } from "./mode-panels.tsx";
 import { AttentionList, HealthLine, Metrics, PageHeader, Panel, Rows, Section, ViewAll } from "@/components/ui/page.tsx";
 
@@ -240,6 +241,10 @@ export default async function DashboardPage() {
   // At most five things that need someone, each linking to where it is resolved. A block is
   // stated once: by the header's action when that is what it leads with, otherwise here.
   const headerStatesBlock = !entitlement.canRun && action.body === entitlement.blockedReason;
+  const firstRun = runList.length === 0;
+  const rail = firstRun
+    ? onboardingRail({ hasAgent: agentList.length > 0, firstAgentId: (agentList[0]?.id as string | undefined) ?? null, hasPolicy: (policyCount ?? 0) > 0, hasRun: false, may: { connect: can(role, "agent.write"), run: can(role, "run.start"), review: can(role, "workspace.view") } })
+    : null;
   const attentionItems = [
     ...(!entitlement.canRun && !headerStatesBlock ? [{
       text: `${entitlement.blockedReason ?? "Runs cannot start."}${billingBlock && !blockedRemedy ? " An owner or admin of this workspace can choose a plan." : ""}`,
@@ -261,6 +266,17 @@ export default async function DashboardPage() {
 
       <ChannelNote channels={context.profile.channels} />
 
+      {rail ? (
+        <>
+          <OnboardingRail steps={rail} />
+          {attentionItems.length > 0 && (
+            <Section id="attention" title="Needs attention">
+              <AttentionList items={attentionItems} more={{ href: "/review", count: attentionItems.length }} />
+            </Section>
+          )}
+        </>
+      ) : (
+        <>
       <Panel className="mt-2">
         <HealthLine tone={health.tone} title={health.title} detail={health.detail} />
         <div className="border-t border-line">
@@ -285,6 +301,9 @@ export default async function DashboardPage() {
         )}
       </Section>
 
+        </>
+      )}
+
       {mode === "agency" && <ClientStrip rows={rows} currentId={workspace.id} label="Clients" />}
       {mode === "enterprise" && (
         <GovernancePanel
@@ -296,7 +315,7 @@ export default async function DashboardPage() {
         />
       )}
 
-      <Section id="recent" title="Recent activity" action={runList.length > 5 ? <ViewAll href="/runs">All runs</ViewAll> : undefined}>
+      {!firstRun && <Section id="recent" title="Recent activity" action={runList.length > 5 ? <ViewAll href="/runs">All runs</ViewAll> : undefined}>
         {runList.length === 0 ? (
           <p className="rounded-shell border border-line bg-surface px-5 py-4 text-sm text-ink-soft">No runs yet.</p>
         ) : (
@@ -334,9 +353,9 @@ export default async function DashboardPage() {
             </Rows>
           </Panel>
         )}
-      </Section>
+      </Section>}
 
-      {setupDone < setup.length && (
+      {!firstRun && setupDone < setup.length && (
         <Section id="setup" title="Continue setup" action={<ViewAll href="/guide">How Novera works</ViewAll>}>
           <Panel>
             <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">

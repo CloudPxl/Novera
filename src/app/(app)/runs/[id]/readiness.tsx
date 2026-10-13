@@ -26,7 +26,7 @@ export function ReadinessPanel({ state, label, checks, token }: { state: Readine
   const [result, submit] = useActionState<FormState, FormData>(withdrawReport, {});
   const open = state !== "REVOKED" && state !== "EXPIRED";
   return (
-    <section aria-label="Before you send the report" className="mt-4 rounded-control bg-surface p-4 ring-1 ring-line">
+    <section aria-label="Before you send the report" className="mt-4 break-inside-avoid rounded-control bg-surface p-4 ring-1 ring-line">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-medium">Before you send it</h2>
         <Badge tone={TONE[state]}>{label}</Badge>
@@ -43,7 +43,7 @@ export function ReadinessPanel({ state, label, checks, token }: { state: Readine
         ))}
       </ul>
       {open && (
-        <form action={submit} className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-3">
+        <form action={submit} className="print-hide mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-3">
           <input type="hidden" name="token" value={token} />
           <label className="flex items-start gap-2 text-sm text-ink-soft">
             <input type="checkbox" name="confirm" required className="mt-0.5 size-4 accent-ink" />

@@ -467,3 +467,128 @@ test("an agent adapter that throws costs that scenario, not the run (C5)", async
   assert.match(c2.error ?? "", /aborted due to timeout/);
   assert.deepEqual(events, ["running", "finished:completed"]);
 });
+
+// --- transport failures and pacing -------------------------------------------------
+
+import { TRANSPORT_HALT_MESSAGE, isTransportFailure } from "../src/lib/runner/execute.ts";
+
+const many: Suite = {
+  key: "many", version: 1, name: "many",
+  cases: Array.from({ length: 8 }, (_, i) => ({
+    id: `M${i + 1}`, category: "policy", obligation: "policy_accuracy", severity: "medium" as const,
+    input: `m${i + 1}`, expected_behavior: "e", assertions: ["a"],
+  })),
+};
+
+const TRANSPORT = { ok: false, responseText: null, statusCode: 503, error: "Agent returned HTTP 503" } as const;
+
+function scripted(script: Record<string, Partial<AgentResult>>, sent: string[] = [], times: number[] = []): AgentAdapter {
+  return {
+    probe: async () => ({ ok: true, responseText: "p", toolActivity: null, latencyMs: 1 }),
+    send: async ({ input }) => {
+      sent.push(input);
+      times.push(Date.now());
+      return { ok: true, responseText: `reply to ${input}`, toolActivity: null, latencyMs: 1, ...script[input] };
+    },
+    acceptsContext: () => true,
+  };
+}
+
+for (const [label, failure] of [
+  ["HTTP 429", { ok: false, responseText: null, statusCode: 429, error: "Agent returned HTTP 429" }],
+  ["HTTP 503", TRANSPORT],
+  ["connection refused", { ok: false, responseText: null, error: "Request failed: connect ECONNREFUSED" }],
+] as const) {
+  test(`${label} from the agent is an error, never a fail or a pass, and no judge is called`, async () => {
+    const { store, saved } = memoryStore();
+    const calls: string[] = [];
+    await executeRun({
+      runId: "r1", suite, agent: agentReturning({ in2: failure }), policy: "p",
+      judge: judgeArgs(judgeReturning({}, calls)), store, concurrency: 1,
+    });
+    const c2 = saved.find((r) => r.caseId === "C2")!;
+    assert.equal(c2.status, "error");
+    assert.equal(c2.rationale, null);
+    assert.equal(c2.judgeModel, null);
+    assert.deepEqual(c2.judgeVotes, []);
+    assert.ok(!calls.includes("C2"), "nothing to grade, so the judge was not asked");
+    assert.equal(isTransportFailure(failure), true);
+  });
+}
+
+test("three transport failures in a row abort the run, send nothing more, and keep what was sent", async () => {
+  const { store, saved, events } = memoryStore();
+  const sent: string[] = [];
+  const finished: Array<{ status: string; error?: string }> = [];
+  store.finishRun = async (_id, o) => { events.push(`finished:${o.status}`); finished.push(o); };
+  const summary = await executeRun({
+    runId: "r1", suite: many,
+    agent: scripted({ m2: TRANSPORT, m3: TRANSPORT, m4: { ...TRANSPORT, statusCode: 429 } }, sent),
+    policy: "p", judge: judgeArgs(judgeReturning({})), store, concurrency: 1,
+  });
+  assert.equal(summary.status, "aborted");
+  assert.equal(summary.error, TRANSPORT_HALT_MESSAGE);
+  assert.deepEqual(sent, ["m1", "m2", "m3", "m4"], "later scenarios were never sent");
+  assert.equal(saved.length, 4, "the ones already sent are saved");
+  assert.deepEqual(saved.slice(1).map((r) => r.status), ["error", "error", "error"]);
+  assert.deepEqual(finished, [{ status: "aborted", error: TRANSPORT_HALT_MESSAGE }]);
+});
+
+test("error, pass, error, error does not halt the run", async () => {
+  const { store, saved } = memoryStore();
+  const sent: string[] = [];
+  const summary = await executeRun({
+    runId: "r1", suite: many,
+    agent: scripted({ m1: TRANSPORT, m3: TRANSPORT, m4: TRANSPORT }, sent),
+    policy: "p", judge: judgeArgs(judgeReturning({})), store, concurrency: 1,
+  });
+  assert.equal(summary.status, "completed");
+  assert.equal(sent.length, 8);
+  assert.equal(saved.length, 8);
+});
+
+test("an ordinary agent error (invalid JSON, wrong path) does not count toward the halt", async () => {
+  const { store } = memoryStore();
+  const sent: string[] = [];
+  const bad = { ok: false, responseText: null, statusCode: 200, error: "Agent response was not valid JSON" } as const;
+  const summary = await executeRun({
+    runId: "r1", suite: many,
+    agent: scripted({ m1: TRANSPORT, m2: TRANSPORT, m3: bad, m4: TRANSPORT, m5: TRANSPORT }, sent),
+    policy: "p", judge: judgeArgs(judgeReturning({})), store, concurrency: 1,
+  });
+  assert.equal(summary.status, "completed");
+  assert.equal(sent.length, 8);
+  assert.equal(isTransportFailure(bad), false);
+  assert.equal(isTransportFailure({ ok: false, error: "Not sent: private address" }), false);
+  assert.equal(isTransportFailure({ ok: false, cutByNovera: true, error: "cut" }), false);
+});
+
+test("pacing keeps successive sends at least paceMs apart; paceMs 0 adds no wait", async () => {
+  const times: number[] = [];
+  const { store } = memoryStore();
+  await executeRun({
+    runId: "r1", suite, agent: scripted({}, [], times), policy: "p",
+    judge: judgeArgs(judgeReturning({})), store, concurrency: 3, paceMs: 60,
+  });
+  assert.equal(times.length, 3);
+  for (let i = 1; i < times.length; i++) assert.ok(times[i] - times[i - 1] >= 55, `gap ${times[i] - times[i - 1]}ms`);
+
+  const fast: number[] = [];
+  const t0 = Date.now();
+  await executeRun({
+    runId: "r1", suite, agent: scripted({}, [], fast), policy: "p",
+    judge: judgeArgs(judgeReturning({})), store: memoryStore().store, concurrency: 1,
+  });
+  assert.ok(Date.now() - t0 < 50, "no pacing by default");
+});
+
+test("pacing never carries a send past the deadline", async () => {
+  const sent: string[] = [];
+  const summary = await executeRun({
+    runId: "r1", suite, agent: scripted({}, sent), policy: "p",
+    judge: judgeArgs(judgeReturning({})), store: memoryStore().store, concurrency: 1,
+    paceMs: 500, deadline: Date.now() + 100,
+  });
+  assert.equal(sent.length, 1, "the first send is immediate; the next would cross the deadline");
+  assert.equal(summary.status, "incomplete");
+});

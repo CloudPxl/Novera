@@ -45,7 +45,7 @@ export function nextAction(s: NextInput): NextAction {
     return { title: "A run is in progress", body: "Scenarios are being sent and graded. The result appears when every scenario is recorded — never before.", href: `/runs/${s.runInFlight}`, label: "Open the run in progress" };
   }
   if (!s.hasPolicy && s.may.connect) {
-    return { title: "Write the policy your agent should keep", body: "Every verdict is judged against this text, and each saved version is kept.", href: `/agents/${s.firstAgentId}`, label: "Write the policy" };
+    return { title: "Write the policy your agent should keep", body: "Every verdict is judged against this text, and each saved version is kept.", href: `/agents/${s.firstAgentId}?tab=policy`, label: "Write the policy" };
   }
   if (!s.hasRun) {
     if (s.blockedReason) {
@@ -73,4 +73,48 @@ export function nextAction(s: NextInput): NextAction {
   return s.may.run
     ? { title: "Run it again after your next change", body: "A rerun compares scenario by scenario and says what newly broke, and why each verdict moved.", href: `/agents/${s.firstAgentId}`, label: "Run again" }
     : { title: "Nothing waiting for you", body: "New findings appear here when a run completes.", href: "/review", label: "Open review" };
+}
+
+export type RailState = "done" | "current" | "pending";
+
+export interface RailStep {
+  key: "connect" | "policy" | "run";
+  label: string;
+  state: RailState;
+  /** Where the step is done. Null while it is pending, or when this person's role cannot do it. */
+  href: string | null;
+  /** One quiet sentence under the step: what it is, or who can do it. */
+  note: string;
+}
+
+/**
+ * The three steps before a workspace has a run, from the same stored facts `nextAction` reads.
+ * The current step is the first that is not done, and its link is the header's link: both
+ * apply the same order (agent, then policy, then run), and a step this person's role cannot
+ * take says who can instead of linking to a page that would refuse them.
+ */
+export function onboardingRail(s: Pick<NextInput, "hasAgent" | "firstAgentId" | "hasPolicy" | "hasRun" | "may">): RailStep[] {
+  const done = [s.hasAgent, s.hasPolicy, s.hasRun];
+  const current = done.findIndex((d) => !d);
+  const state = (i: number): RailState => (done[i] ? "done" : i === current ? "current" : "pending");
+  const agent = s.firstAgentId;
+  const href = (i: number, to: string | null, allowed: boolean): string | null =>
+    state(i) === "pending" || !allowed || !to ? null : to;
+  return [
+    {
+      key: "connect", label: "Connect your agent", state: state(0),
+      href: href(0, "/agents/new", s.may.connect),
+      note: s.hasAgent ? "Connected." : s.may.connect ? "Its address, and your confirmation that you may test it." : "An operator, admin or owner connects the agent.",
+    },
+    {
+      key: "policy", label: "Write the policy", state: state(1),
+      href: href(1, agent ? `/agents/${agent}?tab=policy` : null, s.may.connect),
+      note: s.hasPolicy ? "Saved. Each version is kept." : !s.hasAgent ? "Available once an agent is connected." : s.may.connect ? "Every verdict is judged against this text." : "An operator, admin or owner writes the policy.",
+    },
+    {
+      key: "run", label: "Run the first evaluation", state: state(2),
+      href: href(2, agent ? `/agents/${agent}` : null, s.may.run),
+      note: s.hasRun ? "Started." : !s.hasPolicy ? "Available once the policy is saved." : s.may.run ? "Graded against your policy and sealed into a dated report." : "An operator, admin or owner starts runs.",
+    },
+  ];
 }

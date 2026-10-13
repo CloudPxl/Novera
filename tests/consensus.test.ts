@@ -183,3 +183,12 @@ test("an ordinary scenario still stops at two", async () => {
   const outcome = await gradeCase({ chat: panel({ a: "pass", b: "pass", c: "fail" }), ...CASE });
   assert.equal(outcome.votes.length, 2);
 });
+
+test("a settler that times out or is rate-limited leaves the disagreement unsettled: an error, never a verdict", async () => {
+  const outcome = await gradeCase({ chat: panel({ a: "pass", b: "fail", c: "down" }), ...CASE });
+  assert.equal(outcome.status, "error");
+  assert.equal(outcome.agreement, "unresolved");
+  assert.match(outcome.error ?? "", /disagreed/);
+  // The settler's failed attempt is stored as a third, errored vote - never as a pass or fail.
+  assert.deepEqual(outcome.votes.map((v) => v.status), ["pass", "fail", "error"]);
+});

@@ -4092,3 +4092,7 @@ The V1 final audit measured every boundary the brief listed, locally and read-on
 - **Added:** `verify:billing`. The real webhook handler goes through the real Supabase store on a local database, with Stripe offline. It covers ledger idempotency, the four lifecycle events, attribution, concurrency, the managed allowance, fair use and erasure, 27/27. The unit tests prove the same rules against a memory store; this proves the tables agree.
 - **Decided:** the steps that need a real company (PFA or SRL) wait for it: company details, counsel's approval, VAT, live Stripe and published prices. The code already refuses to go live without them. V2 is fine-tuning, starting with technical SEO (`docs/V2-PLAN.md`).
 
+
+## 2026-10-13: UI declutter pass (V2 preparation)
+
+Billing left the primary nav (Settings → Billing, the account menu and the status badge reach it); the funding pill became a short badge whose accessible name carries the full sentence; a run block is stated once on the dashboard (the header action when it leads with it, otherwise Needs attention); /settings and /inbox centred on wide screens; the home hero opens on a clean illustrative passing run with the evidence behind a disclosure, the withheld run one click away; shorter section copy; "Where your data goes" on one three-column grid. Measured: public 57/57 and app 87/87 page×width loads clean, D3 walk 42/42.

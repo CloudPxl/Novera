@@ -44,7 +44,7 @@ export function SettingsNav({ current, role, mode, members, workspace, children 
   ];
 
   return (
-    <>
+    <div className="mx-auto w-full max-w-5xl">
       <header className="pb-6 pt-8">
         <p className="type-eyebrow text-ink-faint">Settings</p>
         <h1 className="mt-1.5 type-h1">{active === "profile" ? "Your profile" : active === "account" ? "Sign-in and security" : workspace}</h1>
@@ -75,8 +75,8 @@ export function SettingsNav({ current, role, mode, members, workspace, children 
             ))}
           </ul>
         </nav>
-        <div className="min-w-0 max-w-3xl">{children}</div>
+        <div className="min-w-0">{children}</div>
       </div>
-    </>
+    </div>
   );
 }

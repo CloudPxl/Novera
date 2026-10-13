@@ -79,7 +79,7 @@ export default async function Home() {
             </Reveal>
             <Reveal delay={120}>
               <SampleReport />
-              <p className="mt-3 text-center text-xs text-ink-faint">Open any red or amber cell, or a finding, to see the evidence behind it.</p>
+              <p className="mt-3 text-center text-xs text-ink-faint">Open the finding for its evidence chain, or compare it with the last run.</p>
             </Reveal>
           </div>
         </section>
@@ -88,8 +88,8 @@ export default async function Home() {
         <section aria-labelledby="trace-heading" className="border-b border-line">
           <div className="wrap-wide py-20 sm:py-24">
             <SectionHead index="01" id="trace-heading" title="What one scenario goes through">
-              Six stages, in this order, for every scenario in the suite. Each stage is stored, so a
-              report can show which one decided the verdict — and where the evidence ran out.
+              Six stages, in order, for every scenario. Each is stored, so a report shows which one
+              decided the verdict.
             </SectionHead>
             <Reveal className="mt-12">
               <ol className="relative grid gap-6 sm:grid-cols-2 lg:grid-cols-6 lg:gap-4">
@@ -112,10 +112,8 @@ export default async function Home() {
         <section aria-labelledby="problem-heading" className="border-b border-line bg-paper">
           <div className="wrap-wide py-20 sm:py-24">
             <SectionHead index="02" id="problem-heading" title="Manual spot-checking covers a fraction of what your agent does">
-              You changed the prompt on Tuesday. Something that used to work stopped working, and
-              nobody noticed until the client did. The honest answer to &ldquo;is it still
-              behaving?&rdquo; is usually &ldquo;we think so&rdquo; — not an answer you want to give
-              the people paying you.
+              A prompt changed on Tuesday and the client noticed first. &ldquo;We think so&rdquo; is
+              not an answer to &ldquo;is it still behaving?&rdquo;
             </SectionHead>
             <div className="mt-12 grid gap-4 lg:grid-cols-[minmax(0,5fr)_auto_minmax(0,7fr)] lg:items-stretch">
               <Reveal className="flex flex-col rounded-shell border border-dashed border-line-strong bg-surface/60 p-6">
@@ -154,8 +152,8 @@ export default async function Home() {
         <section aria-labelledby="instruments-heading" className="border-b border-line">
           <div className="wrap-wide py-20 sm:py-24">
             <SectionHead index="03" id="instruments-heading" title="A report is only worth sending if it cannot be quietly improved">
-              These are properties of the system, enforced in the database rather than promised in a
-              brochure. Try each one — the data is illustrative, the behaviour is the product&apos;s.
+              Enforced in the database, not promised in a brochure. Try each one: the data is
+              illustrative, the behaviour is the product&apos;s.
             </SectionHead>
             <div className="mt-12">
               <Instruments />
@@ -167,8 +165,8 @@ export default async function Home() {
         <section id="how-it-works" aria-labelledby="how-heading" className="scroll-mt-16 border-b border-line bg-paper">
           <div className="wrap-wide py-20 sm:py-24">
             <SectionHead index="04" id="how-heading" title="Four steps, about ten minutes">
-              No integration project. An HTTP endpoint you operate, the rules it should keep, and a
-              run. Choose a step to see the screen it lands on.
+              An HTTP endpoint you operate, the rules it should keep, and a run. Choose a step to see
+              its screen.
             </SectionHead>
             <div className="mt-12">
               <Workflow />
@@ -180,8 +178,7 @@ export default async function Home() {
         <section aria-labelledby="after-heading" className="border-b border-line">
           <div className="wrap-wide py-20 sm:py-24">
             <SectionHead index="05" id="after-heading" title="What happens after a scenario fails">
-              A failure is where the work starts, so it has a path — and every step that changes
-              something waits for a person.
+              A failure has a path, and every step that changes something waits for a person.
             </SectionHead>
             <Reveal className="mt-12">
               <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
@@ -204,8 +201,8 @@ export default async function Home() {
           <div className="wrap-wide grid grid-cols-1 gap-12 py-20 sm:py-24 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center [&>*]:min-w-0">
             <div>
               <SectionHead stacked index="06" id="ship-heading" title="Fits the way you already ship">
-                Gate a release on the evidence, rerun weekly on a schedule, or start a run from n8n.
-                A missing verdict fails the gate as loudly as a failed one.
+                Gate a release, rerun on a schedule, or start a run from n8n. A missing verdict
+                fails the gate like a failed one.
               </SectionHead>
               <ul className="mt-8 space-y-3 text-sm">
                 {[
@@ -244,39 +241,40 @@ export default async function Home() {
         </section>
 
         {/* ------------------------------------------------------------ trust */}
+        {/* One three-column grid for everything below the heading — the flow, the ledger and
+            the closing note share column lines, so nothing spans a width of its own. */}
         <section id="trust" aria-labelledby="trust-heading" className="scroll-mt-16 border-b border-line">
           <div className="wrap-wide py-20 sm:py-24">
             <SectionHead index="07" id="trust-heading" title="Where your data goes, and what a report does not say">
-              We would rather you heard the limits here than found them later. They are in every
-              report&apos;s own limitations block too.
+              The limits, before you find them. Each is also in every report&apos;s limitations block.
             </SectionHead>
 
             <Reveal className="mt-12">
-              <ol className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1.2fr)_2.5rem_minmax(0,1fr)] lg:items-stretch">
-                <FlowNode title="Your agent" where="Your infrastructure">
-                  An endpoint you own or are authorised to test. That authorisation is recorded with every run.
+              <ol className="grid gap-10 md:grid-cols-3 md:items-stretch">
+                <FlowNode title="Your agent" where="Your infrastructure" arrow="scenarios out, replies back">
+                  <li>An endpoint you own or are authorised to test</li>
+                  <li>That authorisation is recorded with every run</li>
                 </FlowNode>
-                <FlowArrow label="scenarios out, replies back" />
-                <FlowNode title="Novera" where="Database in Frankfurt (EU)" strong>
-                  Stores verdicts, evidence, policy versions and reports. Model keys are encrypted before
-                  storage and decrypted only on the server. Raw replies are emptied after your retention
-                  period; the verdict and a fingerprint stay.
+                <FlowNode title="Novera" where="Database in Frankfurt (EU)" arrow="replies out to be graded" strong>
+                  <li>Stores verdicts, evidence, policy versions and reports</li>
+                  <li>Model keys encrypted, decrypted only on the server</li>
+                  <li>Raw replies emptied after your retention period; the verdict and a fingerprint stay</li>
                 </FlowNode>
-                <FlowArrow label="replies out to be graded" />
                 <FlowNode title="Grading providers" where="May be outside the EU">
-                  Receive the agent&apos;s replies to grade them — each only the kind of data its published
-                  terms allow, with personal data replaced by placeholders where it is not. Every report names the models that graded it.
+                  <li>Receive the agent&apos;s replies to grade them</li>
+                  <li>Each gets only the data its published terms allow; personal data becomes placeholders where needed</li>
+                  <li>Every report names the models that graded it</li>
                 </FlowNode>
               </ol>
               <p className="mt-4 text-sm text-ink-faint">
                 Database residency and model processing are two different questions.{" "}
-                <Link href="/docs/data-and-privacy" className="font-medium text-ink-soft underline underline-offset-2 hover:text-ink">The documentation says exactly what goes where.</Link>
+                <Link href="/docs/data-and-privacy" className="font-medium text-ink-soft underline underline-offset-2 hover:text-ink">What goes where, exactly.</Link>
               </p>
             </Reveal>
 
-            <div className="mt-14 grid gap-4 md:grid-cols-3">
+            <div className="mt-12 grid gap-4 md:grid-cols-3 md:gap-10">
               {LEDGER.map((col, i) => (
-                <Reveal key={col.title} delay={i * 80} className={`rounded-shell border p-6 ${col.tone}`}>
+                <Reveal key={col.title} delay={i * 80} className={`flex h-full flex-col rounded-shell border p-6 ${col.tone}`}>
                   <p className="type-eyebrow">{col.title}</p>
                   <p className="mt-1 text-sm text-ink-soft">{col.sub}</p>
                   <ul className="mt-4 space-y-2 text-sm">
@@ -288,21 +286,20 @@ export default async function Home() {
               ))}
             </div>
 
-            <Reveal className="mt-14">
-              <div className="grid gap-6 rounded-shell border border-line-strong bg-paper p-6 sm:p-10 lg:grid-cols-[minmax(0,4fr)_minmax(0,8fr)]">
-                <h3 className="type-section text-[1.75rem]">What Novera is not</h3>
-                <div className="space-y-4 text-base leading-relaxed text-ink-soft">
-                  <p>
-                    Novera is evidence of testing. It is not a certification, and it does not tell you which
-                    obligations apply to your organisation. A report covers one dated run of one suite
-                    version against one policy version — not your agent&apos;s behaviour on every
-                    conversation, and not anything outside the suite.
-                  </p>
-                  <p>
-                    A document that overstates itself is worth less than one that does not — especially to the
-                    person you are handing it to.
-                  </p>
+            <Reveal className="mt-12">
+              <div className="grid gap-6 border-t border-line-strong pt-10 md:grid-cols-3 md:gap-10">
+                <div>
+                  <h3 className="type-section text-[1.75rem]">What Novera is not</h3>
+                  <p className="mt-3 text-sm leading-relaxed text-ink-soft">A document that overstates itself is worth less — especially to the person you hand it to.</p>
                 </div>
+                <ul className="grid gap-3 text-sm leading-relaxed text-ink-soft sm:grid-cols-2 md:col-span-2 md:gap-x-10">
+                  {NOT_CLAIMED.map(([t, b]) => (
+                    <li key={t} className="flex gap-3">
+                      <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-ink" />
+                      <p><span className="font-semibold text-ink">{t}</span> {b}</p>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </Reveal>
           </div>
@@ -315,8 +312,8 @@ export default async function Home() {
             <Reveal>
               <h2 id="cta-heading" className="type-section">Run it against your own agent</h2>
               <p className="mx-auto mt-5 measure type-lede text-ink-soft">
-                Three free runs to evaluate it, on our key or yours. Recurring testing after that needs a
-                plan: Team BYOK grades on your own model key; Agency Pro adds runs graded on ours.
+                Three free runs, on our key or yours. Then a plan: Team BYOK grades on your own model
+                key; Agency Pro adds runs graded on ours.
               </p>
               <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
                 <ButtonLink href={start} className="px-6 py-3 text-[15px]">
@@ -351,12 +348,12 @@ export default async function Home() {
 }
 
 const TRACE = [
-  { name: "Scenario sent", body: "A fixed input from a versioned suite — an ordinary request, a tricky one or an attack — over the channel it declares." },
-  { name: "Reply recorded", body: "The agent's answer and the tool calls it reports, stored as they came back, with a SHA-256 fingerprint." },
-  { name: "Rules checked", body: "Deterministic checks run first. They can fail a scenario; they can never pass one." },
-  { name: "Effect read back", body: "If the agent claims it acted, a read-only call to your system of record confirms or contradicts it." },
-  { name: "Graders vote", body: "What is left goes to models — on our key, two from different vendors, a third to settle a split." },
-  { name: "Evidence sealed", body: "The verdict, its evidence and what stayed unknown go into a dated report whose digest covers all of it." },
+  { name: "Scenario sent", body: "A fixed input from a versioned suite — ordinary, tricky or an attack — over its declared channel." },
+  { name: "Reply recorded", body: "The answer and reported tool calls, stored as received, with a SHA-256 fingerprint." },
+  { name: "Rules checked", body: "Deterministic checks first. They can fail a scenario, never pass one." },
+  { name: "Effect read back", body: "A claimed action is confirmed or contradicted by a read-only call to your system." },
+  { name: "Graders vote", body: "What is left goes to models: on our key, two from different vendors, a third to settle a split." },
+  { name: "Evidence sealed", body: "Verdict, evidence and unknowns go into a dated report; its digest covers all of it." },
 ];
 
 const BEFORE = [
@@ -369,10 +366,10 @@ const BEFORE = [
 ];
 
 const AFTER = [
-  { title: "Forty-nine scenarios, every time", body: "Identity checks, erasure requests, refund limits, prompt extraction, escalation, jailbreaks, injected instructions. A suite version never changes, so two reports are comparable." },
-  { title: "Stored evidence for every verdict", body: "The reply, the tool calls, the read-back and each grader's vote — append-only, so a failing case cannot be deleted to flatter a score." },
-  { title: "Unknowns named, not hidden", body: "No reply, an unreadable grader or an unchecked action is a separate state, listed in the report and never counted as a pass." },
-  { title: "A sealed report with a revocable link", body: "Graded against your policy version, hashed to its run, expiring and revocable — and never carrying your policy text, keys or raw transcript." },
+  { title: "Forty-nine scenarios, every time", body: "Identity, erasure, refund limits, escalation, jailbreaks, injected instructions. A suite version never changes, so reports compare." },
+  { title: "Stored evidence for every verdict", body: "Reply, tool calls, read-back and every vote — append-only, so a failure cannot be deleted to flatter a score." },
+  { title: "Unknowns named, not hidden", body: "No reply, an unreadable grader or an unchecked action is its own state — listed, never counted as a pass." },
+  { title: "A sealed report with a revocable link", body: "Hashed to its run and your policy version; the link expires and can be revoked. No policy text, keys or raw transcript." },
 ];
 
 const AFTER_FAILURE = [
@@ -389,6 +386,13 @@ const LEDGER = [
   { title: "Recorded", sub: "Observed by Novera during the run", tone: "border-line bg-surface text-ink", items: ["Each reply and the tool calls the agent reported", "Read-back results: confirmed, contradicted, unavailable", "Every grader's vote and how it was settled", "Timings, timeouts and errors"] },
   { title: "Declared", sub: "Stated by you, and labelled as yours", tone: "border-line bg-surface text-ink", items: ["The policy text, frozen per version", "That you are authorised to test the agent", "A release or knowledge-base revision, if you give one", "Whether the agent is production"] },
   { title: "Not verified", sub: "Outside what a run can show", tone: "border-dashed border-warning-text/50 bg-warning-surface/50 text-warning-text", items: ["Any action no read-back covered", "Behaviour on conversations outside the suite", "Which legal obligations apply to you", "Anything after the report's date"] },
+];
+
+const NOT_CLAIMED: Array<[string, string]> = [
+  ["Not a certification.", "Novera is evidence of testing."],
+  ["Not legal advice.", "It does not say which obligations apply to your organisation."],
+  ["One dated run.", "One suite version against one policy version."],
+  ["Only the suite.", "Not your agent's behaviour on every conversation, nor anything outside it."],
 ];
 
 const GATE = `auth="Authorization: Bearer $NOVERA_KEY"
@@ -418,21 +422,28 @@ function SectionHead({ index, id, title, children, stacked = false }: { index: s
   );
 }
 
-function FlowNode({ title, where, strong = false, children }: { title: string; where: string; strong?: boolean; children: ReactNode }) {
+/**
+ * One stop in the data flow. Every card in the row stretches to the tallest, and the
+ * arrow to the next card sits in the grid gap, centred on the card's middle — beside it
+ * on wide screens, below it (turned a quarter) when the cards stack.
+ */
+function FlowNode({ title, where, strong = false, arrow, children }: { title: string; where: string; strong?: boolean; arrow?: string; children: ReactNode }) {
   return (
-    <li className={`rounded-shell border p-5 ${strong ? "border-ink bg-surface shadow-card" : "border-line bg-surface"}`}>
+    <li className={`relative flex h-full flex-col rounded-shell border p-5 ${strong ? "border-ink bg-surface shadow-card" : "border-line bg-surface"}`}>
       <p className="text-base font-semibold">{title}</p>
       <p className="type-eyebrow mt-1 text-ink-faint">{where}</p>
-      <p className="mt-3 text-sm leading-relaxed text-ink-soft">{children}</p>
-    </li>
-  );
-}
-
-function FlowArrow({ label }: { label: string }) {
-  return (
-    <li aria-hidden className="flex items-center justify-center gap-2 py-1 text-ink-faint lg:flex-col lg:py-0">
-      <span className="text-lg lg:rotate-0 max-lg:rotate-90">⇄</span>
-      <span className="text-[11px] lg:hidden">{label}</span>
+      <ul className="mt-3 space-y-1.5 text-sm leading-relaxed text-ink-soft [&>li]:relative [&>li]:pl-3.5 [&>li]:before:absolute [&>li]:before:left-0 [&>li]:before:top-[0.6em] [&>li]:before:size-1 [&>li]:before:rounded-full [&>li]:before:bg-ink-ghost">
+        {children}
+      </ul>
+      {arrow && (
+        <span
+          aria-hidden
+          className="absolute left-1/2 top-full flex h-10 -translate-x-1/2 items-center gap-2 whitespace-nowrap text-ink-faint md:left-full md:top-1/2 md:h-auto md:w-10 md:translate-x-0 md:-translate-y-1/2 md:justify-center"
+        >
+          <span className="grid size-7 rotate-90 place-items-center rounded-full border border-line bg-surface text-sm md:rotate-0">⇄</span>
+          <span className="text-[11px] md:hidden">{arrow}</span>
+        </span>
+      )}
     </li>
   );
 }

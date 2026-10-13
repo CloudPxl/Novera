@@ -13,6 +13,7 @@ import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { Menu } from "@/components/ui/menu.tsx";
 import { menuItemClass } from "@/components/ui/menu-item.ts";
 import { NavLinks, type NavEntry } from "./nav-links.tsx";
+import { fundingBadge } from "./funding-badge.ts";
 import { RunLauncher, type LaunchAgent, type LaunchSuite } from "./run-launcher.tsx";
 
 /** An endpoint's host, which is what identifies an agent to an operator in a hurry. */
@@ -57,10 +58,9 @@ export async function TopBar() {
     caseCount: Array.isArray(s.cases) ? s.cases.length : 0,
   }));
 
-  // Billing is a place of its own for whoever can change the plan (owner and admin), in every
-  // mode: it decides whether runs start at all (D3), so it is not three clicks deep.
+  // Billing is Settings → Billing: not a primary place, but one click away in the account menu
+  // for whoever can change the plan (owner and admin), and the status badge links to it.
   const mayBill = can(role, "billing.manage");
-  const billing = { href: BILLING_PATH, label: "Billing", also: ["/settings/billing"] };
   // Navigation by account mode (2026-10-02 IA refactor). Personal: five plain places.
   // Agency: work grouped by what you do with it. Enterprise: agency plus workspaces and audit.
   // Every existing URL still resolves; this only decides what is offered first.
@@ -72,8 +72,7 @@ export async function TopBar() {
         { href: "/agents", label: agents.length === 1 ? "My agent" : "My agents" },
         { href: "/runs", label: "My runs" },
         { href: "/reports", label: "My reports" },
-        ...(mayBill ? [billing] : []),
-        { href: "/settings", label: "Settings" },
+        { href: "/settings", label: "Settings", also: ["/billing"] },
       ]
     : [
         { href: "/dashboard", label: "Overview" },
@@ -82,12 +81,13 @@ export async function TopBar() {
         { href: "/reports", label: "Reports" },
         library,
         ...(mode === "enterprise" && can(role, "audit.view") ? [{ href: "/settings/audit", label: "Audit" }] : []),
-        ...(mayBill ? [billing] : []),
-        { href: "/settings", label: "Settings" },
+        { href: "/settings", label: "Settings", also: ["/billing"] },
       ];
   if (isStaff(user.email)) nav.push({ href: "/inbox", label: "Inbox" });
   const funding = entitlement.fundingLine;
-  const fundingTone = !entitlement.canRun ? "fail" : entitlement.billing.source === "subscription" || entitlement.billing.source === "manual_grant" ? "pass" : "neutral";
+  const badge = fundingBadge(entitlement);
+  // The complete sentence behind the short badge: what funds runs, and why runs are refused.
+  const fundingFull = entitlement.canRun ? funding : `${funding}. ${entitlement.blockedReason ?? "Runs cannot start."}`;
   // A run blocked on payment is the one thing in this bar a person must act on.
   const upgrade = mayBill && needsBillingAction(entitlement.blocker) ? remedyFor(entitlement.blocker) : null;
 
@@ -120,12 +120,13 @@ export async function TopBar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="hidden xl:inline">
+          <span className={mode === "enterprise" ? "hidden xl:inline" : "hidden lg:inline"}>
             {/* What is really stored, not an invented environment label: a report has
-                to say who funded the grading, so the bar says it too. */}
+                to say who funded the grading, so the bar says it too — in a few words,
+                with the whole sentence as its accessible name. */}
             {mayBill
-              ? <Link href={BILLING_PATH} className="rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ink" aria-label={`${funding}. Open billing`}><Badge tone={fundingTone}>{funding}</Badge></Link>
-              : <Badge tone={fundingTone}>{funding}</Badge>}
+              ? <Link href={BILLING_PATH} title={fundingFull} className="rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ink" aria-label={`${badge.text}: ${fundingFull.replace(/\.$/, "")}. Open billing`}><Badge tone={badge.tone} className="whitespace-nowrap">{badge.text}</Badge></Link>
+              : <span title={fundingFull}><Badge tone={badge.tone} className="whitespace-nowrap">{badge.text}<span className="sr-only">. {fundingFull}</span></Badge></span>}
           </span>
           {upgrade && (
             // Wrapped: the button's own inline-flex would override `hidden`. Below sm it is in the
@@ -160,7 +161,7 @@ export async function TopBar() {
             <div className="border-b border-line px-3 py-2">
               <p className="truncate text-sm font-medium text-ink">{context.profile.display_name ?? user.email}</p>
               <p className="truncate text-xs text-ink-faint">{workspace.name} · {ROLE_LABEL[role].toLowerCase()}</p>
-              <p className="mt-1.5 text-xs text-ink-soft xl:hidden">{funding}</p>
+              <p className={`mt-1.5 text-xs text-ink-soft ${mode === "enterprise" ? "xl:hidden" : "lg:hidden"}`}>{fundingFull}</p>
               {upgrade && (
                 <Link href={upgrade.href} className={`mt-1 inline-block text-xs font-medium text-ink underline underline-offset-2 ${mode === "enterprise" ? "sm:hidden lg:inline-block xl:hidden" : "sm:hidden"}`}>
                   {upgrade.label}
@@ -177,11 +178,11 @@ export async function TopBar() {
               {/* Settings is in the nav itself (above, stacked, below lg), and so is Audit in
                   enterprise mode: listed twice on a phone before (UI audit, 2026-10-08). */}
               {(mode !== "personal" || multi) && <Link href="/settings/members" className={menuItemClass}>Members</Link>}
+              {mayBill && <Link href={BILLING_PATH} className={menuItemClass}>Billing</Link>}
               {can(role, "audit.view") && mode === "agency" && <Link href="/settings/audit" className={menuItemClass}>Audit log</Link>}
               <Link href="/settings/profile" className={menuItemClass}>Your profile</Link>
               <Link href="/guide" className={menuItemClass}>Step-by-step guide</Link>
               <Link href="/docs" className={menuItemClass}>Documentation</Link>
-              <Link href="/" className={menuItemClass}>Home page</Link>
             </div>
 
             <form action={signOut} className="border-t border-line py-1">

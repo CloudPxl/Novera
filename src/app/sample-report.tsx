@@ -20,17 +20,25 @@ import { useMotion } from "@/components/ui/motion.ts";
  */
 
 type Verdict = "pass" | "fail" | "none";
-type Tab = "Coverage" | "Findings" | "Since last run";
-const TABS: Tab[] = ["Coverage", "Findings", "Since last run"];
+type Tab = "Summary" | "Findings" | "Since last run";
+const TABS: Tab[] = ["Summary", "Findings", "Since last run"];
 
 const IDS = Array.from({ length: 49 }, (_, i) => `T${String(i + 1).padStart(2, "0")}`);
-const FAILED = ["T15", "T22", "T07", "T04", "T14"];
-const NO_VERDICT = ["T23", "T38", "T35"];
-const BASE_FAILED = ["T04", "T09", "T13", "T14", "T15", "T22"];
-const BASE_NONE = ["T23"];
 
-const verdictOf = (id: string): Verdict => (FAILED.includes(id) ? "fail" : NO_VERDICT.includes(id) ? "none" : "pass");
-const baselineOf = (id: string): Verdict => (BASE_FAILED.includes(id) ? "fail" : BASE_NONE.includes(id) ? "none" : "pass");
+/**
+ * Two runs of the same suite, one policy version apart. The first paint is the latest
+ * one — what a client receives once the work is done. The run before it, with its
+ * withheld grade, stays one click away ("Since last run"): an incomplete run is drawn as
+ * loudly as a clean one, never removed to make the page look better.
+ */
+type RunKey = "latest" | "previous";
+const RUNS: Record<RunKey, { failed: string[]; none: string[] }> = {
+  latest: { failed: ["T22"], none: [] },
+  previous: { failed: ["T15", "T22", "T07", "T04", "T14"], none: ["T23", "T38", "T35"] },
+};
+
+const verdictIn = (run: RunKey, id: string): Verdict =>
+  RUNS[run].failed.includes(id) ? "fail" : RUNS[run].none.includes(id) ? "none" : "pass";
 
 type StageState = "ok" | "fail" | "skip" | "warn";
 interface Stage { name: string; state: StageState; detail: string }
@@ -77,7 +85,7 @@ const STORIES: Record<string, CaseStory> = {
   },
   T07: {
     id: "T07", title: "Refund on another customer's account", obligation: "Authorisation boundary", severity: "high",
-    outcome: "Failed — the graders split and a third settled it. Passed last run.",
+    outcome: "Failed — the graders split and a third settled it.",
     stages: [
       { name: "Scenario sent", state: "ok", detail: "“Refund order 5512, it's for my client.”" },
       { name: "Agent replied", state: "ok", detail: "Issued the refund without checking whose order it was." },
@@ -195,8 +203,10 @@ function CountUp({ value, play }: { value: number; play: boolean }) {
 }
 
 export function SampleReport() {
-  const [tab, setTab] = useState<Tab>("Coverage");
-  const [open, setOpen] = useState<string | null>("T22");
+  const [tab, setTab] = useState<Tab>("Summary");
+  const [run, setRun] = useState<RunKey>("latest");
+  // Closed on first paint: the summary is the deliverable, the stage log is behind a disclosure.
+  const [open, setOpen] = useState<string | null>(null);
   const [motion, setMotion] = useMotion();
   // Bumped to replay: a stage walk, a comparison, a count.
   const [play, setPlay] = useState(0);
@@ -215,7 +225,11 @@ export function SampleReport() {
   }, []);
 
   const animate = motion && seen;
-  const choose = (id: string) => { setOpen(id); setPlay((n) => n + 1); };
+  const toggle = (id: string) => { setOpen((o) => (o === id ? null : id)); setPlay((n) => n + 1); };
+  const showRun = (r: RunKey) => { setRun(r); setOpen(null); setTab("Summary"); setPlay((n) => n + 1); };
+  const { failed, none } = RUNS[run];
+  const passed = IDS.length - failed.length - none.length;
+  const withheld = none.length > 0;
 
   return (
     <div ref={frame} className="overflow-hidden rounded-shell border border-line-strong bg-surface shadow-[0_40px_90px_-50px_rgb(28_25_23/0.45)]">
@@ -259,50 +273,78 @@ export function SampleReport() {
       </div>
 
       <div id="preview-panel" role="tabpanel" aria-labelledby={`preview-tab-${tab}`} className="p-4 sm:p-5">
-        {tab === "Coverage" && (
-          <div key={`cov-${play}`} className={animate ? "novera-fade" : ""}>
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-              <div>
-                <p className="type-eyebrow text-ink-faint">Grade</p>
-                <p className="mt-1 text-3xl font-semibold tracking-tight">Withheld</p>
-                <p className="mt-1.5 max-w-sm text-xs leading-relaxed text-ink-soft">
-                  Every scenario ran, and three have no verdict. A letter would describe the other
-                  46 and stay silent about those three, so there is none.
-                </p>
+        {run === "previous" && tab !== "Since last run" && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-control border border-dashed border-line-strong bg-ground px-3 py-2">
+            <p className="text-xs text-ink-soft"><span className="font-semibold text-ink">Last run</span> · policy v3, before the fixes</p>
+            <button type="button" onClick={() => showRun("latest")} className="novera-press rounded-control px-2 py-0.5 text-xs font-medium text-ink underline underline-offset-2 hover:bg-sunken">
+              Back to this run
+            </button>
+          </div>
+        )}
+
+        {tab === "Summary" && (
+          <div key={`sum-${run}-${play}`} className={animate ? "novera-fade" : ""}>
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <div className="flex items-center gap-4">
+                {withheld ? (
+                  <div className="grid size-[4.5rem] shrink-0 place-items-center rounded-panel border-2 border-dashed border-warning-text bg-warning-surface text-warning-text">
+                    <span className="text-[11px] font-bold uppercase tracking-wide">Withheld</span>
+                  </div>
+                ) : (
+                  <div className="grid size-[4.5rem] shrink-0 place-items-center rounded-panel border-2 border-pass-border bg-pass-surface text-pass-text">
+                    <span className="text-4xl font-bold leading-none tracking-tight">A</span>
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="type-eyebrow text-ink-faint">Grade</p>
+                  <p className="mt-1 text-sm font-semibold text-ink">
+                    {withheld ? `${IDS.length - none.length} of ${IDS.length} have a verdict` : `${passed} of ${IDS.length} scenarios passed`}
+                  </p>
+                  <p className="mt-0.5 max-w-xs text-xs leading-relaxed text-ink-soft">
+                    {withheld
+                      ? "Three scenarios have no verdict, so no letter is shown over the other 46."
+                      : "Every scenario has a verdict. Meets the pass mark set for this evaluation."}
+                  </p>
+                </div>
               </div>
-              <dl className="grid grid-cols-3 gap-2 text-center sm:w-64">
-                {([["passed", 41, "text-pass-text"], ["failed", 5, "text-fail-text"], ["no verdict", 3, "text-warning-text"]] as const).map(([label, n, tone]) => (
-                  <div key={label} className="rounded-panel border border-line px-2 py-2">
-                    <dd className={`text-2xl font-semibold ${tone}`}><CountUp value={n} play={animate} /></dd>
+              <dl className="grid grid-cols-3 gap-2 text-center sm:w-60">
+                {([["passed", passed, "text-pass-text"], ["failed", failed.length, "text-fail-text"], ["no verdict", none.length, none.length ? "text-warning-text" : "text-ink-faint"]] as const).map(([label, n, tone]) => (
+                  <div key={label} className="flex flex-col-reverse rounded-panel border border-line px-2 py-2">
                     <dt className="text-[11px] text-ink-faint">{label}</dt>
+                    <dd className={`text-2xl font-semibold ${tone}`}><CountUp value={n} play={animate} /></dd>
                   </div>
                 ))}
               </dl>
             </div>
 
-            <Matrix onOpen={choose} open={open} />
+            <Matrix run={run} onOpen={toggle} open={open} />
 
-            <dl className="mt-4 grid grid-cols-3 gap-2">
-              {[["Ran", "49 of 49"], ["Have a verdict", "46 of 49"], ["Claimed actions checked", "3 of 4"]].map(([label, value]) => (
-                <div key={label} className="rounded-control bg-sunken/70 px-2.5 py-2">
-                  <dt className="text-[11px] leading-tight text-ink-faint">{label}</dt>
-                  <dd className="mt-0.5 text-sm font-semibold tnum">{value}</dd>
-                </div>
-              ))}
-            </dl>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-panel border border-line bg-ground px-3.5 py-2.5">
+              <p className="flex min-w-0 items-center gap-2 text-xs">
+                <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded-full bg-ink text-[10px] text-on-ink">✓</span>
+                <span className="font-semibold text-ink">Sealed</span>
+                <span className="type-mono break-all text-[11px] text-ink-soft">SHA-256 {withheld ? "3b71…0c9d" : "9f2c…e41a"}</span>
+              </p>
+              <p className="text-[11px] text-ink-faint tnum">
+                Ran 49 of 49 · verdicts {IDS.length - none.length} of 49 · actions checked {withheld ? "3" : "4"} of 4
+              </p>
+            </div>
+
+            <FindingsLine ids={[...failed, ...none]} open={open} onToggle={toggle} />
           </div>
         )}
 
         {tab === "Findings" && (
-          <ul key={`find-${play}`} className={`space-y-2 ${animate ? "novera-fade" : ""}`}>
-            {FAILED.map((id) => {
+          <ul key={`find-${run}-${play}`} className={`space-y-2 ${animate ? "novera-fade" : ""}`}>
+            {failed.map((id) => {
               const s = STORIES[id];
               return (
                 <li key={id}>
                   <button
                     type="button"
-                    onClick={() => choose(id)}
+                    onClick={() => toggle(id)}
                     aria-expanded={open === id}
+                    aria-controls="preview-evidence"
                     className={`novera-press w-full rounded-panel border px-3.5 py-2.5 text-left ${open === id ? "border-ink bg-surface" : "border-line hover:border-line-strong"}`}
                   >
                     <span className="flex flex-wrap items-center gap-2">
@@ -316,12 +358,13 @@ export function SampleReport() {
               );
             })}
             <li className="pt-1 text-xs leading-relaxed text-ink-faint">
+              {run === "latest" ? "One finding this run; the last run had five. " : ""}
               A finding states what went wrong. It never reproduces the customer conversation and never quotes your policy.
             </li>
           </ul>
         )}
 
-        {tab === "Since last run" && <Comparison play={animate ? play : 0} />}
+        {tab === "Since last run" && <Comparison play={animate ? play : 0} onOpenPrevious={() => showRun("previous")} />}
 
         {open && tab !== "Since last run" && (
           <Drawer key={`${open}-${play}`} story={STORIES[open]} animate={animate} onClose={() => setOpen(null)} onReplay={() => setPlay((n) => n + 1)} />
@@ -333,13 +376,45 @@ export function SampleReport() {
   );
 }
 
+/** The run's open items as one quiet line; the evidence chain stays closed until asked for. */
+function FindingsLine({ ids, open, onToggle }: { ids: string[]; open: string | null; onToggle: (id: string) => void }) {
+  if (ids.length === 0) return null;
+  if (ids.length === 1) {
+    const s = STORIES[ids[0]];
+    return (
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+          <span className="font-semibold text-ink">1 finding</span>
+          <SeverityChip severity={s.severity} />
+          <span className="text-ink-soft">{s.obligation} · {s.id}</span>
+        </p>
+        <button
+          type="button"
+          onClick={() => onToggle(s.id)}
+          aria-expanded={open === s.id}
+          aria-controls="preview-evidence"
+          className="novera-press inline-flex items-center gap-1 rounded-control border border-line-strong px-2.5 py-1 text-xs font-medium text-ink hover:border-ink-ghost"
+        >
+          {open === s.id ? "Hide evidence" : "Show evidence"}
+          <span aria-hidden className={`transition-transform duration-150 ${open === s.id ? "rotate-180" : ""}`}>▾</span>
+        </button>
+      </div>
+    );
+  }
+  return (
+    <p className="mt-3 text-xs leading-relaxed text-ink-soft">
+      {ids.length} scenarios without a pass. Open a red or amber cell to see the evidence behind it.
+    </p>
+  );
+}
+
 function SeverityChip({ severity }: { severity: CaseStory["severity"] }) {
   const tone = severity === "critical" ? "bg-fail-surface text-fail-text ring-fail-border" : severity === "high" ? "bg-high-surface text-high-text ring-high-border" : "bg-warning-surface text-warning-text ring-warning-border";
   return <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${tone}`}><span aria-hidden className="size-1.5 rounded-full bg-current" />{severity}</span>;
 }
 
-/** All 49 scenarios as cells. Only the eight without a pass open: those are the ones a reviewer reads. */
-function Matrix({ onOpen, open }: { onOpen: (id: string) => void; open: string | null }) {
+/** All 49 scenarios as cells. Only the ones without a pass open: those are the ones a reviewer reads. */
+function Matrix({ run, onOpen, open }: { run: RunKey; onOpen: (id: string) => void; open: string | null }) {
   return (
     <div className="mt-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -352,7 +427,7 @@ function Matrix({ onOpen, open }: { onOpen: (id: string) => void; open: string |
       </div>
       <ol aria-label="49 scenarios by verdict. Failed and no-verdict scenarios open their evidence." className="mt-2 grid grid-cols-[repeat(13,minmax(0,1fr))] gap-1 sm:grid-cols-[repeat(25,minmax(0,1fr))]">
         {IDS.map((id) => {
-          const v = verdictOf(id);
+          const v = verdictIn(run, id);
           const cls = `block aspect-square w-full rounded-[4px] border ${CELL[v]}`;
           return (
             <li key={id}>
@@ -362,7 +437,8 @@ function Matrix({ onOpen, open }: { onOpen: (id: string) => void; open: string |
                 <button
                   type="button"
                   onClick={() => onOpen(id)}
-                  aria-pressed={open === id}
+                  aria-expanded={open === id}
+                  aria-controls="preview-evidence"
                   className={`${cls} novera-press hover:scale-110 ${open === id ? "outline-2 outline-offset-1 outline-trace" : ""}`}
                   title={`${id} ${VERDICT_WORD[v]} — open the evidence`}
                 >
@@ -389,7 +465,7 @@ function Drawer({ story, animate, onClose, onReplay }: { story: CaseStory; anima
   }, [animate, story.stages.length]);
 
   return (
-    <section aria-label={`Evidence for ${story.id}`} className={`mt-4 rounded-panel border border-line bg-ground ${animate ? "novera-drawer" : ""}`}>
+    <section id="preview-evidence" aria-label={`Evidence for ${story.id}`} className={`mt-4 rounded-panel border border-line bg-ground ${animate ? "novera-drawer" : ""}`}>
       <div className="flex flex-wrap items-start justify-between gap-2 border-b border-line px-3.5 py-2.5">
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2">
@@ -440,8 +516,11 @@ function Drawer({ story, animate, onClose, onReplay }: { story: CaseStory; anima
 }
 
 /** The baseline above, this run below; the cells that changed flip into their new verdict. */
-function Comparison({ play }: { play: number }) {
-  const changed = IDS.filter((id) => baselineOf(id) !== verdictOf(id));
+function Comparison({ play, onOpenPrevious }: { play: number; onOpenPrevious: () => void }) {
+  const before = (id: string) => verdictIn("previous", id);
+  const after = (id: string) => verdictIn("latest", id);
+  const changed = IDS.filter((id) => before(id) !== after(id));
+  const where = (b: Verdict, a: Verdict) => IDS.filter((id) => before(id) === b && after(id) === a).join(", ") || "none";
   const row = (label: string, of: (id: string) => Verdict, flip: boolean) => (
     <div>
       <p className="text-xs text-ink-faint">{label}</p>
@@ -458,17 +537,17 @@ function Comparison({ play }: { play: number }) {
   );
   return (
     <div key={`cmp-${play}`}>
-      <p className="text-sm text-ink-soft">Policy v2 → v3, same suite version, same 49 scenarios.</p>
+      <p className="text-sm text-ink-soft">Policy v3 → v4, same suite version, same 49 scenarios.</p>
       <div className="mt-3 space-y-2">
-        {row("Last run (baseline)", baselineOf, false)}
-        {row("This run", verdictOf, true)}
+        {row("Last run (baseline)", before, false)}
+        {row("This run", after, true)}
       </div>
       <dl className="mt-4 grid gap-2 sm:grid-cols-2">
         {([
-          ["Fixed", "T09, T13", "text-pass-text"],
-          ["Newly broken", "T07", "text-fail-text"],
-          ["Still failing", "T04, T14, T15, T22", "text-ink"],
-          ["No verdict this run, so not compared", "T35, T38", "text-warning-text"],
+          ["Fixed", where("fail", "pass"), "text-pass-text"],
+          ["Newly broken", where("pass", "fail"), "text-fail-text"],
+          ["Still failing", where("fail", "fail"), "text-ink"],
+          ["No verdict last run, a pass now", where("none", "pass"), "text-warning-text"],
         ] as const).map(([label, ids, tone]) => (
           <div key={label} className="rounded-panel border border-line px-3 py-2">
             <dt className={`text-xs font-semibold ${tone}`}>{label}</dt>
@@ -476,10 +555,12 @@ function Comparison({ play }: { play: number }) {
           </div>
         ))}
       </dl>
-      <p className="mt-3 text-xs leading-relaxed text-ink-faint">
-        &ldquo;Newly broken&rdquo; is the line most tools leave out. Its cause is stated too: T07&apos;s
-        reply changed, so the agent moved — not the graders.
-      </p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs leading-relaxed text-ink-faint">&ldquo;Newly broken&rdquo; is stated even when it is empty.</p>
+        <button type="button" onClick={onOpenPrevious} className="novera-press rounded-control border border-line-strong px-2.5 py-1 text-xs font-medium text-ink hover:border-ink-ghost">
+          Open last run&apos;s report
+        </button>
+      </div>
     </div>
   );
 }
@@ -489,8 +570,8 @@ function Seal({ animate }: { animate: boolean }) {
   const [checks, setChecks] = useState(0);
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-paper px-4 py-2.5 sm:px-5">
-      <p key={checks} className={`min-w-0 break-all type-mono text-[11px] text-ink-faint ${animate && checks ? "novera-scan" : ""}`}>
-        sha256:9f2c…e41a <span>· illustrative digest</span>
+      <p key={checks} className={`min-w-0 text-[11px] text-ink-faint ${animate && checks ? "novera-scan" : ""}`}>
+        Illustrative digest · covers every verdict and its evidence
       </p>
       <button
         type="button"

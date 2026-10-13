@@ -70,7 +70,7 @@ export default async function InboxPage() {
   const sent = rows.length - waiting;
 
   return (
-    <main className="w-full max-w-3xl py-8 text-ink">
+    <main className="mx-auto w-full max-w-3xl py-8 text-ink">
       <Link href="/dashboard" className="text-sm text-ink-faint underline-offset-2 hover:underline">
         ← Dashboard
       </Link>

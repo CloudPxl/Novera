@@ -237,9 +237,11 @@ export default async function DashboardPage() {
   const latestRun = runList.find((r) => r.status === "completed");
   const latestSum = latestRun ? summariseRun({ status: "completed", payload: (reportByRun.get(latestRun.id as string)?.payload as never) ?? null, scheduleId: null, apiKeyName: null }) : null;
 
-  // At most five things that need someone, each linking to where it is resolved.
+  // At most five things that need someone, each linking to where it is resolved. A block is
+  // stated once: by the header's action when that is what it leads with, otherwise here.
+  const headerStatesBlock = !entitlement.canRun && action.body === entitlement.blockedReason;
   const attentionItems = [
-    ...(!entitlement.canRun ? [{
+    ...(!entitlement.canRun && !headerStatesBlock ? [{
       text: `${entitlement.blockedReason ?? "Runs cannot start."}${billingBlock && !blockedRemedy ? " An owner or admin of this workspace can choose a plan." : ""}`,
       href: blockedRemedy?.href ?? "/settings/billing",
       action: blockedRemedy?.label ?? "See billing",
@@ -253,7 +255,7 @@ export default async function DashboardPage() {
       <PageHeader
         eyebrow={personal ? workspace.name : mode === "agency" ? "Client workspace" : "Workspace"}
         title={personal ? (context.profile.display_name ? `Hello, ${context.profile.display_name}` : "Overview") : workspace.name}
-        description={<>Times in {zoneLabel(context.profile.timezone)} · {entitlement.ownKey ? `graded on your ${entitlement.provider} key` : "graded on Novera's keys"} · {entitlement.fundingLine}</>}
+        description={<>Times in {zoneLabel(context.profile.timezone)} · {entitlement.ownKey ? `graded on your ${entitlement.provider} key` : "graded on Novera's keys"}</>}
         action={<ButtonLink href={action.href}>{action.label}</ButtonLink>}
       />
 

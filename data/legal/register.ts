@@ -16,6 +16,8 @@
  * mechanisms are placeholders until verified with each provider and confirmed by counsel.
  */
 
+import { billingConfig } from "../../src/lib/billing/config.ts";
+
 export type ProviderStatus = "core" | "optional" | "planned";
 export type ProviderCategory = "database" | "hosting" | "email" | "payments" | "model-inference" | "monitoring";
 
@@ -39,6 +41,8 @@ export interface ProviderEntry {
   status: ProviderStatus;
   /** Environment variables that must all be non-empty for this provider to be in use on a deployment. Empty: always in use. */
   activeWhen: string[];
+  /** Where variables being set is not enough — Stripe's keys can be present and refused (billingConfig). */
+  inUse?: (env: Record<string, string | undefined>) => boolean;
   lastReviewed: string;
 }
 
@@ -173,6 +177,8 @@ export const PROVIDER_REGISTER: readonly ProviderEntry[] = [
     configuredBy: "novera",
     status: "planned",
     activeWhen: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
+    // In use only when billing actually runs: a test key on production is refused, live needs approval.
+    inUse: (env) => billingConfig(env).active,
     lastReviewed: "2026-10-13",
   },
   {
@@ -222,7 +228,7 @@ export const REGISTER_VERSION = "2026-10-13";
 
 /** Whether each provider is in use on this deployment, from its configuration only. */
 export function activeHere(entry: ProviderEntry, env: Record<string, string | undefined> = process.env): boolean {
-  return entry.activeWhen.every((name) => Boolean(env[name]?.trim()));
+  return entry.activeWhen.every((name) => Boolean(env[name]?.trim())) && (entry.inUse ? entry.inUse(env) : true);
 }
 
 /** The machine-readable register: what the entries say, plus whether each is in use here. Never an env value. */

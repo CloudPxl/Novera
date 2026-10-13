@@ -146,6 +146,10 @@ test("the register: planned providers are not sub-processors, and in-use is read
   const resend = PROVIDER_REGISTER.find((p) => p.provider === "Resend")!;
   assert.equal(activeHere(resend, {}), false, "an email provider with no key sends nothing");
   assert.equal(activeHere(resend, { RESEND_API_KEY: "re_x", RESEND_FROM_EMAIL: "a@b" }), true);
+  const stripe = PROVIDER_REGISTER.find((p) => p.provider === "Stripe")!;
+  const keys = { STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" };
+  assert.equal(activeHere(stripe, { ...keys, VERCEL_ENV: "production" }), false, "keys present but refused is not in use");
+  assert.equal(activeHere(stripe, { ...keys, VERCEL_ENV: "preview" }), true);
   const secret = "re_SUPERSECRET_value";
   const snapshot = JSON.stringify(registerSnapshot({ RESEND_API_KEY: secret, RESEND_FROM_EMAIL: "x@y", STRIPE_SECRET_KEY: "sk_test_123" }));
   assert.ok(!snapshot.includes(secret) && !snapshot.includes("sk_test_123"), "the machine-readable register never carries a value");

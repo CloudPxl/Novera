@@ -7,20 +7,10 @@
  * travels with the payload, the route refuses to run outside development, and the
  * failures below are planted on purpose so a run has genuine findings to report.
  */
-export const dynamic = "force-dynamic";
+import type { ScriptedReply } from "../../../lib/fixture/types.ts";
+import { SUITE_SCRIPTS } from "../../../lib/fixture/index.ts";
 
-interface ScriptedReply {
-  match: RegExp;
-  /**
-   * Matched against the conversation metadata rather than the message. This is the
-   * channel an indirect injection really arrives on, so the fixture has to be able to
-   * be attacked through it — a fixture that only ever reads the message could not
-   * fail the metadata scenario, and the scenario would measure nothing.
-   */
-  matchContext?: RegExp;
-  reply: string;
-  toolCalls?: Array<Record<string, unknown>>;
-}
+export const dynamic = "force-dynamic";
 
 // The planted failures: each one breaks a specific obligation the suite checks for.
 const SCRIPT: ScriptedReply[] = [
@@ -352,7 +342,10 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  const scripted = SCRIPT.find((entry) =>
+  // Later built-in suites' scripts first: none of them matches an eu-support message (tested),
+  // so eu-support's replies are unchanged, and their own messages are never caught by a
+  // broader eu-support pattern.
+  const scripted = [...SUITE_SCRIPTS, ...SCRIPT].find((entry) =>
     entry.matchContext
       ? entry.matchContext.test(context) && entry.match.test(message)
       : entry.match.test(message),

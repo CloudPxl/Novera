@@ -89,15 +89,35 @@ export function Rows({ children, label }: { children: ReactNode; label?: string 
  * rather than a definition list, so a whole figure can be one link (a link around a dt/dd pair
  * is invalid, and axe said so).
  */
-export function Metrics({ items }: { items: Array<{ label: string; value: ReactNode; note?: ReactNode; href?: string }> }) {
+export function Metrics({ items }: { items: Array<{ label: string; value: ReactNode; note?: ReactNode; href?: string; help?: ReactNode }> }) {
   return (
     <ul aria-label="Key figures" className="grid grid-cols-1 divide-y divide-line sm:grid-cols-3 sm:divide-x sm:divide-y-0">
       {items.map((m) => {
+        const figure = (
+          <>
+            <span className="mt-1 block text-xl font-semibold tnum">{m.value}</span>
+            {m.note && <span className="mt-0.5 block text-xs text-ink-soft">{m.note}</span>}
+          </>
+        );
+        // A figure with a "?" keeps its label and marker outside the link: a disclosure inside a
+        // link is a control inside a control. The rest of the figure is still the one link.
+        if (m.help) {
+          return (
+            <li key={m.label} className={`h-full ${m.href ? "transition-colors hover:bg-ground" : ""}`}>
+              <div className="flex flex-wrap items-baseline px-5 pt-4 text-xs font-medium text-ink-faint">
+                <span>{m.label}</span>
+                {m.help}
+              </div>
+              {m.href
+                ? <Link href={m.href} className="block px-5 pb-4"><span className="sr-only">{m.label}: </span>{figure}</Link>
+                : <div className="px-5 pb-4">{figure}</div>}
+            </li>
+          );
+        }
         const body = (
           <>
             <span className="block text-xs font-medium text-ink-faint">{m.label}</span>
-            <span className="mt-1 block text-xl font-semibold tnum">{m.value}</span>
-            {m.note && <span className="mt-0.5 block text-xs text-ink-soft">{m.note}</span>}
+            {figure}
           </>
         );
         return (

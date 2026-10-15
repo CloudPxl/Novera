@@ -6,6 +6,7 @@ import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
 import { needsBillingAction, remedyFor } from "@/lib/billing/remedy.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { Badge } from "@/components/ui/primitives.tsx";
+import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
 import { buildAttention } from "./attention.ts";
 import { summariseRun } from "./summary.ts";
 import { readinessOf, READINESS_LABEL, type Readiness } from "@/lib/report/readiness.ts";
@@ -208,6 +209,13 @@ export default async function DashboardPage() {
     actorNames.set(id, (p?.display_name as string | null) ?? (id === user.id ? "You" : "A member"));
   }
   const top = open[0];
+  const trialBilling = entitlement.billing.source === "trial" ? entitlement.billing : null;
+  const trialLeft = trialBilling ? Math.max(0, (trialBilling.trial?.limit ?? trialBilling.runsAllowed ?? 0) - (trialBilling.trial?.used ?? trialBilling.runsUsed ?? 0)) : 0;
+  const trialLimit = trialBilling ? trialBilling.trial?.limit ?? trialBilling.runsAllowed ?? 0 : 0;
+  const funding = {
+    text: `${entitlement.ownKey ? `Graded on your ${entitlement.provider} key` : trialBilling ? "Graded on Novera's keys" : "Graded on Novera's keys, under your plan"}${trialBilling ? ` · trial: ${trialLeft} of ${trialLimit} runs left` : ""}`,
+    explain: entitlement.ownKey ? "own_key" as const : trialBilling ? "trial_allowance" as const : "run_funding" as const,
+  };
   const action = nextAction({
     goal: context.profile.primary_goal, accountMode: mode, workspaces: context.memberships.length,
     hasAgent: agentList.length > 0, firstAgentId: (agentList[0]?.id as string | undefined) ?? null,
@@ -243,7 +251,7 @@ export default async function DashboardPage() {
   const headerStatesBlock = !entitlement.canRun && action.body === entitlement.blockedReason;
   const firstRun = runList.length === 0;
   const rail = firstRun
-    ? onboardingRail({ hasAgent: agentList.length > 0, firstAgentId: (agentList[0]?.id as string | undefined) ?? null, hasPolicy: (policyCount ?? 0) > 0, hasRun: false, may: { connect: can(role, "agent.write"), run: can(role, "run.start"), review: can(role, "workspace.view") } })
+    ? onboardingRail({ goal: context.profile.primary_goal, workspaces: context.memberships.length, hasAgent: agentList.length > 0, firstAgentId: (agentList[0]?.id as string | undefined) ?? null, hasPolicy: (policyCount ?? 0) > 0, hasRun: false, may: { connect: can(role, "agent.write"), run: can(role, "run.start"), review: can(role, "workspace.view") } })
     : null;
   const attentionItems = [
     ...(!entitlement.canRun && !headerStatesBlock ? [{
@@ -260,9 +268,15 @@ export default async function DashboardPage() {
       <PageHeader
         eyebrow={personal ? workspace.name : mode === "agency" ? "Client workspace" : "Workspace"}
         title={personal ? (context.profile.display_name ? `Hello, ${context.profile.display_name}` : "Overview") : workspace.name}
-        description={<>Times in {zoneLabel(context.profile.timezone)} · {entitlement.ownKey ? `graded on your ${entitlement.provider} key` : "graded on Novera's keys"}</>}
+        description={<>Times in {zoneLabel(context.profile.timezone)}</>}
         action={<ButtonLink href={action.href}>{action.label}</ButtonLink>}
       />
+      {/* What funds the grading, stated once, with the one term it rests on: the workspace's own key,
+          the trial's three runs, or a plan. Beside the sentence, never inside it. */}
+      <div className="-mt-3 mb-1 flex flex-wrap items-baseline text-sm text-ink-soft">
+        <span>{funding.text}</span>
+        <ExplainTrigger id={funding.explain} />
+      </div>
 
       <ChannelNote channels={context.profile.channels} />
 
@@ -286,8 +300,10 @@ export default async function DashboardPage() {
               value: latestSum ? <Badge tone={latestSum.tone}>{latestSum.stateLabel}</Badge> : <span className="text-ink-faint">None yet</span>,
               note: latestRun ? `${agentName.get(latestRun.agent_id as string) ?? "Agent"} · ${day(latestRun.created_at as string)}${latestSum?.band && latestSum.state !== "pass" ? ` · ${latestSum.band}` : ""}` : undefined,
               href: latestRun ? `/runs/${latestRun.id}` : undefined,
+              // Only a grade that was withheld or never given needs saying what that means.
+              help: latestSum?.band === "Grade withheld" ? <ExplainTrigger id="grade_withheld" /> : latestSum?.band === "Incomplete" ? <ExplainTrigger id="grade_incomplete" /> : undefined,
             },
-            { label: "Open findings", value: open.length, note: newRegressions ? `${newRegressions} newly broken` : open.length ? "None new since last run" : "Nothing failing", href: open.length ? "/review" : undefined },
+            { label: "Open findings", value: open.length, note: newRegressions ? `${newRegressions} newly broken` : open.length ? "None new since last run" : "Nothing failing", href: open.length ? "/review" : undefined, help: <ExplainTrigger id="regression_delta" /> },
             { label: "Reports ready", value: <>{readyCount}<span className="text-sm font-normal text-ink-faint"> of {readinessByAgent.size}</span></>, note: "Computed from each sealed report", href: "/reports" },
           ]} />
         </div>

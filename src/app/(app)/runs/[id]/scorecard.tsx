@@ -1,4 +1,5 @@
 import { Badge, Tooltip } from "@/components/ui/primitives.tsx";
+import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
 import type { Grade } from "@/lib/evidence/grade.ts";
 import type { Coverage } from "@/lib/evidence/coverage.ts";
 import { describeVendor, type GradingHealth } from "@/lib/evidence/grading-health.ts";
@@ -125,6 +126,14 @@ export function Scorecard({
             )}
           </p>
 
+          {/* No letter is as loud as a letter, and says why in one marker (never inside the sentence above). */}
+          {ungraded && (
+            <div className="mt-2 flex flex-wrap items-baseline text-xs font-medium text-ink-soft">
+              <span>{grade.band === "WITHHELD" ? "Why the grade is withheld" : "Why there is no grade"}</span>
+              <ExplainTrigger id={grade.band === "WITHHELD" ? "grade_withheld" : "grade_incomplete"} />
+            </div>
+          )}
+
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Badge tone="neutral">{coverage.planned} planned</Badge>
             <Badge tone={coverage.passed > 0 ? "pass" : "neutral"}>{coverage.passed} passed</Badge>
@@ -151,6 +160,7 @@ export function Scorecard({
               </Tooltip>
             )}
             {coverage.notRun > 0 && <Badge tone="error">{coverage.notRun} not run</Badge>}
+            <ExplainTrigger id="coverage" />
           </div>
 
           <p className="mt-3 flex flex-wrap items-center gap-1.5 text-xs leading-relaxed text-ink-faint">

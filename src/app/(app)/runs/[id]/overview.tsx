@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/primitives.tsx";
 import { Panel, Rows } from "@/components/ui/page.tsx";
+import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
 import type { Readiness } from "@/lib/report/readiness.ts";
 
 const STATUS = { pass: { tone: "pass", word: "passed" }, fail: { tone: "fail", word: "failed" }, error: { tone: "error", word: "no result" } } as const;
@@ -67,7 +68,10 @@ export function RunOverview({ runId, readiness, findings, comparison, canCompare
         </section>
 
         <section aria-labelledby="ov-changed" className="break-inside-avoid">
-          <h2 id="ov-changed" className="type-h2">What changed</h2>
+          <div className="flex flex-wrap items-baseline">
+            <h2 id="ov-changed" className="type-h2">What changed</h2>
+            <ExplainTrigger id="regression_delta" />
+          </div>
           <div className="mt-3 rounded-shell border border-line bg-surface px-5 py-4 text-sm">
             {comparison ? (
               <>

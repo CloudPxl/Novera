@@ -10,6 +10,8 @@
  * GET only, like every verification connector. Disabled outside development, like the
  * test agent, and every response says what it is.
  */
+import { fixtureRecord } from "../../../../lib/fixture/index.ts";
+
 export const dynamic = "force-dynamic";
 
 const INVOICES: Record<string, { state: string; amount: string }> = {
@@ -28,6 +30,13 @@ export async function GET(
   }
 
   const { path } = await params;
+
+  // A later built-in suite's record, by its full path (e.g. "dsar-requests/DSAR-2291").
+  const record = fixtureRecord(path.join("/"));
+  if (record) {
+    return Response.json({ fixture: true, fixture_notice: "NOVERA TEST FIXTURE — not a real system of record.", ...record });
+  }
+
   const id = path[path.length - 1] ?? "";
   const invoice = INVOICES[id];
 

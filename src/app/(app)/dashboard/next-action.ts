@@ -33,7 +33,7 @@ export interface NextAction {
 }
 
 export function nextAction(s: NextInput): NextAction {
-  if (s.goal === "client_delivery" && s.workspaces === 1 && !s.hasAgent) {
+  if (needsClientWorkspace(s)) {
     return { title: "Add your first client", body: "One workspace per client keeps their agents, keys and reports apart, and each report names that client.", href: "/workspaces", label: "Add a client workspace" };
   }
   if (!s.hasAgent) {
@@ -78,7 +78,7 @@ export function nextAction(s: NextInput): NextAction {
 export type RailState = "done" | "current" | "pending";
 
 export interface RailStep {
-  key: "connect" | "policy" | "run";
+  key: "client" | "connect" | "policy" | "run";
   label: string;
   state: RailState;
   /** Where the step is done. Null while it is pending, or when this person's role cannot do it. */
@@ -88,33 +88,50 @@ export interface RailStep {
 }
 
 /**
- * The three steps before a workspace has a run, from the same stored facts `nextAction` reads.
- * The current step is the first that is not done, and its link is the header's link: both
- * apply the same order (agent, then policy, then run), and a step this person's role cannot
- * take says who can instead of linking to a page that would refuse them.
+ * Whether someone delivering to clients has yet to add the first client workspace: the one case
+ * where the first step is not connecting an agent. The header (`nextAction`) and the rail
+ * (`onboardingRail`) both read this, so they cannot name different first steps.
  */
-export function onboardingRail(s: Pick<NextInput, "hasAgent" | "firstAgentId" | "hasPolicy" | "hasRun" | "may">): RailStep[] {
-  const done = [s.hasAgent, s.hasPolicy, s.hasRun];
-  const current = done.findIndex((d) => !d);
-  const state = (i: number): RailState => (done[i] ? "done" : i === current ? "current" : "pending");
+function needsClientWorkspace(s: Pick<NextInput, "goal" | "workspaces" | "hasAgent">): boolean {
+  return s.goal === "client_delivery" && s.workspaces === 1 && !s.hasAgent;
+}
+
+/**
+ * The steps before a workspace has a run, from the same stored facts `nextAction` reads.
+ * The current step is the first that is not done, and its link is the header's link: both
+ * apply the same order (a client workspace for someone delivering to clients, then agent, then
+ * policy, then run), and a step this person's role cannot take says who can instead of linking
+ * to a page that would refuse them.
+ */
+export function onboardingRail(
+  s: Pick<NextInput, "hasAgent" | "firstAgentId" | "hasPolicy" | "hasRun" | "may"> & Partial<Pick<NextInput, "goal" | "workspaces">>,
+): RailStep[] {
+  const client = needsClientWorkspace({ goal: s.goal ?? null, workspaces: s.workspaces ?? 0, hasAgent: s.hasAgent });
   const agent = s.firstAgentId;
-  const href = (i: number, to: string | null, allowed: boolean): string | null =>
-    state(i) === "pending" || !allowed || !to ? null : to;
-  return [
+  const steps: Array<Omit<RailStep, "state" | "href"> & { done: boolean; to: string | null; allowed: boolean }> = [
+    ...(client ? [{
+      key: "client" as const, label: "Add a client workspace", done: false, to: "/workspaces", allowed: true,
+      note: "One workspace per client keeps their agents, keys and reports apart.",
+    }] : []),
     {
-      key: "connect", label: "Connect your agent", state: state(0),
-      href: href(0, "/agents/new", s.may.connect),
+      key: "connect", label: "Connect your agent", done: s.hasAgent, to: "/agents/new", allowed: s.may.connect,
       note: s.hasAgent ? "Connected." : s.may.connect ? "Its address, and your confirmation that you may test it." : "An operator, admin or owner connects the agent.",
     },
     {
-      key: "policy", label: "Write the policy", state: state(1),
-      href: href(1, agent ? `/agents/${agent}?tab=policy` : null, s.may.connect),
+      key: "policy", label: "Write the policy", done: s.hasPolicy, to: agent ? `/agents/${agent}?tab=policy` : null, allowed: s.may.connect,
       note: s.hasPolicy ? "Saved. Each version is kept." : !s.hasAgent ? "Available once an agent is connected." : s.may.connect ? "Every verdict is judged against this text." : "An operator, admin or owner writes the policy.",
     },
     {
-      key: "run", label: "Run the first evaluation", state: state(2),
-      href: href(2, agent ? `/agents/${agent}` : null, s.may.run),
+      key: "run", label: "Run the first evaluation", done: s.hasRun, to: agent ? `/agents/${agent}` : null, allowed: s.may.run,
       note: s.hasRun ? "Started." : !s.hasPolicy ? "Available once the policy is saved." : s.may.run ? "Graded against your policy and sealed into a dated report." : "An operator, admin or owner starts runs.",
     },
   ];
+  const current = steps.findIndex((x) => !x.done);
+  return steps.map((x, i): RailStep => {
+    const state: RailState = x.done ? "done" : i === current ? "current" : "pending";
+    return {
+      key: x.key, label: x.label, state, note: x.note,
+      href: state === "pending" || !x.allowed || !x.to ? null : x.to,
+    };
+  });
 }

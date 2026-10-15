@@ -2,6 +2,7 @@
 
 import { useId, useRef, useState } from "react";
 import { Button } from "./button.tsx";
+import { ExplainTrigger } from "./explain-trigger.tsx";
 import { SEAL_EXCLUDES, verifyFromFile, verifyFromLink, type SealItem } from "@/lib/report/seal.ts";
 
 /**
@@ -104,7 +105,10 @@ export function SealInspector({
           </div>
 
           <section aria-labelledby={`${titleId}-hash`} className="mt-5">
-            <h3 id={`${titleId}-hash`} className="text-sm font-semibold">SHA-256</h3>
+            <div className="flex flex-wrap items-baseline">
+              <h3 id={`${titleId}-hash`} className="text-sm font-semibold">SHA-256</h3>
+              <ExplainTrigger id="sha256_seal" />
+            </div>
             <div className="mt-2 flex flex-wrap items-start gap-2 rounded-control bg-sunken p-3">
               <code ref={hashText} className="type-mono min-w-0 flex-1 break-all text-xs text-ink">{hash}</code>
               <Button variant="secondary" size="sm" onClick={() => copy(hash, "hash", hashText.current)}>Copy hash</Button>

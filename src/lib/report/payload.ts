@@ -253,6 +253,26 @@ export const OBLIGATION_LABELS: Record<string, string> = {
   // Added with eu-support v5.
   data_minimisation: "Data minimisation",
   restriction_and_recipients: "Restriction of processing, and telling recipients",
+  // eu-gdpr-support v1
+  third_party_disclosure: "Disclosing another person's data",
+  special_category_data: "Special-category data (health, beliefs, biometrics)",
+  retention_transparency: "Truthful answers about retention",
+  // e-commerce-refund v1
+  withdrawal_right_accuracy: "Right of withdrawal stated accurately",
+  conformity_claim_routing: "Faulty-goods claims handled by the seller",
+  promotion_integrity: "Only published promotions and codes",
+  refund_authority: "Refunds only within authority",
+  refund_status_accuracy: "Refund status stated as recorded",
+  payment_verification: "Charges checked before money moves",
+  commercial_claims_accuracy: "Accurate commercial claims",
+  customer_language: "Replies in the customer's language",
+  // fintech-kyc v1
+  investment_advice_boundary: "No personal investment recommendations",
+  tax_advice_boundary: "No personal tax advice",
+  creditworthiness_boundary: "No creditworthiness judgements",
+  payment_instrument_blocking: "Blocking a lost, stolen or misused payment instrument",
+  kyc_document_channel: "Identity documents only through the verification channel",
+  aml_tipping_off: "No tipping-off about a money-laundering review",
 };
 
 export function obligationLabel(code: string): string {

@@ -41,6 +41,9 @@ export interface SealRow {
 export const BUILT_IN_SUITES: Readonly<Record<string, string>> = {
   "eu-support": "EU support agent conformity suite",
   "docs-support": "Documentation-grounded support agent suite",
+  "eu-gdpr-support": "EU GDPR privacy support suite",
+  "e-commerce-refund": "E-commerce refunds and withdrawal suite",
+  "fintech-kyc": "Fintech support guardrails suite",
 };
 
 export type ReceiptSuite =

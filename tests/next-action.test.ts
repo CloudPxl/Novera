@@ -68,3 +68,43 @@ test("a step the role cannot take names who can, and does not link", () => {
   assert.equal(rail[2].href, null);
   assert.match(rail[2].note, /operator, admin or owner/);
 });
+
+test("someone delivering to clients is first asked for a client workspace, in the header and in the rail", () => {
+  const input = { ...base, goal: "client_delivery" as const, workspaces: 1, hasAgent: false, firstAgentId: null, hasPolicy: false, hasRun: false };
+  const header = nextAction(input);
+  assert.equal(header.label, "Add a client workspace");
+  const rail = onboardingRail(input);
+  assert.deepEqual(rail.map((s) => s.key), ["client", "connect", "policy", "run"]);
+  assert.deepEqual(rail.map((s) => s.state), ["current", "pending", "pending", "pending"]);
+  assert.equal(rail[0].label, header.label);
+  assert.equal(rail[0].href, header.href);
+  for (const s of rail.slice(1)) assert.equal(s.href, null);
+});
+
+test("once a client workspace exists, the header and the rail both say Connect your agent", () => {
+  const input = { ...base, goal: "client_delivery" as const, workspaces: 2, hasAgent: false, firstAgentId: null, hasPolicy: false, hasRun: false };
+  const header = nextAction(input);
+  const rail = onboardingRail(input);
+  assert.deepEqual(rail.map((s) => s.key), ["connect", "policy", "run"]);
+  assert.equal(header.title, "Connect your agent");
+  const current = rail.find((s) => s.state === "current")!;
+  assert.equal(current.label, "Connect your agent");
+  assert.equal(current.href, header.href);
+});
+
+test("the rail's current step is the header's, for every goal, workspace count and stage", () => {
+  const may = { connect: true, run: true, review: true };
+  for (const goal of ["own_agent", "client_delivery", "governance", null] as const) {
+    for (const workspaces of [1, 2]) {
+      for (const [hasAgent, hasPolicy] of [[false, false], [true, false], [true, true]] as const) {
+        const input = { ...base, goal, workspaces, hasAgent, hasPolicy, hasRun: false, firstAgentId: hasAgent ? "a1" : null, runInFlight: null, blockedReason: null, may };
+        const rail = onboardingRail(input);
+        const current = rail.filter((s) => s.state === "current");
+        assert.equal(current.length, 1, `exactly one current step for ${JSON.stringify({ goal, workspaces, hasAgent, hasPolicy })}`);
+        assert.equal(current[0].href, nextAction(input).href, `header and rail disagree for ${JSON.stringify({ goal, workspaces, hasAgent, hasPolicy })}`);
+        // A step is only ever done in order: nothing pending sits before the current one.
+        assert.deepEqual(rail.map((s) => s.state).filter((s) => s !== "done"), rail.map((s) => s.state).slice(rail.findIndex((s) => s.state === "current")));
+      }
+    }
+  }
+});

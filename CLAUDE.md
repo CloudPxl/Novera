@@ -51,7 +51,7 @@ someone with the service role, not merely someone using the application.
 |---|---|
 | Evidence is append-only — a verdict cannot be edited or deleted | `refuse_mutation()` triggers; erasure only through `erase_workspace()` |
 | An errored case cannot be a pass; an evidence gap cannot sit on a verdict; a rule-settled case cannot name a judge | 0019 |
-| A run's inputs were declared *before* it executed — suite version and case ids in order, policy version, agent host, judge plan, pass mark, runner version, rubric digest — and its evidence is only those scenarios, each recorded once, while it runs: a completed run takes no new row, and a run is marked completed only when every declared scenario has one | 0016, frozen by trigger; 0043; 0048 |
+| A run's inputs were declared *before* it executed — suite version, its SHA-256 suite digest (new runs) and case ids in order, policy version, agent host, judge plan, pass mark, runner version, rubric digest — and its evidence is only those scenarios, each recorded once, while it runs: a completed run takes no new row, and a run is marked completed only when every declared scenario has one | 0016, frozen by trigger; 0043; 0048 |
 | A report was not edited after sealing, and chains to the previous report for that agent | SHA-256 content hash + `previous_report_hash` |
 | Every report and export says it is testing evidence, not a certification, conformity assessment or notified-body approval — beside the sealed content, never inside it, so no hash changes | `src/lib/legal/notices.ts`, report page, `src/lib/report/export.ts`, `tests/ci.test.ts` |
 | No paid plan starts without a business's details and an acceptance of the current legal texts, with the Civil Code art. 1203 clauses accepted separately; the record names each text's version and SHA-256, cannot be edited, stores no IP, never calls a VAT number validated, and leaves with its workspace; live billing also needs approved texts and complete company details, and a production deployment refuses a Stripe test key | 0068, `src/lib/legal/contract.ts`, `startCheckout`, `billingConfig`, `tests/legal-framework.test.ts` |
@@ -215,7 +215,10 @@ src/lib/review/       failed scenarios as findings (new, recurring, resolved), d
 src/lib/builder/      the Suite Builder: curated packs, sources (parse, fetch one page), extraction, discovery, coverage
 data/packs/           curated baseline packs — selections of eu-support v5, byte for byte
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
-data/suites/          versioned scenario suites + calibration labels
+data/suites/          versioned scenario suites (eu-support v1–v5; eu-gdpr-support, e-commerce-refund, fintech-kyc v1), calibration labels, and `.tiers.json` sidecars (triage tiers, not sealed)
+src/lib/suites/       validation, the suite digest, tiers by scenario definition, computed changelogs, the catalog (/scenarios?tab=catalog)
+src/lib/fixture/      the scripted fixture's per-suite replies and read-back records (eu-support's live in the route)
+src/lib/explainability/ the glossary behind every `?` (`<ExplainTrigger>`); one disclosure implementation with `Help`
 data/docs/            the published documentation, seeded into the database
 docs/DECISIONS.md     append-only decision log — the reasoning behind everything here
 docs/setup/           what is configured in a dashboard rather than in code, step by step (CI, email, monitoring, status, events)
@@ -255,7 +258,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 956 unit tests | free |
+| `npm test` | 1034 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |

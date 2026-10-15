@@ -5,6 +5,7 @@ import { contentHash, type Json } from "./hash.ts";
 import type { ReportPayload } from "./payload.ts";
 import { JUDGE_SYSTEM } from "../judge/index.ts";
 import { DEFAULT_ROUTES, type RouteTable } from "../router/routes.ts";
+import { suiteDigest } from "../suites/digest.ts";
 
 /**
  * Bumped by hand when the way a run is executed changes in a way that could change a
@@ -53,6 +54,13 @@ export interface RunManifest {
   declared?: { release_id?: string; knowledge_base_revision?: string };
   policy: { id: string; version: number };
   suite: { id: string; key: string; version: number; case_ids: string[] };
+  /**
+   * SHA-256 of the suite row the run executes — key, version, name and every scenario in
+   * order, in canonical form (`src/lib/suites/digest.ts`). The case ids say which scenarios
+   * ran; this says what each of them was, so a sealed report (through `manifest_hash`) commits
+   * to the exact suite content. Absent on runs declared before 2026-10-15.
+   */
+  suite_digest?: string;
   /** The models this run intended to grade with, in the order it meant to ask them. */
   judge_plan: Array<{ connection: string; model: string; task: string }>;
   judge_source: "trial_free" | "workspace_key" | "plan_managed";
@@ -140,6 +148,8 @@ export function buildRunManifest(args: {
   suiteKey: string;
   suiteVersion: number;
   caseIds: string[];
+  /** `suiteDigest` of the suite row being run. Omitted only by callers that predate it. */
+  suiteDigest?: string | null;
   judgeSource: "trial_free" | "workspace_key" | "plan_managed";
   /**
    * The route this run will actually grade on. It is an argument rather than a read of
@@ -181,6 +191,7 @@ export function buildRunManifest(args: {
       // reader comparing two manifests should see a reordering as a difference.
       case_ids: args.caseIds,
     },
+    ...(args.suiteDigest ? { suite_digest: args.suiteDigest } : {}),
     judge_plan: (["judge", "judge_critical"] as const).flatMap((task) =>
       routes[task].map((c) => ({ connection: c.connection, model: c.model, task })),
     ),
@@ -234,7 +245,7 @@ export async function manifestForNewRun(args: {
     const [{ data: agent }, { data: policy }, { data: suite }] = await Promise.all([
       args.client.from("agents").select("config").eq("id", args.agentId).maybeSingle(),
       args.client.from("policies").select("version").eq("id", args.policyId).maybeSingle(),
-      args.client.from("suites").select("key, version, cases").eq("id", args.suiteId).maybeSingle(),
+      args.client.from("suites").select("key, version, name, cases").eq("id", args.suiteId).maybeSingle(),
     ]);
 
     if (!policy || !suite) return { id, manifest: null, manifest_hash: null };
@@ -250,6 +261,11 @@ export async function manifestForNewRun(args: {
       suiteKey: String(suite.key),
       suiteVersion: Number(suite.version),
       caseIds: cases.map((c) => String(c.id)),
+      // Of the row as stored, which is what the runner will execute.
+      suiteDigest: suiteDigest({
+        key: String(suite.key), version: Number(suite.version), name: String(suite.name),
+        cases: cases as unknown as Parameters<typeof suiteDigest>[0]["cases"],
+      }),
       judgeSource: args.judgeSource,
       routes: args.routes,
       passThreshold: args.passThreshold ?? 80,

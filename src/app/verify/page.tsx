@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/app/_home/site-header.tsx";
+import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
 import { pageMetadata } from "@/lib/seo/site.ts";
 import { verifyFromFile } from "@/lib/report/seal.ts";
 import { REPORT_NOTICE_SHORT } from "@/lib/legal/notices.ts";
@@ -48,7 +49,10 @@ export default async function VerifyPage({ searchParams }: { searchParams: Promi
         </p>
 
         <section aria-labelledby="check-heading" className="mt-8 rounded-control border border-line bg-ground/60 p-5">
-          <h2 id="check-heading" className="text-lg font-semibold">Check a digest</h2>
+          <div className="flex flex-wrap items-baseline">
+            <h2 id="check-heading" className="text-lg font-semibold">Check a digest</h2>
+            <ExplainTrigger id="sha256_seal" />
+          </div>
           <div className="mt-3">
             <DigestForm />
           </div>

@@ -9,7 +9,7 @@ import type { RailStep } from "./next-action.ts";
 export function OnboardingRail({ steps }: { steps: RailStep[] }) {
   return (
     <Panel className="mt-2">
-      <ol aria-label="Getting started" className="grid divide-y divide-line md:grid-cols-3 md:divide-x md:divide-y-0">
+      <ol aria-label="Getting started" className={`grid divide-y divide-line md:divide-x md:divide-y-0 ${steps.length === 4 ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
         {steps.map((s, i) => (
           <li key={s.key} aria-current={s.state === "current" ? "step" : undefined} className={`px-5 py-4 ${s.state === "current" ? "bg-ground" : ""}`}>
             <p className="flex items-center gap-2 text-xs font-medium text-ink-faint">

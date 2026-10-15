@@ -12,6 +12,8 @@ import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { can } from "@/lib/auth/permissions.ts";
 import { ImportSuite } from "@/components/shell/import-suite.tsx";
 import { Library, type LibraryOrigin, type LibraryRun } from "./library.tsx";
+import { Catalog } from "./catalog.tsx";
+import { buildCatalog, parseCatalogFilter, type SuiteRow } from "@/lib/suites/catalog.ts";
 
 export const metadata: Metadata = { title: "Scenarios · Novera" };
 export const dynamic = "force-dynamic";
@@ -40,9 +42,14 @@ interface DraftRow {
 // The tone set already names the severities; risk uses the same words on purpose.
 const RISK_TONE = { high: "high", medium: "medium", low: "low" } as const;
 
-export default async function ScenariosPage({ searchParams }: { searchParams: Promise<{ suite?: string; tab?: string }> }) {
-  const { suite: suiteParam, tab: tabParam } = await searchParams;
-  const tab = tabParam === "drafts" || tabParam === "create" ? tabParam : "library";
+export default async function ScenariosPage({ searchParams }: {
+  searchParams: Promise<{ suite?: string; tab?: string; view?: string; tier?: string; severity?: string }>;
+}) {
+  const params = await searchParams;
+  const { suite: suiteParam, tab: tabParam } = params;
+  // The catalog answers at `?tab=catalog` (what the tabs and `/suites` link to) and `?view=catalog`.
+  const tab = tabParam === "drafts" || tabParam === "create" || tabParam === "catalog" ? tabParam
+    : params.view === "catalog" ? "catalog" : "library";
   const { user, workspace, role } = await requireWorkspace();
   const admin = await assertMembership(user.id, workspace.id);
 
@@ -62,11 +69,14 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
   const rows = (drafts ?? []) as unknown as DraftRow[];
 
   // The library: one suite version's scenarios and how each has done. Defaults to the suite
-  // of the newest run, so it opens on what this workspace actually runs.
-  const { data: newestRun } = await admin.from("runs").select("suite_id").eq("workspace_id", workspace.id)
-    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  // of the newest run, so it opens on what this workspace actually runs. Read only on its tab:
+  // the chosen suite's scenarios and their run history are the heaviest reads on this page.
+  const { data: newestRun } = tab === "library"
+    ? await admin.from("runs").select("suite_id").eq("workspace_id", workspace.id)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle()
+    : { data: null };
   const suiteList = (suites ?? []) as Array<{ id: string; key: string; version: number; name: string }>;
-  const chosenId = suiteList.some((x) => x.id === suiteParam) ? suiteParam!
+  const chosenId = tab !== "library" ? undefined : suiteList.some((x) => x.id === suiteParam) ? suiteParam!
     : (newestRun?.suite_id as string | undefined) ?? suiteList.find((x) => x.key === "eu-support")?.id ?? suiteList[0]?.id;
   const [{ data: chosen }, { data: libRuns }, { data: promoted }] = chosenId
     ? await Promise.all([
@@ -90,6 +100,12 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
   const origins = new Map<string, LibraryOrigin>((promoted ?? []).map((d) => [
     (d.scenario as SuiteCase).id, { origin: d.origin as LibraryOrigin["origin"], approvedAt: (d.approved_at as string | null) ?? null },
   ]));
+  // The catalog: every built-in suite version, as stored (workspace_id null).
+  const { data: builtIns } = tab === "catalog"
+    ? await admin.from("suites").select("id, key, version, name, cases").is("workspace_id", null)
+    : { data: null };
+  const catalog = buildCatalog((builtIns ?? []) as unknown as SuiteRow[]);
+  const catalogFilter = parseCatalogFilter(params);
   const pending = rows.filter((d) => d.status === "draft");
   const approved = rows.filter((d) => d.status === "approved");
   const settled = rows.filter((d) => d.status === "rejected" || d.status === "included");
@@ -104,6 +120,7 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
       />
       <TabNav label="Scenario sections" current={tab} tabs={[
         { key: "library", label: "Suite library", href: "/scenarios" },
+        { key: "catalog", label: "Catalog", href: "/scenarios?tab=catalog" },
         { key: "drafts", label: "Drafts", href: "/scenarios?tab=drafts", count: pending.length },
         { key: "create", label: "Draft or import", href: "/scenarios?tab=create" },
       ]} />
@@ -141,6 +158,8 @@ export default async function ScenariosPage({ searchParams }: { searchParams: Pr
 
         </>
       )}
+
+      {tab === "catalog" && <Catalog suites={catalog} filter={catalogFilter} />}
 
       {tab === "create" && (
         <>

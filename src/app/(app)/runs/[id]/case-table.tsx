@@ -9,6 +9,8 @@ import { rulesLine } from "./chain.ts";
 import Link from "next/link";
 import { SEVERITIES, parseSeverities, severityCounts, toggleSeverity, whyNotPassed } from "./triage.ts";
 import type { AgentEvent } from "@/lib/agents/trajectory.ts";
+import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
+import type { ExplainKey } from "@/lib/explainability/glossary.ts";
 
 export interface CaseRow {
   id: string;
@@ -260,7 +262,11 @@ export function CaseTable({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 py-3">
-        <span className="type-pill mr-1 text-ink-faint">Severity</span>
+        {/* Label and marker travel together; an open panel takes the row, and the filters follow below it. */}
+        <div className="flex flex-wrap items-baseline has-[details[open]]:basis-full">
+          <span className="type-pill text-ink-faint">Severity</span>
+          <ExplainTrigger id="severity" />
+        </div>
         {SEVERITIES.map((s) => {
           const on = severities.includes(s);
           const n = bySeverity[s];
@@ -352,12 +358,15 @@ export function CaseTable({
 }
 
 /** One link of the evidence chain, numbered in the order Novera gathered it. */
-function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+function Step({ n, title, children, explain }: { n: number; title: string; children: ReactNode; explain?: ExplainKey }) {
   return (
     <li>
-      <h3 className="type-pill text-ink-faint">
-        <span className="tnum">{n}</span> · {title}
-      </h3>
+      <div className="flex flex-wrap items-baseline">
+        <h3 className="type-pill text-ink-faint">
+          <span className="tnum">{n}</span> · {title}
+        </h3>
+        {explain && <ExplainTrigger id={explain} />}
+      </div>
       <div className="mt-1.5">{children}</div>
     </li>
   );
@@ -390,7 +399,7 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
 
   let n = 0;
   const sent = row.transcript ? (
-    <Step n={++n} title="The conversation, turn by turn">
+    <Step n={++n} title="The conversation, turn by turn" explain={row.transcript.some((t) => t.simulated) ? "test_data" : undefined}>
       <p className="text-xs text-ink-soft">
         Graded as a whole: a rule broken in any turn fails the scenario.
         {row.transcript.some((t) => t.simulated) &&
@@ -514,7 +523,11 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
      system of record disagrees with the agent, that is the finding, and everything
      after it is commentary on the wording of a reply. */
   const readBack = (
-    <Step n={++n} title="What your own system showed">
+    <Step
+      n={++n}
+      title="What your own system showed"
+      explain={row.observation?.status === "contradicted" ? "readback_contradiction" : row.observation?.status === "unavailable" ? "readback_unavailable" : undefined}
+    >
       {row.observation ? (
         <p
           className={`rounded-control border px-3 py-2 text-xs leading-relaxed ${
@@ -552,7 +565,11 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
       typeof v?.model === "string" && typeof v?.status === "string",
   );
   const graders = (
-    <Step n={++n} title="The graders">
+    <Step
+      n={++n}
+      title="The graders"
+      explain={settledEarly ? undefined : row.judgeAgreement === "unconfirmed" ? "one_grader_only" : row.judgeAgreement === "majority" ? "consensus_tiebreaker" : row.judgeAgreement === "unresolved" ? "unresolved_disagreement" : undefined}
+    >
       {settledEarly ? (
         <p className={quiet}>
           Not asked: {row.settledBy === "deterministic" ? "the scenario’s own rules" : "your own system"} had already
@@ -601,7 +618,7 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
   );
 
   const verdict = (
-    <Step n={++n} title="The verdict">
+    <Step n={++n} title="The verdict" explain={row.evidenceGap ? "action_not_verified" : undefined}>
       <p className="flex items-center gap-2 text-sm text-ink-soft">
         <Badge tone={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Badge>
         {row.judgeAgreement === "unresolved" && <span>the graders disagreed and a third could not settle it</span>}
@@ -744,6 +761,21 @@ export function CategoryCard({
   );
 }
 
+/**
+ * The reasons for no verdict that have a glossary entry. The others are described in full by the
+ * note itself, and the graders' and read-back's own steps carry theirs, so nothing is explained
+ * twice on one case. A timeout and the transport statuses are the same fact to the runner
+ * (isTransportFailure in src/lib/runner/execute.ts).
+ */
+const REPAIR_EXPLAINS: Partial<Record<Repair["reason"], ExplainKey>> = {
+  agent_unreachable: "agent_unreachable",
+  agent_timeout: "agent_unreachable",
+  production_guard: "not_run",
+  no_metadata_slot: "not_run",
+  no_conversation_slot: "not_run",
+  not_sent_address: "not_run",
+};
+
 const RECEIVED = { yes: "received it", no: "never received it", unknown: "not known" } as const;
 
 /**
@@ -751,9 +783,14 @@ const RECEIVED = { yes: "received it", no: "never received it", unknown: "not kn
  * acts on it, whether a retest could repeat something the agent did, and the next step.
  */
 function RepairNote({ repair }: { repair: Repair }) {
+  const explains = REPAIR_EXPLAINS[repair.reason]
+    ?? (repair.reason === "agent_http_error" && /HTTP (?:408|429|502|503|504)$/.test(repair.label) ? "agent_unreachable" : undefined);
   return (
     <section aria-label="Why there is no verdict" className="mb-4 rounded-control bg-surface p-3 ring-1 ring-line">
-      <p className="text-sm font-medium text-ink">Why there is no verdict: {repair.label}</p>
+      <div className="flex flex-wrap items-baseline">
+        <p className="text-sm font-medium text-ink">Why there is no verdict: {repair.label}</p>
+        {explains && <ExplainTrigger id={explains} />}
+      </div>
       <p className="mt-1 text-sm leading-relaxed text-ink-soft">{repair.happened}</p>
       <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
         <div>

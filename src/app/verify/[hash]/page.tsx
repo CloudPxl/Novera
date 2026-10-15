@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/app/_home/site-header.tsx";
+import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
 import { JsonLd } from "@/components/seo/json-ld.tsx";
 import { REPORT_NOTICE_SHORT, REPORT_NOTICE_TITLE } from "@/lib/legal/notices.ts";
 import {
@@ -63,11 +64,12 @@ function Outcome({ digest, result }: { digest: string | null; result: SealReceip
   }
 }
 
-function Heading({ title, chip, tone }: { title: string; chip: string; tone: keyof typeof CHIP }) {
+function Heading({ title, chip, tone, withdrawn = false }: { title: string; chip: string; tone: keyof typeof CHIP; withdrawn?: boolean }) {
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-2">
       <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
       <span className={`inline-flex w-fit items-center rounded-control border px-2.5 py-1 text-sm font-semibold ${CHIP[tone]}`}>{chip}</span>
+      {withdrawn && <ExplainTrigger id="withdrawn_report" />}
     </div>
   );
 }
@@ -75,7 +77,10 @@ function Heading({ title, chip, tone }: { title: string; chip: string; tone: key
 function Digest({ value }: { value: string }) {
   return (
     <div className="mt-6">
-      <p className="text-sm font-medium text-ink-faint">SHA-256</p>
+      <div className="flex flex-wrap items-baseline">
+        <p className="text-sm font-medium text-ink-faint">SHA-256</p>
+        <ExplainTrigger id="sha256_seal" />
+      </div>
       <p className="mt-1 font-mono text-sm break-all text-ink">{value}</p>
     </div>
   );
@@ -145,7 +150,7 @@ function Unknown({ digest }: { digest: string }) {
 function Withdrawn({ digest, at }: { digest: string; at: string | null }) {
   return (
     <>
-      <Heading title="Withdrawn report" chip="Withdrawn" tone="neutral" />
+      <Heading title="Withdrawn report" chip="Withdrawn" tone="neutral" withdrawn />
       <Digest value={digest} />
       <p className="mt-4 measure text-base leading-relaxed text-ink">
         {at ? `This report was withdrawn on ${at}.` : "This report was withdrawn."}
@@ -184,9 +189,12 @@ function Verified({ digest, details }: { digest: string; details: ReceiptDetails
         in your browser or with one command.
       </p>
       {details.testData && (
-        <p className="mt-4 inline-flex items-center rounded-control border-2 border-dashed border-warning-text bg-warning-surface px-3 py-1 text-sm font-bold uppercase tracking-wide text-warning-text">
-          Test data · Novera&apos;s scripted fixture, not a real agent
-        </p>
+        <div className="mt-4 flex flex-wrap items-center">
+          <p className="inline-flex items-center rounded-control border-2 border-dashed border-warning-text bg-warning-surface px-3 py-1 text-sm font-bold uppercase tracking-wide text-warning-text">
+            Test data · Novera&apos;s scripted fixture, not a real agent
+          </p>
+          <ExplainTrigger id="test_data" />
+        </div>
       )}
 
       <ReceiptDetailsList details={details} />

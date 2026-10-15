@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMotion } from "@/components/ui/motion.ts";
+import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
+import type { ExplainKey } from "@/lib/explainability/glossary.ts";
 
 /**
  * The product, on the front page: one illustrative run you can open.
@@ -169,6 +171,15 @@ const STORIES: Record<string, CaseStory> = {
   },
 };
 
+/**
+ * The glossary entry for a story's read-back stage, when it is the finding: a claimed action the
+ * system of record contradicts, or one nothing could check. Null when no action was claimed.
+ */
+function readbackKey(story: CaseStory): ExplainKey | null {
+  const stage = story.stages.find((s) => s.name === "Read-back");
+  return stage?.state === "fail" ? "readback_contradiction" : stage?.state === "warn" ? "readback_unavailable" : null;
+}
+
 const STATE_STYLE: Record<StageState, { dot: string; label: string }> = {
   ok: { dot: "bg-ink", label: "done" },
   fail: { dot: "bg-fail-text", label: "failed" },
@@ -296,7 +307,10 @@ export function SampleReport() {
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="type-eyebrow text-ink-faint">Grade</p>
+                  <div className="flex flex-wrap items-baseline">
+                    <p className="type-eyebrow text-ink-faint">Grade</p>
+                    {withheld && <ExplainTrigger id="grade_withheld" />}
+                  </div>
                   <p className="mt-1 text-sm font-semibold text-ink">
                     {withheld ? `${IDS.length - none.length} of ${IDS.length} have a verdict` : `${passed} of ${IDS.length} scenarios passed`}
                   </p>
@@ -320,14 +334,18 @@ export function SampleReport() {
             <Matrix run={run} onOpen={toggle} open={open} />
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-panel border border-line bg-ground px-3.5 py-2.5">
-              <p className="flex min-w-0 items-center gap-2 text-xs">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs">
                 <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded-full bg-ink text-[10px] text-on-ink">✓</span>
                 <span className="font-semibold text-ink">Sealed</span>
                 <span className="type-mono break-all text-[11px] text-ink-soft">SHA-256 {withheld ? "3b71…0c9d" : "9f2c…e41a"}</span>
-              </p>
-              <p className="text-[11px] text-ink-faint tnum">
-                Ran 49 of 49 · verdicts {IDS.length - none.length} of 49 · actions checked {withheld ? "3" : "4"} of 4
-              </p>
+                <ExplainTrigger id="sha256_seal" />
+              </div>
+              <div className="flex flex-wrap items-center">
+                <p className="text-[11px] text-ink-faint tnum">
+                  Ran 49 of 49 · verdicts {IDS.length - none.length} of 49 · actions checked {withheld ? "3" : "4"} of 4
+                </p>
+                <ExplainTrigger id="coverage" />
+              </div>
             </div>
 
             <FindingsLine ids={[...failed, ...none]} open={open} onToggle={toggle} />
@@ -367,7 +385,7 @@ export function SampleReport() {
         {tab === "Since last run" && <Comparison play={animate ? play : 0} onOpenPrevious={() => showRun("previous")} />}
 
         {open && tab !== "Since last run" && (
-          <Drawer key={`${open}-${play}`} story={STORIES[open]} animate={animate} onClose={() => setOpen(null)} onReplay={() => setPlay((n) => n + 1)} />
+          <Drawer key={`${open}-${play}`} story={STORIES[open]} animate={animate} explainReadback={failed.length + none.length !== 1} onClose={() => setOpen(null)} onReplay={() => setPlay((n) => n + 1)} />
         )}
       </div>
 
@@ -383,11 +401,12 @@ function FindingsLine({ ids, open, onToggle }: { ids: string[]; open: string | n
     const s = STORIES[ids[0]];
     return (
       <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <p className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
           <span className="font-semibold text-ink">1 finding</span>
           <SeverityChip severity={s.severity} />
           <span className="text-ink-soft">{s.obligation} · {s.id}</span>
-        </p>
+          {readbackKey(s) && <ExplainTrigger id={readbackKey(s)!} />}
+        </div>
         <button
           type="button"
           onClick={() => onToggle(s.id)}
@@ -454,7 +473,7 @@ function Matrix({ run, onOpen, open }: { run: RunKey; onOpen: (id: string) => vo
 }
 
 /** One scenario's evidence chain, walked stage by stage. */
-function Drawer({ story, animate, onClose, onReplay }: { story: CaseStory; animate: boolean; onClose: () => void; onReplay: () => void }) {
+function Drawer({ story, animate, explainReadback, onClose, onReplay }: { story: CaseStory; animate: boolean; explainReadback: boolean; onClose: () => void; onReplay: () => void }) {
   // How many stages are lit. Starts complete without motion; walks up with it.
   const [lit, setLit] = useState(animate ? 0 : story.stages.length);
   useEffect(() => {
@@ -492,9 +511,13 @@ function Drawer({ story, animate, onClose, onReplay }: { story: CaseStory; anima
               {/* Not yet reached: faint text, never reduced opacity — a dimmed line has to
                   stay readable (axe measured the 0.4-opacity version below the contrast floor). */}
               <div className="min-w-0">
-                <p className={`text-xs font-semibold transition-colors duration-200 ${on ? "text-ink" : "text-ink-faint"}`}>
-                  {s.name} <span className="font-normal text-ink-faint">· {on ? st.label : "waiting"}</span>
-                </p>
+                {/* The one-finding line above already carries this marker when it is the only finding. */}
+                <div className="flex flex-wrap items-baseline">
+                  <p className={`text-xs font-semibold transition-colors duration-200 ${on ? "text-ink" : "text-ink-faint"}`}>
+                    {s.name} <span className="font-normal text-ink-faint">· {on ? st.label : "waiting"}</span>
+                  </p>
+                  {explainReadback && s.name === "Read-back" && readbackKey(story) && <ExplainTrigger id={readbackKey(story)!} />}
+                </div>
                 <p className={`text-xs leading-relaxed transition-colors duration-200 ${on ? "text-ink-soft" : "text-ink-faint"}`}>{s.detail}</p>
               </div>
             </li>

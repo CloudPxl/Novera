@@ -12,7 +12,8 @@ import { noVerdictRow, repairFor } from "@/lib/evidence/repair.ts";
 import { readinessOf, READINESS_LABEL } from "@/lib/report/readiness.ts";
 import type { ReportPayload } from "@/lib/report/payload.ts";
 import { ReadinessPanel } from "./readiness.tsx";
-import { causeOfMove, compareRuns, contextChanges, MOVE_SENTENCE, type MoveCause } from "@/lib/evidence/compare.ts";
+import { DELTA_CAUSE_SENTENCE, DELTA_LABEL, type DeltaCategory } from "@/lib/evidence/compare.ts";
+import { comparableRuns, loadComparison } from "@/lib/evidence/comparison-loader.ts";
 import { loadStability } from "@/lib/evidence/stability-history.ts";
 import { alignment, latestReviews, withFindingsApplied, type VerdictReview } from "@/lib/evidence/reviews.ts";
 import { ReviewVerdict, ReviewHistory, ReissueReport, type ReviewEntry } from "./review.tsx";
@@ -30,6 +31,7 @@ import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { Menu } from "@/components/ui/menu.tsx";
 import { menuItemClass } from "@/components/ui/menu-item.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
+import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { LiveRun } from "./live.tsx";
 import { RunActivity, RunOverview } from "./overview.tsx";
 import { TabNav } from "@/components/ui/page.tsx";
@@ -97,7 +99,7 @@ export default async function RunPage({
   const [{ data: agent }, { data: policy }, { data: suite }, { data: reportRows }, { data: schedule }, { data: apiKey }, { data: newestPolicy }] = await Promise.all([
     db.from("agents").select("name, config").eq("id", run.agent_id).maybeSingle(),
     db.from("policies").select("version").eq("id", run.policy_id).maybeSingle(),
-    db.from("suites").select("name, version, cases, approval, provenance").eq("id", run.suite_id).maybeSingle(),
+    db.from("suites").select("name, key, workspace_id, version, cases, approval, provenance").eq("id", run.suite_id).maybeSingle(),
     // Newest first: a run can carry a reissue that discloses human review, and a
     // single-row read of more than one report returns nothing at all.
     db.from("reports").select("token, created_at, revoked_at, expires_at, content_hash, payload, disclosed:payload->human_review->>as_of").eq("run_id", id)
@@ -248,67 +250,6 @@ export default async function RunPage({
     retestsByCase.set(r.run_case_id as string, list);
   }
 
-  // Which runs this one can honestly be compared with: the same agent and the same
-  // suite. Comparing across suites would produce a fixed/broken list out of scenarios
-  // that were never the same scenarios — a difference that says nothing about the
-  // agent. The selector therefore cannot offer one.
-  const { data: comparableRuns } = settled
-    ? await db
-        .from("runs")
-        .select("id, created_at, policy_id")
-        .eq("agent_id", run.agent_id)
-        .eq("suite_id", run.suite_id)
-        .eq("status", "completed")
-        .neq("id", id)
-        .order("created_at", { ascending: false })
-        .limit(20)
-    : { data: null };
-
-  // The baseline the run was measured from, unless the operator picked another — and
-  // only if that one is genuinely comparable.
-  const requested = compare && (comparableRuns ?? []).some((r) => r.id === compare) ? compare : null;
-  const baselineRunId = requested ?? (run.baseline_run_id as string | null);
-
-  let comparison: ReturnType<typeof compareRuns> | null = null;
-  let baselinePolicyVersion: number | null = null;
-  let baselineManifest: Record<string, unknown> | null = null;
-  // The baseline's evidence per scenario, for saying why a verdict moved.
-  const baselineEvidence = new Map<string, { status: "pass" | "fail" | "error"; replySha: string | null; replied: boolean; runCaseId: string }>();
-  if (settled && baselineRunId && rows.length) {
-    const { data: before } = await db
-      .from("run_cases").select("id, case_id, status, raw_sha256, raw_expired_at, response_text, transcript").eq("run_id", baselineRunId);
-    for (const c of before ?? []) {
-      baselineEvidence.set(c.case_id as string, {
-        status: c.status as "pass" | "fail" | "error", replySha: (c.raw_sha256 as string | null) ?? null, runCaseId: c.id as string,
-        replied: Boolean(c.response_text) || Boolean(c.raw_expired_at) || (Array.isArray(c.transcript) && c.transcript.some((t) => (t as { role?: string }).role === "agent")),
-      });
-    }
-    if (before?.length) {
-      comparison = compareRuns(
-        before.map((c) => ({ caseId: c.case_id as string, status: c.status as "pass" | "fail" | "error" })),
-        rows.map((c) => ({ caseId: c.case_id as string, status: c.status as "pass" | "fail" | "error" })),
-      );
-      const { data: beforeRun } = await db
-        .from("runs").select("policy_id, manifest").eq("id", baselineRunId).maybeSingle();
-      baselineManifest = (beforeRun?.manifest as Record<string, unknown> | null) ?? null;
-      const { data: beforePolicy } = beforeRun
-        ? await db.from("policies").select("version").eq("id", beforeRun.policy_id).maybeSingle()
-        : { data: null };
-      baselinePolicyVersion = (beforePolicy?.version as number | undefined) ?? null;
-    }
-  }
-
-  // Which of the moved scenarios have moved before with nothing changed. Only asked
-  // when there is a comparison to annotate, and only from runs up to this one, so the
-  // answer on this page matches what a report sealed from this run would say.
-  // Loaded for every run, not only a comparison: a scenario whose verdict moves on its
-  // own says so in its own detail too.
-  const stability = await loadStability({
-    client: db, agentId: run.agent_id as string, suiteId: run.suite_id as string,
-    asOf: run.created_at as string,
-  });
-  const unstableMoved = comparison ? unstableInComparison(comparison, stability) : [];
-
   // What an independent read of the customer's system showed, per case. Its own
   // table, so its own query — and the operator needs it most: a case that failed
   // because the system of record disagreed reads like an ordinary failure until you
@@ -333,41 +274,61 @@ export default async function RunPage({
       },
     ]),
   );
-  // Why each moved scenario moved, and what else differed between the two runs.
-  let moves: Array<{ caseId: string; change: string; cause: MoveCause }> = [];
-  let otherChanges: string[] = [];
-  if (comparison) {
-    const { data: baselineObs } = baselineEvidence.size
-      ? await db.from("evidence_observations").select("run_case_id, status").in("run_case_id", [...baselineEvidence.values()].map((e) => e.runCaseId))
-      : { data: [] };
-    const beforeObs = new Map((baselineObs ?? []).map((o) => [o.run_case_id as string, o.status as string]));
-    const nowRow = new Map(rows.map((c) => [c.case_id as string, c]));
-    const moved: Array<[string, string]> = [
-      ...comparison.fixed.map((id) => [id, "fixed"] as [string, string]),
-      ...comparison.newFailures.map((id) => [id, "newly broken"] as [string, string]),
-      ...comparison.nowErrored.map((id) => [id, "no result this time"] as [string, string]),
-      ...comparison.errorResolved.filter((id) => !comparison!.fixed.includes(id)).map((id) => [id, "has a verdict again"] as [string, string]),
-    ];
-    moves = moved.flatMap(([caseId, change]) => {
-      const b = baselineEvidence.get(caseId);
-      const a = nowRow.get(caseId);
-      if (!b || !a) return [];
-      const cause = causeOfMove(
-        { status: b.status, replySha: b.replySha, replied: b.replied, observation: beforeObs.get(b.runCaseId) ?? null },
-        {
-          status: a.status as "pass" | "fail" | "error", replySha: (a.raw_sha256 as string | null) ?? null,
-          replied: Boolean(a.response_text) || Boolean(a.raw_expired_at) || (Array.isArray(a.transcript) && (a.transcript as Array<{ role?: string }>).some((t) => t.role === "agent")),
-          observation: observationByCase.get(a.id as string)?.status ?? null,
-        },
-      );
-      return [{ caseId, change, cause }];
-    });
-    otherChanges = contextChanges(
-      { policyVersion: baselinePolicyVersion, manifest: baselineManifest },
-      { policyVersion: (policy?.version as number | undefined) ?? null, manifest: (run.manifest as Record<string, unknown> | null) ?? null },
-    );
-  }
 
+  // Which runs this one can honestly be compared with: the same agent and the same suite —
+  // at this version or another, since a scenario is compared only with an identical
+  // definition of itself (src/lib/evidence/compare.ts). Another suite would produce a
+  // fixed/broken list out of scenarios that were never the same scenarios, so the selector
+  // cannot offer one.
+  const comparable = settled && suite
+    ? await comparableRuns(db, { id, agentId: run.agent_id as string }, { key: suite.key as string, owner: (suite.workspace_id as string | null) ?? null })
+    : [];
+  // The newest completed run before this one: what "Compare with previous run" opens.
+  const previousRun = comparable.find((r) => r.createdAt < (run.created_at as string)) ?? null;
+
+  // The baseline the run was measured from, unless the operator picked another — and
+  // only if that one is genuinely comparable.
+  const requested = compare && comparable.some((r) => r.id === compare) ? compare : null;
+  const baselineRunId = requested ?? (run.baseline_run_id as string | null);
+
+  // One loader for this tab and /runs/compare, so the two can never disagree. This run's
+  // rows are handed over rather than read again.
+  const loadedComparison = settled && baselineRunId && rows.length
+    ? await loadComparison({
+        db, workspaceId: activeWorkspace.id, baseId: baselineRunId, targetId: id,
+        known: { runId: id, rows: rows as Array<Record<string, unknown>>, observations: observationRows ?? [] },
+      })
+    : null;
+  const deltas = loadedComparison?.ok ? loadedComparison.deltas : null;
+  const comparisonRefused = loadedComparison && !loadedComparison.ok ? loadedComparison.sentence : null;
+  const idsIn = (...categories: DeltaCategory[]) =>
+    (deltas?.deltas ?? []).filter((d) => categories.includes(d.category)).map((d) => d.caseId).sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  // Every list on this page reads the deltas — the overview's counts, the Cases lens and this
+  // tab — so a verdict that moved on an identical reply is nowhere called fixed or broken.
+  const comparison = deltas
+    ? {
+        fixed: idsIn("fixed"),
+        newFailures: idsIn("regressed"),
+        persistentFailures: idsIn("persistent_failure"),
+        nowErrored: idsIn("no_result_now"),
+        movedSameReply: idsIn("verdict_moved_same_reply"),
+      }
+    : null;
+
+  // Which of the moved scenarios have moved before with nothing changed. Only asked
+  // when there is a comparison to annotate, and only from runs up to this one, so the
+  // answer on this page matches what a report sealed from this run would say.
+  // Loaded for every run, not only a comparison: a scenario whose verdict moves on its
+  // own says so in its own detail too.
+  const stability = await loadStability({
+    client: db, agentId: run.agent_id as string, suiteId: run.suite_id as string,
+    asOf: run.created_at as string,
+  });
+  const unstableMoved = comparison ? unstableInComparison(comparison, stability) : [];
+
+  // Why each moved scenario moved, and what else differed between the two runs.
+  const moves = (deltas?.deltas ?? []).filter((d) => d.cause !== null && d.category !== "redefined");
+  const otherChanges = loadedComparison?.ok ? loadedComparison.config.changes : [];
 
   // From the suite, so a scenario that never ran still counts as having asked for proof.
   const requiresEvidence = new Set(
@@ -698,6 +659,11 @@ export default async function RunPage({
                 Rerun and compare against this
               </SubmitButton>
             </form>
+            {previousRun && (
+              <ButtonLink variant="secondary" size="sm" href={`/runs/compare?base=${previousRun.id}&target=${run.id}`}>
+                Compare with previous run
+              </ButtonLink>
+            )}
             {report?.content_hash && (
               <SealInspector
                 hash={report.content_hash as string}
@@ -731,7 +697,7 @@ export default async function RunPage({
               findings={caseRows.filter((c) => c.status !== "pass").sort((x, y) => SEVERITY_RANK[x.severity] - SEVERITY_RANK[y.severity] || x.caseId.localeCompare(y.caseId))
                 .map((c) => ({ caseId: c.caseId, status: c.status, severity: c.severity, title: c.obligationLabel, category: c.categoryLabel }))}
               comparison={comparison ? { fixed: comparison.fixed.length, newFailures: comparison.newFailures.length, persistentFailures: comparison.persistentFailures.length, nowErrored: comparison.nowErrored.length } : null}
-              canCompare={(comparableRuns ?? []).length > 0}
+              canCompare={comparable.length > 0}
               undecided={undecided}
             />
           )}
@@ -813,33 +779,34 @@ export default async function RunPage({
               run recorded a baseline. Gating the whole section on an existing
               comparison meant a run started on its own could never begin one, even
               with comparable runs sitting right there. */}
-          {(comparison || (comparableRuns ?? []).length > 0) && (
+          {(comparison || comparisonRefused || comparable.length > 0) && (
             <div className="mt-6">
               <section>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center"><h2 className="type-h2">Compared with another run</h2><Help label="Comparison">
                     Scenario by scenario against an earlier run of the same suite: what got fixed, what still
-                    fails, what newly broke. A scenario that already flipped on its own under one policy is flagged,
-                    so a coin flip is not mistaken for a regression.
+                    fails, what newly broke. A verdict that moved while the agent&apos;s reply stayed identical is
+                    counted on its own, never as fixed or broken; a scenario that already flipped on its own under
+                    one policy is flagged, so a coin flip is not mistaken for a regression.
                   </Help></div>
-                  {(comparableRuns ?? []).length > 0 && (
+                  {comparable.length > 0 && (
                     <BaselinePicker
                       runId={id}
                       current={baselineRunId}
                       placeholder={baselineRunId === null}
-                      options={(comparableRuns ?? []).map((r) => ({
-                        id: r.id as string,
-                        label: new Date(r.created_at as string).toISOString().slice(0, 16).replace("T", " "),
+                      options={comparable.map((r) => ({
+                        id: r.id,
+                        label: `${r.createdAt.slice(0, 16).replace("T", " ")}${r.suiteVersion !== null && r.suiteVersion !== suite?.version ? ` · suite v${r.suiteVersion}` : ""}`,
                       }))}
                     />
                   )}
                 </div>
-                {comparison ? (
+                {comparison && deltas ? (
                   <>
                     <p className="mt-1 type-body text-ink-soft">
-                      {comparison.comparable
-                        ? "Both runs covered the same scenarios."
-                        : "Not fully comparable: the two runs did not cover exactly the same scenarios, so this comparison is partial."}
+                      {deltas.definitions.match
+                        ? "Both runs covered the same scenarios, defined the same way."
+                        : `Partly comparable: the suite changed between the runs, so ${deltas.definitions.identical} scenarios defined identically in both are compared and the rest are listed apart.`}
                       {otherChanges.length === 0 && ` Same policy (v${policy?.version ?? "?"}), graders, rubric and agent configuration.`}
                     </p>
                     {otherChanges.length > 0 && (
@@ -858,6 +825,17 @@ export default async function RunPage({
                       <ChangeGroup title="No result this time" tone={CHANGE_TONES.nowErrored} ids={comparison.nowErrored}
                         empty="Every scenario produced a verdict." />
                     </div>
+
+                    {/* The consensus story: a verdict that moved on a byte-identical reply is the
+                        graders moving. It is named here and counted in none of the lists above. */}
+                    {comparison.movedSameReply.length > 0 && (
+                      <p className="mt-3 rounded-lg border border-line bg-sunken px-3 py-2 text-sm leading-relaxed text-ink-soft">
+                        <span className="font-medium text-ink">
+                          {comparison.movedSameReply.length === 1 ? "1 verdict" : `${comparison.movedSameReply.length} verdicts`} moved on an identical reply — graders, not the agent:
+                        </span>{" "}
+                        <span className="type-mono">{comparison.movedSameReply.join(", ")}</span>. Counted neither as fixed nor as broken.
+                      </p>
+                    )}
 
                     {/* A regression and a coin flip look identical from two runs. These
                         scenarios have passed and failed before under one policy version,
@@ -896,19 +874,29 @@ export default async function RunPage({
                         <ul className="mt-2 space-y-1 text-sm">
                           {moves.map((m) => (
                             <li key={m.caseId}>
-                              <span className="type-mono">{m.caseId}</span> <span className="text-ink-faint">{m.change}</span> — {MOVE_SENTENCE[m.cause]}
+                              <span className="type-mono">{m.caseId}</span> <span className="text-ink-faint">{DELTA_LABEL[m.category].toLowerCase()}</span> — {DELTA_CAUSE_SENTENCE[m.cause!]}
                             </li>
                           ))}
                         </ul>
                       </div>
                     )}
 
-                    {comparison.missingFromCurrent.length > 0 && (
+                    {!deltas.definitions.match && (
                       <p className="mt-3 text-sm text-warning-text">
-                        Coverage lost since the baseline: {comparison.missingFromCurrent.join(", ")}.
+                        Not compared, because the suite changed: {deltas.definitions.redefined} redefined, {deltas.definitions.added} added,{" "}
+                        {deltas.definitions.retired} retired. Each is listed side by side.
                       </p>
                     )}
+
+                    <Link
+                      href={`/runs/compare?base=${baselineRunId}&target=${id}`}
+                      className="print-hide mt-4 inline-block text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline"
+                    >
+                      Open side by side →
+                    </Link>
                   </>
+                ) : comparisonRefused ? (
+                  <p className="mt-1 type-body text-ink-soft">{comparisonRefused}</p>
                 ) : (
                   <p className="mt-1 type-body text-ink-soft">
                     This run was not measured against a baseline. Pick one above to see
@@ -920,7 +908,7 @@ export default async function RunPage({
               </section>
             </div>
           )}
-              {!(comparison || (comparableRuns ?? []).length > 0) && (
+              {!(comparison || comparisonRefused || comparable.length > 0) && (
                 <p className="mt-6 type-body text-ink-soft">No earlier run of this suite against this agent exists yet, so there is nothing to compare with.</p>
               )}
             </>

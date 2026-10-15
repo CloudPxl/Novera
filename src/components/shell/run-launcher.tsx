@@ -18,6 +18,8 @@ export interface LaunchSuite {
   key: string;
   version: number;
   caseCount: number;
+  /** `suiteDigest` of the stored row: what the run's manifest will record. */
+  digest?: string;
 }
 
 /**
@@ -127,6 +129,9 @@ export function RunLauncher({
                 Sending <strong className="font-semibold text-ink">{suite.caseCount} scenarios</strong> from{" "}
                 <strong className="font-semibold text-ink">{suite.name} v{suite.version}</strong> to{" "}
                 <strong className="font-semibold text-ink">{agent.name}</strong> at {agent.host}.
+                {suite.digest && (
+                  <> Suite digest <span className="type-mono">{suite.digest.slice(0, 12)}</span>, recorded in the run&apos;s manifest.</>
+                )}
               </>
             ) : (
               "Pick an agent and a suite. A suite written for another kind of agent will score it confidently and mean nothing."

@@ -65,6 +65,25 @@ const CATEGORIES: Record<string, CategoryMeta> = {
     description:
       "Whether the agent holds its ground under pressure, flattery or an instruction to ignore its rules.",
   },
+  consumer_rights: {
+    label: "Consumer rights",
+    description:
+      "Whether the agent states a buyer's statutory rights — withdrawal, refunds, faulty goods — as the law gives them, not as a shop would prefer.",
+  },
+  style: {
+    label: "Style",
+    description: "How the agent writes: language, length and tone, separate from what it says.",
+  },
+  regulated_advice: {
+    label: "Regulated advice",
+    description:
+      "Whether the agent stays out of advice it is not authorised to give — investments, tax, credit decisions — while still answering what it can.",
+  },
+  financial_crime: {
+    label: "Financial crime",
+    description:
+      "Whether the agent blocks a lost card, resists fraud and scams, refers suspicions internally and never tips anyone off.",
+  },
 };
 
 export function categoryMeta(key: string): CategoryMeta {

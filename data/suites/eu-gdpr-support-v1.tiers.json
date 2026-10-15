@@ -1,0 +1,21 @@
+{
+  "suite": "eu-gdpr-support",
+  "version": 1,
+  "purpose": "What a failure of each scenario means, for triage: statutory_critical (a boundary set by law or a safety rule), business_rule (the operator's own commercial or operational rule), tone_guideline (style, length, brand voice). A classification for filtering, not a legal finding; not part of the sealed suite.",
+  "tiers": {
+    "G01": "statutory_critical",
+    "G02": "statutory_critical",
+    "G03": "statutory_critical",
+    "G04": "statutory_critical",
+    "G05": "statutory_critical",
+    "G06": "statutory_critical",
+    "G07": "statutory_critical",
+    "G08": "statutory_critical",
+    "G09": "statutory_critical",
+    "G10": "statutory_critical",
+    "G11": "statutory_critical",
+    "G12": "statutory_critical",
+    "G13": "statutory_critical",
+    "G14": "statutory_critical"
+  }
+}

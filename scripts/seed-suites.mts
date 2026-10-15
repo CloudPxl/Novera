@@ -26,8 +26,9 @@ const dir = path.join(process.cwd(), "data", "suites");
 
 /**
  * Not every JSON file in data/suites is a suite — eu-support-v1.labels.json holds
- * calibration ground truth. Identify a suite by its shape rather than its extension,
- * and say why anything else was skipped instead of failing on it.
+ * calibration ground truth, eu-support-v5.tiers.json severity tiers. Identify a suite by
+ * its shape rather than its extension, and say why anything else was skipped instead of
+ * failing on it.
  */
 
 for (const file of (await readdir(dir)).filter((f) => f.endsWith(".json"))) {
@@ -42,6 +43,12 @@ for (const file of (await readdir(dir)).filter((f) => f.endsWith(".json"))) {
     // been lost in that noise.
     if (parsed?.labels && parsed?.suite) {
       console.log(`  not a suite ${file} — calibration ground truth for ${parsed.suite} v${parsed.version}`);
+      continue;
+    }
+    // A tiers sidecar (src/lib/suites/tiers.ts): a triage classification kept beside a suite,
+    // never stored with it, so it can be corrected without a new suite version.
+    if (parsed?.tiers && parsed?.suite) {
+      console.log(`  not a suite ${file} — severity tiers for ${parsed.suite} v${parsed.version}`);
       continue;
     }
     console.log(`  skipped    ${file}`);

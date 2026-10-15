@@ -4,6 +4,8 @@ import { useActionState } from "react";
 import { withdrawReport, type FormState } from "@/lib/workflow/actions.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { Badge } from "@/components/ui/primitives.tsx";
+import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
+import type { ExplainKey } from "@/lib/explainability/glossary.ts";
 import type { Readiness, ReadinessCheck } from "@/lib/report/readiness.ts";
 
 const TONE: Record<Readiness, "pass" | "fail" | "neutral" | "error"> = {
@@ -14,6 +16,17 @@ const TONE: Record<Readiness, "pass" | "fail" | "neutral" | "error"> = {
   BLOCKED_BY_EVIDENCE: "fail",
   REVOKED: "neutral",
   EXPIRED: "neutral",
+};
+/**
+ * The checks whose terms the glossary explains, by the label `readinessOf` gives them
+ * (src/lib/report/readiness.ts; tests/explainability.test.ts keeps the two in step). The grade
+ * itself is explained once, on the scorecard above, and the seal's digest once, in the Seal
+ * dialog above the tabs, so no check repeats either.
+ */
+const EXPLAINS: Record<string, ExplainKey> = {
+  "Inputs declared before the run": "declared_manifest",
+  "Verdicts corroborated": "one_grader_only",
+  "Link open": "withdrawn_report",
 };
 const MARK = { ok: "✓", gap: "!", note: "·" } as const;
 const SAID = { ok: "met", gap: "not met", note: "note" } as const;
@@ -33,12 +46,13 @@ export function ReadinessPanel({ state, label, checks, token }: { state: Readine
       </div>
       <ul className="mt-3 space-y-1.5">
         {checks.map((c) => (
-          <li key={c.label} className="flex gap-2 text-sm leading-relaxed">
+          <li key={c.label} className="flex flex-wrap items-baseline gap-x-2 text-sm leading-relaxed">
             <span aria-hidden className={`w-3 shrink-0 text-center ${c.result === "gap" ? "text-fail-text" : c.result === "ok" ? "text-pass-text" : "text-ink-faint"}`}>{MARK[c.result]}</span>
-            <span className="min-w-0">
+            <span className="min-w-0 flex-1 basis-56">
               <span className="sr-only">{SAID[c.result]}: </span>
               <span className="text-ink">{c.label}.</span> <span className="text-ink-soft">{c.detail}</span>
             </span>
+            {EXPLAINS[c.label] && <ExplainTrigger id={EXPLAINS[c.label]} />}
           </li>
         ))}
       </ul>

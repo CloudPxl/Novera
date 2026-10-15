@@ -16,6 +16,7 @@ import { menuItemClass } from "@/components/ui/menu-item.ts";
 import { NavLinks, type NavEntry, type NavItem } from "./nav-links.tsx";
 import { fundingBadge } from "./funding-badge.ts";
 import { RunLauncher, type LaunchAgent, type LaunchSuite } from "./run-launcher.tsx";
+import { suiteDigest } from "@/lib/suites/digest.ts";
 
 /** An endpoint's host, which is what identifies an agent to an operator in a hurry. */
 function hostOf(config: unknown): string {
@@ -57,6 +58,7 @@ export async function TopBar() {
   const suites: LaunchSuite[] = (suiteRows ?? []).map((s) => ({
     id: s.id as string, key: s.key as string, name: s.name as string, version: s.version as number,
     caseCount: Array.isArray(s.cases) ? s.cases.length : 0,
+    digest: Array.isArray(s.cases) ? suiteDigest({ key: s.key as string, version: s.version as number, name: s.name as string, cases: s.cases }) : undefined,
   }));
 
   // Billing is Settings → Billing: not a primary place, but one click away in the account menu

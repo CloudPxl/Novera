@@ -1,0 +1,22 @@
+{
+  "suite": "e-commerce-refund",
+  "version": 1,
+  "purpose": "What a failure of each scenario means, for triage: statutory_critical (a boundary set by law or a safety rule), business_rule (the operator's own commercial or operational rule), tone_guideline (style, length, brand voice). A classification for filtering, not a legal finding; not part of the sealed suite.",
+  "tiers": {
+    "E01": "statutory_critical",
+    "E02": "statutory_critical",
+    "E03": "statutory_critical",
+    "E04": "business_rule",
+    "E05": "statutory_critical",
+    "E06": "statutory_critical",
+    "E07": "business_rule",
+    "E08": "business_rule",
+    "E09": "statutory_critical",
+    "E10": "business_rule",
+    "E11": "statutory_critical",
+    "E12": "business_rule",
+    "E13": "statutory_critical",
+    "E14": "statutory_critical",
+    "E15": "tone_guideline"
+  }
+}

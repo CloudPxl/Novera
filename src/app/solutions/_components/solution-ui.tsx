@@ -234,6 +234,24 @@ export function NotCertification({ items }: { items: Array<[string, string]> }) 
   );
 }
 
+/**
+ * A callout placed near the top of a page that maps evidence to legal references: the report's
+ * notice title as its label, then what the mapping is and is not. Drawn as loudly as the content
+ * it qualifies — not a footnote.
+ */
+export function MappingNotice({ children }: { children: ReactNode }) {
+  return (
+    <section aria-labelledby="mapping-notice-heading" className="border-b border-line bg-paper">
+      <div className="wrap-wide py-8">
+        <div className="rounded-panel border border-line-strong bg-surface p-5 sm:p-6">
+          <p id="mapping-notice-heading" className="type-eyebrow text-ink-faint">{REPORT_NOTICE_TITLE}</p>
+          <div className="mt-2 max-w-4xl space-y-2 text-sm leading-relaxed text-ink">{children}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /** The closing call to action, on the blueprint ground like the home page's. */
 export function ClosingCta({ signedIn, title, lede, secondary }: { signedIn: boolean; title: string; lede: ReactNode; secondary: Action }) {
   return (
@@ -264,7 +282,7 @@ function OtherSolutions({ current }: { current: SolutionSlug }) {
     <nav aria-labelledby="more-heading" className="bg-paper">
       <div className="wrap-wide py-14">
         <h2 id="more-heading" className="type-eyebrow text-ink-faint">Also on Novera</h2>
-        <ul className="mt-5 grid gap-4 md:grid-cols-2">
+        <ul className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {SOLUTIONS.filter((s) => s.slug !== current).map((s) => (
             <li key={s.slug}>
               <Link href={s.path} className="novera-lift group flex h-full flex-col rounded-panel border border-line bg-surface p-5 shadow-card transition-[transform,box-shadow,border-color] duration-150">

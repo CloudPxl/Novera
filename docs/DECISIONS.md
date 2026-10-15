@@ -4112,3 +4112,7 @@ The legal brief was already built (0068 and the `/legal` drafts); its tracker, l
 ## 2026-10-15: The logomark
 
 The "N" badge is replaced by the approved geometric mark: three bars drawn as inline SVG in `currentColor` (`src/components/ui/logo.tsx`), so it takes the text colour where it sits and stays crisp; the outer bars draw level with the core on hover or focus (not under reduced motion). The favicon is an SVG that follows the browser's light or dark setting; the Apple icon, the web manifest and the OG card use the mark's own colours (#09090b, #e5e7eb). The site keeps its single light theme (2026-10-02), so in-page the mark is ink.
+
+## 2026-10-15: Trust badges, in-browser verification, regulatory mapping
+
+Badges are keyed by the report's SHA-256, not the agent id: per-agent badges would need an opt-in migration and would publish a latest result nobody chose to share. Cache cut from the brief's 300+600 s to 60+60 s so a withdrawal shows within about two minutes. `/verify` hashes a dropped export in the browser and compares computed, stated and ledger digests; the computed digest decides. `/solutions/regulatory-mapping` is built from eu-support duty_refs (18 references, 49 scenarios); nothing is mapped to AI Act Art. 12, and Novera's own test records are described as not being the logging Art. 12 asks of a system.

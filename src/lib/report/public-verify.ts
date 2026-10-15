@@ -1,4 +1,5 @@
 import { contentHash, type Json } from "./hash.ts";
+import { normaliseDigest } from "./canonical.ts";
 import { gradingFundedBy } from "./build.ts";
 import { scoreWithheldAs, type ReportPayload } from "./payload.ts";
 
@@ -19,15 +20,8 @@ import { scoreWithheldAs, type ReportPayload } from "./payload.ts";
  * Pure, so the page and the tests read the same receipt.
  */
 
-/** A SHA-256 digest as `contentHash` writes it: 64 lowercase hex characters. */
-export const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
-
-/** The digest in canonical form, or null when the input is not a SHA-256 digest. */
-export function normaliseDigest(input: unknown): string | null {
-  if (typeof input !== "string") return null;
-  const candidate = input.trim().toLowerCase();
-  return DIGEST_PATTERN.test(candidate) ? candidate : null;
-}
+// One digest rule for the server and the browser's file check: `canonical.ts` has no Node dependency.
+export { DIGEST_PATTERN, normaliseDigest } from "./canonical.ts";
 
 /** The only columns the public check reads. Never `token`, `workspace_id`, `run_id` or `revoked_by`. */
 export const SEAL_COLUMNS = "payload, content_hash, created_at, revoked_at";

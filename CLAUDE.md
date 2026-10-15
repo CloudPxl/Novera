@@ -183,7 +183,8 @@ rename is exactly the kind of thing recalled conventions get wrong.
 ```
 src/app/(app)/        operator routes, behind one shared top bar + skip link
 src/app/report/       the client's artifact — outside (app); its reader is not an operator
-src/app/verify/       public seal check by SHA-256: one read, the digest recomputed, no token, client, agent or transcript; receipts noindex
+src/app/verify/       public seal check by SHA-256: one read, the digest recomputed, no token, client, agent or transcript; receipts noindex. A dropped JSON export is hashed in the browser (`src/lib/report/canonical.ts`, byte-identical to `hash.ts`); only the digest is sent
+src/app/api/badge/    embeddable SVG badge per sealed report, keyed by its SHA-256 (no opt-in needed: the digest is already public on /verify); 200 in every state, 60 s cache
 src/app/solutions/    public landing pages (AI Act evidence, black-box testing, agencies); claims counted from the suite
 src/lib/seo/          metadata helper, JSON-LD builders (no price, no Organization until published / the entity exists), OG card text
 src/app/api/          route handlers
@@ -254,7 +255,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 905 unit tests | free |
+| `npm test` | 956 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |

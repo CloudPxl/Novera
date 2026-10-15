@@ -349,7 +349,7 @@ export default async function Home() {
             <p className="flex items-center gap-1 font-semibold"><LogoMark className="size-7" />Novera</p>
             <p className="mt-3 max-w-xs leading-relaxed text-ink-faint">Evidence that an AI support agent behaves as its written policy requires. Database in Frankfurt (EU).</p>
           </div>
-          <FooterCol title="Product" links={[["How it works", "/#how-it-works"], ["Step-by-step guide", "/guide"], ["Solutions", "/solutions"], ["Verify a report", "/verify"], ["Sign in", "/sign-in"]]} />
+          <FooterCol title="Product" links={[["How it works", "/#how-it-works"], ["Step-by-step guide", "/guide"], ["Solutions", "/solutions"], ["Regulatory mapping", "/solutions/regulatory-mapping"], ["Verify a report", "/verify"], ["Sign in", "/sign-in"]]} />
           <FooterCol title="Documentation" links={[["All documentation", "/docs"], ["Data and privacy", "/docs/data-and-privacy"], ["Limitations", "/docs/limitations"], ["CLI and CI", "/docs/cli-and-ci"]]} />
           <FooterCol title="People" links={[["Support", "/support"], ["Talk to us first", "/apply"]]} />
         </div>

@@ -7,6 +7,7 @@ import { verifyFromFile } from "@/lib/report/seal.ts";
 import { REPORT_NOTICE_SHORT } from "@/lib/legal/notices.ts";
 import { normaliseDigest } from "@/lib/report/public-verify.ts";
 import { DigestForm } from "./digest-form.tsx";
+import { FileCheck } from "./file-check.tsx";
 import { hasSessionCookie } from "./session-cookie.ts";
 
 export const metadata: Metadata = pageMetadata({
@@ -53,6 +54,18 @@ export default async function VerifyPage({ searchParams }: { searchParams: Promi
           </div>
         </section>
 
+        <section aria-labelledby="file-heading" className="mt-6 rounded-control border border-line bg-ground/60 p-5">
+          <h2 id="file-heading" className="text-lg font-semibold">Check a downloaded report</h2>
+          <p className="mt-1 measure text-sm leading-relaxed text-ink-soft">
+            A digest says what Novera sealed. This says whether the file in your hands is that
+            document: your browser hashes the report content exactly as the seal was computed, then
+            compares it with the digest the file states and with Novera&apos;s ledger.
+          </p>
+          <div className="mt-4">
+            <FileCheck />
+          </div>
+        </section>
+
         <section aria-labelledby="what-heading" className="mt-10">
           <h2 id="what-heading" className="text-lg font-semibold">What the check tells you</h2>
           <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-relaxed text-ink-soft">
@@ -74,9 +87,11 @@ export default async function VerifyPage({ searchParams }: { searchParams: Promi
         <section aria-labelledby="copy-heading" className="mt-10">
           <h2 id="copy-heading" className="text-lg font-semibold">Checking the copy you hold</h2>
           <p className="mt-3 measure text-sm leading-relaxed text-ink-soft">
-            A match here says Novera sealed a report with this digest. To show that the document in
-            your hands is that report, hash its JSON export yourself. With Node installed, this prints
-            the digest; it should equal the one on the report.
+            A digest match says Novera sealed a report with that digest. To show that the document in
+            your hands is that report, check its JSON export above, or hash it yourself: with Node
+            installed, this prints the digest, which should equal the one on the report. The seal
+            covers the export&apos;s <code className="font-mono">payload</code> only; its link, stated
+            digest and notice sit outside it.
           </p>
           {/* Focusable: a region that scrolls sideways must be reachable from the keyboard. */}
           <pre tabIndex={0} aria-label="Command that prints the digest of report.json" className="mt-3 overflow-x-auto rounded-control border border-line bg-sunken p-3 font-mono text-xs leading-relaxed text-ink">

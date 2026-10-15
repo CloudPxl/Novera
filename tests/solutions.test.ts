@@ -15,11 +15,11 @@ import { scanCustomerLanguage } from "../src/lib/report/language.ts";
  * the suite a new run uses.
  */
 
-const SLUGS = ["eu-ai-act", "black-box-testing", "agency"] as const;
+const SLUGS = ["eu-ai-act", "black-box-testing", "agency", "regulatory-mapping"] as const;
 const pageSource = (slug: string) => readFileSync(`src/app/solutions/${slug}/page.tsx`, "utf8");
 const UI = readFileSync("src/app/solutions/_components/solution-ui.tsx", "utf8");
 
-test("there are exactly the three solution pages, each with a page file", () => {
+test("there are exactly the four solution pages, each with a page file", () => {
   assert.deepEqual(SOLUTIONS.map((s) => s.slug), [...SLUGS]);
   const dirs = readdirSync("src/app/solutions", { withFileTypes: true })
     .filter((d) => d.isDirectory() && !d.name.startsWith("_"))
@@ -69,12 +69,14 @@ test("the index page has its own metadata and lists every solution", () => {
   const m = solutionsIndexMetadata();
   assert.equal(m.alternates?.canonical, SOLUTIONS_INDEX.path);
   assert.ok(m.description && m.description.length <= 170);
-  assert.match(source, /SOLUTIONS\.map/);
+  // Audience pages and reference pages are listed apart, and between them every solution.
+  assert.match(source, /SOLUTIONS\.filter\(\(s\) => s\.kind === "audience"\)\.map/);
+  assert.match(source, /SOLUTIONS\.filter\(\(s\) => s\.kind === "reference"\)\.map/);
   assert.ok(source.includes(`href: "/sign-in?mode=signup"`));
 });
 
 test("no solution page names a price, a customer or a testimonial", () => {
-  for (const file of [...SLUGS.map((s) => `src/app/solutions/${s}/page.tsx`), "src/app/solutions/page.tsx", "src/app/solutions/_components/solution-ui.tsx", "src/app/solutions/_components/content.ts"]) {
+  for (const file of [...SLUGS.map((s) => `src/app/solutions/${s}/page.tsx`), "src/app/solutions/page.tsx", "src/app/solutions/_components/solution-ui.tsx", "src/app/solutions/_components/content.ts", "src/app/solutions/regulatory-mapping/matrix.ts"]) {
     const source = readFileSync(file, "utf8");
     assert.doesNotMatch(source, /€|\bEUR\b|\$\d|per month|\/month|testimonial|trusted by/i, file);
   }

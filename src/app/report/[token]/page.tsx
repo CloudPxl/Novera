@@ -9,6 +9,8 @@ import { loadReportByToken } from "@/lib/report/access.ts";
 import { ReportToolbar } from "./toolbar.tsx";
 import { track } from "@/lib/analytics/track.ts";
 import { SealInspector } from "@/components/ui/seal-inspector.tsx";
+import { BadgeShare } from "@/components/ui/badge-share.tsx";
+import { badgeShareFor } from "@/lib/report/badge.ts";
 import { SEAL_ATTRIBUTION, sealContents } from "@/lib/report/seal.ts";
 
 const FINGERPRINT_LABELS: Record<string, string> = {
@@ -62,6 +64,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
   await track("report_viewed");
 
   const { payload, content_hash, expires_at, created_at } = result;
+  const badgeShare = badgeShareFor({ payload, content_hash, created_at: created_at ?? null, revoked_at: result.revoked_at });
   const { subject, run, coverage, obligations, findings, comparison } = payload;
   // Stored beside the payload, not inside it: when the seal was applied. The run's own date
   // and duration are the sealed fields; this says when that evidence was fixed.
@@ -114,6 +117,9 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           items={sealContents(payload)}
           exportPath={`/api/reports/${encodeURIComponent(token)}/export?format=json`}
         />
+        {/* The digest is already printed on this page and public at /verify; the badge says
+            nothing more than that receipt. Withdrawn reports never reach this point. */}
+        {badgeShare && <BadgeShare className="mt-3 sm:mt-6 sm:ml-2" {...badgeShare} />}
       </header>
 
       <Section title="Coverage">

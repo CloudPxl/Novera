@@ -22,6 +22,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${ORIGIN}/solutions/eu-ai-act`, changeFrequency: "monthly", priority: 0.9 },
     { url: `${ORIGIN}/solutions/black-box-testing`, changeFrequency: "monthly", priority: 0.9 },
     { url: `${ORIGIN}/solutions/agency`, changeFrequency: "monthly", priority: 0.9 },
+    { url: `${ORIGIN}/solutions/regulatory-mapping`, changeFrequency: "monthly", priority: 0.8 },
     { url: `${ORIGIN}/verify`, changeFrequency: "monthly", priority: 0.7 },
     { url: `${ORIGIN}/docs`, changeFrequency: "weekly", priority: 0.8 },
     { url: `${ORIGIN}/guide`, changeFrequency: "monthly", priority: 0.6 },

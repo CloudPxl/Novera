@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { canonicalise, type Json } from "./canonical.ts";
 
 /**
  * Canonical serialisation + digest for a report payload.
@@ -6,19 +7,11 @@ import { createHash } from "node:crypto";
  * The hash printed on a report is what lets a recipient check that the document they
  * were sent matches the stored run, so serialisation has to be stable: object keys
  * sorted, no incidental whitespace, arrays left in their meaningful order.
+ *
+ * The canonical form lives in `canonical.ts`, which has no Node dependency, so the
+ * browser's file check on `/verify` hashes exactly these bytes.
  */
-export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
-
-export function canonicalise(value: Json): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-  if (Array.isArray(value)) return `[${value.map(canonicalise).join(",")}]`;
-  const keys = Object.keys(value).sort();
-  const body = keys
-    .filter((k) => value[k] !== undefined)
-    .map((k) => `${JSON.stringify(k)}:${canonicalise(value[k])}`)
-    .join(",");
-  return `{${body}}`;
-}
+export { canonicalise, type Json };
 
 export function contentHash(payload: Json): string {
   return createHash("sha256").update(canonicalise(payload), "utf8").digest("hex");

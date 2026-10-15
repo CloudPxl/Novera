@@ -38,6 +38,9 @@ import { CaseTable, CategoryCard, type CaseRow } from "./case-table.tsx";
 import { BaselinePicker } from "./baseline-picker.tsx";
 import { OtherWorkspace } from "@/components/shell/other-workspace.tsx";
 import { SealInspector } from "@/components/ui/seal-inspector.tsx";
+import { BadgeShare } from "@/components/ui/badge-share.tsx";
+import { badgeShareFor } from "@/lib/report/badge.ts";
+import { can } from "@/lib/auth/permissions.ts";
 import { NOVERA_ATTRIBUTION, SEAL_ATTRIBUTION, sealContents } from "@/lib/report/seal.ts";
 import { DiagnoseButton, ProposalCard, RetestButton, RetestHistory, type Proposal, type Retest } from "./diagnose.tsx";
 
@@ -73,7 +76,7 @@ export default async function RunPage({
   type Tab = (typeof TABS)[number];
   const tab: Tab = (TABS as readonly string[]).includes(sp.tab ?? "") ? (sp.tab as Tab)
     : sp.case || sp.lens || sp.verdict || sp.severity ? "cases" : compare ? "comparison" : "overview";
-  const { user: viewer, workspace: activeWorkspace, context } = await requireWorkspace();
+  const { user: viewer, workspace: activeWorkspace, role, context } = await requireWorkspace();
   const viewerId = viewer.id;
   const db = await sessionClient();
 
@@ -570,6 +573,13 @@ export default async function RunPage({
     : exploratory
       ? "Not sealed: an exploratory scan is never sealed as a report."
       : "Not sealed: no report was sealed for this run.";
+  // The embeddable badge: only for a live seal that still holds, to a role that may share reports.
+  const badgeShare = report?.content_hash && can(role, "report.export")
+    ? badgeShareFor({
+        payload: report.payload, content_hash: report.content_hash as string,
+        created_at: (report.created_at as string | null) ?? null, revoked_at: (report.revoked_at as string | null) ?? null,
+      })
+    : null;
   const executed = run.started_at
     ? `Executed ${utc(run.started_at)}${run.finished_at ? ` to ${utc(run.finished_at)}` : ", not finished"} · status ${run.status as string}`
     : `Created ${utc(run.created_at)} · not started · status ${run.status as string}`;
@@ -696,6 +706,7 @@ export default async function RunPage({
                 unavailable={reportGone ?? undefined}
               />
             )}
+            {badgeShare && <BadgeShare {...badgeShare} />}
           </div>
 
 

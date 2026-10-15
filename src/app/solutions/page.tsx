@@ -37,13 +37,27 @@ export default async function SolutionsIndex() {
         <div className="wrap-wide py-16 sm:py-20">
           <h2 id="list-heading" className="type-section">Where Novera fits</h2>
           <ul className="mt-10 grid gap-4 lg:grid-cols-3">
-            {SOLUTIONS.map((s, i) => (
+            {SOLUTIONS.filter((s) => s.kind === "audience").map((s, i) => (
               <li key={s.slug}>
                 <Link href={s.path} className="novera-lift group flex h-full flex-col rounded-panel border border-line bg-surface p-6 shadow-card transition-[transform,box-shadow,border-color] duration-150">
                   <span className="type-eyebrow text-ink-faint">{String(i + 1).padStart(2, "0")}</span>
                   <span className="mt-3 text-lg font-semibold group-hover:underline group-hover:underline-offset-2">{s.name}</span>
                   <span className="mt-2 text-sm leading-relaxed text-ink-soft">{s.summary}</span>
                   <span aria-hidden className="mt-auto pt-5 text-sm font-medium text-ink">Read more →</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <h2 id="reference-heading" className="mt-14 type-eyebrow text-ink-faint">Reference</h2>
+          <ul aria-labelledby="reference-heading" className="mt-5 grid gap-4">
+            {SOLUTIONS.filter((s) => s.kind === "reference").map((s) => (
+              <li key={s.slug}>
+                <Link href={s.path} className="novera-lift group flex flex-col gap-x-10 gap-y-2 rounded-panel border border-line bg-surface p-6 shadow-card transition-[transform,box-shadow,border-color] duration-150 md:flex-row md:items-center md:justify-between">
+                  <span>
+                    <span className="block text-lg font-semibold group-hover:underline group-hover:underline-offset-2">{s.name}</span>
+                    <span className="mt-2 block text-sm leading-relaxed text-ink-soft">{s.summary}</span>
+                  </span>
+                  <span aria-hidden className="shrink-0 text-sm font-medium text-ink">Open the matrix →</span>
                 </Link>
               </li>
             ))}

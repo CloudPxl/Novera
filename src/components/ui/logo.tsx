@@ -8,12 +8,10 @@
  * icon and the Open Graph card (`LOGO_BARS`), so every rendering is the same mark.
  */
 
-/** In a 100 × 100 box, centred both ways. Measured from the approved artwork. */
-export const LOGO_BARS = [
-  { x: 25.75, y: 26, width: 14.5, height: 40 },
-  { x: 46.75, y: 42.75, width: 6.5, height: 14.5 },
-  { x: 59.75, y: 34, width: 14.5, height: 40 },
-] as const;
+import { LOGO_BARS } from "./logo-bars.ts";
+
+// The geometry lives in a plain module so non-React code (the badge SVG, tests) can read it.
+export { LOGO_BARS };
 
 /**
  * The mark alone. Decorative by default: the link or text beside it names Novera. When a link

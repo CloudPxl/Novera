@@ -9,7 +9,7 @@ import { pageMetadata } from "../../../lib/seo/site.ts";
  * Relative imports only: the test runner loads this file without the `@/` alias.
  */
 
-export type SolutionSlug = "eu-ai-act" | "black-box-testing" | "agency";
+export type SolutionSlug = "eu-ai-act" | "black-box-testing" | "agency" | "regulatory-mapping";
 
 export interface Solution {
   slug: SolutionSlug;
@@ -21,6 +21,8 @@ export interface Solution {
   description: string;
   /** One sentence for the index and the cross-links. */
   summary: string;
+  /** Who it is for (an audience page), or a reference anyone can consult. The index lists them apart. */
+  kind: "audience" | "reference";
 }
 
 export const SOLUTIONS: readonly Solution[] = [
@@ -33,6 +35,7 @@ export const SOLUTIONS: readonly Solution[] = [
       "Black-box tests of an AI support agent you operate, each verdict filed under the EU AI Act and GDPR references it bears on, in a sealed, dated report.",
     summary:
       "Scenarios filed under AI Act Articles 13, 14, 15 and 50(1) and the GDPR, sealed into a dated report your counsel can read.",
+    kind: "audience",
   },
   {
     slug: "black-box-testing",
@@ -43,6 +46,7 @@ export const SOLUTIONS: readonly Solution[] = [
       "Send a versioned scenario suite to your agent's HTTP endpoint: rules, a read-back from your own system, then two models from different vendors. Errors never pass.",
     summary:
       "Rules, then a read-back from your own system, then two models from different vendors. Missing evidence is never a pass.",
+    kind: "audience",
   },
   {
     slug: "agency",
@@ -53,6 +57,18 @@ export const SOLUTIONS: readonly Solution[] = [
       "One workspace per client, scheduled re-runs, a release gate, and a sealed SHA-256 report each client can check, reissued with your reviewers' findings.",
     summary:
       "One workspace per client, scheduled re-runs and a release gate, and a sealed report for each client agent you ship.",
+    kind: "audience",
+  },
+  {
+    slug: "regulatory-mapping",
+    path: "/solutions/regulatory-mapping",
+    name: "Regulatory mapping",
+    title: "EU AI Act and GDPR mapping of agent test scenarios",
+    description:
+      "Each EU AI Act and GDPR reference the Novera test suite carries, the scenarios filed under it and how each is checked. A reference matrix, not a legal opinion.",
+    summary:
+      "Every AI Act and GDPR reference in the suite, the scenarios filed under it, and how each one is checked — counted from the suite itself.",
+    kind: "reference",
   },
 ];
 

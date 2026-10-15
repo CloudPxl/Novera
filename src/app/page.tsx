@@ -1,3 +1,4 @@
+import { LogoMark } from "@/components/ui/logo.tsx";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -345,7 +346,7 @@ export default async function Home() {
       <footer className="border-t border-line bg-paper">
         <div className="wrap-wide grid gap-8 py-12 text-sm sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
           <div>
-            <p className="flex items-center gap-2 font-semibold"><span aria-hidden className="grid size-6 place-items-center rounded-[0.375rem] bg-ink text-[11px] font-bold text-on-ink">N</span>Novera</p>
+            <p className="flex items-center gap-1 font-semibold"><LogoMark className="size-7" />Novera</p>
             <p className="mt-3 max-w-xs leading-relaxed text-ink-faint">Evidence that an AI support agent behaves as its written policy requires. Database in Frankfurt (EU).</p>
           </div>
           <FooterCol title="Product" links={[["How it works", "/#how-it-works"], ["Step-by-step guide", "/guide"], ["Solutions", "/solutions"], ["Verify a report", "/verify"], ["Sign in", "/sign-in"]]} />

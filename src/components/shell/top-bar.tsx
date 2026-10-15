@@ -1,3 +1,4 @@
+import { LogoMark } from "@/components/ui/logo.tsx";
 import Link from "next/link";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
@@ -99,8 +100,8 @@ export async function TopBar() {
   return (
     <header className="print-hide sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-[80rem] items-center gap-2 px-4 sm:px-6">
-        <Link href="/" className="flex shrink-0 items-center gap-2 rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ink">
-          <span aria-hidden className="grid size-7 place-items-center rounded-control bg-ink text-xs font-bold text-on-ink">N</span>
+        <Link href="/" className="group flex shrink-0 items-center gap-1.5 rounded-control text-ink outline-none focus-visible:ring-2 focus-visible:ring-ink">
+          <LogoMark className="size-8" />
           {/* The wordmark is hidden below sm, which left the link with no accessible
               name at phone width — the mark beside it is decorative. */}
           <span className="sr-only">Novera home</span>

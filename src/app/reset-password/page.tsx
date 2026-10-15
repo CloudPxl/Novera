@@ -1,3 +1,4 @@
+import { LogoMark } from "@/components/ui/logo.tsx";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -38,7 +39,7 @@ export default async function ResetPasswordPage() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center bg-surface px-6 text-ink">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint"><Link href="/" className="rounded-control hover:text-ink">Novera</Link></p>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint"><Link href="/" className="group inline-flex items-center gap-1 rounded-control hover:text-ink"><LogoMark className="size-5" />Novera</Link></p>
       <h1 className="mt-3 text-2xl font-semibold tracking-tight">Set a new password</h1>
       <p className="mt-2 text-sm leading-relaxed text-ink-soft">
         For {email}. Choosing a new password signs out anywhere else this account is

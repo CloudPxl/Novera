@@ -1,3 +1,4 @@
+import { LogoMark } from "@/components/ui/logo.tsx";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
@@ -284,7 +285,7 @@ function SolutionsFooter() {
     <footer className="border-t border-line bg-paper">
       <div className="wrap-wide grid gap-8 py-12 text-sm sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))]">
         <div>
-          <p className="flex items-center gap-2 font-semibold"><span aria-hidden className="grid size-6 place-items-center rounded-[0.375rem] bg-ink text-[11px] font-bold text-on-ink">N</span>Novera</p>
+          <p className="flex items-center gap-1 font-semibold"><LogoMark className="size-7" />Novera</p>
           <p className="mt-3 max-w-xs leading-relaxed text-ink-faint">Evidence that an AI support agent behaves as its written policy requires. Database in Frankfurt (EU).</p>
         </div>
         <FooterCol title="Solutions" links={[["All solutions", SOLUTIONS_INDEX.path], ...SOLUTIONS.map((s): [string, string] => [s.name, s.path])]} />

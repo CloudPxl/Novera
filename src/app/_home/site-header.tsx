@@ -1,3 +1,4 @@
+import { LogoMark } from "@/components/ui/logo.tsx";
 import Link from "next/link";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
 
@@ -25,8 +26,8 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
     </a>
     <header className="sticky top-0 z-40 border-b border-line/80 bg-surface/85 backdrop-blur">
       <div className="wrap-wide flex h-16 items-center gap-6">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded-control">
-          <span aria-hidden className="grid size-8 place-items-center rounded-control bg-ink text-sm font-bold text-on-ink">N</span>
+        <Link href="/" className="group flex shrink-0 items-center gap-1.5 rounded-control text-ink">
+          <LogoMark className="size-9" />
           <span className="text-[15px] font-semibold tracking-tight">Novera</span>
           <span className="sr-only">home</span>
         </Link>

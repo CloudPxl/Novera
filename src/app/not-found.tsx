@@ -1,3 +1,4 @@
+import { LogoMark } from "@/components/ui/logo.tsx";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
@@ -20,7 +21,7 @@ export default async function NotFound() {
   await connection();
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center bg-surface px-6 text-ink">
-      <p className="type-pill text-ink-faint"><Link href="/" className="rounded-control hover:text-ink">Novera</Link></p>
+      <p className="type-pill text-ink-faint"><Link href="/" className="group inline-flex items-center gap-1 rounded-control hover:text-ink"><LogoMark className="size-5" />Novera</Link></p>
       <h1 className="mt-3 text-2xl font-semibold tracking-tight">Nothing here</h1>
       <p className="mt-2 text-sm leading-relaxed text-ink-soft">
         This page does not exist, or it belongs to a workspace you are not a member of.

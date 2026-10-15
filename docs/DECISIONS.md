@@ -4108,3 +4108,7 @@ Public `/verify` (digest recomputed from the stored payload; receipts noindex, n
 ## 2026-10-13: Launch readiness as a web page
 
 The legal brief was already built (0068 and the `/legal` drafts); its tracker, launch gates, open decisions and counsel questions now render on a staff-only `/readiness` page. Status is computed from code and configuration (entity fields, publication controls, billing mode, mail settings, provider register), never showing a secret; gates that code cannot know read their row from `docs/LAUNCH-READINESS.md` and count only an exact PASS. No prices on public surfaces until the legal entity exists.
+
+## 2026-10-15: The logomark
+
+The "N" badge is replaced by the approved geometric mark: three bars drawn as inline SVG in `currentColor` (`src/components/ui/logo.tsx`), so it takes the text colour where it sits and stays crisp; the outer bars draw level with the core on hover or focus (not under reduced motion). The favicon is an SVG that follows the browser's light or dark setting; the Apple icon, the web manifest and the OG card use the mark's own colours (#09090b, #e5e7eb). The site keeps its single light theme (2026-10-02), so in-page the mark is ink.

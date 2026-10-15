@@ -1,3 +1,4 @@
+import { LogoMark } from "@/components/ui/logo.tsx";
 import type { Metadata } from "next";
 import { REPORT_NOTICE_PARAGRAPHS, REPORT_NOTICE_SHORT, REPORT_NOTICE_TITLE, REPORT_NOTICE_VERSION } from "@/lib/legal/notices.ts";
 import { notFound } from "next/navigation";
@@ -605,7 +606,7 @@ function Unavailable({ reason }: { reason: "expired" | "revoked" }) {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center bg-surface px-6 text-ink">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint">Novera</p>
+      <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-ink-faint"><LogoMark className="size-5" />Novera</p>
       <h1 className="mt-3 text-2xl font-semibold">{heading}</h1>
       <p className="mt-3 text-sm leading-relaxed text-ink-soft">{explanation}</p>
       <p className="mt-3 text-sm leading-relaxed text-ink-soft">

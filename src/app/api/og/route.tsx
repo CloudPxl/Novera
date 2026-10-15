@@ -1,11 +1,12 @@
 import { ImageResponse } from "next/og";
 import { cardText } from "@/lib/seo/og.ts";
+import { LOGO_BARS } from "@/components/ui/logo.tsx";
 
 export const runtime = "nodejs";
 
-// Obsidian card: the ink and on-ink tokens of src/app/globals.css (the site has one light theme).
-const INK = "#1c1917";
-const PAPER = "#faf9f7";
+// Obsidian card in the logomark's own colours: matte black and the mark's light grey.
+const INK = "#09090b";
+const PAPER = "#e5e7eb";
 const MUTED = "#a39d94";
 const LINE = "#3a3531";
 
@@ -20,8 +21,10 @@ export async function GET(request: Request) {
     (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", background: INK, color: PAPER, padding: 72 }}>
         <div style={{ display: "flex", alignItems: "center" }}>
-          <div style={{ width: 56, height: 56, borderRadius: 10, background: PAPER, color: INK, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, fontWeight: 700 }}>N</div>
-          <div style={{ marginLeft: 18, fontSize: 34, fontWeight: 600, letterSpacing: -0.5 }}>Novera</div>
+          <svg width="72" height="72" viewBox="0 0 100 100">
+            {LOGO_BARS.map((b, i) => <rect key={i} x={b.x} y={b.y} width={b.width} height={b.height} fill={PAPER} />)}
+          </svg>
+          <div style={{ marginLeft: 8, fontSize: 34, fontWeight: 600, letterSpacing: -0.5 }}>Novera</div>
         </div>
         <div style={{ display: "flex", fontSize: size, fontWeight: 600, lineHeight: 1.1, letterSpacing: -1.5, maxWidth: 1000 }}>{title}</div>
         <div style={{ display: "flex", alignItems: "center", borderTop: `1px solid ${LINE}`, paddingTop: 28 }}>

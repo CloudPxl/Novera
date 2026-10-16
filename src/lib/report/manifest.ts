@@ -6,6 +6,9 @@ import type { ReportPayload } from "./payload.ts";
 import { JUDGE_SYSTEM } from "../judge/index.ts";
 import { DEFAULT_ROUTES, type RouteTable } from "../router/routes.ts";
 import { suiteDigest } from "../suites/digest.ts";
+import { extensionDigestsOf, readExtension } from "../suites/extension.ts";
+import { LOCALE_NAMES, isVariantLocale, localise, type Locale } from "../suites/locales.ts";
+import type { SuiteCase } from "../runner/types.ts";
 
 /**
  * Bumped by hand when the way a run is executed changes in a way that could change a
@@ -61,6 +64,27 @@ export interface RunManifest {
    * to the exact suite content. Absent on runs declared before 2026-10-15.
    */
   suite_digest?: string;
+  /**
+   * Present only on a run of a suite extension (`src/lib/suites/extension.ts`): the official
+   * suite version it extends, the digest of its scenarios as the run carries them — equal to
+   * that suite's own digest when they ran unchanged — and the digest of the workspace scenarios
+   * added after them. `suite_digest` stays the digest of everything that ran. Absent on every
+   * other run, and on every run declared before 2026-10-16.
+   */
+  base_suite?: { key: string; version: number; scenarios: number };
+  base_suite_digest?: string;
+  extension_digest?: string;
+  /** The workspace scenarios the extension adds, in order. Present with `extension_digest`. */
+  extension_case_ids?: string[];
+  /**
+   * Present only on a run sent in a language other than English: the locale, the scenarios
+   * sent in it (the rest went in English) and the digest of exactly the variant entries used
+   * (`src/lib/suites/locales.ts`). Absent on English runs and on every run declared before
+   * 2026-10-16, which were all in English.
+   */
+  locale?: Exclude<Locale, "en">;
+  locale_digest?: string;
+  localised_case_ids?: string[];
   /** The models this run intended to grade with, in the order it meant to ask them. */
   judge_plan: Array<{ connection: string; model: string; task: string }>;
   judge_source: "trial_free" | "workspace_key" | "plan_managed";
@@ -150,6 +174,10 @@ export function buildRunManifest(args: {
   caseIds: string[];
   /** `suiteDigest` of the suite row being run. Omitted only by callers that predate it. */
   suiteDigest?: string | null;
+  /** Set only for a suite extension: what it extends and the two digests, from the row. */
+  extension?: { key: string; version: number; scenarios: number; baseSuiteDigest: string; extensionDigest: string; extensionCaseIds: string[] } | null;
+  /** Set only for a run in another language, and only when at least one scenario has a variant. */
+  locale?: { code: Exclude<Locale, "en">; digest: string; caseIds: string[] } | null;
   judgeSource: "trial_free" | "workspace_key" | "plan_managed";
   /**
    * The route this run will actually grade on. It is an argument rather than a read of
@@ -192,6 +220,17 @@ export function buildRunManifest(args: {
       case_ids: args.caseIds,
     },
     ...(args.suiteDigest ? { suite_digest: args.suiteDigest } : {}),
+    ...(args.extension
+      ? {
+          base_suite: { key: args.extension.key, version: args.extension.version, scenarios: args.extension.scenarios },
+          base_suite_digest: args.extension.baseSuiteDigest,
+          extension_digest: args.extension.extensionDigest,
+          extension_case_ids: args.extension.extensionCaseIds,
+        }
+      : {}),
+    ...(args.locale
+      ? { locale: args.locale.code, locale_digest: args.locale.digest, localised_case_ids: args.locale.caseIds }
+      : {}),
     judge_plan: (["judge", "judge_critical"] as const).flatMap((task) =>
       routes[task].map((c) => ({ connection: c.connection, model: c.model, task })),
     ),
@@ -238,6 +277,8 @@ export async function manifestForNewRun(args: {
   declared?: Declared;
   /** The id the run will have, when the caller chose it first (an Idempotency-Key claim). */
   runId?: string;
+  /** The language the scenarios are sent in; English when omitted. */
+  locale?: Locale;
 }): Promise<{ id: string; manifest: RunManifest | null; manifest_hash: string | null }> {
   const id = args.runId ?? randomUUID();
 
@@ -245,12 +286,19 @@ export async function manifestForNewRun(args: {
     const [{ data: agent }, { data: policy }, { data: suite }] = await Promise.all([
       args.client.from("agents").select("config").eq("id", args.agentId).maybeSingle(),
       args.client.from("policies").select("version").eq("id", args.policyId).maybeSingle(),
-      args.client.from("suites").select("key, version, name, cases").eq("id", args.suiteId).maybeSingle(),
+      args.client.from("suites").select("key, version, name, cases, provenance").eq("id", args.suiteId).maybeSingle(),
     ]);
 
     if (!policy || !suite) return { id, manifest: null, manifest_hash: null };
 
     const cases = Array.isArray(suite.cases) ? (suite.cases as Array<{ id?: unknown }>) : [];
+    // An extension's digests are recomputed from the row the runner will execute, never copied
+    // from its record, which only says where the base ends. 0071 refuses a row whose record
+    // does not match the official suite it names.
+    const ext = readExtension(suite.provenance);
+    const extDigests = ext ? extensionDigestsOf({ cases: cases as unknown as SuiteCase[] }, ext) : null;
+    // The variants this run will send, fixed now: the runner refuses to send any other.
+    const localised = args.locale && args.locale !== "en" ? localise(cases as unknown as SuiteCase[], args.locale) : null;
     const { manifest, hash } = buildRunManifest({
       runId: id,
       agentId: args.agentId,
@@ -272,6 +320,12 @@ export async function manifestForNewRun(args: {
       runnerVersion: args.runnerVersion ?? RUNNER_VERSION,
       agentConfig: agent?.config ?? null,
       declared: args.declared,
+      extension: ext && extDigests
+        ? { key: ext.key, version: ext.version, scenarios: ext.base_scenarios, ...extDigests }
+        : null,
+      locale: localised?.digest && args.locale && args.locale !== "en"
+        ? { code: args.locale, digest: localised.digest, caseIds: localised.localisedIds }
+        : null,
     });
 
     return { id, manifest, manifest_hash: hash };
@@ -296,4 +350,30 @@ export function fingerprintFromManifest(manifest: unknown): NonNullable<ReportPa
     { field: "agent_release", ...declared(m.declared?.release_id) },
     { field: "knowledge_base_revision", ...declared(m.declared?.knowledge_base_revision) },
   ];
+}
+
+/**
+ * What a report states about how its suite was composed and which language it was sent in,
+ * from the manifest the run declared before it started (format 15). Each part is null when the
+ * manifest does not declare it: a run of an ordinary suite, an English run, or a run from before
+ * either existed. A report never infers an extension or a language the run did not declare.
+ */
+export function compositionFromManifest(manifest: unknown): {
+  extension: NonNullable<ReportPayload["run"]["extension"]> | null;
+  locale: NonNullable<ReportPayload["run"]["locale"]> | null;
+} {
+  const m = (manifest ?? null) as Partial<RunManifest> | null;
+  const total = Array.isArray(m?.suite?.case_ids) ? m!.suite!.case_ids.length : null;
+  const extension = m?.base_suite && m.base_suite_digest && m.extension_digest && Array.isArray(m.extension_case_ids)
+    ? {
+        base_suite: `${m.base_suite.key} v${m.base_suite.version}`,
+        base_suite_digest: m.base_suite_digest,
+        scenarios: m.extension_case_ids.length,
+        extension_digest: m.extension_digest,
+      }
+    : null;
+  const locale = m?.locale && isVariantLocale(m.locale) && m.locale_digest && Array.isArray(m.localised_case_ids) && total !== null
+    ? { code: m.locale, name: LOCALE_NAMES[m.locale], localised: m.localised_case_ids.length, of: total, locale_digest: m.locale_digest }
+    : null;
+  return { extension, locale };
 }

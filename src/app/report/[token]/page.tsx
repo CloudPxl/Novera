@@ -9,9 +9,10 @@ import { loadReportByToken } from "@/lib/report/access.ts";
 import { ReportToolbar } from "./toolbar.tsx";
 import { track } from "@/lib/analytics/track.ts";
 import { SealInspector } from "@/components/ui/seal-inspector.tsx";
+import { CLIENT_EXPLAINS, explainEntries } from "@/lib/explainability/entries.ts";
 import { BadgeShare } from "@/components/ui/badge-share.tsx";
 import { badgeShareFor } from "@/lib/report/badge.ts";
-import { SEAL_ATTRIBUTION, sealContents } from "@/lib/report/seal.ts";
+import { SEAL_ATTRIBUTION, extensionSentence, sealContents } from "@/lib/report/seal.ts";
 
 const FINGERPRINT_LABELS: Record<string, string> = {
   agent_endpoint: "Agent endpoint",
@@ -110,8 +111,11 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           <Field label="Scenario suite" value={run.suite} />
           <Field label="Environment" value={subject.environment} />
           <Field label="Run reference" value={run.id} mono />
+          {/* Format 15, on a run in another language only. */}
+          {run.locale && <Field label="Language" value={`${run.locale.name}: ${run.locale.localised} of ${run.locale.of} scenarios, the rest in English`} />}
         </dl>
         <SealInspector
+          explain={explainEntries(CLIENT_EXPLAINS.sealInspector)}
           className="mt-6"
           hash={content_hash}
           items={sealContents(payload)}
@@ -557,6 +561,31 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
                   </dd>
                 </div>
               ))}
+            </dl>
+          </div>
+        )}
+        {/* Format 15 onwards, and only for an extension or a run in another language. Both were
+            declared in the run's manifest before anything was sent; absent otherwise. */}
+        {(run.extension || run.locale) && (
+          <div className="mt-4">
+            <p className="leading-relaxed">How the suite was composed and sent, as declared before the run:</p>
+            <dl className="mt-2 space-y-2 text-xs sm:space-y-1">
+              {run.extension && (
+                <div className="sm:flex sm:gap-4">
+                  <dt className="text-ink-soft sm:w-56 sm:shrink-0">Suite composition</dt>
+                  <dd className="min-w-0 break-words">{extensionSentence(run.extension)}. <span className="text-ink-faint">(recorded by Novera)</span></dd>
+                </div>
+              )}
+              {run.locale && (
+                <div className="sm:flex sm:gap-4">
+                  <dt className="text-ink-soft sm:w-56 sm:shrink-0">Language</dt>
+                  <dd className="min-w-0 break-words">
+                    {run.locale.localised} of {run.locale.of} scenarios sent in {run.locale.name}; the rest in English. Variant digest{" "}
+                    <span className="break-all font-mono">{run.locale.locale_digest}</span>{" "}
+                    <span className="text-ink-faint">(recorded by Novera)</span>
+                  </dd>
+                </div>
+              )}
             </dl>
           </div>
         )}

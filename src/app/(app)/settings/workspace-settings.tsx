@@ -18,6 +18,8 @@ import { CreateWebhook, WebhookActions } from "./webhooks.tsx";
 import { RetentionForm } from "./retention.tsx";
 import { ExportWorkspaceForm } from "./export-form.tsx";
 import { DEFAULT_RETENTION_DAYS } from "@/lib/privacy/retention.ts";
+import { lastUsedLabel } from "@/lib/api/keys.ts";
+import { RECENT_DELIVERIES, statusAndLatency } from "@/lib/webhooks/latency.ts";
 
 
 /**
@@ -39,6 +41,11 @@ function exportStatus(status: string, expiresAt: string): string {
   return status === "pending" && Date.parse(expiresAt) <= Date.now() ? "expired" : status;
 }
 
+/** Read outside render, like the export status above: "Last used 3 hours ago", or "Never used". */
+function keyLastUsed(iso: string | null): string {
+  return lastUsedLabel(iso, Date.now());
+}
+
 /** The workspace's settings, one section at a time (general, grading, developer). */
 export async function WorkspaceSettings({ section }: { section: "general" | "grading" | "developer" }) {
   const { user, workspace, role, context } = await requireWorkspace();
@@ -53,14 +60,14 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
   const onlyFor = (who: string) => <p className="mt-4 rounded-control bg-sunken px-3 py-2 text-xs text-ink-soft">Your role ({ROLE_LABEL[role].toLowerCase()}) can see this. {who} manage it.</p>;
   const [{ data: apiKeys }, { data: endpoints }, { data: deliveries }, { data: rawReads }] = await Promise.all([
     admin.from("api_keys")
-      .select("id, name, prefix, scopes, created_at, revoked_at")
+      .select("id, name, prefix, scopes, created_at, revoked_at, last_used_at")
       .eq("workspace_id", workspace.id).order("created_at", { ascending: false }),
     admin.from("webhook_endpoints")
       .select("id, url, events, secret_prefix, created_at, revoked_at")
       .eq("workspace_id", workspace.id).order("created_at", { ascending: false }),
     admin.from("webhook_deliveries")
-      .select("id, endpoint_id, event, status, attempts, last_status, last_error, created_at")
-      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20),
+      .select("id, endpoint_id, event, status, attempts, last_status, last_error, last_latency_ms, created_at")
+      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(RECENT_DELIVERIES),
     // Every time a key asked for the agent's replies themselves (0050).
     admin.from("raw_evidence_reads")
       .select("id, run_id, api_key_id, via, read_at")
@@ -331,6 +338,10 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
                       <span className="block text-xs text-ink-faint">
                         {(k.scopes as string[]).join(", ")} · created {(k.created_at as string).slice(0, 10)}
                         {k.revoked_at ? ` · revoked ${(k.revoked_at as string).slice(0, 10)}` : ""}
+                        {" · "}
+                        {k.last_used_at
+                          ? <time dateTime={k.last_used_at as string}>{keyLastUsed(k.last_used_at as string)}</time>
+                          : keyLastUsed(null)}
                       </span>
                     </div>
                     {k.revoked_at ? (
@@ -403,7 +414,7 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
             ) : (
               <ul className="divide-y divide-line">
                 {(endpoints ?? []).map((e) => {
-                  const recent = (deliveries ?? []).filter((d) => d.endpoint_id === e.id).slice(0, 3);
+                  const recent = (deliveries ?? []).filter((d) => d.endpoint_id === e.id);
                   return (
                     <li key={e.id as string} className="py-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -421,11 +432,15 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
                           {recent.map((d) => (
                             <li key={d.id as string}>
                               {(d.created_at as string).slice(0, 16).replace("T", " ")} UTC · {d.event as string} ·{" "}
-                              {d.status === "delivered"
-                                ? `delivered (${d.last_status})`
-                                : d.status === "failed"
-                                  ? `gave up after ${d.attempts} attempts: ${d.last_error ?? ""}`
-                                  : `waiting to retry after ${d.attempts} attempt(s)${d.last_error ? `: ${d.last_error}` : ""}`}
+                              {(() => {
+                                // "200 · 184 ms": the receiver's answer and how long it took (0072).
+                                const answered = statusAndLatency(d.last_status as number | null, d.last_latency_ms as number | null);
+                                return d.status === "delivered"
+                                  ? `delivered · ${answered}`
+                                  : d.status === "failed"
+                                    ? `gave up after ${d.attempts} attempts${answered ? ` · ${answered}` : ""}: ${d.last_error ?? ""}`
+                                    : `waiting to retry after ${d.attempts} attempt(s)${answered ? ` · ${answered}` : ""}${d.last_error ? `: ${d.last_error}` : ""}`;
+                              })()}
                             </li>
                           ))}
                         </ul>

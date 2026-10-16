@@ -120,6 +120,11 @@ export function contextChanges(
   const plan = (m: typeof b) => (m?.judge_plan ?? []).filter((j) => j.task === "judge" || !j.task).map((j) => j.model).join(", ");
   if (plan(b) && plan(a) && plan(b) !== plan(a)) out.push(`The graders differed: ${plan(b)} → ${plan(a)}.`);
   if (b.agent?.config_hash && a.agent?.config_hash && b.agent.config_hash !== a.agent.config_hash) out.push("The way Novera calls the agent changed (endpoint, template or response path).");
+  const lb = b as { locale?: string; locale_digest?: string };
+  const la = a as typeof lb;
+  if (lb.locale && lb.locale === la.locale && lb.locale_digest && la.locale_digest && lb.locale_digest !== la.locale_digest) {
+    out.push(`The ${languageName(lb.locale)} wording of some scenarios changed between the runs; a moved verdict may be the wording, not the agent.`);
+  }
   if (b.declared?.release_id !== a.declared?.release_id && (b.declared?.release_id || a.declared?.release_id)) {
     out.push(`The declared release changed: ${b.declared?.release_id ?? "none"} → ${a.declared?.release_id ?? "none"}.`);
   }
@@ -173,6 +178,8 @@ export interface DeltaRun {
   scenarios: ReadonlyArray<{ id: string; digest: string; severity: string }>;
   /** The run's evidence by scenario id. A declared scenario with no entry did not run. */
   cases: ReadonlyMap<string, ScenarioEvidence>;
+  /** The language the run's manifest declared; absent or null is English (every run before variants). */
+  locale?: string | null;
 }
 
 export type DeltaCategory =
@@ -217,7 +224,7 @@ export interface ScenarioDeltas {
 
 export interface DeltaRefusal {
   ok: false;
-  reason: "same_run" | "different_agent" | "different_suite";
+  reason: "same_run" | "different_agent" | "different_suite" | "different_locale";
   sentence: string;
 }
 
@@ -301,11 +308,14 @@ export function deltaCause(base: ScenarioEvidence, target: ScenarioEvidence, rep
   return "unknown";
 }
 
+const LANGUAGE_NAMES: Record<string, string> = { en: "English", de: "German", fr: "French", ro: "Romanian" };
+const languageName = (l: string | null | undefined) => LANGUAGE_NAMES[l || "en"] ?? String(l);
+
 /**
  * Why two runs cannot be compared scenario by scenario, or null when they can: the same agent,
  * and the same suite key under the same owner, at this version or another.
  */
-export function comparisonRefusal(base: Pick<DeltaRun, "runId" | "agentId" | "suite">, target: Pick<DeltaRun, "runId" | "agentId" | "suite">): DeltaRefusal | null {
+export function comparisonRefusal(base: Pick<DeltaRun, "runId" | "agentId" | "suite" | "locale">, target: Pick<DeltaRun, "runId" | "agentId" | "suite" | "locale">): DeltaRefusal | null {
   if (base.runId === target.runId) {
     return { ok: false, reason: "same_run", sentence: "Both sides name the same run. Choose an earlier run of this agent to compare it with." };
   }
@@ -319,6 +329,15 @@ export function comparisonRefusal(base: Pick<DeltaRun, "runId" | "agentId" | "su
     return {
       ok: false, reason: "different_suite",
       sentence: `These runs used different suites (${base.suite.key} and ${target.suite.key}). Scenarios are compared only between runs of one suite, at the same version or another, so that a scenario is only ever compared with itself.`,
+    };
+  }
+  // A scenario sent in German is a different test from the same scenario sent in English: its
+  // verdict moving is not a fix or a regression of the other.
+  const lang = (l: string | null | undefined) => l || "en";
+  if (lang(base.locale) !== lang(target.locale)) {
+    return {
+      ok: false, reason: "different_locale",
+      sentence: `These runs sent their scenarios in different languages (${languageName(base.locale)} and ${languageName(target.locale)}). A scenario is compared only with itself sent in the same language, so these runs are not compared scenario by scenario.`,
     };
   }
   return null;

@@ -8,7 +8,6 @@ import { storeSecret } from "@/lib/store/secrets.ts";
 import { probeAgent, reissueReportWithReview } from "@/lib/workflow/run.ts";
 import { NothingToDisclose } from "@/lib/report/reissue.ts";
 import { LeakError } from "@/lib/report/redact.ts";
-import { retestCase } from "@/lib/workflow/retest.ts";
 import { validateSuite, suiteFromCsv } from "@/lib/suites/validate.ts";
 import { applyPolicyChange } from "@/lib/diagnose/parse.ts";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
@@ -208,6 +207,8 @@ export async function createRun(_prev: FormState, formData: FormData): Promise<F
       agentId: String(formData.get("agentId") ?? ""),
       suiteId: String(formData.get("suiteId") ?? "").trim() || null,
       customerDeclared,
+      // Absent from the form when the suite has no variants: English.
+      locale: String(formData.get("locale") ?? "").trim() || null,
     });
   } catch (e) {
     if (e instanceof RunRefusal) {
@@ -369,7 +370,7 @@ export async function rerunFrom(formData: FormData): Promise<void> {
   const admin = await assertMembership(user.id, workspace.id, "run.start");
 
   const { data: baseline } = await admin
-    .from("runs").select("agent_id, suite_id").eq("id", baselineRunId).eq("workspace_id", workspace.id).maybeSingle();
+    .from("runs").select("agent_id, suite_id, locale:manifest->>locale").eq("id", baselineRunId).eq("workspace_id", workspace.id).maybeSingle();
   if (!baseline) throw new Error("That run could not be found.");
 
   // Through the one implementation, like the run button and the API. It used to be a
@@ -382,6 +383,8 @@ export async function rerunFrom(formData: FormData): Promise<void> {
     agentId: baseline.agent_id as string,
     suiteId: baseline.suite_id as string,
     baselineRunId,
+    // In the baseline's language, or the comparison would set German replies against English ones.
+    locale: (baseline.locale as string | null) ?? null,
   });
 
   // A run counts against the trial from the moment it exists, and the top bar showing
@@ -625,13 +628,6 @@ export async function reissueReport(_prev: FormState, form: FormData): Promise<F
 }
 
 /**
- * Re-runs one scenario against the policy as it stands now.
- *
- * Gated on the same entitlement as a run, because it spends the same inference, but
- * it does not consume one of the trial's runs: a retest is not a run, produces no
- * report, and must not be priced as though it were.
- */
-/**
  * Withdraws a sealed report: its link and every download stop working, for everyone, at
  * once, and the database keeps it withdrawn and records who did it (0053). The evidence and
  * its hash are untouched — a withdrawn report is not a deleted one.
@@ -667,41 +663,8 @@ export async function withdrawReport(_prev: FormState, form: FormData): Promise<
   };
 }
 
-export async function retestOneCase(_prev: FormState, form: FormData): Promise<FormState> {
-  const { user, workspace } = await requireWorkspace();
-  const runCaseId = String(form.get("runCaseId") ?? "").trim();
-  if (!runCaseId) return { error: "No scenario was named." };
-
-  const gated = await gate(user.id, workspace.id, "case.retest");
-  if ("error" in gated) return { error: gated.error };
-  const admin = gated.admin;
-
-  // A retest re-grades one scenario inside an existing run: it is not a new run, so fair use
-  // (runs in flight, runs this month) does not refuse it; funding does.
-  const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
-  if (!entitlement.canRun && entitlement.blocker !== "concurrency" && entitlement.blocker !== "fair_use") {
-    const remedy = remedyFor(entitlement.blocker);
-    return { error: entitlement.blockedReason ?? "This workspace cannot run scenarios.", ...(remedy ? { remedy } : {}) };
-  }
-
-  const { data: runCase } = await admin
-    .from("run_cases").select("run_id").eq("id", runCaseId).maybeSingle();
-
-  try {
-    const result = await retestCase({
-      client: admin, workspaceId: workspace.id, runCaseId, userId: user.id,
-    });
-    if (runCase) revalidatePath(`/runs/${runCase.run_id}`);
-    return {
-      notice:
-        result.status === "error"
-          ? `The retest against policy v${result.policyVersion} produced no verdict.`
-          : `Against policy v${result.policyVersion}, this scenario now ${result.status === "pass" ? "passes" : "still fails"}.`,
-    };
-  } catch (thrown) {
-    return { error: thrown instanceof Error ? thrown.message : "The retest could not be run." };
-  }
-}
+// "Retest this scenario only" is now "Try this scenario alone": `checkScenarioAlone` in
+// ./scenario-check-actions.ts, one implementation with POST /api/v1/probes/single.
 
 const MAX_SUITE_BYTES = 1_000_000;
 

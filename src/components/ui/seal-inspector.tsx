@@ -2,7 +2,7 @@
 
 import { useId, useRef, useState } from "react";
 import { Button } from "./button.tsx";
-import { ExplainTrigger } from "./explain-trigger.tsx";
+import { Explained, ExplainProvider, type ExplainEntries } from "./explain-context.tsx";
 import { SEAL_EXCLUDES, verifyFromFile, verifyFromLink, type SealItem } from "@/lib/report/seal.ts";
 
 /**
@@ -15,13 +15,19 @@ import { SEAL_EXCLUDES, verifyFromFile, verifyFromLink, type SealItem } from "@/
  *
  * Hidden in print: the printed page carries the full hash in its own header and footer.
  */
+/** `explain`: `explainEntries(CLIENT_EXPLAINS.sealInspector)`, resolved by the server page that renders it. */
 export function SealInspector({
-  hash,
-  items,
-  exportPath,
-  unavailable,
-  className = "",
-}: {
+  explain,
+  ...props
+}: SealInspectorProps & { explain: ExplainEntries }) {
+  return (
+    <ExplainProvider entries={explain}>
+      <SealInspectorBody {...props} />
+    </ExplainProvider>
+  );
+}
+
+interface SealInspectorProps {
   hash: string;
   items: SealItem[];
   /** The JSON export's path while the link answers; null once withdrawn or expired. */
@@ -29,7 +35,15 @@ export function SealInspector({
   /** Why the export no longer answers, when `exportPath` is null. */
   unavailable?: string;
   className?: string;
-}) {
+}
+
+function SealInspectorBody({
+  hash,
+  items,
+  exportPath,
+  unavailable,
+  className = "",
+}: SealInspectorProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const hashText = useRef<HTMLElement>(null);
@@ -107,7 +121,7 @@ export function SealInspector({
           <section aria-labelledby={`${titleId}-hash`} className="mt-5">
             <div className="flex flex-wrap items-baseline">
               <h3 id={`${titleId}-hash`} className="text-sm font-semibold">SHA-256</h3>
-              <ExplainTrigger id="sha256_seal" />
+              <Explained id="sha256_seal" />
             </div>
             <div className="mt-2 flex flex-wrap items-start gap-2 rounded-control bg-sunken p-3">
               <code ref={hashText} className="type-mono min-w-0 flex-1 break-all text-xs text-ink">{hash}</code>

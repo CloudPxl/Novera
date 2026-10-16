@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { withdrawReport, type FormState } from "@/lib/workflow/actions.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { Badge } from "@/components/ui/primitives.tsx";
-import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
+import { Explained, ExplainProvider, type ExplainEntries } from "@/components/ui/explain-context.tsx";
 import type { ExplainKey } from "@/lib/explainability/glossary.ts";
 import type { Readiness, ReadinessCheck } from "@/lib/report/readiness.ts";
 
@@ -35,7 +35,15 @@ const SAID = { ok: "met", gap: "not met", note: "note" } as const;
  * Whether the sealed report is something to hand a client, from stored rows
  * (src/lib/report/readiness.ts), and the one control that takes it back.
  */
-export function ReadinessPanel({ state, label, checks, token }: { state: Readiness; label: string; checks: ReadinessCheck[]; token: string }) {
+export function ReadinessPanel({ explain, ...props }: { state: Readiness; label: string; checks: ReadinessCheck[]; token: string; explain: ExplainEntries }) {
+  return (
+    <ExplainProvider entries={explain}>
+      <ReadinessPanelBody {...props} />
+    </ExplainProvider>
+  );
+}
+
+function ReadinessPanelBody({ state, label, checks, token }: { state: Readiness; label: string; checks: ReadinessCheck[]; token: string }) {
   const [result, submit] = useActionState<FormState, FormData>(withdrawReport, {});
   const open = state !== "REVOKED" && state !== "EXPIRED";
   return (
@@ -52,7 +60,7 @@ export function ReadinessPanel({ state, label, checks, token }: { state: Readine
               <span className="sr-only">{SAID[c.result]}: </span>
               <span className="text-ink">{c.label}.</span> <span className="text-ink-soft">{c.detail}</span>
             </span>
-            {EXPLAINS[c.label] && <ExplainTrigger id={EXPLAINS[c.label]} />}
+            {EXPLAINS[c.label] && <Explained id={EXPLAINS[c.label]} />}
           </li>
         ))}
       </ul>

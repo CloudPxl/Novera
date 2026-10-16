@@ -27,3 +27,22 @@ export function scenarioDigest(scenario: SuiteCase): string {
 function sha256(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
+
+/**
+ * A suite extension's own fingerprint: SHA-256 over the canonical JSON of the workspace
+ * scenarios it adds, in order. Kept apart from the base suite's digest so a reader can see
+ * that the official scenarios ran unchanged (the base digest matches the built-in suite's)
+ * and, separately, exactly which workspace scenarios ran beside them.
+ */
+export function extensionDigest(scenarios: readonly SuiteCase[]): string {
+  return sha256(canonicalise(scenarios as unknown as Json));
+}
+
+/**
+ * The fingerprint of the language variants a run used: the locale and, per scenario id, the
+ * variant entry exactly as it was applied. Only the entries actually used, so the digest
+ * changes when — and only when — something the run sent would have changed.
+ */
+export function localeDigest(locale: string, variants: Readonly<Record<string, unknown>>): string {
+  return sha256(canonicalise({ locale, variants } as unknown as Json));
+}

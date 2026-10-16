@@ -9,6 +9,8 @@ import { REPORT_NOTICE_SHORT } from "@/lib/legal/notices.ts";
 import { normaliseDigest } from "@/lib/report/public-verify.ts";
 import { DigestForm } from "./digest-form.tsx";
 import { FileCheck } from "./file-check.tsx";
+import { ExplainProvider } from "@/components/ui/explain-context.tsx";
+import { CLIENT_EXPLAINS, explainEntries } from "@/lib/explainability/entries.ts";
 import { hasSessionCookie } from "./session-cookie.ts";
 
 export const metadata: Metadata = pageMetadata({
@@ -66,7 +68,9 @@ export default async function VerifyPage({ searchParams }: { searchParams: Promi
             compares it with the digest the file states and with Novera&apos;s ledger.
           </p>
           <div className="mt-4">
-            <FileCheck />
+            <ExplainProvider entries={explainEntries([...CLIENT_EXPLAINS.fileCheck, ...CLIENT_EXPLAINS.receiptDetails])}>
+              <FileCheck />
+            </ExplainProvider>
           </div>
         </section>
 

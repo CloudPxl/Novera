@@ -73,7 +73,7 @@ export default async function ReviewPage({
   const [{ data: decided }, { data: retests }, { data: reviews }] = await Promise.all([
     db.from("diagnoses").select("run_case_id, status").eq("workspace_id", workspace.id).in("status", ["proposed", "approved", "rejected"])
       .order("created_at", { ascending: false }).limit(300),
-    db.from("case_retests").select("run_case_id, status").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(300),
+    db.from("case_retests").select("run_case_id, status").eq("workspace_id", workspace.id).not("run_case_id", "is", null).order("created_at", { ascending: false }).limit(300),
     db.from("verdict_reviews").select("run_case_id, finding").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(300),
   ]);
   const followups = new Map<string, Followup>();

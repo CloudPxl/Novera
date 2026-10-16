@@ -89,7 +89,7 @@ export default async function DashboardPage() {
     comparedIds.length
       ? db.from("run_cases").select("id, run_id, case_id, status, severity, obligation").in("run_id", comparedIds)
       : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
-    db.from("case_retests").select("run_case_id, status, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(200),
+    db.from("case_retests").select("run_case_id, status, created_at").eq("workspace_id", workspace.id).not("run_case_id", "is", null).order("created_at", { ascending: false }).limit(200),
     db.from("verdict_reviews").select("run_case_id, finding, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(200),
   ]);
 

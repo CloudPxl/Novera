@@ -5,7 +5,7 @@ import { Reveal } from "@/components/ui/reveal.tsx";
 import { Card, Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import type { SuiteCase } from "@/lib/runner/types.ts";
 import { describeCheck } from "@/lib/judge/checks.ts";
-import { DraftForm, DecideForm, ImportForm, PromoteForm } from "./client.tsx";
+import { DraftForm, DecideForm, ExtendForm, ImportForm, PromoteForm } from "./client.tsx";
 import { SOURCE_LABELS, type ImportProvenance, type SourceTool } from "@/lib/imports/datasets.ts";
 import { PageHeader, TabNav } from "@/components/ui/page.tsx";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
@@ -43,7 +43,7 @@ interface DraftRow {
 const RISK_TONE = { high: "high", medium: "medium", low: "low" } as const;
 
 export default async function ScenariosPage({ searchParams }: {
-  searchParams: Promise<{ suite?: string; tab?: string; view?: string; tier?: string; severity?: string }>;
+  searchParams: Promise<{ suite?: string; tab?: string; view?: string; tier?: string; severity?: string; agent?: string; try?: string }>;
 }) {
   const params = await searchParams;
   const { suite: suiteParam, tab: tabParam } = params;
@@ -106,6 +106,23 @@ export default async function ScenariosPage({ searchParams }: {
     : { data: null };
   const catalog = buildCatalog((builtIns ?? []) as unknown as SuiteRow[]);
   const catalogFilter = parseCatalogFilter(params);
+  // Trying one scenario alone from the catalog: only for a role that may retest, against this
+  // workspace's own agents; the action checks both again.
+  const trialAgents = (agents ?? []).map((a) => ({ id: a.id as string, name: a.name as string, isProduction: Boolean(a.is_production) }));
+  const catalogTrial = tab === "catalog" && can(role, "case.retest") ? {
+    agents: trialAgents,
+    agentId: trialAgents.some((a) => a.id === params.agent) ? params.agent! : null,
+    tryKey: /^[0-9a-f-]{36}:[A-Za-z0-9_-]{1,40}$/i.test(params.try ?? "") ? params.try! : null,
+  } : undefined;
+  // The newest version of each official suite: what an extension may carry. Read on the drafts
+  // tab only, where the extension form is.
+  const { data: official } = tab === "drafts"
+    ? await admin.from("suites").select("id, key, version, name, cases").is("workspace_id", null)
+      .order("key").order("version", { ascending: false })
+    : { data: null };
+  const officialBases = ((official ?? []) as Array<{ id: string; key: string; version: number; name: string; cases: unknown }>)
+    .filter((x, i, all) => all.findIndex((y) => y.key === x.key) === i)
+    .map((x) => ({ id: x.id, key: x.key, version: x.version, name: x.name, scenarios: Array.isArray(x.cases) ? x.cases.length : 0 }));
   const pending = rows.filter((d) => d.status === "draft");
   const approved = rows.filter((d) => d.status === "approved");
   const settled = rows.filter((d) => d.status === "rejected" || d.status === "included");
@@ -159,7 +176,7 @@ export default async function ScenariosPage({ searchParams }: {
         </>
       )}
 
-      {tab === "catalog" && <Catalog suites={catalog} filter={catalogFilter} />}
+      {tab === "catalog" && <Catalog suites={catalog} filter={catalogFilter} trial={catalogTrial} />}
 
       {tab === "create" && (
         <>
@@ -338,6 +355,23 @@ export default async function ScenariosPage({ searchParams }: {
                 </li>
               ))}
             </ul>
+            {/* An official suite unchanged, with a few of these beside it: the other way into a
+                suite version, for those who may promote. */}
+            {can(role, "scenario.promote") && officialBases.length > 0 && (
+              <div className="mt-5 border-t border-line pt-5">
+                <h3 className="type-h3">Extend an official suite</h3>
+                <p className="mt-1 text-sm text-ink-soft">
+                  Run up to five of these beside an official Novera suite. The official scenarios stay exactly as shipped,
+                  and the report shows their digest apart from your scenarios&apos; own. Published as a new suite version of your workspace.
+                </p>
+                <div className="mt-4">
+                  <ExtendForm
+                    bases={officialBases}
+                    approved={approved.map((d) => ({ id: d.id, caseId: d.scenario.id, expected: d.scenario.expected_behavior }))}
+                  />
+                </div>
+              </div>
+            )}
             <div className="mt-5 border-t border-line pt-5">
               <PromoteForm
                 suites={(suites ?? []) as Array<{ id: string; key: string; version: number; name: string }>}

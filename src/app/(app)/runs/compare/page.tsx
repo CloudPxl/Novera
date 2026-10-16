@@ -101,9 +101,18 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
         title={agentName}
         description={`${target.suite.name} — every scenario of two runs side by side: what regressed, what was fixed, and what moved only because the graders did.`}
         action={
-          <Link href={href(view, target.id, base.id)} className="print-hide text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">
-            Swap base and target
-          </Link>
+          <div className="print-hide flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm font-medium text-ink-soft">
+            <Link href={href(view, target.id, base.id)} className="underline-offset-2 hover:text-ink hover:underline">
+              Swap base and target
+            </Link>
+            {/* The same comparison as a file (src/app/(app)/runs/compare/export): verdicts, ids and hashes, no replies. */}
+            <a href={`/runs/compare/export?base=${base.id}&target=${target.id}&format=md`} download className="underline-offset-2 hover:text-ink hover:underline">
+              Download Markdown
+            </a>
+            <a href={`/runs/compare/export?base=${base.id}&target=${target.id}&format=json`} download className="underline-offset-2 hover:text-ink hover:underline">
+              Download JSON
+            </a>
+          </div>
         }
       />
       </div>

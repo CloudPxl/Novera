@@ -9,6 +9,7 @@ import { JsonLd } from "@/components/seo/json-ld.tsx";
 import { softwareApplicationLd } from "@/lib/seo/json-ld.ts";
 import { DEFAULT_TITLE, pageMetadata } from "@/lib/seo/site.ts";
 import { SampleReport } from "./sample-report.tsx";
+import { CLIENT_EXPLAINS, explainEntries } from "@/lib/explainability/entries.ts";
 import { SiteHeader } from "./_home/site-header.tsx";
 import { Instruments } from "./_home/instruments.tsx";
 import { Workflow } from "./_home/workflow.tsx";
@@ -89,7 +90,7 @@ export default async function Home() {
               </dl>
             </Reveal>
             <Reveal delay={120}>
-              <SampleReport />
+              <SampleReport explain={explainEntries(CLIENT_EXPLAINS.sampleReport)} />
               <p className="mt-3 text-center text-xs text-ink-faint">Open the finding for its evidence chain, or compare it with the last run.</p>
             </Reveal>
           </div>

@@ -41,6 +41,8 @@ export function buildOpenApi() {
         "Novera is evidence of testing, not a legal certification. " +
         "Every call is made with a workspace API key (`Authorization: Bearer nvk_…`) and sees only that workspace. " +
         "A key reads by default; starting runs, reading the agent's replies and recording failures need the `run`, `responses` and `write` scopes, chosen when the key is created. " +
+        "A fifth scope, `probe`, is for single-scenario checks; like every scope beyond `read`, it is granted only together with `read`. " +
+        "For a CI gate, `POST /api/v1/ci/trigger` starts one run per commit and `GET /api/v1/ci/runs/{id}` answers with the exit code (0 pass, 1 fail, 2 incomplete, 3 configuration, 4 infrastructure), in JSON or JUnit. " +
         "There is no endpoint that reads a report by id: a finished run carries `report.url` and `report.content_hash`, and the report's JSON and JUnit downloads carry the CI exit code. " +
         "No key can approve a draft, change a policy, or publish or revoke a report. Every answer, refusals included, is JSON. " +
         "Documentation: https://www.nover.space/docs/api",
@@ -51,6 +53,8 @@ export function buildOpenApi() {
       { name: "Read", description: "Needs the `read` scope." },
       { name: "Runs", description: "Starting and advancing runs needs the `run` scope." },
       { name: "Regressions", description: "Needs the `write` scope." },
+      { name: "CI", description: "Gating a pipeline on a run: triggering needs the `run` scope, reading the result `read`." },
+      { name: "Checks", description: "Single-scenario checks: one scenario against one agent, never a run. Needs the `probe` scope." },
     ],
     paths: {
       "/api/v1/agents": {
@@ -144,6 +148,7 @@ export function buildOpenApi() {
                     suite_id: { ...UUID, description: "A suite from `GET /api/v1/suites`. The newest built-in version when omitted." },
                     release_id: { type: "string", maxLength: 100, description: "What you are testing, as declared by you; the report shows it as declared." },
                     knowledge_base_revision: { type: "string", maxLength: 100, description: "As declared by you; the report shows it as declared." },
+                    locale: { type: "string", enum: ["en", "de", "fr", "ro"], default: "en", description: "The language the scenarios are sent in. Only scenarios with a variant in that language are translated; the report says how many. Refused for a suite with no variant in it." },
                   },
                 },
               },
@@ -222,6 +227,150 @@ export function buildOpenApi() {
           },
         },
       },
+      "/api/v1/ci/trigger": {
+        post: {
+          operationId: "triggerCiRun",
+          tags: ["CI"],
+          summary: "Start a run for a commit",
+          description:
+            `${scopeNote("run")} Starts the run through the same function as \`POST /api/v1/runs\`, with the same checks and refusals. ` +
+            "The same commit, agent and suite again answers 200 with the run it already started (`deduplicated: true`), whatever its state, unless that run was aborted: an aborted run seals nothing, so the commit gets a new run. " +
+            "With `cancel_superseded` (default true), unfinished runs that other commits on the same branch started through this endpoint for the same agent are stopped: aborted, never sealed, their graded scenarios kept. " +
+            "The commit is stated on the report as the release you declared, unless you send `release_id`. " +
+            "Field names are also accepted in camelCase (`agentId`, `suiteSlug`, `gitCommitSha`, `gitBranch`, `prNumber`, `cancelSuperseded`); answers are snake_case.",
+          security: bearer,
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["agent_id"],
+                  properties: {
+                    agent_id: { ...UUID, description: "An agent from `GET /api/v1/agents`." },
+                    suite: { type: "string", description: "A suite key, pinned (`eu-support-v5`) or newest (`eu-support`); the workspace's own suite first, then a built-in one. Send this or `suite_id`, not both." },
+                    suite_id: { ...UUID, description: "A suite from `GET /api/v1/suites`. The newest built-in eu-support when neither is sent." },
+                    git_commit_sha: { type: "string", pattern: "^[0-9a-fA-F]{7,64}$", description: "The commit under test. Without it, every trigger starts a new run." },
+                    git_branch: { type: "string", maxLength: 255, description: "The branch; needed for `cancel_superseded`." },
+                    pr_number: { type: "integer", minimum: 1 },
+                    cancel_superseded: { type: "boolean", default: true },
+                    release_id: { type: "string", maxLength: 100, description: "What the report states as declared. The commit when omitted." },
+                    knowledge_base_revision: { type: "string", maxLength: 100 },
+                    locale: { type: "string", enum: ["en", "de", "fr", "ro"], default: "en", description: "The language (part of what \"the same commit\" means: one commit may run once per language) the scenarios are sent in. Only scenarios with a variant in that language are translated; the report says how many. Refused for a suite with no variant in it." },
+                    include_extensions: { type: "boolean", default: false, description: "Run the workspace's newest extension of the named official suite: its scenarios byte for byte plus at most five the workspace approved. 404 when the workspace has none." },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "This commit already has a run on this agent and suite; nothing new started.",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/CiTriggered" } } },
+            },
+            "202": {
+              description: "The run was queued. Drive it with `POST /api/v1/runs/{id}/execute` until `done` is true, then read `poll_url`.",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/CiTriggered" } } },
+            },
+            "400": errorResponse("The body is not a JSON object, or a field is malformed."),
+            "403": { $ref: "#/components/responses/MissingScope" },
+            "404": errorResponse("No such agent or suite in this workspace."),
+            "409": errorResponse("The run could not start (the error says why; `code` names the blocker when there is one), or another request is starting this commit's run right now."),
+            "429": {
+              description: "Too many requests for this key, or fair use: too many runs in progress or in 30 days (`code` is `concurrency` or `fair_use`).",
+              headers: { "Retry-After": { $ref: "#/components/headers/RetryAfter" } },
+              content: { "application/json": { schema: error } },
+            },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "500": errorResponse("The run could not be started."),
+          },
+        },
+      },
+      "/api/v1/ci/runs/{id}": {
+        get: {
+          operationId: "getCiRun",
+          tags: ["CI"],
+          summary: "Read a run as a CI gate",
+          description:
+            `${scopeNote("read")} The exit code is the sealed report's own (0 pass, 1 fail, 2 incomplete), from the same decision as the report's JSON and JUnit downloads and the CLI. ` +
+            "Without a sealed report: null while the run is queued or running; 4 when the run was halted because the agent could not be reached; 2 when it was aborted for any other reason or sealed nothing; 3 when its report was withdrawn. " +
+            "`baseline_comparison` compares with the newest earlier completed run of the same agent on the same suite key; a verdict that moved on an identical reply is listed under `graders_moved` and never counted as fixed or newly broken. " +
+            "`?format=junit`, or an `Accept` header naming XML, answers JUnit XML with the code, the suite digest, the seal and the comparison link as properties.",
+          security: bearer,
+          parameters: [
+            { name: "id", in: "path", required: true, schema: UUID },
+            { name: "format", in: "query", required: false, schema: { type: "string", enum: ["json", "junit"], default: "json" } },
+          ],
+          responses: {
+            "200": {
+              description: "The run's gate decision, as JSON or JUnit XML.",
+              content: {
+                "application/json": { schema: { $ref: "#/components/schemas/CiRun" } },
+                "application/xml": { schema: { type: "string", description: "A JUnit document. Without a sealed report it has one test case: skipped while the run is unfinished, an error otherwise." } },
+              },
+            },
+            "400": errorResponse("`format` is not json or junit."),
+            "403": { $ref: "#/components/responses/MissingScope" },
+            "404": errorResponse("No such run in this workspace."),
+            ...authErrors,
+          },
+        },
+      },
+      "/api/v1/probes/single": {
+        post: {
+          operationId: "checkSingleScenario",
+          tags: ["Checks"],
+          summary: "Check one scenario against an agent",
+          description:
+            `${scopeNote("probe")} Sends one scenario of a suite to one agent and grades it as a run grades it — rules, then the read-back, then two models — against the agent's newest policy, and answers with the verdict. ` +
+            "It is not a run: it is recorded as a single-scenario check, never in a run, a report, a score, a coverage figure or a baseline, and never counted against the trial's runs or a plan's run allowance. Every answer carries `label: \"Single-scenario check — not a sealed run.\"`. " +
+            "Funding is the run's: grading is on the workspace's own model key when it has one, and the check needs something that funds runs (the trial, a plan or a grant). " +
+            "A destructive or fixture-only scenario is refused against an agent marked production (409 `production_guard`), in the runner's own words. 20 checks per workspace in any rolling hour (429 `rate_limited`, with `Retry-After`). " +
+            "`?include=responses` adds the agent's reply and conversation, only for a key that also has the `responses` scope; otherwise personal data a grading model quoted is shown as placeholders. " +
+            "Field names are also accepted in camelCase (`agentId`, `suiteSlug`, `suiteId`, `scenarioId`); answers are snake_case.",
+          security: bearer,
+          parameters: [
+            { name: "include", in: "query", required: false, schema: { type: "string", enum: ["responses"] }, description: "`responses` adds the agent's reply. Needs the `responses` scope." },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["agent_id", "scenario_id"],
+                  properties: {
+                    agent_id: { ...UUID, description: "An agent from `GET /api/v1/agents`." },
+                    suite: { type: "string", description: "A suite key, pinned (`eu-support-v5`) or newest (`eu-support`); the workspace's own suite first, then a built-in one. Send this or `suite_id`." },
+                    suite_id: { ...UUID, description: "A suite from `GET /api/v1/suites`." },
+                    scenario_id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$", description: "A scenario id from that suite, such as `T07`." },
+                    locale: { type: "string", enum: ["en", "de", "fr", "ro"], default: "en", description: "The language to send the scenario in. A scenario without a variant in that language is refused (422 `no_locale_variant`), never sent in English instead." },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "The scenario was sent and graded; the check is recorded.",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/ScenarioCheckAnswer" } } },
+            },
+            "400": errorResponse("The body is not a JSON object, or a field is malformed (`code`: `invalid_request`)."),
+            "403": errorResponse("The key does not have the `probe` scope, or `include=responses` was asked without the `responses` scope (`code`: `missing_scope`)."),
+            "404": errorResponse("No such agent, suite or scenario in this workspace (`code`: `not_found`)."),
+            "409": errorResponse("The check cannot be sent: `production_guard`, `archived`, `no_policy`, `localisation_changed`, or `not_funded` (with `blocker`)."),
+            "422": errorResponse("The scenario has no variant in the requested language (`code`: `no_locale_variant`)."),
+            "429": {
+              description: "20 single-scenario checks in the last hour (`code`: `rate_limited`, with `rate_limit.resets_at`), or more than 120 requests a minute for this key.",
+              headers: { "Retry-After": { $ref: "#/components/headers/RetryAfter" } },
+              content: { "application/json": { schema: error } },
+            },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "500": errorResponse("The scenario could not be run, or ran and could not be recorded (`code`: `not_run` or `not_recorded`)."),
+            "503": errorResponse("The checks in the last hour could not be counted, so nothing was sent (`code`: `limit_unavailable`)."),
+          },
+        },
+      },
       "/api/v1/production-failures": {
         post: {
           operationId: "recordProductionFailure",
@@ -287,7 +436,7 @@ export function buildOpenApi() {
           scheme: "bearer",
           bearerFormat: "nvk_…",
           description:
-            "A workspace API key created under Settings → API keys, MCP and webhooks. Scopes: `read` (always), `run`, `responses`, `write`. 120 requests a minute per key. A wrong, unknown or revoked key gets the same 401.",
+            "A workspace API key created under Settings → API keys, MCP and webhooks. Scopes: `read` (always), `run`, `responses`, `write`, `probe`. 120 requests a minute per key. A wrong, unknown or revoked key gets the same 401.",
         },
       },
       headers: {
@@ -312,7 +461,7 @@ export function buildOpenApi() {
           required: ["error"],
           properties: {
             error: { type: "string" },
-            code: { type: "string", description: "Present on some run refusals, naming the blocker." },
+            code: { type: "string", description: "A stable name for the refusal: on every authentication refusal (`unauthorized`, `missing_scope`, `rate_limited`, `unavailable`), on every single-scenario check refusal, and on run refusals naming the blocker." },
           },
         },
         Agent: {
@@ -438,6 +587,103 @@ export function buildOpenApi() {
             passed: { type: "integer" },
             failed: { type: "integer" },
             errored: { type: "integer" },
+          },
+        },
+        CiTriggered: {
+          type: "object",
+          required: ["run", "deduplicated", "next", "poll_url", "superseded"],
+          properties: {
+            run: { type: "object", required: ["id", "status"], properties: { id: UUID, status: { type: "string" } } },
+            deduplicated: { type: "boolean", description: "True when this commit already had a run on this agent and suite." },
+            next: { type: "string", description: "What to call to advance the run." },
+            poll_url: { type: "string", format: "uri", description: "`GET` it for the exit code once the run is done." },
+            superseded: { type: "array", items: UUID, description: "Runs of earlier commits on this branch that this request stopped." },
+          },
+        },
+        CiRun: {
+          type: "object",
+          required: ["run", "ci_exit_code", "ci_exit_reason", "report", "suite_digest", "baseline_comparison"],
+          properties: {
+            run: {
+              type: "object",
+              required: ["id", "status", "agent_id", "suite", "created_at", "finished_at", "git_commit_sha", "git_branch", "pr_number"],
+              properties: {
+                id: UUID, status: { type: "string" }, agent_id: UUID, suite: NULLABLE_STRING,
+                created_at: { type: "string", format: "date-time" }, finished_at: { ...NULLABLE_STRING, format: "date-time" },
+                git_commit_sha: NULLABLE_STRING, git_branch: NULLABLE_STRING, pr_number: { type: ["integer", "null"] },
+              },
+            },
+            ci_exit_code: { type: ["integer", "null"], enum: [0, 1, 2, 3, 4, null], description: "Null while the run is queued or running." },
+            ci_exit_reason: { type: "string" },
+            report: {
+              type: ["object", "null"],
+              required: ["content_hash", "url", "verify_url"],
+              properties: {
+                content_hash: { type: "string" },
+                url: { type: "string", format: "uri", description: "The report's link, which grants access to it. Keep it out of public logs." },
+                verify_url: { type: "string", format: "uri", description: "The public seal check, which shows no content." },
+              },
+            },
+            suite_digest: { ...NULLABLE_STRING, description: "SHA-256 of the suite the run declared; null for runs declared before 2026-10-15." },
+            baseline_comparison: {
+              type: ["object", "null"],
+              required: ["base_run_id", "compare_url", "newly_broken", "fixed", "graders_moved", "summary"],
+              properties: {
+                base_run_id: UUID,
+                compare_url: { type: "string", format: "uri" },
+                newly_broken: { type: "array", items: { type: "string" }, description: "Scenario ids that passed before and fail now." },
+                fixed: { type: "array", items: { type: "string" } },
+                graders_moved: { type: "array", items: { type: "string" }, description: "Verdicts that moved on an identical reply; never counted as fixed or broken." },
+                summary: { type: "string", examples: ["No previously passing scenario failed", "2 previously passing scenarios now fail"] },
+              },
+            },
+          },
+        },
+        ScenarioCheckAnswer: {
+          type: "object",
+          required: ["check", "label", "rate_limit"],
+          properties: {
+            label: { type: "string", const: "Single-scenario check — not a sealed run." },
+            rate_limit: {
+              type: "object",
+              required: ["remaining", "resets_at"],
+              properties: {
+                remaining: { type: "integer", minimum: 0, description: "Checks left in the rolling hour." },
+                resets_at: { type: "string", format: "date-time", description: "When the oldest check in the window leaves it." },
+              },
+            },
+            check: {
+              type: "object",
+              required: ["id", "origin", "scenario_id", "locale", "policy_version", "verdict", "no_verdict_reason", "settled_by", "reasons", "failed_assertions", "read_back", "graders", "created_at"],
+              properties: {
+                id: UUID,
+                origin: { type: "string", enum: ["suite_case", "run_case"] },
+                agent_id: { ...UUID },
+                suite: { ...NULLABLE_STRING, examples: ["eu-support v5"] },
+                scenario_id: { type: "string" },
+                locale: { type: "string", enum: ["en", "de", "fr", "ro"] },
+                policy_version: { type: "integer", description: "The agent's newest policy version, which it was graded against." },
+                verdict: { type: "string", enum: ["pass", "fail", "error", "no_verdict"], description: "`error`: the scenario could not be run or read. `no_verdict`: it ran and the evidence does not support a verdict. Neither is a pass." },
+                no_verdict_reason: { type: ["string", "null"], enum: ["disputed", "no_tool_evidence", "no_state_evidence", "read_back_unavailable", null] },
+                settled_by: { type: ["string", "null"], enum: ["deterministic", "read_back", "models", null] },
+                agreement: NULLABLE_STRING,
+                reasons: { type: "array", items: { type: "string" }, description: "The grading rationale and any error, personal data as placeholders unless replies were asked for." },
+                failed_assertions: { type: "array", items: { type: "string" } },
+                read_back: {
+                  type: ["object", "null"],
+                  properties: { status: { type: "string", enum: ["confirmed", "contradicted", "unavailable"] }, detail: { type: "string" }, connector: { type: "string" }, mode: { type: "string" } },
+                },
+                graders: {
+                  type: "array",
+                  items: { type: "object", required: ["model", "verdict", "read_placeholders"], properties: { model: { type: "string" }, verdict: { type: "string" }, read_placeholders: { type: "boolean" } } },
+                },
+                graded_on: { type: ["string", "null"], enum: ["trial_free", "workspace_key", "plan_managed", null], description: "What funded the grading." },
+                latency_ms: { type: ["integer", "null"] },
+                created_at: { type: "string", format: "date-time" },
+                response: { ...NULLABLE_STRING, description: "Only with `include=responses` and the `responses` scope." },
+                transcript: { description: "Only with `include=responses` and the `responses` scope; null for a single-message scenario." },
+              },
+            },
           },
         },
         RecordedFailure: {

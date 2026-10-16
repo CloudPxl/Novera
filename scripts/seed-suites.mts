@@ -26,7 +26,8 @@ const dir = path.join(process.cwd(), "data", "suites");
 
 /**
  * Not every JSON file in data/suites is a suite — eu-support-v1.labels.json holds
- * calibration ground truth, eu-support-v5.tiers.json severity tiers. Identify a suite by
+ * calibration ground truth, eu-support-v5.tiers.json severity tiers, *.locales.json language
+ * variants. Identify a suite by
  * its shape rather than its extension, and say why anything else was skipped instead of
  * failing on it.
  */
@@ -49,6 +50,12 @@ for (const file of (await readdir(dir)).filter((f) => f.endsWith(".json"))) {
     // never stored with it, so it can be corrected without a new suite version.
     if (parsed?.tiers && parsed?.suite) {
       console.log(`  not a suite ${file} — severity tiers for ${parsed.suite} v${parsed.version}`);
+      continue;
+    }
+    // A locales sidecar (src/lib/suites/locales.ts): language variants kept beside a suite and
+    // never stored with it, so the suite's digest is the same with or without them.
+    if (parsed?.locales && parsed?.suite) {
+      console.log(`  not a suite ${file} — language variants for ${parsed.suite} v${parsed.version}`);
       continue;
     }
     console.log(`  skipped    ${file}`);

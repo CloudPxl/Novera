@@ -11,11 +11,13 @@ const STATUS = { pass: { tone: "pass", word: "passed" }, fail: { tone: "fail", w
  * first, five shown), and what changed against its baseline. Each line opens the place where it
  * is investigated; the evidence itself is one tab away, never here.
  */
-export function RunOverview({ runId, readiness, findings, comparison, canCompare, undecided }: {
+export function RunOverview({ runId, readiness, findings, comparison, gradersMoved, canCompare, undecided }: {
   runId: string;
   readiness: { label: string; state: Readiness; gap: string | null } | null;
   findings: Array<{ caseId: string; status: "pass" | "fail" | "error"; severity: string; title: string; category: string }>;
   comparison: { fixed: number; newFailures: number; persistentFailures: number; nowErrored: number } | null;
+  /** Scenarios left out of "newly broken" because only the graders moved (src/lib/evidence/graders-moved.ts). */
+  gradersMoved?: { sentence: string; sealedSentence: string | null } | null;
   canCompare: boolean;
   undecided: number;
 }) {
@@ -81,6 +83,11 @@ export function RunOverview({ runId, readiness, findings, comparison, canCompare
                   <li><span className="font-semibold tnum">{comparison.persistentFailures}</span> still failing</li>
                   <li><span className={`font-semibold tnum ${comparison.nowErrored ? "text-warning-text" : ""}`}>{comparison.nowErrored}</span> no result this time</li>
                 </ul>
+                {gradersMoved && (
+                  <p className="mt-3 text-xs leading-relaxed text-ink-soft">
+                    {gradersMoved.sentence}{gradersMoved.sealedSentence ? ` ${gradersMoved.sealedSentence}` : ""}
+                  </p>
+                )}
                 <Link href={`/runs/${runId}?tab=comparison`} className="mt-3 inline-block font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">Why each one moved →</Link>
               </>
             ) : (

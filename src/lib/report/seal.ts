@@ -28,6 +28,14 @@ function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/**
+ * "Base suite eu-support v5, digest 1a2b3c4d5e6f… + 3 workspace extension scenarios (extension
+ * digest 9f8e7d6c5b4a…)" — one sentence for the seal inspector, the report and the receipt.
+ */
+export function extensionSentence(ext: NonNullable<ReportPayload["run"]["extension"]>): string {
+  return `Base suite ${ext.base_suite}, digest ${ext.base_suite_digest.slice(0, 12)}… + ${plural(ext.scenarios, "workspace extension scenario")} (extension digest ${ext.extension_digest.slice(0, 12)}…)`;
+}
+
 /** The sealed fields of this payload, in reading order. */
 export function sealContents(payload: ReportPayload): SealItem[] {
   const { subject, run, coverage } = payload;
@@ -45,6 +53,15 @@ export function sealContents(payload: ReportPayload): SealItem[] {
     detail: `The policy version number (v${subject.policy_version}). The policy text itself is stored with the run, not in this document.`,
   });
   items.push({ label: "Suite", detail: `${run.suite}.` });
+  // Format 15, on an extension only.
+  if (run.extension) items.push({ label: "Suite composition", detail: `${extensionSentence(run.extension)}.` });
+  // Format 15, on a run in another language only.
+  if (run.locale) {
+    items.push({
+      label: "Language",
+      detail: `${run.locale.localised} of ${run.locale.of} scenarios sent in ${run.locale.name}, the rest in English; variant digest ${run.locale.locale_digest.slice(0, 12)}….`,
+    });
+  }
   items.push({
     label: "Run",
     detail: `Run ${run.id}, dated ${run.date}${run.duration_ms != null ? `, and its duration (${(run.duration_ms / 1000).toFixed(1)} s)` : ""}.`,

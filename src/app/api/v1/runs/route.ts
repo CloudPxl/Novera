@@ -2,7 +2,8 @@ import { authenticateApiKey } from "@/lib/api/auth.ts";
 import { listRuns } from "@/lib/api/read.ts";
 import { apiJson, reportUrl } from "@/lib/api/respond.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
-import { RunRefusal, startRun } from "@/lib/workflow/start-run.ts";
+import { startRun } from "@/lib/workflow/start-run.ts";
+import { executeInstruction, runRefusalResponse } from "@/lib/api/run-refusal.ts";
 import { cleanDeclared } from "@/lib/report/manifest.ts";
 import { claimRunRequest, IDEMPOTENCY_KEY, releaseClaim, requestHash } from "@/lib/api/idempotency.ts";
 
@@ -53,6 +54,10 @@ export async function POST(request: Request) {
   const customerDeclared = cleanDeclared({ releaseId: body.release_id, knowledgeBaseRevision: body.knowledge_base_revision });
   if ("error" in customerDeclared) return apiJson({ error: customerDeclared.error }, 400);
 
+  // Optional: the language the scenarios are sent in (en, de, fr, ro). Checked by startRun.
+  const locale = body.locale === undefined || body.locale === null ? null : body.locale;
+  if (locale !== null && typeof locale !== "string") return apiJson({ error: "`locale` must be one of en, de, fr, ro." }, 400);
+
   const idempotencyKey = request.headers.get("idempotency-key");
   if (idempotencyKey !== null && !IDEMPOTENCY_KEY.test(idempotencyKey)) {
     return apiJson({ error: "`Idempotency-Key` must be 1 to 200 visible ASCII characters." }, 400);
@@ -60,14 +65,14 @@ export async function POST(request: Request) {
 
   const db = serviceClient();
   const workspaceId = auth.caller.workspaceId;
-  const next = (id: string) => `POST ${new URL(request.url).origin}/api/v1/runs/${id}/execute until "done" is true.`;
+  const next = (id: string) => executeInstruction(new URL(request.url).origin, id);
 
   // A repeat of a request already made — a pipeline retrying after a timeout — is answered
   // with the run that request started, never a second one (0049).
   let claimedRunId: string | undefined;
   if (idempotencyKey) {
     const claim = await claimRunRequest(db, workspaceId, idempotencyKey,
-      requestHash({ agentId, suiteId, releaseId: customerDeclared.releaseId, knowledgeBaseRevision: customerDeclared.knowledgeBaseRevision }));
+      requestHash({ agentId, suiteId, locale, releaseId: customerDeclared.releaseId, knowledgeBaseRevision: customerDeclared.knowledgeBaseRevision }));
     if (claim.kind === "conflict") {
       return apiJson({ error: "This Idempotency-Key was used for a different request in the last 24 hours. Use a new key for a new run." }, 409);
     }
@@ -94,15 +99,11 @@ export async function POST(request: Request) {
       apiKeyId: auth.caller.keyId,
       customerDeclared,
       runId: claimedRunId,
+      locale,
     });
     return apiJson({ run: { id: run.id, status: "queued" }, next: next(run.id) }, 201);
   } catch (e) {
     if (claimedRunId && idempotencyKey) await releaseClaim(db, workspaceId, idempotencyKey, claimedRunId);
-    // Fair use is a rate, so a pipeline backs off and retries; anything else needs a person.
-    if (e instanceof RunRefusal && (e.blocker === "concurrency" || e.blocker === "fair_use")) {
-      return apiJson({ error: e.message, code: e.blocker }, 429);
-    }
-    if (e instanceof RunRefusal) return apiJson({ error: e.message, ...(e.blocker ? { code: e.blocker } : {}) }, 409);
-    return apiJson({ error: "The run could not be started." }, 500);
+    return runRefusalResponse(e);
   }
 }

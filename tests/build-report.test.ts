@@ -234,9 +234,9 @@ test("format 13 counts the uncorroborated passes apart from the uncorroborated f
   assert.equal(c.uncorroborated_passes, 1);
 });
 
-test("the payload is format 14, and states what was tested only when the run recorded it", () => {
+test("the payload is format 15, and states what was tested only when the run recorded it", () => {
   const { payload } = buildReport(input());
-  assert.equal((payload as { novera: { format: number } }).novera.format, 14);
+  assert.equal((payload as { novera: { format: number } }).novera.format, 15);
   assert.equal((payload as { run: Record<string, unknown> }).run.fingerprint, undefined, "no manifest, no claim");
 
   const fingerprint = [

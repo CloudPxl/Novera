@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireWorkspace, gate } from "@/lib/auth/session.ts";
-import { mintKey } from "@/lib/api/keys.ts";
+import { mintKey, scopeProblem, scopesFromChoices } from "@/lib/api/keys.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 
 export interface KeyFormState {
@@ -18,7 +18,8 @@ const MAX_ACTIVE_KEYS = 10;
  * Creates a key for this workspace — read-only unless the person ticked "can also start
  * runs", which spends a trial run or grading on their own model key each time, or "can
  * also ask for drafts and diagnoses", which spends model calls and stores proposals a
- * person then decides. The key is in the reply and nowhere else.
+ * person then decides, or "can also run single-scenario checks" (`probe`). The key is in
+ * the reply and nowhere else.
  */
 export async function createApiKey(_prev: KeyFormState, form: FormData): Promise<KeyFormState> {
   const { user, workspace } = await requireWorkspace();
@@ -35,6 +36,15 @@ export async function createApiKey(_prev: KeyFormState, form: FormData): Promise
     return { error: `This workspace already has ${MAX_ACTIVE_KEYS} active keys. Revoke one you no longer use first.` };
   }
 
+  const scopes = scopesFromChoices({
+    run: form.get("canRun") === "on",
+    write: form.get("canWrite") === "on",
+    responses: form.get("canReadResponses") === "on",
+    probe: form.get("canProbe") === "on",
+  });
+  const problem = scopeProblem(scopes);
+  if (problem) return { error: problem };
+
   let minted;
   try {
     minted = mintKey();
@@ -47,12 +57,7 @@ export async function createApiKey(_prev: KeyFormState, form: FormData): Promise
     name,
     prefix: minted.prefix,
     key_hash: minted.hash,
-    scopes: [
-      "read",
-      ...(form.get("canRun") === "on" ? ["run"] : []),
-      ...(form.get("canWrite") === "on" ? ["write"] : []),
-      ...(form.get("canReadResponses") === "on" ? ["responses"] : []),
-    ],
+    scopes,
     created_by: user.id,
   });
   if (error) return { error: `The key could not be created: ${error.message}` };

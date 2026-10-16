@@ -13,7 +13,10 @@ import { readinessOf, READINESS_LABEL } from "@/lib/report/readiness.ts";
 import type { ReportPayload } from "@/lib/report/payload.ts";
 import { ReadinessPanel } from "./readiness.tsx";
 import { DELTA_CAUSE_SENTENCE, DELTA_LABEL, type DeltaCategory } from "@/lib/evidence/compare.ts";
-import { comparableRuns, loadComparison } from "@/lib/evidence/comparison-loader.ts";
+import { comparableRuns, loadComparison, localeOf } from "@/lib/evidence/comparison-loader.ts";
+import { compositionFromManifest } from "@/lib/report/manifest.ts";
+import { extensionSentence } from "@/lib/report/seal.ts";
+import { gradersMovedNote } from "@/lib/evidence/graders-moved.ts";
 import { loadStability } from "@/lib/evidence/stability-history.ts";
 import { alignment, latestReviews, withFindingsApplied, type VerdictReview } from "@/lib/evidence/reviews.ts";
 import { ReviewVerdict, ReviewHistory, ReissueReport, type ReviewEntry } from "./review.tsx";
@@ -40,11 +43,13 @@ import { CaseTable, CategoryCard, type CaseRow } from "./case-table.tsx";
 import { BaselinePicker } from "./baseline-picker.tsx";
 import { OtherWorkspace } from "@/components/shell/other-workspace.tsx";
 import { SealInspector } from "@/components/ui/seal-inspector.tsx";
+import { CLIENT_EXPLAINS, explainEntries } from "@/lib/explainability/entries.ts";
 import { BadgeShare } from "@/components/ui/badge-share.tsx";
 import { badgeShareFor } from "@/lib/report/badge.ts";
 import { can } from "@/lib/auth/permissions.ts";
 import { NOVERA_ATTRIBUTION, SEAL_ATTRIBUTION, sealContents } from "@/lib/report/seal.ts";
-import { DiagnoseButton, ProposalCard, RetestButton, RetestHistory, type Proposal, type Retest } from "./diagnose.tsx";
+import { DiagnoseButton, ProposalCard, RetestHistory, type Proposal, type Retest } from "./diagnose.tsx";
+import { TryScenarioAlone } from "@/components/ui/try-scenario-alone.tsx";
 
 export const metadata: Metadata = { title: "Run · Novera" };
 export const dynamic = "force-dynamic";
@@ -281,7 +286,7 @@ export default async function RunPage({
   // fixed/broken list out of scenarios that were never the same scenarios, so the selector
   // cannot offer one.
   const comparable = settled && suite
-    ? await comparableRuns(db, { id, agentId: run.agent_id as string }, { key: suite.key as string, owner: (suite.workspace_id as string | null) ?? null })
+    ? await comparableRuns(db, { id, agentId: run.agent_id as string, locale: localeOf(run.manifest) }, { key: suite.key as string, owner: (suite.workspace_id as string | null) ?? null })
     : [];
   // The newest completed run before this one: what "Compare with previous run" opens.
   const previousRun = comparable.find((r) => r.createdAt < (run.created_at as string)) ?? null;
@@ -313,6 +318,16 @@ export default async function RunPage({
         nowErrored: idsIn("no_result_now"),
         movedSameReply: idsIn("verdict_moved_same_reply"),
       }
+    : null;
+
+  // The scenarios left out of "newly broken" because only the graders moved, and whether the sealed
+  // report (written when the run finished, never edited) counts them differently.
+  const gradersMoved = deltas
+    ? gradersMovedNote({
+        deltas: deltas.deltas,
+        baselineRunId,
+        sealedComparison: (report?.payload as unknown as ReportPayload | null | undefined)?.comparison ?? null,
+      })
     : null;
 
   // Which of the moved scenarios have moved before with nothing changed. Only asked
@@ -475,7 +490,7 @@ export default async function RunPage({
               // Not a button that can only refuse: say why, and what works instead.
               <p className="text-sm leading-relaxed text-ink-soft">
                 A diagnosis reads the agent&rsquo;s reply, which was removed under this workspace&rsquo;s retention
-                setting. Retest the scenario to get a fresh one.
+                setting. Try the scenario alone for a fresh one.
               </p>
             ) : (
               <DiagnoseButton runCaseId={c.id as string} hasProposal={forCase.length > 0} />
@@ -486,10 +501,10 @@ export default async function RunPage({
                 proposal={p}
                 next={p.id === approvedLast?.id ? (
                   <>
-                    <RetestButton runCaseId={c.id as string} newestPolicyVersion={newestVersion} />
+                    <TryScenarioAlone target={{ runCaseId: c.id as string }} newestPolicyVersion={newestVersion} />
                     {retestedSince && (
                       <p className="mt-2 text-xs text-ink-soft">
-                        Retested against policy v{retestedSince.policyVersion}:{" "}
+                        Checked alone against policy v{retestedSince.policyVersion}:{" "}
                         {retestedSince.status === "pass" ? "it now passes." : retestedSince.status === "fail" ? "it still fails." : "no verdict."}
                       </p>
                     )}
@@ -504,7 +519,7 @@ export default async function RunPage({
                 ) : undefined}
               />
             ))}
-            {!approvedLast && <RetestButton runCaseId={c.id as string} newestPolicyVersion={newestVersion} />}
+            {!approvedLast && <TryScenarioAlone target={{ runCaseId: c.id as string }} newestPolicyVersion={newestVersion} />}
             <RetestHistory retests={retestsByCase.get(c.id as string) ?? []} />
           </>
         )}
@@ -519,6 +534,7 @@ export default async function RunPage({
   }
 
   const undecided = (proposals ?? []).filter((p) => p.status === "proposed").length;
+  const composition = compositionFromManifest(run.manifest);
   const caseIdOf = new Map(rows.map((c) => [c.id as string, c.case_id as string]));
   const suiteLabel = suite ? `${suite.name} v${suite.version}` : "Suite";
 
@@ -574,6 +590,15 @@ export default async function RunPage({
             {scanBuild ? <> in the <Link href={`/builder/${scanBuild}`} className="font-medium underline underline-offset-2">Suite Builder</Link></> : " in the Suite Builder"} and publish the suite.
           </p>
         </div>
+      )}
+
+      {/* What the manifest declared about the suite's composition and language, when either
+          differs from an official suite sent in English. */}
+      {(composition.extension || composition.locale) && (
+        <p className="mt-3 text-sm text-ink-soft">
+          {composition.extension && <>{extensionSentence(composition.extension)}. </>}
+          {composition.locale && <>{composition.locale.localised} of {composition.locale.of} scenarios sent in {composition.locale.name}; the rest in English.</>}
+        </p>
       )}
 
       {!settled ? (
@@ -666,6 +691,7 @@ export default async function RunPage({
             )}
             {report?.content_hash && (
               <SealInspector
+                explain={explainEntries(CLIENT_EXPLAINS.sealInspector)}
                 hash={report.content_hash as string}
                 items={sealContents(report.payload as unknown as ReportPayload)}
                 exportPath={reportGone ? null : `/api/reports/${encodeURIComponent(report.token as string)}/export?format=json`}
@@ -697,6 +723,7 @@ export default async function RunPage({
               findings={caseRows.filter((c) => c.status !== "pass").sort((x, y) => SEVERITY_RANK[x.severity] - SEVERITY_RANK[y.severity] || x.caseId.localeCompare(y.caseId))
                 .map((c) => ({ caseId: c.caseId, status: c.status, severity: c.severity, title: c.obligationLabel, category: c.categoryLabel }))}
               comparison={comparison ? { fixed: comparison.fixed.length, newFailures: comparison.newFailures.length, persistentFailures: comparison.persistentFailures.length, nowErrored: comparison.nowErrored.length } : null}
+              gradersMoved={gradersMoved}
               canCompare={comparable.length > 0}
               undecided={undecided}
             />
@@ -740,7 +767,7 @@ export default async function RunPage({
             <div className="flex items-center"><h2 className="type-h2">Scenarios</h2><Help label="Scenarios">
                 Every test in this run. Passed and failed are verdicts; &ldquo;no result&rdquo; means the agent
                 errored, the grading models could not agree, or a claimed action could not be checked — never
-                counted as a pass. Open one to read the exchange, ask for a diagnosis, retest it or record your own finding.
+                counted as a pass. Open one to read the exchange, ask for a diagnosis, try it alone or record your own finding.
               </Help></div>
             {caseRows.length === 0 ? (
               <div className="mt-3">
@@ -751,6 +778,7 @@ export default async function RunPage({
             ) : (
               <div className="mt-3 rounded-panel border border-line bg-surface p-3 shadow-card sm:p-4">
                 <CaseTable
+                  explain={explainEntries(CLIENT_EXPLAINS.caseTable)}
                   cases={
                     // The regression lens needs the comparison the ribbon below already
                     // computed. Derived here rather than in the matrix so both read the
@@ -825,6 +853,12 @@ export default async function RunPage({
                       <ChangeGroup title="No result this time" tone={CHANGE_TONES.nowErrored} ids={comparison.nowErrored}
                         empty="Every scenario produced a verdict." />
                     </div>
+
+                    {gradersMoved && (
+                      <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+                        {gradersMoved.sentence}{gradersMoved.sealedSentence ? ` ${gradersMoved.sealedSentence}` : ""}
+                      </p>
+                    )}
 
                     {/* The consensus story: a verdict that moved on a byte-identical reply is the
                         graders moving. It is named here and counted in none of the lists above. */}
@@ -917,7 +951,7 @@ export default async function RunPage({
           {tab === "evidence" && (
             <div className="mt-6 space-y-6">
           {readiness && report?.token && (
-            <ReadinessPanel state={readiness.state} label={READINESS_LABEL[readiness.state]} checks={readiness.checks} token={report.token as string} />
+            <ReadinessPanel explain={explainEntries(CLIENT_EXPLAINS.readiness)} state={readiness.state} label={READINESS_LABEL[readiness.state]} checks={readiness.checks} token={report.token as string} />
           )}
 
               {report && (

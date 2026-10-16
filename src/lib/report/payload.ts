@@ -88,6 +88,19 @@ export interface ReportPayload {
       value: string | null;
       provenance: "recorded" | "declared" | "not_supplied";
     }>;
+    /**
+     * Format 15, and only on a run of a suite extension: the official suite version it carried
+     * unchanged, the digest of those scenarios (equal to that suite's own digest), and how many
+     * of the workspace's own approved scenarios ran after them, with their digest. Absent on
+     * formats 1–14 and on every run of any other suite.
+     */
+    extension?: { base_suite: string; base_suite_digest: string; scenarios: number; extension_digest: string };
+    /**
+     * Format 15, and only on a run sent in a language other than English: the language, how many
+     * of the suite's scenarios were sent in it (the rest in English), and the digest of the
+     * variants used. Absent on formats 1–14 and on English runs, which is what they all were.
+     */
+    locale?: { code: string; name: string; localised: number; of: number; locale_digest: string };
   };
   /** Absent on format 1. */
   grade?: {

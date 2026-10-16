@@ -19,7 +19,10 @@ import { ScheduleCard, ScheduleForm, type ScheduleView } from "./schedules.tsx";
 import { ConnectionEditor, ArchiveAgent } from "./manage.tsx";
 import { summariseRun } from "../../dashboard/summary.ts";
 import { OtherWorkspace } from "@/components/shell/other-workspace.tsx";
-import { PageHeader, Panel, Rows, TabNav } from "@/components/ui/page.tsx";
+import { Disclosure, PageHeader, Panel, Rows, TabNav } from "@/components/ui/page.tsx";
+import { CodeBlock } from "@/components/docs/code-block.tsx";
+import { githubWorkflow, WORKFLOW_PATH } from "@/lib/ci/workflow.ts";
+import { appOrigin } from "@/lib/webhooks/deliver.ts";
 import { formatWhen } from "@/lib/format/when.ts";
 import { can } from "@/lib/auth/permissions.ts";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
@@ -114,6 +117,13 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
         : "Runs need a plan in force. When none is, the schedule pauses and says why.";
   // A block about paying is for an owner or admin to resolve; anyone else is told who can.
   const blockedRemedy = needsBillingAction(entitlement.blocker) && !can(role, "billing.manage") ? null : remedyFor(entitlement.blocker);
+
+  // The CI workflow pins the newest version of each suite key: the default first, then the rest.
+  // Suites arrive newest version first within a key, so the first row of each key is the one pinned.
+  const newestByKey = new Map<string, string>();
+  for (const s of suites ?? []) if (/^[a-z0-9][a-z0-9._-]*$/.test(s.key as string) && !newestByKey.has(s.key as string)) newestByKey.set(s.key as string, `${s.key as string}-v${s.version as number}`);
+  const ciSuite = newestByKey.get("eu-support") ?? [...newestByKey.values()][0] ?? "eu-support";
+  const ciSuiteChoices = [...newestByKey.values()].filter((k) => k !== ciSuite).slice(0, 4);
 
   const latestProbe = probes?.[0];
   const latestPolicy = policies?.[0];
@@ -397,6 +407,25 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                 current={(agent.verification as { url?: string; authHeaderName?: string } | null) ?? null}
               />
             </section>
+            {!archivedAt && (
+            <section>
+              <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Gate pull requests in CI</h2><Help label="Gating pull requests">A GitHub Actions workflow that runs a pinned suite against this agent for every pull request and push to main, and fails the check when a scenario fails or the evidence is incomplete. One run per commit; a newer commit on the same branch stops the older one&rsquo;s unfinished run.</Help></div>
+              <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+                Needs an API key that can start runs, stored in the repository as the secret <code className="font-mono text-ink">NOVERA_API_KEY</code>.{" "}
+                <Link href="/docs/integration-github-actions" className="underline underline-offset-2 hover:text-ink">How the gate works</Link>
+              </p>
+              <div className="mt-3">
+                <Disclosure summary={<>Workflow file for this agent <span className="font-mono text-xs font-normal text-ink-faint">{WORKFLOW_PATH}</span></>}>
+                  <p className="mb-3 text-xs leading-relaxed text-ink-faint">
+                    Runs <code className="font-mono">{ciSuite}</code> on every change.
+                    {ciSuiteChoices.length > 0 && <> To gate on another suite, change <code className="font-mono">NOVERA_SUITE</code> to its key and version, for example{" "}
+                    {ciSuiteChoices.map((k, i) => <span key={k}>{i > 0 ? ", " : ""}<code className="font-mono">{k}</code></span>)}.</>}
+                  </p>
+                  <CodeBlock id={`ci-workflow-${agent.id}`} lang="yaml" text={githubWorkflow({ agentId: agent.id as string, suite: ciSuite, origin: appOrigin() })} />
+                </Disclosure>
+              </div>
+            </section>
+            )}
             <section>
               <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">{archivedAt ? "Archived" : "Archive this agent"}</h2><Help label="Archiving">An archived agent is hidden from lists and takes no new run, retest or schedule. Nothing it produced is deleted, and it can be restored. Owner or admin.</Help></div>
               <ArchiveAgent agentId={agent.id} name={agent.name as string} archived={archivedAt ? { at: archivedAt } : null} canArchive={can(role, "agent.archive")} />

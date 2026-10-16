@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
-import { notifyRunFinished } from "@/lib/webhooks/deliver.ts";
+import { abortUnfinishedRun } from "@/lib/workflow/abort-run.ts";
 
 /**
  * Stops a run that has not finished — one waiting for a grading slot, or one nobody
@@ -19,20 +19,13 @@ export async function stopRun(_prev: FormState, form: FormData): Promise<FormSta
   const admin = gated.admin;
 
   const who = user.email ?? "a member of this workspace";
-  const { data, error } = await admin.from("runs")
-    .update({
-      status: "aborted",
-      error: `Stopped by ${who} before it finished. Its graded scenarios are kept; no report was sealed.`,
-      finished_at: new Date().toISOString(),
-      lease_until: null,
-      stopped_by: user.id,
-    })
-    .eq("id", runId).eq("workspace_id", workspace.id).in("status", ["queued", "running"])
-    .select("id");
-  if (error) return { error: `The run could not be stopped: ${error.message}` };
-  if (!data?.length) return { error: "This run has already finished." };
+  const result = await abortUnfinishedRun({
+    client: admin, workspaceId: workspace.id, runId, stoppedBy: user.id,
+    reason: `Stopped by ${who} before it finished. Its graded scenarios are kept; no report was sealed.`,
+  });
+  if (result.error) return { error: `The run could not be stopped: ${result.error}` };
+  if (!result.stopped) return { error: "This run has already finished." };
 
-  await notifyRunFinished(admin, workspace.id, runId, Date.now() + 8_000);
   revalidatePath(`/runs/${runId}`);
   return { notice: "Stopped." };
 }

@@ -30,6 +30,8 @@ Under the run's verdict counts, the run page also shows how the grading went: fo
 
 A failed scenario can be diagnosed: a model reads the stored evidence and proposes a change to the policy version the run used. It is a proposal, and nothing changes until you approve it. Approving creates a new policy version; it does not change this run or its report. The approved change then shows its next steps in place: retest this scenario against the new version, and rerun the whole suite compared with this run, so a fix here is not a break somewhere else.
 
+**Try this scenario alone** sends one failed or no-result scenario to your agent again, against the newest policy version, and grades it exactly as a run would. The result appears in place, labelled "Single-scenario check — not a sealed run.": it is never sealed, never counted in a score, a coverage figure or a report, and never spends one of the trial's runs. A destructive scenario is refused against an agent marked as production, as in a run. A workspace can run 20 of these checks in any hour; the API offers the same check (see **API**).
+
 A scenario with no result says why: whether your agent received it at all, who acts on it (your agent, your configuration, Novera's graders, or you), whether a retest could repeat something your agent did, and the next step. Retesting sends the scenario to your agent again, so where your agent received it and can act, Novera says to check your own system first. A scenario with no result has no failure to explain, so it is not diagnosed, and editing the policy will not change it. **Review → Evidence incomplete** groups these across your recent runs by reason.
 
 ## When you disagree with a verdict

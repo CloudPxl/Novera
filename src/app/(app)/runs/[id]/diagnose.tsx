@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { requestDiagnosis, decideDiagnosis, retestOneCase, type FormState } from "@/lib/workflow/actions.ts";
+import { requestDiagnosis, decideDiagnosis, type FormState } from "@/lib/workflow/actions.ts";
 import { SubmitButton, Spinner } from "@/components/ui/button.tsx";
 import { Card, Badge } from "@/components/ui/primitives.tsx";
 
@@ -101,7 +101,7 @@ export function ProposalCard({ proposal, next }: {
           <p className="text-sm font-medium text-ink">Next: check that it worked</p>
           <p className="mt-1 text-xs leading-relaxed text-ink-faint">
             Approving changed the policy, not this run: its verdicts and its report stay as they were.
-            Retest this scenario first, then rerun the suite so a fix here is not a break somewhere else.
+            Try this scenario alone first, then rerun the suite so a fix here is not a break somewhere else.
           </p>
           {next}
         </section>
@@ -198,37 +198,7 @@ function DiffView({ quotedOld, proposedNew }: { quotedOld: string | null; propos
   );
 }
 
-/**
- * Re-runs this one scenario against the policy as it stands now.
- *
- * Labelled as what it is. It is not a run: it produces no score, moves no coverage
- * figure and never appears in a client report — only a whole suite against one policy
- * version does that. Saying so on the button is cheaper than explaining later why a
- * green retest did not change the report the client is holding.
- */
-export function RetestButton({ runCaseId, newestPolicyVersion }: { runCaseId: string; newestPolicyVersion?: number | null }) {
-  const [state, submit] = useActionState<FormState, FormData>(retestOneCase, {});
-
-  return (
-    <form action={submit} className="mt-3">
-      <input type="hidden" name="runCaseId" value={runCaseId} />
-      <div className="flex flex-wrap items-center gap-3">
-        <SubmitButton variant="secondary" size="sm" pendingLabel="Re-running this scenario…">
-          Retest this scenario only
-        </SubmitButton>
-        <span className="text-xs text-ink-faint">
-          Against {newestPolicyVersion ? `policy v${newestPolicyVersion}, the newest` : "the newest policy version"}. Not counted in any score or report.
-        </span>
-      </div>
-      {state.notice && <p className="mt-2 text-xs font-medium text-pass-text">{state.notice}</p>}
-      {state.error && (
-        <p role="alert" className="mt-2 text-xs font-medium text-fail-text">{state.error}</p>
-      )}
-    </form>
-  );
-}
-
-/** Previous retests of this scenario, newest first. Evidence, not a score. */
+/** Earlier single-scenario checks of this scenario, newest first. Evidence, not a score. */
 export interface Retest {
   id: string;
   status: "pass" | "fail" | "error";
@@ -243,7 +213,7 @@ export function RetestHistory({ retests }: { retests: Retest[] }) {
 
   return (
     <div className="mt-3">
-      <p className="type-pill text-ink-faint">Retests of this scenario</p>
+      <p className="type-pill text-ink-faint">Earlier single-scenario checks</p>
       <ul className="mt-1.5 space-y-1.5">
         {retests.map((r) => (
           <li key={r.id} className="flex flex-wrap items-center gap-2 text-xs text-ink-soft">

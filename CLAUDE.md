@@ -93,6 +93,9 @@ someone with the service role, not merely someone using the application.
 | A production failure is stored redacted — the original only as a hash — cannot be edited, and becomes a test only as a draft a person approves, linked to it for good; one sent through the API needs a `write` key, names it, and the same text twice is one record | 0031, 0044, `src/lib/regressions/record.ts` |
 | Only the migration runner can read or change the migration ledger, which decides what runs: it is created closed, and the runner refuses a ledger any API role can reach rather than trust it | 0045, `scripts/migrate.mts`, `verify:db` |
 | A workspace key grades only on models it was proved to reach, and one it cannot reach refuses the run rather than erroring every case | 0025 + 0026, route built from the key |
+| A CI pipeline gets one run per commit, suite and language however often it retries (`POST /api/v1/ci/trigger`, started through `startRun`); a newer commit on the branch stops the older one's unfinished run, aborted and never sealed; the gate's exit code is the report's own (0–4, unchanged) | 0070 `ci_triggers`, `src/lib/ci/`, `tests/block5-ci.test.ts` |
+| A suite extension is the official suite byte for byte plus at most five scenarios the workspace approved, refused by the database otherwise; the run records the base suite digest and a separate extension digest. A language variant lives beside a suite, never in it: base digests never move, a variant replaces only the input and any English text rule, and the run states how many scenarios were sent in which language | 0071, `src/lib/suites/extension.ts`, `src/lib/suites/locales.ts`, `tests/block5-extensions-locales.test.ts` |
+| A single-scenario check is never a run: it writes no run, case, score or report and spends no run allowance, it keeps the production guard, and it is limited to 20 per workspace per hour, counted under a lock | 0072, `src/lib/workflow/scenario-check.ts`, `tests/block5-probe.test.ts` |
 | A person's finding sits beside a verdict and never replaces it; it needs a reason, freezes the verdict it read, and cannot be filed against another workspace's case | 0028 |
 | The in-app assistant can link only to this workspace's own paths and offer only a run the person presses; it never attests, never sees keys or policy text, and refuses key-shaped input before any model call | `src/lib/assistant/core.ts`, tested |
 | A review reaches a client only as a *new* sealed report that carries the original unchanged, names it by hash, and labels the reviewers as the tested party — never as a changed score | `src/lib/report/reissue.ts`, format 11 |
@@ -217,6 +220,8 @@ data/packs/           curated baseline packs — selections of eu-support v5, by
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites (eu-support v1–v5; eu-gdpr-support, e-commerce-refund, fintech-kyc v1), calibration labels, and `.tiers.json` sidecars (triage tiers, not sealed)
 src/lib/suites/       validation, the suite digest, tiers by scenario definition, computed changelogs, the catalog (/scenarios?tab=catalog)
+src/lib/ci/           CI gating: trigger parsing, commit dedupe and supersede decisions, the exit-code gate, the GitHub Actions workflow generator
+src/lib/checks/       the single-scenario check's label, verdict words and view state
 src/lib/fixture/      the scripted fixture's per-suite replies and read-back records (eu-support's live in the route)
 src/lib/explainability/ the glossary behind every `?` (`<ExplainTrigger>`); one disclosure implementation with `Help`
 data/docs/            the published documentation, seeded into the database
@@ -258,7 +263,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 1034 unit tests | free |
+| `npm test` | 1113 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -311,7 +316,7 @@ they drive the scripted fixture at `/api/test-agent`.
 
 - **A report payload change breaks every document already in a client's hands.** An added
   field ships with its absence branch in the same commit. Two reports were returning 500
-  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 14); `novera report verify` re-hashes all of them.
+  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 15); `novera report verify` re-hashes all of them.
 - **A model's rendering of our data is not our data.** The judge echoed assertions back
   with the numbering the prompt added; storing that verbatim made every failed case render
   as fully passing.

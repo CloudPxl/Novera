@@ -14,6 +14,8 @@ import {
 import { lookupSeal } from "../lookup.ts";
 import { DigestForm } from "../digest-form.tsx";
 import { CHIP, ReceiptDetailsList } from "../receipt-details.tsx";
+import { ExplainProvider } from "@/components/ui/explain-context.tsx";
+import { CLIENT_EXPLAINS, explainEntries } from "@/lib/explainability/entries.ts";
 import { hasSessionCookie } from "../session-cookie.ts";
 
 export const metadata: Metadata = {
@@ -197,7 +199,9 @@ function Verified({ digest, details }: { digest: string; details: ReceiptDetails
         </div>
       )}
 
-      <ReceiptDetailsList details={details} />
+      <ExplainProvider entries={explainEntries(CLIENT_EXPLAINS.receiptDetails)}>
+        <ReceiptDetailsList details={details} />
+      </ExplainProvider>
     </>
   );
 }

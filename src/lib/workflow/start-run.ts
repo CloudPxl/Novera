@@ -7,6 +7,8 @@ import { notifyRunFinished } from "../webhooks/deliver.ts";
 import { track } from "../analytics/track.ts";
 import type { Blocker } from "../billing/entitlement.ts";
 import { CONCURRENCY_REFUSAL, FAIR_USE_REFUSAL } from "../billing/limits.ts";
+import { LOCALE_NAMES, localise, parseLocale, type Locale } from "../suites/locales.ts";
+import type { SuiteCase } from "../runner/types.ts";
 
 /**
  * Starting a run, and advancing one — the single implementation behind the run button
@@ -44,6 +46,12 @@ function refusalFromInsert(message: string): RunRefusal | null {
   return null;
 }
 
+/** A run's language from its manifest's `locale`: absent (every run before variants) is English. */
+export function runLocale(value: unknown): Locale {
+  const parsed = parseLocale(value);
+  return typeof parsed === "string" ? parsed : "en";
+}
+
 export const ARCHIVED_AGENT = "This agent is archived, so no new run can start for it. Its runs and reports are kept; an owner or admin can restore it from its Connection tab.";
 
 export async function startRun(args: {
@@ -76,8 +84,16 @@ export async function startRun(args: {
    * on purpose, and the database refuses it a report (0056).
    */
   exploratory?: boolean;
+  /**
+   * The language the customer's messages are sent in: en (the default), de, fr or ro. A
+   * scenario with no variant in that language is sent in English; the manifest declares which
+   * were localised and the digest of the variants, before anything is sent.
+   */
+  locale?: string | null;
 }): Promise<{ id: string }> {
   const { client, workspaceId, agentId } = args;
+  const locale = parseLocale(args.locale);
+  if (typeof locale !== "string") throw new RunRefusal(locale.error);
 
   const { data: agent } = await client
     .from("agents").select("attestation_text, archived_at").eq("id", agentId).eq("workspace_id", workspaceId).maybeSingle();
@@ -94,7 +110,7 @@ export async function startRun(args: {
   // A named suite is re-checked: a run must never name a suite the workspace cannot
   // read. With none named, the newest built-in version — pinning `version 1` once ran a
   // 16-scenario suite for anyone who never opened the dropdown.
-  const suiteQuery = client.from("suites").select("id, workspace_id, approval");
+  const suiteQuery = client.from("suites").select("id, workspace_id, approval, cases");
   const { data: suite } = args.suiteId
     ? await suiteQuery.eq("id", args.suiteId).maybeSingle()
     : await suiteQuery.is("workspace_id", null).eq("key", "eu-support")
@@ -109,19 +125,30 @@ export async function startRun(args: {
       : "An exploratory scan runs only a Suite Builder scan suite.");
   }
 
+  // A language with no variant in this suite would run every scenario in English under another
+  // name: refused, so the person chooses English knowingly.
+  if (locale !== "en" && localise(Array.isArray(suite.cases) ? (suite.cases as SuiteCase[]) : [], locale).localisedIds.length === 0) {
+    throw new RunRefusal(`No scenario of this suite has a ${LOCALE_NAMES[locale]} variant. Run it in English, or choose a suite with ${LOCALE_NAMES[locale]} variants.`);
+  }
+
+  // A baseline is only ever a run in the same language: a scenario sent in German is not the
+  // same test as the one sent in English, so its verdicts cannot be fixes or regressions of it.
   let baselineId: string | null = null;
   if (args.baselineRunId) {
     const { data: chosen } = await client
-      .from("runs").select("id").eq("id", args.baselineRunId).eq("workspace_id", workspaceId)
+      .from("runs").select("id, locale:manifest->>locale").eq("id", args.baselineRunId).eq("workspace_id", workspaceId)
       .eq("agent_id", agentId).eq("suite_id", suite.id).maybeSingle();
     if (!chosen) throw new RunRefusal("The run to compare against is not this agent's on this suite.");
+    if (runLocale(chosen.locale) !== locale) {
+      throw new RunRefusal(`The run to compare against was sent in ${LOCALE_NAMES[runLocale(chosen.locale)]}, and this one would be sent in ${LOCALE_NAMES[locale]}. Runs in different languages are not compared scenario by scenario.`);
+    }
     baselineId = chosen.id as string;
   } else {
     const { data: previous } = await client
-      .from("runs").select("id").eq("agent_id", agentId).eq("workspace_id", workspaceId)
+      .from("runs").select("id, locale:manifest->>locale").eq("agent_id", agentId).eq("workspace_id", workspaceId)
       .eq("status", "completed").eq("suite_id", suite.id)
-      .order("created_at", { ascending: false }).limit(1).maybeSingle();
-    baselineId = (previous?.id as string | undefined) ?? null;
+      .order("created_at", { ascending: false }).limit(20);
+    baselineId = ((previous ?? []).find((r) => runLocale(r.locale) === locale)?.id as string | undefined) ?? null;
   }
 
   // Billing decides (D3, 2026-10-12): the trial, then a plan or a grant, own key or not; then
@@ -137,6 +164,7 @@ export async function startRun(args: {
     judgeSource: entitlement.judgeSource, routes: plannedRoutes(entitlement),
     declared: args.customerDeclared,
     runId: args.runId,
+    locale,
   });
 
   const { data: run, error } = await client

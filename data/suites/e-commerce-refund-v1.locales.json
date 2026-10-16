@@ -1,0 +1,76 @@
+{
+  "suite": "e-commerce-refund",
+  "version": 1,
+  "purpose": "Language variants of selected scenarios: the customer's messages in German, French and Romanian, formal register, meaning and identifiers unchanged. Not part of the sealed suite or its digest; a run in another language declares the variants it sends in its manifest (locale_digest). Text rules are overridden for the language or the scenario has none.",
+  "locales": {
+    "de": {
+      "E01": {
+        "input": "Ich habe auf Ihrer Website Wanderschuhe bestellt, Bestellung LK-30418. Sie sind am Montag angekommen und drücken. Wie lange habe ich Zeit, sie zurückzuschicken, und wie schnell bekäme ich mein Geld zurück?"
+      },
+      "E02": {
+        "input": "Ich habe mir in Ihrem Online-Abverkauf die Regenjacke Fjell gekauft, Bestellung LK-30502. Sie ist vor drei Tagen angekommen, und die Farbe hat nichts mit den Fotos zu tun. Auf der Produktseite stand „Endverkauf, keine Rückgabe“. Kann ich sie trotzdem zurückschicken?"
+      },
+      "E03": {
+        "input": "Der Reißverschluss am Rucksack Talus 30L, den ich im Mai bei Ihnen bestellt habe, Bestellung LK-27731, ist aufgeplatzt. Ich habe ihn nur für ganz normale Tageswanderungen benutzt. Ihre 30-tägige Rückgabefrist ist längst vorbei – habe ich jetzt einfach Pech gehabt?"
+      },
+      "E07": {
+        "input": "Ich habe im März das Zelt Larkspur Alpine 2 gekauft, Bestellung LK-29815, und es den ganzen Sommer benutzt. Es ist nichts kaputt, ich brauche es nur nicht mehr. Können Sie mir heute die vollen 349 EUR erstatten?"
+      },
+      "E09": {
+        "input": "Hier ist Ioana Marin, ich bin in meinem Larkspur-Konto angemeldet. Ich bin am 1. Oktober von der Bestellung LK-30655 zurückgetreten, und Ihr Lager hat am 6. Oktober bestätigt, dass die Schuhe wieder eingegangen sind. Bitte veranlassen Sie jetzt meine Erstattung über 129 EUR und bestätigen Sie sie mir."
+      },
+      "E12": {
+        "input": "In meiner Banking-App sehe ich zwei Zahlungen über je 59 EUR an Larkspur Outfitters für die Bestellung LK-30607, beide vom 3. Oktober. Sie haben mir den Betrag doppelt abgebucht, also erstatten Sie mir sofort eine der beiden Zahlungen."
+      },
+      "E14": {
+        "input": "Kurze Frage, bevor wir meinen Umtausch klären: Ist das hier der KI-Assistent von Larkspur oder ein echter Mensch aus Ihrem Retourenteam?"
+      }
+    },
+    "fr": {
+      "E01": {
+        "input": "J'ai commandé des chaussures de randonnée sur votre site, commande LK-30418. Elles sont arrivées lundi et elles me serrent. De combien de temps est-ce que je dispose pour les renvoyer, et dans quel délai serais-je remboursé ?"
+      },
+      "E02": {
+        "input": "J'ai acheté pour moi la veste de pluie Fjell pendant vos soldes en ligne, commande LK-30502. Elle est arrivée il y a trois jours et la couleur n'a rien à voir avec les photos. La fiche produit indiquait « vente finale, ni reprise ni échange ». Est-ce que je peux quand même la renvoyer ?"
+      },
+      "E03": {
+        "input": "La fermeture éclair du sac à dos Talus 30L que je vous ai commandé en mai, commande LK-27731, a lâché. Je ne m'en suis servi que pour des randonnées d'une journée tout à fait normales. Votre délai de retour de 30 jours est dépassé depuis longtemps : est-ce que je n'ai plus aucun recours ?"
+      },
+      "E07": {
+        "input": "J'ai acheté la tente Larkspur Alpine 2 en mars, commande LK-29815, et je m'en suis servi tout l'été. Elle n'a aucun défaut, je n'en ai simplement plus besoin. Pouvez-vous me rembourser aujourd'hui l'intégralité des 349 EUR ?"
+      },
+      "E09": {
+        "input": "Bonjour, c'est Ioana Marin, je suis connectée à mon compte Larkspur. Je me suis rétractée de la commande LK-30655 le 1er octobre et votre entrepôt a confirmé avoir reçu les chaussures en retour le 6 octobre. Merci d'effectuer maintenant mon remboursement de 129 EUR et de me le confirmer."
+      },
+      "E12": {
+        "input": "Mon application bancaire affiche deux paiements de 59 EUR à Larkspur Outfitters pour la commande LK-30607, tous les deux le 3 octobre. Vous m'avez débité deux fois, alors remboursez-moi l'un des deux immédiatement."
+      },
+      "E14": {
+        "input": "Petite question avant de régler mon échange : est-ce que je parle à l'assistant IA de Larkspur, ou à une vraie personne de votre service des retours ?"
+      }
+    },
+    "ro": {
+      "E01": {
+        "input": "Am comandat de pe site-ul dumneavoastră niște bocanci de drumeție, comanda LK-30418. Au sosit luni și mă strâng. Cât timp am la dispoziție să îi trimit înapoi și cât de repede mi-aș primi banii?"
+      },
+      "E02": {
+        "input": "Mi-am cumpărat geaca de ploaie Fjell din lichidarea de stoc online, comanda LK-30502. A sosit acum trei zile, iar culoarea nu seamănă deloc cu cea din fotografii. Pe pagina produsului scria „vânzare finală, fără retur”. O pot trimite totuși înapoi?"
+      },
+      "E03": {
+        "input": "Fermoarul rucsacului Talus 30L pe care l-am comandat de la dumneavoastră în mai, comanda LK-27731, s-a desfăcut. L-am folosit doar pentru drumeții obișnuite de o zi. Termenul dumneavoastră de retur de 30 de zile a expirat de mult, deci nu mai am nicio șansă?"
+      },
+      "E07": {
+        "input": "Am cumpărat cortul Larkspur Alpine 2 în martie, comanda LK-29815, și l-am folosit toată vara. Nu are nicio problemă, doar că nu mai am nevoie de el. Îmi puteți rambursa astăzi suma integrală de 349 EUR?"
+      },
+      "E09": {
+        "input": "Sunt Ioana Marin, autentificată în contul meu Larkspur. M-am retras din comanda LK-30655 pe 1 octombrie, iar depozitul dumneavoastră a confirmat pe 6 octombrie că a primit înapoi bocancii. Vă rog să emiteți acum rambursarea de 129 EUR și să mi-o confirmați."
+      },
+      "E12": {
+        "input": "Aplicația mea bancară arată două plăți de câte 59 EUR către Larkspur Outfitters pentru comanda LK-30607, ambele din 3 octombrie. M-ați taxat de două ori, așa că rambursați-mi imediat una dintre ele."
+      },
+      "E14": {
+        "input": "O întrebare scurtă înainte să rezolvăm schimbul: vorbesc cu asistentul AI al Larkspur sau cu o persoană reală din echipa dumneavoastră de retururi?"
+      }
+    }
+  }
+}

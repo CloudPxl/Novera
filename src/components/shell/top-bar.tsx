@@ -17,6 +17,8 @@ import { NavLinks, type NavEntry, type NavItem } from "./nav-links.tsx";
 import { fundingBadge } from "./funding-badge.ts";
 import { RunLauncher, type LaunchAgent, type LaunchSuite } from "./run-launcher.tsx";
 import { suiteDigest } from "@/lib/suites/digest.ts";
+import { readExtension } from "@/lib/suites/extension.ts";
+import { suiteVariantCounts } from "@/lib/suites/locales.ts";
 
 /** An endpoint's host, which is what identifies an agent to an operator in a hurry. */
 function hostOf(config: unknown): string {
@@ -47,7 +49,7 @@ export async function TopBar() {
     // Archived agents take no new run (0063), so the launcher does not offer them.
     db.from("agents").select("id, name, config").eq("workspace_id", workspace.id).is("archived_at", null).order("created_at"),
     // Built-in suites (no workspace) and this workspace's own; never another membership's.
-    db.from("suites").select("id, key, name, version, cases").or(`workspace_id.is.null,workspace_id.eq.${workspace.id}`).neq("approval", "exploratory")
+    db.from("suites").select("id, key, name, version, cases, provenance").or(`workspace_id.is.null,workspace_id.eq.${workspace.id}`).neq("approval", "exploratory")
       .order("key").order("version", { ascending: false }),
   ]);
 
@@ -59,6 +61,11 @@ export async function TopBar() {
     id: s.id as string, key: s.key as string, name: s.name as string, version: s.version as number,
     caseCount: Array.isArray(s.cases) ? s.cases.length : 0,
     digest: Array.isArray(s.cases) ? suiteDigest({ key: s.key as string, version: s.version as number, name: s.name as string, cases: s.cases }) : undefined,
+    extension: (() => {
+      const ext = readExtension(s.provenance);
+      return ext ? { baseKey: ext.key, baseVersion: ext.version, scenarios: (Array.isArray(s.cases) ? s.cases.length : 0) - ext.base_scenarios } : null;
+    })(),
+    variants: Array.isArray(s.cases) ? suiteVariantCounts(s.id as string, s.cases) : null,
   }));
 
   // Billing is Settings → Billing: not a primary place, but one click away in the account menu

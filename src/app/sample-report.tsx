@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMotion } from "@/components/ui/motion.ts";
-import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
+import { Explained, ExplainProvider, type ExplainEntries } from "@/components/ui/explain-context.tsx";
 import type { ExplainKey } from "@/lib/explainability/glossary.ts";
 
 /**
@@ -213,7 +213,16 @@ function CountUp({ value, play }: { value: number; play: boolean }) {
   return <span className="tnum">{play && frame !== null ? frame : value}</span>;
 }
 
-export function SampleReport() {
+/** `explain`: the glossary entries its markers show, resolved on the server (`CLIENT_EXPLAINS.sampleReport`). */
+export function SampleReport({ explain }: { explain: ExplainEntries }) {
+  return (
+    <ExplainProvider entries={explain}>
+      <SampleReportBody />
+    </ExplainProvider>
+  );
+}
+
+function SampleReportBody() {
   const [tab, setTab] = useState<Tab>("Summary");
   const [run, setRun] = useState<RunKey>("latest");
   // Closed on first paint: the summary is the deliverable, the stage log is behind a disclosure.
@@ -309,7 +318,7 @@ export function SampleReport() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline">
                     <p className="type-eyebrow text-ink-faint">Grade</p>
-                    {withheld && <ExplainTrigger id="grade_withheld" />}
+                    {withheld && <Explained id="grade_withheld" />}
                   </div>
                   <p className="mt-1 text-sm font-semibold text-ink">
                     {withheld ? `${IDS.length - none.length} of ${IDS.length} have a verdict` : `${passed} of ${IDS.length} scenarios passed`}
@@ -338,13 +347,13 @@ export function SampleReport() {
                 <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded-full bg-ink text-[10px] text-on-ink">✓</span>
                 <span className="font-semibold text-ink">Sealed</span>
                 <span className="type-mono break-all text-[11px] text-ink-soft">SHA-256 {withheld ? "3b71…0c9d" : "9f2c…e41a"}</span>
-                <ExplainTrigger id="sha256_seal" />
+                <Explained id="sha256_seal" />
               </div>
               <div className="flex flex-wrap items-center">
                 <p className="text-[11px] text-ink-faint tnum">
                   Ran 49 of 49 · verdicts {IDS.length - none.length} of 49 · actions checked {withheld ? "3" : "4"} of 4
                 </p>
-                <ExplainTrigger id="coverage" />
+                <Explained id="coverage" />
               </div>
             </div>
 
@@ -405,7 +414,7 @@ function FindingsLine({ ids, open, onToggle }: { ids: string[]; open: string | n
           <span className="font-semibold text-ink">1 finding</span>
           <SeverityChip severity={s.severity} />
           <span className="text-ink-soft">{s.obligation} · {s.id}</span>
-          {readbackKey(s) && <ExplainTrigger id={readbackKey(s)!} />}
+          {readbackKey(s) && <Explained id={readbackKey(s)!} />}
         </div>
         <button
           type="button"
@@ -516,7 +525,7 @@ function Drawer({ story, animate, explainReadback, onClose, onReplay }: { story:
                   <p className={`text-xs font-semibold transition-colors duration-200 ${on ? "text-ink" : "text-ink-faint"}`}>
                     {s.name} <span className="font-normal text-ink-faint">· {on ? st.label : "waiting"}</span>
                   </p>
-                  {explainReadback && s.name === "Read-back" && readbackKey(story) && <ExplainTrigger id={readbackKey(story)!} />}
+                  {explainReadback && s.name === "Read-back" && readbackKey(story) && <Explained id={readbackKey(story)!} />}
                 </div>
                 <p className={`text-xs leading-relaxed transition-colors duration-200 ${on ? "text-ink-soft" : "text-ink-faint"}`}>{s.detail}</p>
               </div>

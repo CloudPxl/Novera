@@ -6,22 +6,16 @@ import { Menu } from "@/components/ui/menu.tsx";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { inputClass } from "@/components/ui/primitives.tsx";
 import { RefusableForm } from "@/components/ui/refusable-form.tsx";
+import { LOCALE_NAMES, type Locale } from "@/lib/suites/locale-names.ts";
+import { languagesOf, suiteOptionLabel, type LaunchSuite } from "@/lib/suites/launch.ts";
+
+export type { LaunchSuite } from "@/lib/suites/launch.ts";
 
 export interface LaunchAgent {
   id: string;
   name: string;
   host: string;
 }
-export interface LaunchSuite {
-  id: string;
-  name: string;
-  key: string;
-  version: number;
-  caseCount: number;
-  /** `suiteDigest` of the stored row: what the run's manifest will record. */
-  digest?: string;
-}
-
 /**
  * Starting a run, with both choices stated out loud.
  *
@@ -54,9 +48,13 @@ export function RunLauncher({
 }) {
   const [agentId, setAgentId] = useState(defaultAgentId && agents.some((a) => a.id === defaultAgentId) ? defaultAgentId : "");
   const [suiteId, setSuiteId] = useState(() => suites.find((s) => s.key === defaultSuiteKey)?.id ?? "");
+  const [locale, setLocale] = useState<Locale>("en");
 
   const agent = agents.find((a) => a.id === agentId);
   const suite = suites.find((s) => s.id === suiteId);
+  const languages = languagesOf(suite);
+  // A language the newly chosen suite has no variants in falls back to English, never silently kept.
+  const chosenLanguage = languages.find((l) => l.code === locale) ?? null;
 
   return (
     <Menu
@@ -111,24 +109,51 @@ export function RunLauncher({
               name="suiteId"
               required
               value={suiteId}
-              onChange={(e) => setSuiteId(e.target.value)}
+              onChange={(e) => { setSuiteId(e.target.value); setLocale("en"); }}
               className={`${inputClass} mt-1`}
             >
               <option value="">Choose a suite…</option>
               {suites.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name} v{s.version} — {s.caseCount} scenarios
+                  {suiteOptionLabel(s)} — {s.caseCount} scenarios
                 </option>
               ))}
             </select>
           </div>
 
+          {/* Only for a suite with variants: every other suite is sent in English, and the form
+              sends no language at all. */}
+          {languages.length > 0 && suite && (
+            <div>
+              <label htmlFor="launch-locale" className="type-pill text-ink-faint">
+                Language
+              </label>
+              <select
+                id="launch-locale"
+                name="locale"
+                value={chosenLanguage ? chosenLanguage.code : "en"}
+                onChange={(e) => setLocale(e.target.value as Locale)}
+                className={`${inputClass} mt-1`}
+              >
+                <option value="en">English — all {suite.caseCount} scenarios</option>
+                {languages.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {LOCALE_NAMES[l.code]} — {l.count} of {suite.caseCount} scenarios, the rest in English
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <p className="rounded-control bg-sunken px-2.5 py-2 text-xs leading-relaxed text-ink-soft">
             {agent && suite ? (
               <>
                 Sending <strong className="font-semibold text-ink">{suite.caseCount} scenarios</strong> from{" "}
-                <strong className="font-semibold text-ink">{suite.name} v{suite.version}</strong> to{" "}
+                <strong className="font-semibold text-ink">{suiteOptionLabel(suite)}</strong> to{" "}
                 <strong className="font-semibold text-ink">{agent.name}</strong> at {agent.host}.
+                {chosenLanguage && (
+                  <> {chosenLanguage.count} of them in {LOCALE_NAMES[chosenLanguage.code]}, the rest in English.</>
+                )}
                 {suite.digest && (
                   <> Suite digest <span className="type-mono">{suite.digest.slice(0, 12)}</span>, recorded in the run&apos;s manifest.</>
                 )}

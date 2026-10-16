@@ -12,7 +12,7 @@ import { loadStability } from "../evidence/stability-history.ts";
 import { PROBE_INPUT } from "../agents/types.ts";
 import { discoverShape } from "../agents/discover.ts";
 import { track } from "../analytics/track.ts";
-import { fingerprintFromManifest } from "../report/manifest.ts";
+import { compositionFromManifest, fingerprintFromManifest } from "../report/manifest.ts";
 
 /**
  * The product's spine: probe, run, report.
@@ -123,6 +123,7 @@ export async function publishReport(args: {
   const { payload, contentHash } = buildReport({
     manifestHash: (runRow?.manifest_hash as string | null) ?? null,
     fingerprint: fingerprintFromManifest(runRow?.manifest ?? null),
+    ...compositionFromManifest(runRow?.manifest ?? null),
     previousReportHash,
     client: args.clientName,
     agentName: args.agentName,

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import { buildPromotedSuite } from "@/lib/scenarios/promote.ts";
 import { importDataset, SOURCE_LABELS } from "@/lib/imports/datasets.ts";
@@ -9,6 +10,8 @@ import type { SuiteCase } from "@/lib/runner/types.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
 import { draftScenariosFromPolicy } from "@/lib/workflow/propose.ts";
 import { spendModelCall } from "@/lib/workflow/model-budget.ts";
+import { buildExtension, extensionKey, MAX_EXTENSION_SCENARIOS } from "@/lib/suites/extension.ts";
+import { recordAudit } from "@/lib/audit/record.ts";
 
 /**
  * The duty-to-test compiler, from the operator's side.
@@ -301,4 +304,100 @@ export async function promoteApprovedScenarios(_prev: FormState, form: FormData)
   revalidatePath("/scenarios");
   revalidatePath("/dashboard");
   return { notice: `${key} v${version} created with ${promotion.suite.cases.length} scenario(s).` };
+}
+
+/**
+ * Publishes a suite extension: an official suite version, unchanged, with up to five of this
+ * workspace's approved scenarios after it, as a new immutable workspace suite version.
+ *
+ * The same permission as promoting approved drafts into any suite version, and the same rule:
+ * only an approved draft enters, and it is marked included once the version exists. The
+ * database (0071) refuses an extension whose base part is not the official suite byte for byte,
+ * that adds more than five, or that adds a scenario no one here approved.
+ */
+export async function publishSuiteExtension(_prev: FormState, form: FormData): Promise<FormState> {
+  const { user, workspace } = await requireWorkspace();
+  const baseId = String(form.get("baseSuiteId") ?? "").trim();
+  const draftIds = [...new Set(form.getAll("draftId").map((v) => String(v).trim()).filter(Boolean))];
+  const gated = await gate(user.id, workspace.id, "scenario.promote");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
+
+  if (!baseId) return { error: "Choose the official suite to extend." };
+  if (draftIds.length === 0) return { error: "Tick at least one approved scenario to add." };
+  // Said before anything is read: the limit is the product's, not a property of these drafts.
+  if (draftIds.length > MAX_EXTENSION_SCENARIOS) {
+    return { error: `An extension adds at most ${MAX_EXTENSION_SCENARIOS} scenarios to an official suite; ${draftIds.length} were ticked. Untick ${draftIds.length - MAX_EXTENSION_SCENARIOS}, or build your own suite in the Suite Builder.` };
+  }
+
+  const [{ data: base }, { data: drafts }] = await Promise.all([
+    admin.from("suites").select("id, key, version, name, cases, workspace_id, approval").eq("id", baseId).is("workspace_id", null).maybeSingle(),
+    admin.from("scenario_drafts").select("id, status, scenario, destructive, fixture_only").eq("workspace_id", workspace.id).in("id", draftIds),
+  ]);
+  if (!base) return { error: "That suite is not an official Novera suite, so it cannot be extended here." };
+  if ((drafts ?? []).length !== draftIds.length) return { error: "One of the ticked scenarios is not a draft in this workspace. Reload and choose again." };
+
+  const key = extensionKey({ key: base.key as string, version: base.version as number });
+  const { data: versions } = await admin
+    .from("suites").select("version").eq("workspace_id", workspace.id).eq("key", key)
+    .order("version", { ascending: false }).limit(1);
+  const version = ((versions?.[0]?.version as number | undefined) ?? 0) + 1;
+
+  // In the order the form lists them, so the suite reads in the order the person saw.
+  const ordered = draftIds.map((id) => (drafts ?? []).find((d) => d.id === id)!).filter(Boolean);
+  const built = buildExtension({
+    base: {
+      id: base.id as string, key: base.key as string, version: base.version as number, name: base.name as string,
+      cases: (base.cases as SuiteCase[]) ?? [], workspace_id: null, approval: base.approval as string,
+    },
+    drafts: ordered.map((d) => ({
+      draftId: d.id as string, status: d.status as string, scenario: d.scenario as SuiteCase,
+      destructive: Boolean(d.destructive), fixture_only: Boolean(d.fixture_only),
+    })),
+    version,
+  });
+  if (!built.ok) return { error: built.errors.join(" ") };
+
+  const now = new Date().toISOString();
+  const { data: suite, error } = await admin.from("suites").insert({
+    workspace_id: workspace.id,
+    key: built.key, version: built.version, name: built.name,
+    cases: built.cases,
+    approval: "customer_approved",
+    extends_suite_id: base.id,
+    provenance: {
+      source_tool: "novera-suite-extension",
+      transformation_version: 1,
+      extends: built.record,
+      approved_scenarios: built.draftIds.length,
+      promoted_by: user.id,
+      promoted_at: now,
+    },
+  }).select("id").single();
+  if (error || !suite) {
+    return { error: `The extension could not be created: ${error?.message ?? "no row returned"}` };
+  }
+
+  const { error: markError } = await admin
+    .from("scenario_drafts").update({ status: "included", included_in_suite_id: suite.id })
+    .in("id", built.draftIds).eq("workspace_id", workspace.id);
+  if (markError) {
+    return { error: `${built.key} v${built.version} was created, but the drafts could not be marked as included: ${markError.message}` };
+  }
+
+  await recordAudit(admin, {
+    workspaceId: workspace.id, actorId: user.id, action: "suite.published",
+    detail: {
+      suite_id: suite.id, key: built.key, version: built.version, kind: "extension",
+      extends: { key: built.record.key, version: built.record.version },
+      scenarios: built.draftIds.length, case_ids: built.record.extension_case_ids,
+    },
+  });
+
+  revalidatePath("/scenarios");
+  // The launcher in the shared layout offers the new version at once.
+  revalidatePath("/", "layout");
+  // To the new version in the library: the drafts it took have left the list this form was in,
+  // and the form with them, so a notice there would never be seen.
+  redirect(`/scenarios?suite=${suite.id as string}`);
 }

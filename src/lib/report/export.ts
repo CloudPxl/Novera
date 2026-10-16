@@ -426,7 +426,16 @@ export function withoutToken(url: string): string {
   return url.replace(/(\/report\/[A-Za-z0-9_-]{4})[A-Za-z0-9_-]+/, "$1…");
 }
 
-export function reportToJunit(payload: ReportPayload, contentHash: string, url: string): string {
+/**
+ * Properties a caller adds beside the report's own — the CI gate adds the suite digest, the
+ * comparison link and the seal. Added after the report's, never instead of one; each is
+ * escaped like every other value.
+ */
+export interface JunitExtras {
+  properties?: ReadonlyArray<readonly [name: string, value: string | number]>;
+}
+
+export function reportToJunit(payload: ReportPayload, contentHash: string, url: string, extras: JunitExtras = {}): string {
   const { subject, run, coverage, findings } = payload;
   const ci = ciOutcome(payload);
   const a = (name: string, value: string | number) => `${name}="${escapeXml(value)}"`;
@@ -451,6 +460,7 @@ export function reportToJunit(payload: ReportPayload, contentHash: string, url: 
     property("novera.ci_reason", ci.reason),
     property("novera.limitations", payload.limitations),
     property("novera.notice", REPORT_NOTICE_SHORT),
+    ...(extras.properties ?? []).map(([name, value]) => property(name, value)),
   ];
 
   const byObligation = new Map<string, typeof findings>();
@@ -505,4 +515,45 @@ export function reportToJunit(payload: ReportPayload, contentHash: string, url: 
   }
   out.push("</testsuites>");
   return out.join("\n") + "\n";
+}
+
+/**
+ * A JUnit document for a run that has no sealed report — still queued or running, aborted, or
+ * completed without one. Valid JUnit, so a reporter shows it rather than failing to parse; its
+ * one test case is `skipped` while the run is unfinished and an `error` otherwise, never a pass
+ * and never a failure of the agent. Nothing in it is a finding: it says there is no evidence.
+ */
+export function unsealedRunJunit(run: {
+  id: string;
+  status: string;
+  suite: string | null;
+  exitCode: number | null;
+  reason: string;
+  properties?: ReadonlyArray<readonly [name: string, value: string | number]>;
+}): string {
+  const a = (name: string, value: string | number) => `${name}="${escapeXml(value)}"`;
+  const property = (name: string, value: string | number) => `      <property ${a("name", name)} ${a("value", value)}/>`;
+  const unfinished = run.exitCode === null;
+  const title = `Novera run ${run.id}${run.suite ? ` — ${run.suite}` : ""}`;
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<testsuites ${a("name", title)} tests="1" failures="0" errors="${unfinished ? 0 : 1}" skipped="${unfinished ? 1 : 0}">`,
+    `  <testsuite ${a("name", title)} tests="1" failures="0" errors="${unfinished ? 0 : 1}" skipped="${unfinished ? 1 : 0}">`,
+    "    <properties>",
+    property("novera.run_id", run.id),
+    property("novera.run_status", run.status),
+    property("novera.ci_exit_code", run.exitCode === null ? "none yet" : run.exitCode),
+    property("novera.ci_reason", run.reason),
+    property("novera.report", "none sealed"),
+    ...(run.properties ?? []).map(([name, value]) => property(name, value)),
+    property("novera.notice", REPORT_NOTICE_SHORT),
+    "    </properties>",
+    `    <testcase ${a("classname", "novera.run")} ${a("name", "Sealed report")}>`,
+    unfinished
+      ? `      <skipped ${a("message", run.reason)}/>`
+      : `      <error ${a("message", "No sealed report exists for this run")} ${a("type", `exit ${run.exitCode}`)}>${escapeXml(run.reason)}</error>`,
+    "    </testcase>",
+    "  </testsuite>",
+    "</testsuites>",
+  ].join("\n") + "\n";
 }

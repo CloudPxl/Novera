@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * The words Novera uses on its screens, explained once, in one place.
  *
@@ -17,6 +19,8 @@
  * `suite_digest`, because a policy here is the customer's own text and has its own versions;
  * BYOK routing is `own_key`.
  */
+
+import { AI_ACT_FRAMING_SUMMARY } from "../legal/ai-act-framing.ts";
 
 export type ExplainKey =
   | "grade_withheld"
@@ -43,7 +47,8 @@ export type ExplainKey =
   | "trial_allowance"
   | "run_funding"
   | "not_run"
-  | "withdrawn_report";
+  | "withdrawn_report"
+  | "ai_act_references";
 
 export interface ExplainEntry {
   /** Equal to its key in `GLOSSARY`. */
@@ -358,6 +363,15 @@ export const GLOSSARY: Record<ExplainKey, ExplainEntry> = {
     nextAction:
       "To withdraw a report, open its run, choose the Evidence tab and use Withdraw this report under Before you send it.",
     docsHref: "/docs/what-the-report-contains",
+  },
+
+  ai_act_references: {
+    id: "ai_act_references",
+    title: "AI Act references",
+    whatItMeans: `${AI_ACT_FRAMING_SUMMARY.transparency} ${AI_ACT_FRAMING_SUMMARY.highRisk}`,
+    whyItMatters: `${AI_ACT_FRAMING_SUMMARY.benchmark} ${AI_ACT_FRAMING_SUMMARY.determination}`,
+    nextAction:
+      "Open the regulatory mapping to see which scenarios sit under each reference. Ask your counsel whether your agent is high-risk before treating any of them as a duty.",
   },
 };
 

@@ -9,6 +9,7 @@ import {
   decideScenarioDraft,
   importScenarioDrafts,
   promoteApprovedScenarios,
+  publishSuiteExtension,
 } from "@/lib/workflow/scenarios.ts";
 import { OBLIGATION_LABELS } from "@/lib/report/payload.ts";
 import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
@@ -235,6 +236,88 @@ export function PromoteForm({
 
       <div className="sm:col-span-2">
         <SubmitButton pendingLabel="Creating the version…">Promote into a new suite version</SubmitButton>
+        <Message state={state} />
+      </div>
+    </form>
+  );
+}
+
+/** The limit `src/lib/suites/extension.ts` holds; repeated here because that module hashes (server-only). */
+const MAX_EXTENSION = 5;
+
+/**
+ * An official suite, unchanged, with up to five of the approved scenarios run beside it.
+ *
+ * Controlled rather than restored on refusal: the ticks and the choice live in React state, which
+ * a form reset after the action does not touch, and the count beside the button has to follow
+ * every tick. A tick counts only while its draft is still listed: once published, the drafts
+ * are in a suite version and leave the list, and the count returns to none.
+ */
+export function ExtendForm({
+  bases,
+  approved,
+}: {
+  bases: Array<{ id: string; key: string; version: number; name: string; scenarios: number }>;
+  approved: Array<{ id: string; caseId: string; expected: string }>;
+}) {
+  const [state, submit] = useActionState<FormState, FormData>(publishSuiteExtension, {});
+  const [baseId, setBaseId] = useState(() => bases.find((b) => b.key === "eu-support")?.id ?? bases[0]?.id ?? "");
+  const [ticked, setTicked] = useState<string[]>([]);
+  const chosen = ticked.filter((id) => approved.some((d) => d.id === id));
+
+  const base = bases.find((b) => b.id === baseId);
+  const over = chosen.length > MAX_EXTENSION;
+  const toggle = (id: string, on: boolean) => setTicked((now) => (on ? [...now, id] : now.filter((x) => x !== id)));
+
+  if (bases.length === 0) return null;
+  return (
+    <form action={submit} className="grid gap-4">
+      <Field
+        label="Official suite"
+        htmlFor="extend-base"
+        hint="Its scenarios run exactly as shipped; a report shows their digest beside your scenarios' own."
+      >
+        <select id="extend-base" name="baseSuiteId" value={baseId} onChange={(e) => setBaseId(e.target.value)} className={inputClass} required>
+          {bases.map((b) => (
+            <option key={b.id} value={b.id}>{b.name} ({b.key} v{b.version}) — {b.scenarios} scenarios</option>
+          ))}
+        </select>
+      </Field>
+
+      <fieldset>
+        <legend className="type-pill text-ink-faint">Your scenarios to add (at most {MAX_EXTENSION})</legend>
+        <ul className="mt-2 space-y-2">
+          {approved.map((d) => (
+            <li key={d.id}>
+              <label className="flex items-start gap-2 type-body">
+                <input
+                  type="checkbox" name="draftId" value={d.id}
+                  checked={chosen.includes(d.id)}
+                  onChange={(e) => toggle(d.id, e.target.checked)}
+                  className="mt-1 size-4 shrink-0 accent-ink"
+                />
+                <span className="min-w-0">
+                  <span className="type-mono text-ink-soft">{d.caseId}</span>{" "}
+                  <span className="break-words">{d.expected}</span>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </fieldset>
+
+      <p role="status" className={`text-sm ${over ? "text-fail-text" : "text-ink-soft"}`}>
+        {over
+          ? `${chosen.length} chosen: an extension adds at most ${MAX_EXTENSION} scenarios to an official suite. Untick ${chosen.length - MAX_EXTENSION}, or build your own suite in the Suite Builder.`
+          : base && chosen.length > 0
+            ? `${base.key} v${base.version} + ${chosen.length} workspace scenario${chosen.length === 1 ? "" : "s"}: ${base.scenarios + chosen.length} scenarios in all, as a new suite version of your workspace.`
+            : "Tick the approved scenarios to run beside the official ones."}
+      </p>
+
+      <div>
+        <SubmitButton pendingLabel="Publishing the extension…" disabled={chosen.length === 0 || over}>
+          Publish the extension
+        </SubmitButton>
         <Message state={state} />
       </div>
     </form>

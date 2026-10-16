@@ -81,7 +81,7 @@ export interface LoadedRun {
   seal?: { contentHash: string; createdAt: string; revokedAt: string | null } | null;
 }
 
-export type ComparisonRefusalReason = "missing" | "invalid" | "not_found" | "other_workspace" | "unsettled" | "same_run" | "different_agent" | "different_suite";
+export type ComparisonRefusalReason = "missing" | "invalid" | "not_found" | "other_workspace" | "unsettled" | "same_run" | "different_agent" | "different_suite" | "different_locale";
 
 export type LoadedComparison =
   | {
@@ -232,6 +232,7 @@ function deltaRun(run: LoadedRun, suite: Row, rows: Row[]): DeltaRun {
     suite: { key: run.suite.key, version: run.suite.version, owner: run.suite.owner },
     scenarios: scenarios.map((s) => ({ id: s.id, digest: scenarioDigest(s), severity: s.severity })),
     cases,
+    locale: localeOf(run.manifest),
   };
 }
 
@@ -332,19 +333,28 @@ function label(r: Row): string {
 
 /**
  * The runs this one can be compared with: the same agent, the same suite key under the same
- * owner at any version, completed — newest first. One query (the suite joined in).
+ * owner at any version, in the same language, completed — newest first. One query (the suite
+ * joined in).
  */
-export async function comparableRuns(db: SupabaseClient, run: { id: string; agentId: string }, suite: { key: string; owner: string | null }) {
+/** A run's language from its manifest: absent (every run before variants) is English. */
+export function localeOf(manifest: unknown): string {
+  const l = (manifest as { locale?: unknown } | null)?.locale;
+  return typeof l === "string" && l ? l : "en";
+}
+
+export async function comparableRuns(db: SupabaseClient, run: { id: string; agentId: string; locale?: string | null }, suite: { key: string; owner: string | null }) {
   let query = db
     .from("runs")
-    .select("id, created_at, suite_id, suites!inner(key, version, workspace_id)")
+    .select("id, created_at, suite_id, locale:manifest->>locale, suites!inner(key, version, workspace_id)")
     .eq("agent_id", run.agentId)
     .eq("status", "completed")
     .eq("suites.key", suite.key)
     .neq("id", run.id);
   query = suite.owner === null ? query.is("suites.workspace_id", null) : query.eq("suites.workspace_id", suite.owner);
   const { data } = await query.order("created_at", { ascending: false }).limit(20);
-  return ((data ?? []) as Row[]).map((r) => {
+  // Only runs sent in the same language: another language is not the same test (`comparisonRefusal`).
+  const lang = run.locale || "en";
+  return ((data ?? []) as Row[]).filter((r) => ((r.locale as string | null) || "en") === lang).map((r) => {
     const s = (Array.isArray(r.suites) ? r.suites[0] : r.suites) as { version?: number } | null;
     return { id: r.id as string, createdAt: r.created_at as string, suiteId: r.suite_id as string, suiteVersion: s?.version ?? null };
   });

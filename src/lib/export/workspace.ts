@@ -49,6 +49,8 @@ export interface ExportSource {
   suite_builds: Row[];
   suite_sources: Row[];
   suite_obligations: Row[];
+  /** Which commit started which run through the CI trigger (0070). Optional: absent from sources read before it existed. */
+  ci_triggers?: Row[];
 }
 
 export interface ExportMeta {
@@ -130,8 +132,9 @@ function runCase(c: Row, raw: boolean): Row {
 
 function retest(r: Row, raw: boolean): Row {
   const out: Row = {
-    ...pick(r, ["id", "run_case_id", "policy_id", "status", "failed_assertions", "judge_model", "judge_agreement", "latency_ms",
-      "evidence_gap", "settled_by", "created_by", "created_at", "raw_sha256", "raw_expired_at"]),
+    ...pick(r, ["id", "origin", "run_case_id", "agent_id", "suite_id", "case_id", "locale", "policy_id", "status", "failed_assertions",
+      "judge_model", "judge_agreement", "latency_ms", "evidence_gap", "settled_by", "judge_source", "read_back", "api_key_id",
+      "responses_returned", "created_by", "created_at", "raw_sha256", "raw_expired_at"]),
     rationale: quoted(r.rationale, raw),
     error: quoted(r.error, raw),
     judge_votes: r.judge_votes == null ? null : raw ? r.judge_votes : redactDeep(r.judge_votes),
@@ -210,8 +213,8 @@ export function buildWorkspaceExport(src: ExportSource, meta: ExportMeta): Works
     production_failures: src.production_failures.map((f) => pick(f, ["id", "agent_id", "customer_message", "agent_reply", "expected_behavior", "what_went_wrong", "occurred_on", "redaction", "created_by", "api_key_id", "created_at"])),
     run_schedules: src.run_schedules.map((s) => pick(s, ["id", "agent_id", "suite_id", "cadence", "hour_utc", "weekday", "next_run_at", "paused_at", "paused_reason", "cancelled_at", "cancelled_by", "last_attempt_at", "last_outcome", "created_by", "created_at"])),
     webhook_endpoints: src.webhook_endpoints.map((e) => pick(e, ["id", "url", "events", "created_by", "created_at", "revoked_at", "revoked_by"])),
-    webhook_deliveries: src.webhook_deliveries.map((d) => pick(d, ["id", "endpoint_id", "event", "subject_id", "status", "attempts", "last_status", "last_error", "next_attempt_at", "created_at", "delivered_at"])),
-    api_keys: src.api_keys.map((k) => pick(k, ["id", "name", "scopes", "created_by", "created_at", "revoked_at", "revoked_by"])),
+    webhook_deliveries: src.webhook_deliveries.map((d) => pick(d, ["id", "endpoint_id", "event", "subject_id", "status", "attempts", "last_status", "last_error", "last_latency_ms", "next_attempt_at", "created_at", "delivered_at"])),
+    api_keys: src.api_keys.map((k) => pick(k, ["id", "name", "scopes", "created_by", "created_at", "revoked_at", "revoked_by", "last_used_at"])),
     raw_evidence_reads: src.raw_evidence_reads.map((r) => pick(r, ["id", "run_id", "api_key_id", "via", "read_at"])),
     audit_events: src.audit_events.map((e) => pick(e, ["id", "actor_id", "subject_user_id", "action", "detail", "created_at"])),
     suite_builds: src.suite_builds.map((b) => pick(b, [
@@ -225,6 +228,7 @@ export function buildWorkspaceExport(src: ExportSource, meta: ExportMeta): Works
       "text", "text_sha256", "redaction", "authorisation", "authorised_by", "authorised_at", "extracted_parts",
       "content_expired_at", "created_by", "created_at",
     ])),
+    ci_triggers: (src.ci_triggers ?? []).map((t) => pick(t, ["id", "agent_id", "suite_id", "run_id", "git_commit_sha", "git_branch", "pr_number", "api_key_id", "created_at", "retired_at"])),
     suite_obligations: src.suite_obligations.map((o) => pick(o, [
       "id", "build_id", "source_id", "passage", "locator", "interpretation", "obligation", "duty_refs", "question",
       "suggested_answers", "flags", "status", "answer", "answered_by", "answered_at", "not_applicable_reason",

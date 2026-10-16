@@ -29,8 +29,11 @@ export type Claim =
   | { kind: "in_progress" };
 
 /** What the request asked for — the fields that decide what run it starts. */
-export function requestHash(request: { agentId: string; suiteId: string | null; releaseId?: string; knowledgeBaseRevision?: string }): string {
-  const canonical = JSON.stringify([request.agentId, request.suiteId ?? null, request.releaseId ?? null, request.knowledgeBaseRevision ?? null]);
+export function requestHash(request: { agentId: string; suiteId: string | null; locale?: string | null; releaseId?: string; knowledgeBaseRevision?: string }): string {
+  // A language is part of the request only when one other than the default was asked for, so a
+  // request made before languages existed still hashes as it did.
+  const locale = request.locale && request.locale !== "en" ? [request.locale] : [];
+  const canonical = JSON.stringify([request.agentId, request.suiteId ?? null, request.releaseId ?? null, request.knowledgeBaseRevision ?? null, ...locale]);
   return createHash("sha256").update(canonical).digest("hex");
 }
 

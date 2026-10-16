@@ -5,6 +5,8 @@ import { currentUser } from "@/lib/auth/session.ts";
 import { Badge } from "@/components/ui/primitives.tsx";
 import { JsonLd } from "@/components/seo/json-ld.tsx";
 import { SITE_ORIGIN } from "@/lib/seo/site.ts";
+import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
+import { AI_ACT_FRAMING_SUMMARY, aiActFramingFor } from "@/lib/legal/ai-act-framing.ts";
 import { solution, solutionMetadata } from "../_components/content.ts";
 import { Cards, ClosingCta, Hero, MappingNotice, NotCertification, Section, SolutionFrame } from "../_components/solution-ui.tsx";
 import {
@@ -92,6 +94,17 @@ export default async function RegulatoryMappingPage({ searchParams }: { searchPa
         title="The matrix"
         lede={<>Filter by framework, article or how a scenario is checked. Each filter is a link, so a view can be shared or bookmarked.</>}
       >
+        <div className="mb-8 max-w-4xl rounded-panel border border-line bg-paper p-5 text-sm leading-relaxed">
+          <div className="flex flex-wrap items-baseline">
+            <p className="type-eyebrow text-ink-faint">Reading the AI Act references</p>
+            <ExplainTrigger id="ai_act_references" />
+          </div>
+          <p className="mt-2 text-ink">{AI_ACT_FRAMING_SUMMARY.transparency}</p>
+          <p className="mt-2 text-ink-soft">
+            {AI_ACT_FRAMING_SUMMARY.highRisk} {AI_ACT_FRAMING_SUMMARY.benchmark} {AI_ACT_FRAMING_SUMMARY.determination}
+          </p>
+        </div>
+
         <MatrixFilters rows={rows} filters={filters} />
 
         <div className="mt-8 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-line pb-4">
@@ -293,6 +306,7 @@ function FilterGroup({ id, label, children }: { id: string; label: string; child
 function MatrixCard({ row, layer }: { row: FilteredRow; layer: Layer | null }) {
   const framework = FRAMEWORKS.find((f) => f.id === row.framework)!;
   const total = row.scenarios.length;
+  const framing = row.framework === "ai-act" ? aiActFramingFor(row.ref) : null;
   return (
     <li id={row.anchor} className="mb-4 break-inside-avoid scroll-mt-24 rounded-panel border border-line bg-surface shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 border-b border-line p-5">
@@ -304,6 +318,7 @@ function MatrixCard({ row, layer }: { row: FilteredRow; layer: Layer | null }) {
           {layer ? `${row.shown.length} of ${total}` : total} scenario{total === 1 ? "" : "s"}
         </p>
       </div>
+      {framing && <p className="border-b border-line px-5 py-3 text-xs leading-relaxed text-ink-soft">{framing.sentence}</p>}
       <ul className="divide-y divide-line">
         {row.shown.map((s) => (
           <li key={s.id} className="grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-3 gap-y-2 px-5 py-3 sm:grid-cols-[2.75rem_minmax(0,1fr)_auto] sm:items-baseline">

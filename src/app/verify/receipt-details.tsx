@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { ReceiptDetails } from "@/lib/report/public-verify.ts";
-import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
+import { Explained } from "@/components/ui/explain-context.tsx";
 import type { ExplainKey } from "@/lib/explainability/glossary.ts";
 
 /**
@@ -27,7 +27,7 @@ function Row({ label, children, explain }: { label: string; children: ReactNode;
       <dt className="text-sm font-medium text-ink-faint">{label}</dt>
       <dd className="min-w-0 text-sm text-ink [overflow-wrap:anywhere]">
         {children}
-        {explain && <ExplainTrigger id={explain} />}
+        {explain && <Explained id={explain} />}
       </dd>
     </div>
   );
@@ -50,6 +50,20 @@ export function ReceiptDetailsList({ details }: { details: ReceiptDetails }) {
             ? <>The workspace&apos;s own suite, version {suite.version}. Its name is not shown here.</>
             : "The workspace's own suite. Its name is not shown here."}
       </Row>
+      {details.extension && (
+        <Row label="Suite composition">
+          Base suite {details.extension.baseSuite.name}{" "}
+          <span className="font-mono text-ink-soft">({details.extension.baseSuite.key} v{details.extension.baseSuite.version})</span>, digest{" "}
+          <span className="font-mono">{details.extension.baseSuiteDigest.slice(0, 12)}…</span>
+          {" "}+ {details.extension.scenarios} workspace extension scenario{details.extension.scenarios === 1 ? "" : "s"} (extension digest{" "}
+          <span className="font-mono">{details.extension.extensionDigest.slice(0, 12)}…</span>)
+        </Row>
+      )}
+      {details.language && (
+        <Row label="Language">
+          {details.language.localised} of {details.language.of} scenarios sent in {details.language.name}; the rest in English.
+        </Row>
+      )}
       <Row label="Grading funded by" explain="run_funding">{details.fundedBy ?? "Not stated in a form this page reads"}</Row>
       <Row label="Scenarios">
         {counts.planned === null ? "Not stated" : `${counts.planned} planned`}

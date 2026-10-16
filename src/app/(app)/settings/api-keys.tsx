@@ -47,6 +47,13 @@ export function CreateApiKey() {
             Every read of the replies is listed below.
           </span>
         </label>
+        <label className="flex w-full items-start gap-2 text-sm text-ink-soft">
+          <input type="checkbox" name="canProbe" className="mt-0.5 size-4 accent-ink" />
+          <span>
+            Can also run single-scenario checks (the probe scope): one scenario against one agent, between
+            full runs of a suite. A check is not a run of the suite.
+          </span>
+        </label>
       </form>
 
       {state.error && <p role="status" className="mt-3 text-sm text-fail-text">{state.error}</p>}

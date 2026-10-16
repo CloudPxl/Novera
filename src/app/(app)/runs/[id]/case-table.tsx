@@ -9,7 +9,7 @@ import { rulesLine } from "./chain.ts";
 import Link from "next/link";
 import { SEVERITIES, parseSeverities, severityCounts, toggleSeverity, whyNotPassed } from "./triage.ts";
 import type { AgentEvent } from "@/lib/agents/trajectory.ts";
-import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
+import { Explained, ExplainProvider, type ExplainEntries } from "@/components/ui/explain-context.tsx";
 import type { ExplainKey } from "@/lib/explainability/glossary.ts";
 
 export interface CaseRow {
@@ -90,14 +90,21 @@ const STATUS_LABEL = { pass: "pass", fail: "fail", error: "no result" } as const
  * The header says how many of the total are showing, so a filtered view can never be
  * mistaken for the run.
  */
-export function CaseTable({
-  cases,
-  diagnosis = {},
-}: {
+export function CaseTable({ explain, ...props }: CaseTableProps & { explain: ExplainEntries }) {
+  return (
+    <ExplainProvider entries={explain}>
+      <CaseTableBody {...props} />
+    </ExplainProvider>
+  );
+}
+
+interface CaseTableProps {
   cases: CaseRow[];
   /** Per-case server-rendered diagnosis UI, keyed by run_case id. Filled in by the page. */
   diagnosis?: Record<string, ReactNode>;
-}) {
+}
+
+function CaseTableBody({ cases, diagnosis = {} }: CaseTableProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   // The lens lives in the address, so a filtered view can be bookmarked, shared with a
@@ -265,7 +272,7 @@ export function CaseTable({
         {/* Label and marker travel together; an open panel takes the row, and the filters follow below it. */}
         <div className="flex flex-wrap items-baseline has-[details[open]]:basis-full">
           <span className="type-pill text-ink-faint">Severity</span>
-          <ExplainTrigger id="severity" />
+          <Explained id="severity" />
         </div>
         {SEVERITIES.map((s) => {
           const on = severities.includes(s);
@@ -365,7 +372,7 @@ function Step({ n, title, children, explain }: { n: number; title: string; child
         <h3 className="type-pill text-ink-faint">
           <span className="tnum">{n}</span> · {title}
         </h3>
-        {explain && <ExplainTrigger id={explain} />}
+        {explain && <Explained id={explain} />}
       </div>
       <div className="mt-1.5">{children}</div>
     </li>
@@ -789,7 +796,7 @@ function RepairNote({ repair }: { repair: Repair }) {
     <section aria-label="Why there is no verdict" className="mb-4 rounded-control bg-surface p-3 ring-1 ring-line">
       <div className="flex flex-wrap items-baseline">
         <p className="text-sm font-medium text-ink">Why there is no verdict: {repair.label}</p>
-        {explains && <ExplainTrigger id={explains} />}
+        {explains && <Explained id={explains} />}
       </div>
       <p className="mt-1 text-sm leading-relaxed text-ink-soft">{repair.happened}</p>
       <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">

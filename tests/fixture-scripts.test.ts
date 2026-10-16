@@ -21,7 +21,7 @@ interface SuiteLike { key: string; version: number; cases: CaseLike[] }
 
 const dir = join(process.cwd(), "data/suites");
 const suites: Array<SuiteLike & { file: string }> = readdirSync(dir)
-  .filter((f) => f.endsWith(".json") && !f.endsWith(".labels.json") && !f.endsWith(".tiers.json"))
+  .filter((f) => f.endsWith(".json") && !f.endsWith(".labels.json") && !f.endsWith(".tiers.json") && !f.endsWith(".locales.json"))
   .map((f) => ({ ...(JSON.parse(readFileSync(join(dir, f), "utf8")) as SuiteLike), file: f }))
   .filter((s) => typeof s.key === "string" && Array.isArray(s.cases));
 

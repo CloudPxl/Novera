@@ -5,6 +5,7 @@ import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import { assertPublicUrl, PrivateAddressError } from "@/lib/net/public-url.ts";
 import { createEndpoint, deliverDue, enqueue, WEBHOOK_EVENTS, appOrigin, type WebhookEvent } from "@/lib/webhooks/deliver.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
+import { statusAndLatency } from "@/lib/webhooks/latency.ts";
 
 export interface WebhookFormState {
   error?: string;
@@ -83,10 +84,10 @@ export async function sendTestWebhook(_prev: WebhookFormState, form: FormData): 
   });
   if (!ids.length) return { error: "That endpoint was not found, or is revoked." };
   await deliverDue({ db: admin, ids, deadline: Date.now() + 8_000 });
-  const { data: d } = await admin.from("webhook_deliveries").select("status, last_status, last_error").eq("id", ids[0]).single();
+  const { data: d } = await admin.from("webhook_deliveries").select("status, last_status, last_error, last_latency_ms").eq("id", ids[0]).single();
   revalidatePath("/settings", "layout");
   return d?.status === "delivered"
-    ? { notice: `Delivered: your endpoint answered ${d.last_status}.` }
+    ? { notice: `Delivered: your endpoint answered ${statusAndLatency(d.last_status as number | null, d.last_latency_ms as number | null)}.` }
     : { error: `Not delivered: ${(d?.last_error ?? "no answer").replace(/\.+$/, "")}. It will be retried.` };
 }
 

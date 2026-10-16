@@ -2,6 +2,7 @@ import { contentHash, type Json } from "./hash.ts";
 import { normaliseDigest } from "./canonical.ts";
 import { gradingFundedBy } from "./build.ts";
 import { scoreWithheldAs, type ReportPayload } from "./payload.ts";
+import { LOCALE_NAMES, isVariantLocale } from "../suites/locale-names.ts";
 
 /**
  * The public seal check at `/verify/<sha256>`: anyone holding a digest can ask whether Novera
@@ -90,6 +91,14 @@ export interface ReceiptDetails {
   chain: ReceiptChain;
   /** The digest of the report this one reissues, when it is a reissue. */
   reissueOf: string | null;
+  /**
+   * Format 15, on an extension only: the official suite it carried and its digest, and how many
+   * workspace scenarios ran after it, with their digest. Only digests and a count: the workspace
+   * scenarios' words never leave the report. Null when the report states none.
+   */
+  extension: { baseSuite: { name: string; key: string; version: number }; baseSuiteDigest: string; scenarios: number; extensionDigest: string } | null;
+  /** Format 15, on a run in another language only: which, and how many scenarios were sent in it. */
+  language: { name: string; localised: number; of: number } | null;
 }
 
 export type SealReceipt =
@@ -128,6 +137,28 @@ export function receiptSuite(stated: unknown): ReceiptSuite {
     return { builtIn: true, name, key, version: Number(version) };
   }
   return { builtIn: false, version: Number(version) };
+}
+
+/** Only an official suite is named, only digests that are digests, only a count. */
+export function receiptExtension(value: unknown): ReceiptDetails["extension"] {
+  const e = record(value);
+  if (!e || typeof e.base_suite !== "string") return null;
+  const match = /^([a-z0-9][a-z0-9-]*) v(\d+)$/.exec(e.base_suite);
+  if (!match || !Object.hasOwn(BUILT_IN_SUITES, match[1])) return null;
+  const baseSuiteDigest = normaliseDigest(e.base_suite_digest);
+  const extensionDigest = normaliseDigest(e.extension_digest);
+  const scenarios = count(e.scenarios);
+  if (!baseSuiteDigest || !extensionDigest || scenarios === null) return null;
+  return { baseSuite: { name: BUILT_IN_SUITES[match[1]], key: match[1], version: Number(match[2]) }, baseSuiteDigest, scenarios, extensionDigest };
+}
+
+export function receiptLanguage(value: unknown): ReceiptDetails["language"] {
+  const l = record(value);
+  if (!l || !isVariantLocale(l.code)) return null;
+  const localised = count(l.localised);
+  const of = count(l.of);
+  if (localised === null || of === null) return null;
+  return { name: LOCALE_NAMES[l.code], localised, of };
 }
 
 function receiptChain(previous: unknown): ReceiptChain {
@@ -202,6 +233,9 @@ export function buildReceipt(digest: string, row: SealRow | null): SealReceipt {
       grade: receiptGrade(payload.grade),
       chain: receiptChain(run.previous_report_hash),
       reissueOf: reissue ? normaliseDigest(reissue.of) : null,
+      // Absent before format 15: no claim either way.
+      extension: receiptExtension(run.extension),
+      language: receiptLanguage(run.locale),
     },
   };
 }

@@ -70,6 +70,10 @@ export interface ReportInput {
   manifestHash?: string | null;
   /** What was tested and where each item came from (format 12); absent on older runs. */
   fingerprint?: NonNullable<ReportPayload["run"]["fingerprint"]> | null;
+  /** The official suite an extension carried, and its workspace scenarios (format 15). */
+  extension?: ReportPayload["run"]["extension"] | null;
+  /** The language the scenarios were sent in, when not English (format 15). */
+  locale?: ReportPayload["run"]["locale"] | null;
   /** The previous report for this agent, so a series chains; null for the first. */
   previousReportHash?: string | null;
 }
@@ -267,10 +271,11 @@ export function buildReport(input: ReportInput): BuiltReport {
     // scenarios in a comparison whose verdict had already moved under one policy
     // version, so a coin flip is not reported as a regression without saying so; 11 is
     // a reissue carrying human review; 12 states what was tested, each item recorded by
-    // Novera or declared by the customer. Reports
-    // sealed as any earlier format are still rendered from their own payload and must
+    // Novera or declared by the customer; 13 and 14 grade corroboration and name every grader;
+    // 15 says which official suite an extension carried and in which language scenarios were
+    // sent. Reports sealed as any earlier format are still rendered from their own payload and must
     // keep verifying — every reader of this payload branches on absence.
-    novera: { format: 14 },
+    novera: { format: 15 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -294,6 +299,8 @@ export function buildReport(input: ReportInput): BuiltReport {
       manifest_hash: input.manifestHash ?? null,
       previous_report_hash: input.previousReportHash ?? null,
       ...(input.fingerprint ? { fingerprint: input.fingerprint } : {}),
+      ...(input.extension ? { extension: input.extension } : {}),
+      ...(input.locale ? { locale: input.locale } : {}),
     },
     grade: {
       band: grade.band,

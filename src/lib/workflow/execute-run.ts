@@ -12,6 +12,7 @@ import { CircuitBreaker, createRoutedChat } from "../router/execute.ts";
 import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
 import { publishReport } from "./run.ts";
 import { reportEnvironment } from "../agents/environment.ts";
+import { declaredLocalisation } from "./localised-run.ts";
 
 /**
  * Loads everything a queued run refers to and executes it, then publishes a report.
@@ -36,7 +37,7 @@ export async function startRunExecution(args: {
   // types the embedded form is untyped, and this is easier to follow anyway.
   const { data: run, error } = await client
     .from("runs")
-    .select("id, agent_id, policy_id, suite_id, baseline_run_id, judge_source, attestation_text, pass_threshold, started_at")
+    .select("id, agent_id, policy_id, suite_id, baseline_run_id, judge_source, attestation_text, pass_threshold, started_at, manifest")
     .eq("id", runId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -56,7 +57,13 @@ export async function startRunExecution(args: {
 
   const agent = agentRow.data as { name: string; config: AgentConfig; verification: unknown; is_production: boolean };
   const policy = policyRow.data as { version: number; body: string };
-  const suite = suiteRow.data as Suite;
+  const stored = suiteRow.data as Suite;
+  // A run in another language sends the variants its manifest declared, and only those: if the
+  // variants it would send now are not the ones it declared (a sidecar changed between the two),
+  // it stops here rather than send a different test under a declared digest.
+  const localisation = declaredLocalisation(run.manifest, stored.cases);
+  if (!localisation.ok) throw new Error(localisation.error);
+  const suite: Suite = { ...stored, cases: localisation.cases };
   const workspace = workspaceRow.data as { name: string };
 
   const adapter = await buildAgentAdapter({

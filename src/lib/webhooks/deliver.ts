@@ -121,10 +121,11 @@ export async function deliverDue(args: {
     };
     const { data: ep } = await args.db.from("webhook_endpoints")
       .select("url, revoked_at, secret_ciphertext, secret_iv, secret_tag").eq("id", d.endpoint_id).maybeSingle<Endpoint>();
-    const fail = async (lastStatus: number | null, why: string, giveUp = false) => {
+    // Every attempt records how long the receiver took (0072); null when nothing was sent.
+    const fail = async (lastStatus: number | null, why: string, giveUp = false, latencyMs: number | null = null) => {
       const final = giveUp || d.attempts > BACKOFF_MS.length || !ep || ep.revoked_at !== null;
       const kept = await settle({
-        last_status: lastStatus, last_error: why.slice(0, 300),
+        last_status: lastStatus, last_error: why.slice(0, 300), last_latency_ms: latencyMs,
         ...(final ? { status: "failed" } : { next_attempt_at: new Date(Date.now() + BACKOFF_MS[d.attempts - 1]).toISOString() }),
       });
       if (kept) { if (final) out.failed++; else out.retrying++; }
@@ -148,6 +149,8 @@ export async function deliverDue(args: {
       await fail(null, "Not sent: the endpoint's signing secret could not be opened. Remove the endpoint and add it again.", true);
       continue;
     }
+    const sentAt = performance.now();
+    const elapsed = () => Math.max(0, Math.round(performance.now() - sentAt));
     try {
       const res = await fetch(ep.url, {
         method: "POST",
@@ -163,18 +166,22 @@ export async function deliverDue(args: {
         },
         body,
       } as RequestInit);
+      // Until the receiver's status arrived: what it took to answer, not to release its body.
+      const latencyMs = elapsed();
       // Only the status is read. The receiver's body is released unread: whatever it says, at
       // whatever size, is not ours to store, and an unread body would hold its connection.
       await discardBody(res);
       if (res.status >= 200 && res.status < 300) {
-        if (await settle({ status: "delivered", last_status: res.status, last_error: null, delivered_at: new Date().toISOString() })) out.delivered++;
+        if (await settle({ status: "delivered", last_status: res.status, last_error: null, last_latency_ms: latencyMs, delivered_at: new Date().toISOString() })) out.delivered++;
       } else {
-        await fail(res.status, res.status >= 300 && res.status < 400 ? `Answered ${res.status}; redirects are not followed.` : `Answered ${res.status}.`);
+        await fail(res.status, res.status >= 300 && res.status < 400 ? `Answered ${res.status}; redirects are not followed.` : `Answered ${res.status}.`, false, latencyMs);
       }
     } catch (e) {
       const refused = refusedAddress(e);
+      // A refused address was never sent to; a timeout or a dropped connection was.
       await fail(null, refused ? `Not sent: ${refused}`
-        : e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError") ? `No answer within ${DELIVERY_TIMEOUT_MS / 1000} s.` : `Could not connect: ${e instanceof Error ? e.message : String(e)}`);
+        : e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError") ? `No answer within ${DELIVERY_TIMEOUT_MS / 1000} s.` : `Could not connect: ${e instanceof Error ? e.message : String(e)}`,
+        false, refused ? null : elapsed());
     }
   }
   return out;
@@ -216,12 +223,14 @@ export async function runEventBody(db: SupabaseClient, workspaceId: string, runI
 }
 
 /**
- * Why a run ended early, as one of three fixed sentences. The run's own error text is for the
+ * Why a run ended early, as one of four fixed sentences. The run's own error text is for the
  * workspace — the Stop button writes the person's email address into it, and a failure can
  * carry an agent's or the database's words — while a webhook goes to a third party's system
  * (audit R7: the stopper's email reached the receiver). The run page keeps the full text.
  */
 export function abortedReason(run: { error: string | null; stopped_by: string | null }): string {
+  // A CI trigger for a newer commit on the same branch stopped it (0070); the commit is not repeated here.
+  if (/^Superseded by /.test(run.error ?? "")) return "Superseded by a newer commit on the same branch before it finished.";
   if (run.stopped_by) return "Stopped by a member of the workspace before it finished.";
   if (/no scenario was graded for 24 hours/.test(run.error ?? "")) return "Stopped because no scenario was graded for 24 hours.";
   return "Ended by an error outside any scenario; the run page says what happened.";

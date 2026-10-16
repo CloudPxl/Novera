@@ -14,7 +14,7 @@ import {
   type LedgerAnswer,
 } from "@/lib/report/file-check.ts";
 import { REPORT_NOTICE_SHORT, REPORT_NOTICE_TITLE } from "@/lib/legal/notices.ts";
-import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
+import { Explained } from "@/components/ui/explain-context.tsx";
 import { CHIP, ReceiptDetailsList } from "./receipt-details.tsx";
 
 /**
@@ -318,7 +318,7 @@ function Outcome({ state, heading }: { state: Done; heading: RefObject<HTMLHeadi
               <p className="inline-flex items-center rounded-control border-2 border-dashed border-warning-text bg-warning-surface px-3 py-1 text-sm font-bold uppercase tracking-wide text-warning-text">
                 Test data · Novera&apos;s scripted fixture, not a real agent
               </p>
-              <ExplainTrigger id="test_data" />
+              <Explained id="test_data" />
             </div>
           )}
           <ReceiptDetailsList details={ledger.details} />

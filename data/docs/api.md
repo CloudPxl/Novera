@@ -6,7 +6,9 @@ A workspace API key lets a script, a CI pipeline or an AI assistant read your wo
 
 ## Keys
 
-Create a key under **Settings → API keys, MCP and webhooks**, one for each place you use it, so each can be revoked on its own. The key is shown once. Novera keeps only a keyed fingerprint of it, so a lost key cannot be recovered and a copy of our database cannot be used to call the API. Revoking a key is permanent and takes effect on the next request.
+Create a key under **Settings → API keys, MCP and webhooks**, one for each place you use it, so each can be revoked on its own. The key is shown once. Novera keeps only a keyed fingerprint of it, so a lost key cannot be recovered and a copy of our database cannot be used to call the API. Revoking a key is permanent and takes effect on the next request. The list of keys shows when each was last used, to the minute ("Last used 3 hours ago", or "Never used"), so you can tell a key a pipeline still relies on from one nobody has called in months.
+
+Besides reading, a key can do only what you ticked when you created it: start runs (`run`), read your agent's replies (`responses`), ask for drafts and diagnoses (`write`), and run single-scenario checks (`probe`). Each of those comes with reading; none comes without it.
 
 Send the key in a header on every request:
 
@@ -40,6 +42,47 @@ With a key that can start runs:
 The run records which key started it, and the person who created that key as responsible for it.
 
 When the run is done, `GET /api/v1/runs/<id>` gives its report's link; the JSON and JUnit downloads of that report carry the CI exit code (see **Reports in CI, and verifying a copy**). The `novera` command line does all of this in one step — `novera run --agent <id>`, with `--release` and `--kb-revision` to record what you are testing — but it is not yet published as a package. Whatever you use, keep the key in an environment variable or your CI's secret store, never in a command's arguments: arguments are visible to other processes and often printed in CI logs.
+
+## Gating a pipeline on a commit
+
+With a key that can start runs, `POST /api/v1/ci/trigger` starts a run for one commit:
+
+```json
+{"agent_id": "…", "suite": "eu-support-v5", "git_commit_sha": "…", "git_branch": "feature/refunds", "pr_number": 42}
+```
+
+`suite` is a suite key, pinned to a version (`eu-support-v5`) or not (`eu-support`, the newest); your workspace's own suite of that key is used before a built-in one, and `suite_id` works too. The names are also accepted in camelCase (`agentId`, `suiteSlug`, `gitCommitSha`, `gitBranch`, `prNumber`, `cancelSuperseded`); answers are always snake_case. The run starts exactly as `POST /api/v1/runs` starts one, with the same checks, and a refusal answers with the same status and `code`.
+
+- It answers `202` with `run`, `next` (the execute call), `poll_url` and `superseded`. The commit is stated on the report as the release you declared, unless you send `release_id`.
+- The same commit, agent and suite again answers `200` with the run it already started and `"deduplicated": true`, whatever that run's state — so a retried or re-run job never spends a second run on one commit. If that run was aborted (stopped, superseded, or halted because your agent could not be reached), it sealed nothing, so the commit gets a new run.
+- With `cancel_superseded` (default `true`), runs that other commits on the same branch started for this agent through this endpoint, and that have not finished, are stopped: aborted, never sealed, their graded scenarios kept, and the reason names the newer commit. Runs started any other way are never stopped by it.
+
+Drive the run with `POST /api/v1/runs/<id>/execute` until `done` is true, then `GET /api/v1/ci/runs/<id>` (a key that reads is enough). It answers with `ci_exit_code` and `ci_exit_reason`, the report's `content_hash`, link and public `verify_url`, the `suite_digest`, and `baseline_comparison`:
+
+- `ci_exit_code` uses the codes in **Reports in CI, and verifying a copy**: `0` pass, `1` fail, `2` incomplete — read from the sealed report itself. Without a sealed report it is `null` while the run is queued or running, `4` when the run was halted because your agent could not be reached, `2` when it was aborted for any other reason or sealed nothing, and `3` when its report was withdrawn.
+- `baseline_comparison` compares the run with the newest earlier completed run of the same agent on the same suite key: `newly_broken`, `fixed` and `graders_moved` list scenario ids, `compare_url` opens the side-by-side comparison, and `summary` is either "No previously passing scenario failed" or "N previously passing scenarios now fail". A verdict that moved on an identical reply is the graders moving, not your agent, and is listed only under `graders_moved`. It is `null` when there is no earlier run to compare with.
+- Add `?format=junit` for JUnit XML any CI test reporter can read, with the exit code, the suite digest, the seal and the comparison link as properties. A run with no sealed report still gets a valid file: one test case, skipped while the run is unfinished and an error otherwise.
+
+**Integration with GitHub Actions** has the whole workflow, and each agent's **Connection** tab offers it filled in.
+
+## Checking one scenario
+
+With a key that can run single-scenario checks (`probe`), `POST /api/v1/probes/single` sends one scenario of a suite to one agent and grades it the way a run does — the scenario's rules, then the read-back of your system if the agent has one, then two models — against the agent's newest policy version:
+
+```json
+{"agent_id": "…", "suite": "eu-support-v5", "scenario_id": "T07", "locale": "de"}
+```
+
+`suite` is a suite key (`eu-support-v5`, or `eu-support` for the newest), or send `suite_id`. `locale` is `en` (the default), `de`, `fr` or `ro`; a scenario without a variant in that language answers `422` rather than being sent in English under a German request. The names are also accepted in camelCase (`agentId`, `suiteSlug`, `scenarioId`).
+
+It answers `200` with `check` — `verdict` (`pass`, `fail`, `error` when the scenario could not be run or read, or `no_verdict` when it ran and the evidence does not support one, with `no_verdict_reason`), how it was settled, the reasons, the failed expectations, what the read-back showed, which models graded it and what funded them — `rate_limit` (`remaining`, `resets_at`) and always `"label": "Single-scenario check — not a sealed run."`
+
+That label is the point. A check is not a run: it is never sealed, never counted in a score, a coverage figure, a baseline comparison or a report, and never spends one of the trial's runs or a plan's allowance. It is graded on your own model key when the workspace has one, and it needs something that funds runs — the trial, a plan or a grant. Rerun the suite for evidence a report can carry. The same check is **Try this scenario alone** on a run's failed and no-result scenarios.
+
+- A destructive or fixture-only scenario sent to an agent marked as production is refused with `409` and `"code": "production_guard"`, in the same words a run records. Mark the agent as a test target on its **Connection** tab to run it.
+- A workspace can run 20 checks in any rolling hour, from the API and the app together. The 21st answers `429` with `"code": "rate_limited"`, `Retry-After` and when the next one can start.
+- Your agent's reply comes back only with `?include=responses` and a key that also has **Can also read your agent's replies**; the check then records that the reply was handed to that key. Otherwise personal data a grader quoted in a reason comes back as a placeholder.
+- Every refusal is JSON with a stable `code`: `invalid_request` (400), `missing_scope` (403), `not_found` (404), `production_guard`, `archived`, `no_policy`, `not_funded` (409, with `blocker`), `no_locale_variant` (422), `rate_limited` (429).
 
 ## Recording a failure from production
 
@@ -87,7 +130,7 @@ function fromNovera(secret, rawBody, header, now = Date.now()) {
 }
 ```
 
-Answer with any `2xx` to acknowledge. Anything else, or no answer within five seconds, is retried after 1, 5 and 30 minutes, then 2 and 6 hours, and then given up; Settings shows each delivery's last answer. Redirects are not followed, and your endpoint's response body is never read.
+Answer with any `2xx` to acknowledge. Anything else, or no answer within five seconds, is retried after 1, 5 and 30 minutes, then 2 and 6 hours, and then given up; Settings shows the last ten deliveries with each one's last answer and how long your endpoint took to give it (`200 · 184 ms`). Redirects are not followed, and your endpoint's response body is never read.
 
 Delivery is **at least once**, not exactly once. Each attempt is sent by one sender, but if your endpoint answered and Novera stopped before recording the answer, the same delivery is sent again with the same `Novera-Delivery` id. Treat an id you have already handled as done.
 

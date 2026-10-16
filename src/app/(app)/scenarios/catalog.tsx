@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { obligationLabel } from "@/lib/report/payload.ts";
+import { TryScenarioAlone } from "@/components/ui/try-scenario-alone.tsx";
+import { Button } from "@/components/ui/button.tsx";
 import { SEVERITIES } from "@/lib/suites/validate.ts";
 import { TIER_DESCRIPTIONS, TIER_LABELS, TIERS } from "@/lib/suites/tiers.ts";
 import {
@@ -14,6 +16,17 @@ import {
  * what changed from the version before — and the digest is the one a new run's manifest records.
  * Filters are links, so they work without JavaScript and can be bookmarked.
  */
+
+/**
+ * Trying one scenario alone from the catalog: the agent is chosen once (`?agent=`), then a
+ * scenario's "Try alone" link opens the check beside it (`?try=<suite id>:<scenario id>`). Links,
+ * so nothing waits for JavaScript and only the opened scenario renders a form.
+ */
+export interface CatalogTrial {
+  agents: Array<{ id: string; name: string; isProduction: boolean }>;
+  agentId: string | null;
+  tryKey: string | null;
+}
 
 const BUCKET_LABEL: Record<TierBucket, string> = { ...TIER_LABELS, unclassified: "Not classified" };
 const SHORT = 12;
@@ -61,7 +74,36 @@ function Ids({ ids }: { ids: string[] }) {
   return <span className="type-mono text-xs text-ink-soft [overflow-wrap:anywhere]">{ids.join(", ")}</span>;
 }
 
-function Version({ v, newest, filter }: { v: CatalogVersion; newest: boolean; filter: CatalogFilter }) {
+function tryHref(filter: CatalogFilter, agentId: string, key: string | null): string {
+  const q = new URLSearchParams({ tab: "catalog", agent: agentId });
+  if (filter.tier) q.set("tier", filter.tier);
+  if (filter.severity) q.set("severity", filter.severity);
+  if (key) q.set("try", key);
+  return `/scenarios?${q.toString()}${key ? `#try-${key.split(":")[1]}` : ""}`;
+}
+
+function AgentPicker({ trial, filter }: { trial: CatalogTrial; filter: CatalogFilter }) {
+  return (
+    <form method="get" action="/scenarios" className="mt-4 flex flex-wrap items-end gap-2 text-sm">
+      <input type="hidden" name="tab" value="catalog" />
+      {filter.tier && <input type="hidden" name="tier" value={filter.tier} />}
+      {filter.severity && <input type="hidden" name="severity" value={filter.severity} />}
+      <label className="grid gap-1">
+        <span className="font-medium">Try a scenario alone against</span>
+        <select name="agent" defaultValue={trial.agentId ?? ""} className="rounded-control border border-line-strong bg-surface px-2.5 py-1.5 text-sm text-ink outline-none focus:border-ink focus:ring-1 focus:ring-ink">
+          <option value="" disabled>Choose an agent</option>
+          {trial.agents.map((a) => <option key={a.id} value={a.id}>{a.name}{a.isProduction ? " (production)" : ""}</option>)}
+        </select>
+      </label>
+      <Button type="submit" variant="secondary" size="sm">Choose</Button>
+      <p className="w-full text-xs text-ink-faint">
+        Sends one scenario and grades it as a run would. It is not a sealed run: no score, report or run allowance changes.
+      </p>
+    </form>
+  );
+}
+
+function Version({ v, newest, filter, trial }: { v: CatalogVersion; newest: boolean; filter: CatalogFilter; trial?: CatalogTrial }) {
   const headingId = `suite-${v.id}`;
   const shown = v.scenarios.filter((s) => matchesFilter(s, filter));
   const filtered = Boolean(filter.tier || filter.severity);
@@ -143,6 +185,11 @@ function Version({ v, newest, filter }: { v: CatalogVersion; newest: boolean; fi
                 <span className="min-w-0">{obligationLabel(s.obligation)}<span className="text-ink-faint"> · {s.category.replace(/_/g, " ")}</span></span>
                 <span><Badge tone={(SEVERITIES as readonly string[]).includes(s.severity) ? (s.severity as "critical") : "neutral"}>{s.severity}</Badge></span>
                 <span className="text-xs">
+                  {trial?.agentId && (
+                    <Link href={tryHref(filter, trial.agentId, `${v.id}:${s.id}`)} className="mr-2 font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">
+                      Try alone<span className="sr-only"> {s.id}</span>
+                    </Link>
+                  )}
                   {s.tier ? (
                     <>
                       <span className="font-medium">{TIER_LABELS[s.tier]}</span>
@@ -150,6 +197,11 @@ function Version({ v, newest, filter }: { v: CatalogVersion; newest: boolean; fi
                     </>
                   ) : <span className="text-ink-faint">Not classified</span>}
                 </span>
+                {trial?.agentId && trial.tryKey === `${v.id}:${s.id}` && (
+                  <div id={`try-${s.id}`} className="scroll-mt-20 sm:col-span-4">
+                    <TryScenarioAlone target={{ agentId: trial.agentId, suiteId: v.id, scenarioId: s.id }} />
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -164,7 +216,7 @@ function Version({ v, newest, filter }: { v: CatalogVersion; newest: boolean; fi
   );
 }
 
-export function Catalog({ suites, filter }: { suites: CatalogSuite[]; filter: CatalogFilter }) {
+export function Catalog({ suites, filter, trial }: { suites: CatalogSuite[]; filter: CatalogFilter; trial?: CatalogTrial }) {
   return (
     <section id="catalog" aria-labelledby="catalog-heading" className="mt-6 scroll-mt-20">
       <h2 id="catalog-heading" className="type-h2">Suite catalog</h2>
@@ -189,6 +241,7 @@ export function Catalog({ suites, filter }: { suites: CatalogSuite[]; filter: Ca
       </p>
 
       <Filters filter={filter} />
+      {trial && trial.agents.length > 0 && <AgentPicker trial={trial} filter={filter} />}
 
       {suites.length === 0 ? (
         <div className="mt-6">
@@ -201,7 +254,7 @@ export function Catalog({ suites, filter }: { suites: CatalogSuite[]; filter: Ca
           </h3>
           <p className="text-xs text-ink-soft">{s.versions.length} {s.versions.length === 1 ? "version" : "versions"}</p>
           <div className="mt-3 space-y-4">
-            {s.versions.map((v, i) => <Version key={v.id} v={v} newest={i === 0} filter={filter} />)}
+            {s.versions.map((v, i) => <Version key={v.id} v={v} newest={i === 0} filter={filter} trial={trial} />)}
           </div>
         </section>
       ))}

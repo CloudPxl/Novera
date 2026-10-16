@@ -13,7 +13,8 @@ import { Badge } from "@/components/ui/primitives.tsx";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { Menu } from "@/components/ui/menu.tsx";
 import { menuItemClass } from "@/components/ui/menu-item.ts";
-import { NavLinks, type NavEntry, type NavItem } from "./nav-links.tsx";
+import { NavLinks } from "./nav-links.tsx";
+import { navFor, type NavItem } from "./nav-model.ts";
 import { fundingBadge } from "./funding-badge.ts";
 import { RunLauncher, type LaunchAgent, type LaunchSuite } from "./run-launcher.tsx";
 import { suiteDigest } from "@/lib/suites/digest.ts";
@@ -71,28 +72,10 @@ export async function TopBar() {
   // Billing is Settings → Billing: not a primary place, but one click away in the account menu
   // for whoever can change the plan (owner and admin), and the status badge links to it.
   const mayBill = can(role, "billing.manage");
-  // Navigation by account mode (2026-10-02 IA refactor). Personal: five plain places.
-  // Agency: work grouped by what you do with it. Enterprise: agency plus workspaces and audit.
+  // Navigation by account mode: Connect → Run → Share (nav-model.ts). Personal says "My …";
+  // enterprise adds Workspaces and Audit. Secondary views are section tabs on their pages.
   // Every existing URL still resolves; this only decides what is offered first.
-  const work: NavEntry = { label: "Work", items: [{ href: "/review", label: "Review queue" }, { href: "/runs", label: "Runs" }, { href: "/regressions", label: "Regressions" }] };
-  const library: NavEntry = { label: "Library", items: [{ href: "/agents", label: "Agents and policies" }, { href: "/scenarios", label: "Scenarios" }] };
-  const nav: NavEntry[] = mode === "personal" && !multi
-    ? [
-        { href: "/dashboard", label: "Overview" },
-        { href: "/agents", label: agents.length === 1 ? "My agent" : "My agents" },
-        { href: "/runs", label: "My runs" },
-        { href: "/reports", label: "My reports" },
-        { href: "/settings", label: "Settings", also: ["/billing"] },
-      ]
-    : [
-        { href: "/dashboard", label: "Overview" },
-        ...(mode === "enterprise" ? [{ href: "/workspaces", label: "Workspaces" }] : []),
-        work,
-        { href: "/reports", label: "Reports" },
-        library,
-        ...(mode === "enterprise" && can(role, "audit.view") ? [{ href: "/settings/audit", label: "Audit" }] : []),
-        { href: "/settings", label: "Settings", also: ["/billing"] },
-      ];
+  const nav = navFor({ mode, multi, agentCount: agents.length, canAudit: can(role, "audit.view") });
   // Staff places (src/lib/auth/staff-list.ts): the inbound queue and launch readiness. Kept out of
   // `nav` so they can leave the bar where it is full: agency and enterprise mode fill it at 1024
   // (Readiness pushed it 77 px past the edge in enterprise mode), so there they sit in the bar

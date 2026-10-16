@@ -73,7 +73,7 @@ export const BRIEF_TRACKER: readonly TrackerRow[] = [
   },
   {
     brief: "§6–7 AI Act boundary and report notice",
-    exists: "Standing notice: on every report's cover and in full, in the CSV, Markdown, JSON (notice, outside the hashed payload) and JUnit exports, beside the \"Open the client report\" link, and in the AI Testing Scope notice. New reports' sealed limitations also say \"not a statutory conformity assessment; Novera is not a notified body\".",
+    exists: "Standing notice: on every report's cover and in full, in the CSV, Markdown, JSON (notice, outside the hashed payload) and JUnit exports, beside the \"View client report\" link, and in the AI Testing Scope notice. New reports' sealed limitations also say \"not a statutory conformity assessment; Novera is not a notified body\".",
     where: ["src/lib/legal/notices.ts"],
     status: "built",
     statusText: "Built",

@@ -9,6 +9,8 @@ import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { PageHeader, Panel, Rows, TabNav } from "@/components/ui/page.tsx";
 import { formatWhen } from "@/lib/format/when.ts";
 import { summariseRun } from "../dashboard/summary.ts";
+import { isNoveraFixture } from "@/lib/agents/environment.ts";
+import type { AgentConfig } from "@/lib/agents/types.ts";
 
 export const metadata: Metadata = { title: "Agents · Novera" };
 export const dynamic = "force-dynamic";
@@ -49,7 +51,6 @@ export default async function AgentsPage({ searchParams }: { searchParams: Promi
   return (
     <main className="w-full pb-8 text-ink">
       <PageHeader
-        eyebrow={context.accountMode === "personal" ? "My agents" : "Library"}
         title="Agents"
         description="Each agent's policy, runs, schedule and connection are on its own page."
         action={can(role, "agent.write") ? <ButtonLink href="/agents/new">Connect an agent</ButtonLink> : undefined}
@@ -85,6 +86,7 @@ export default async function AgentsPage({ searchParams }: { searchParams: Promi
                       <span className="block truncate type-mono text-xs text-ink-faint">{hostOf(a.config)}</span>
                     </span>
                     <span className="flex flex-wrap items-center gap-1.5 text-xs text-ink-soft">
+                      {isNoveraFixture(a.config as AgentConfig) && <Badge tone="error">Test fixture</Badge>}
                       {probe?.error ? <Badge tone="fail">Not answering</Badge> : probe ? <Badge tone="pass">Answering</Badge> : <Badge tone="neutral">Never checked</Badge>}
                       {a.archived_at && <Badge tone="neutral">Archived {formatWhen(a.archived_at as string, context.profile, { date: true })}</Badge>}
                       {!a.attested_at && <Badge tone="error">No authorisation</Badge>}

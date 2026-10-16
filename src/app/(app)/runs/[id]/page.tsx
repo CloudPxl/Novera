@@ -50,6 +50,9 @@ import { can } from "@/lib/auth/permissions.ts";
 import { NOVERA_ATTRIBUTION, SEAL_ATTRIBUTION, sealContents } from "@/lib/report/seal.ts";
 import { DiagnoseButton, ProposalCard, RetestHistory, type Proposal, type Retest } from "./diagnose.tsx";
 import { TryScenarioAlone } from "@/components/ui/try-scenario-alone.tsx";
+import { DeliverableBar } from "./deliverable-bar.tsx";
+import { deliverableFor } from "./deliverable.ts";
+import { readClock } from "@/lib/workflow/stalled.ts";
 
 export const metadata: Metadata = { title: "Run · Novera" };
 export const dynamic = "force-dynamic";
@@ -90,7 +93,7 @@ export default async function RunPage({
   const { data: run } = await db
     .from("runs")
     .select(
-      "id, workspace_id, status, agent_id, policy_id, suite_id, baseline_run_id, error, created_at, started_at, finished_at, pass_threshold, judge_model, schedule_id, api_key_id, manifest",
+      "id, workspace_id, status, agent_id, policy_id, suite_id, baseline_run_id, error, created_at, started_at, finished_at, pass_threshold, judge_model, schedule_id, api_key_id, manifest, lease_until",
     )
     .eq("id", id)
     .maybeSingle();
@@ -133,6 +136,13 @@ export default async function RunPage({
   const suiteCases = Array.isArray(suite?.cases) ? (suite.cases as Array<Record<string, unknown>>) : [];
   const plannedCases = suiteCases.length;
   const settled = run.status === "completed" || run.status === "aborted";
+
+  // A run in flight: its newest recorded scenario, which with its own timestamps says whether it
+  // has stopped moving (src/lib/workflow/stalled.ts). Read once here; the live view polls after.
+  const { data: newestCase } = settled
+    ? { data: null }
+    : await db.from("run_cases").select("created_at").eq("run_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const renderedAt = readClock();
 
   // While the run is in flight the live view owns the page: it reads the same rows,
   // but streams them. Once the run has settled the server renders them instead, so
@@ -557,6 +567,21 @@ export default async function RunPage({
         created_at: (report.created_at as string | null) ?? null, revoked_at: (report.revoked_at as string | null) ?? null,
       })
     : null;
+  const deliverable = deliverableFor({
+    runId: run.id as string,
+    runStatus: run.status as string,
+    exploratory,
+    fixture: Boolean(agent?.config && isNoveraFixture(agent.config as AgentConfig)),
+    report: report ? {
+      token: report.token as string, content_hash: report.content_hash as string,
+      revoked_at: (report.revoked_at as string | null) ?? null, expires_at: report.expires_at as string,
+    } : null,
+    readiness: readiness?.state ?? null,
+    previousRunId: previousRun?.id ?? null,
+  });
+  // A Suite Builder scan is never rerun from here (0056); a role that cannot start runs is not offered one.
+  const mayRerun = !exploratory && can(role, "run.start");
+  const compareHere = deliverable.kind !== "share" && previousRun !== null;
   const executed = run.started_at
     ? `Executed ${utc(run.started_at)}${run.finished_at ? ` to ${utc(run.finished_at)}` : ", not finished"} · status ${run.status as string}`
     : `Created ${utc(run.created_at)} · not started · status ${run.status as string}`;
@@ -614,6 +639,15 @@ export default async function RunPage({
             initialError={run.error}
             reportToken={report?.token ?? null}
             hasBaseline={Boolean(run.baseline_run_id)}
+            initialProgress={{
+              status: run.status as string,
+              createdAt: run.created_at as string,
+              startedAt: (run.started_at as string | null) ?? null,
+              lastCaseAt: (newestCase?.created_at as string | undefined) ?? null,
+              leaseUntil: (run.lease_until as string | null) ?? null,
+            }}
+            renderedAt={renderedAt}
+            mayContinue={can(role, "run.start")}
           />
         </div>
       ) : (
@@ -638,69 +672,60 @@ export default async function RunPage({
             />
           </div>
 
-          {/* The primary action and its two quieter neighbours, under the outcome they act on. */}
-          <div className="print-hide mt-4 flex flex-wrap items-center gap-3">
-            {report?.token && (
-              <Link
-                href={`/report/${report.token}`}
-                className="inline-flex items-center gap-2 rounded-control bg-ink px-4 py-2 text-sm font-medium text-on-ink transition-all duration-150 hover:bg-ink-hover active:scale-[0.98]"
-              >
-                Open the client report
-              </Link>
-            )}
-            {report?.token && (
-              <Menu
-                label="Export"
-                triggerClassName="border border-line-strong bg-surface px-3 py-2 text-ink hover:bg-sunken"
-                panelClassName="w-72"
-              >
-                {/* Every format goes through the same token gate as the page, so an
-                    export stops working the moment the link is revoked. */}
-                <a href={`/api/reports/${report.token}/export?format=md`} className={menuItemClass} download>
-                  <span className="block font-medium">Markdown</span>
-                  <span className="block text-xs text-ink-faint">The whole report as text, with its hash.</span>
-                </a>
-                <a href={`/api/reports/${report.token}/export?format=csv`} className={menuItemClass} download>
-                  <span className="block font-medium">CSV</span>
-                  <span className="block text-xs text-ink-faint">Coverage, obligations and findings as a table.</span>
-                </a>
-                <a href={`/api/reports/${report.token}/export?format=json`} className={menuItemClass} download>
-                  <span className="block font-medium">JSON</span>
-                  <span className="block text-xs text-ink-faint">The sealed data and its hash, so anyone can verify a copy.</span>
-                </a>
-                <a href={`/api/reports/${report.token}/export?format=junit`} className={menuItemClass} download>
-                  <span className="block font-medium">JUnit XML</span>
-                  <span className="block text-xs text-ink-faint">For CI test reporters. Failed, no result and not run stay distinct.</span>
-                </a>
-                <a href={`/report/${report.token}?print=1`} target="_blank" rel="noreferrer" className={menuItemClass}>
-                  <span className="block font-medium">PDF</span>
-                  <span className="block text-xs text-ink-faint">Opens the report; print it to PDF from the browser.</span>
-                </a>
-              </Menu>
-            )}
-            <form action={rerunFrom}>
-              <input type="hidden" name="runId" value={run.id} />
-              <SubmitButton variant="secondary" size="sm" pendingLabel="Starting…">
-                Rerun and compare against this
-              </SubmitButton>
-            </form>
-            {previousRun && (
-              <ButtonLink variant="secondary" size="sm" href={`/runs/compare?base=${previousRun.id}&target=${run.id}`}>
-                Compare with previous run
-              </ButtonLink>
-            )}
-            {report?.content_hash && (
-              <SealInspector
-                explain={explainEntries(CLIENT_EXPLAINS.sealInspector)}
-                hash={report.content_hash as string}
-                items={sealContents(report.payload as unknown as ReportPayload)}
-                exportPath={reportGone ? null : `/api/reports/${encodeURIComponent(report.token as string)}/export?format=json`}
-                unavailable={reportGone ?? undefined}
-              />
-            )}
-            {badgeShare && <BadgeShare {...badgeShare} />}
-          </div>
+          {/* The client deliverable: the report, its link, printing it, its seal and the comparison
+              with the previous run — each once on this page (deliverable.ts decides what is offered). */}
+          <DeliverableBar
+            deliverable={deliverable}
+            extra={report?.token && deliverable.kind === "share" ? (
+              <>
+                <Menu
+                  label="Downloads"
+                  triggerClassName="border border-line-strong bg-surface px-3 py-1.5 text-ink hover:bg-sunken"
+                  panelClassName="w-72"
+                >
+                  {/* Every format goes through the same token gate as the page, so a
+                      download stops working the moment the link is withdrawn. */}
+                  <a href={`/api/reports/${report.token}/export?format=md`} className={menuItemClass} download>
+                    <span className="block font-medium">Markdown</span>
+                    <span className="block text-xs text-ink-faint">The whole report as text, with its hash.</span>
+                  </a>
+                  <a href={`/api/reports/${report.token}/export?format=csv`} className={menuItemClass} download>
+                    <span className="block font-medium">CSV</span>
+                    <span className="block text-xs text-ink-faint">Coverage, obligations and findings as a table.</span>
+                  </a>
+                  <a href={`/api/reports/${report.token}/export?format=json`} className={menuItemClass} download>
+                    <span className="block font-medium">JSON</span>
+                    <span className="block text-xs text-ink-faint">The sealed data and its hash, so anyone can verify a copy.</span>
+                  </a>
+                  <a href={`/api/reports/${report.token}/export?format=junit`} className={menuItemClass} download>
+                    <span className="block font-medium">JUnit XML</span>
+                    <span className="block text-xs text-ink-faint">For CI test reporters. Failed, no result and not run stay distinct.</span>
+                  </a>
+                </Menu>
+                {badgeShare && <BadgeShare {...badgeShare} />}
+              </>
+            ) : undefined}
+          />
 
+          {/* Operator actions on the run itself, apart from what is handed to a client. Without the
+              bar (no sealed report that still answers), the comparison with the previous run is here. */}
+          {(mayRerun || compareHere) && (
+            <div className="print-hide mt-4 flex flex-wrap items-center gap-3">
+              {mayRerun && (
+                <form action={rerunFrom}>
+                  <input type="hidden" name="runId" value={run.id} />
+                  <SubmitButton variant="secondary" size="sm" pendingLabel="Starting…">
+                    Rerun and compare against this
+                  </SubmitButton>
+                </form>
+              )}
+              {compareHere && (
+                <ButtonLink variant="secondary" size="sm" href={`/runs/compare?base=${previousRun!.id}&target=${run.id}`}>
+                  Compare with previous run
+                </ButtonLink>
+              )}
+            </div>
+          )}
 
           <div className="print-hide mt-8">
             <TabNav
@@ -954,6 +979,18 @@ export default async function RunPage({
             <ReadinessPanel explain={explainEntries(CLIENT_EXPLAINS.readiness)} state={readiness.state} label={READINESS_LABEL[readiness.state]} checks={readiness.checks} token={report.token as string} />
           )}
 
+              {report?.content_hash && (
+                <div className="print-hide flex flex-wrap items-center gap-3">
+                  <SealInspector
+                    explain={explainEntries(CLIENT_EXPLAINS.sealInspector)}
+                    hash={report.content_hash as string}
+                    items={sealContents(report.payload as unknown as ReportPayload)}
+                    exportPath={reportGone ? null : `/api/reports/${encodeURIComponent(report.token as string)}/export?format=json`}
+                    unavailable={reportGone ?? undefined}
+                  />
+                  <span className="text-xs text-ink-faint">What the seal covers, and its digest to copy.</span>
+                </div>
+              )}
               {report && (
                 <dl className="grid gap-3 rounded-shell border border-line bg-surface p-5 text-sm sm:grid-cols-2">
                   <div><dt className="text-xs text-ink-faint">Report digest (SHA-256)</dt><dd className="mt-0.5 break-all type-mono text-xs">{report.content_hash as string}</dd></div>

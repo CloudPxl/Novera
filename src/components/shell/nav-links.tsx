@@ -4,47 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "@/components/ui/menu.tsx";
 import { menuItemClass } from "@/components/ui/menu-item.ts";
+import { currentHref, isGroup, type NavEntry, type NavItem } from "./nav-model.ts";
 
-export interface NavItem {
-  href: string;
-  label: string;
-  /** Other paths this place lives at — `/billing` is Settings → Billing. */
-  also?: string[];
-}
-
-/** A named group of places — "Work", "Library" — shown as one entry with its pages inside. */
-export interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-export type NavEntry = NavItem | NavGroup;
-
-const isGroup = (e: NavEntry): e is NavGroup => "items" in e;
-const under = (pathname: string, path: string) => pathname === path || pathname.startsWith(`${path}/`);
-/** How closely an item matches the current path: the length of its longest matching path, or 0. */
-const matchLength = (pathname: string, item: NavItem) =>
-  Math.max(0, ...[item.href, ...(item.also ?? [])].filter((p) => under(pathname, p)).map((p) => p.length));
-
-/**
- * The one place that is current: the closest match. Billing lives under /settings, and both
- * "Settings" and "Billing" lit at once said nothing about where the person was.
- */
-function currentHref(pathname: string, items: NavEntry[]): string | null {
-  let best: { href: string; length: number } | null = null;
-  for (const item of items.flatMap((e) => (isGroup(e) ? e.items : [e]))) {
-    const length = matchLength(pathname, item);
-    if (length > (best?.length ?? 0)) best = { href: item.href, length };
-  }
-  return best?.href ?? null;
-}
+export type { NavEntry, NavGroup, NavItem } from "./nav-model.ts";
 
 /**
  * The operator's places, with the current one marked.
  *
  * Marked twice on purpose: `aria-current` for assistive tech and a visible background for
- * everyone else. A group is marked when any page inside it is the current one, so "Work" stays
- * lit on the review queue, a run and the regressions alike.
+ * everyone else. A place is lit for every page that belongs to it (`also` in nav-model.ts), so
+ * Runs stays lit on Review, Reports and a comparison; a group (the staff menu) when any page
+ * inside it is current.
  */
 export function NavLinks({ items, variant }: { items: NavEntry[]; variant: "bar" | "stack" }) {
   const pathname = usePathname();

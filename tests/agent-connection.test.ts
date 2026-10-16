@@ -115,9 +115,17 @@ test("archiving needs the agent's name, exactly", () => {
   assert.equal(archiveConfirmed("Support bot", null), false);
 });
 
-test("connecting and editing check a template with the same function", () => {
+test("connecting, editing and testing read the endpoint fields with the same function", () => {
+  // Block 6: the connect form, the edit form and "Test connection" all go through
+  // parseEndpointFields, which checks the template with parseBodyTemplate.
   const actions = readFileSync("src/lib/workflow/actions.ts", "utf8");
-  assert.match(actions, /parseBodyTemplate\(bodyTemplateRaw \|\| DEFAULT_BODY_TEMPLATE\)/);
+  assert.match(actions, /const endpoint = parseEndpointFields\(/);
+  const connection = readFileSync("src/lib/agents/connection.ts", "utf8");
+  assert.match(connection, /parseBodyTemplate\(str\(fields\.bodyTemplate\) \|\| DEFAULT_BODY_TEMPLATE\)/);
+  assert.match(connection, /const endpoint = parseEndpointFields\(fields\);/);
+  const preflight = readFileSync("src/lib/workflow/preflight.ts", "utf8");
+  assert.match(preflight, /parseEndpointFields\(fields\)/);
+  assert.match(preflight, /parseConnectionEdit\(/);
 });
 
 test("0063 holds archive rules in the database and gives clients no write", () => {

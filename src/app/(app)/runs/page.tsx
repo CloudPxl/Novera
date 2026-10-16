@@ -4,6 +4,7 @@ import { requireWorkspace } from "@/lib/auth/session.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { PageHeader, Panel, Rows } from "@/components/ui/page.tsx";
+import { SectionNav } from "@/components/shell/section-nav.tsx";
 import { formatWhen } from "@/lib/format/when.ts";
 import { summariseRun } from "../dashboard/summary.ts";
 
@@ -44,7 +45,6 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
   }));
   const state = STATES.some((x) => x.key === filter.state) ? filter.state! : "all";
   const shown = rows.filter(({ r, s }) => (state === "all" || s.state === state) && (!filter.agent || r.agent_id === filter.agent));
-  const personal = context.accountMode === "personal";
   const q = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries({ state: filter.state, agent: filter.agent, ...over })) if (v && v !== "all") p.set(k, v);
@@ -53,11 +53,10 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
 
   return (
     <main className="w-full pb-8 text-ink">
+      <SectionNav section="runs" current="runs" />
       <PageHeader
-        eyebrow={personal ? "My runs" : "Work"}
         title="Runs"
         description="Each run's outcome is the release gate's: pass, fail, or evidence incomplete. A run in progress shows no counts until it is done."
-        action={<Link href="/review" className="text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">Review queue →</Link>}
       />
 
       <nav aria-label="Filter runs" className="flex flex-wrap items-center gap-1.5">

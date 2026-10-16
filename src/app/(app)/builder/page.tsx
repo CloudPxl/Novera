@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { can } from "@/lib/auth/permissions.ts";
 import { PageHeader, Section, Disclosure, Rows, Panel } from "@/components/ui/page.tsx";
+import { SectionNav } from "@/components/shell/section-nav.tsx";
 import { Badge } from "@/components/ui/primitives.tsx";
 import { packCases, publishedPacks, qualityRecord, reviewMinutes, suggestedPack } from "@/lib/builder/packs.ts";
 import { formatWhen } from "@/lib/format/when.ts";
@@ -47,11 +48,10 @@ export default async function BuilderPage() {
 
   return (
     <main className="w-full pb-10 text-ink">
+      <SectionNav section="scenarios" current="builder" />
       <PageHeader
-        eyebrow="Library"
         title="Suite Builder"
         description="Start with a measured baseline, add your own documents, compare them with what your agent does, and approve what applies. Nothing a model drafts is tested until a person approves it."
-        back={{ href: "/scenarios", label: "Scenarios" }}
       />
 
       {list.length > 0 && (

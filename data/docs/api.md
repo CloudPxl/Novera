@@ -8,7 +8,7 @@ A workspace API key lets a script, a CI pipeline or an AI assistant read your wo
 
 Create a key under **Settings → API keys, MCP and webhooks**, one for each place you use it, so each can be revoked on its own. The key is shown once. Novera keeps only a keyed fingerprint of it, so a lost key cannot be recovered and a copy of our database cannot be used to call the API. Revoking a key is permanent and takes effect on the next request. The list of keys shows when each was last used, to the minute ("Last used 3 hours ago", or "Never used"), so you can tell a key a pipeline still relies on from one nobody has called in months.
 
-Besides reading, a key can do only what you ticked when you created it: start runs (`run`), read your agent's replies (`responses`), ask for drafts and diagnoses (`write`), and run single-scenario checks (`probe`). Each of those comes with reading; none comes without it.
+Besides reading, a key can do only what you ticked when you created it: start runs (`run`), read your agent's replies (`responses`), ask for drafts and diagnoses and test a connection (`write`), and run single-scenario checks (`probe`). Each of those comes with reading; none comes without it.
 
 Send the key in a header on every request:
 
@@ -20,7 +20,7 @@ A missing key gets a `401` that says how to send one. A key that is wrong, unkno
 
 ## Endpoints
 
-These are `GET`, under `https://www.nover.space/api/v1`. The two that write are below: starting a run, and recording a failure from production.
+These are `GET`, under `https://www.nover.space/api/v1`. The ones that write are below: starting a run, testing a connection, and recording a failure from production.
 
 - `/agents` — your agents: name, host, whether it serves real customers, and its latest policy version. Policy text is never returned. Archived agents are left out; add `?archived=include` to list them too, or `?archived=only`, and each agent carries `archived_at` (`null` when active). An archived agent's runs stay readable by id, and starting a run of one is refused.
 - `/suites` — the suite versions you can run: built-in and your own, with how many scenarios each has.
@@ -83,6 +83,18 @@ That label is the point. A check is not a run: it is never sealed, never counted
 - A workspace can run 20 checks in any rolling hour, from the API and the app together. The 21st answers `429` with `"code": "rate_limited"`, `Retry-After` and when the next one can start.
 - Your agent's reply comes back only with `?include=responses` and a key that also has **Can also read your agent's replies**; the check then records that the reply was handed to that key. Otherwise personal data a grader quoted in a reason comes back as a placeholder.
 - Every refusal is JSON with a stable `code`: `invalid_request` (400), `missing_scope` (403), `not_found` (404), `production_guard`, `archived`, `no_policy`, `not_funded` (409, with `blocker`), `no_locale_variant` (422), `rate_limited` (429).
+
+## Testing a connection
+
+With a key that has `write`, `POST /api/v1/agents/test-connection` sends one diagnostic message to an agent's endpoint and says what came back, without saving anything — the same test as **Test connection** in the app, with the same 10-second deadline and the same allowance of 20 tests per workspace in ten minutes. Send the connection:
+
+```json
+{"url": "https://api.example.com/support/chat", "body_template": {"message": "{{input}}"}, "response_path": "reply", "auth_header_name": "authorization", "auth_value": "Bearer …"}
+```
+
+or `{"agent_id": "…"}` alone to test a saved agent with its stored credential. `auth_value` is used for that one request and never stored or returned.
+
+A test answers `200` with `outcome` — `ok`, `timeout`, `unreachable`, `refused_address`, `unauthorized`, `http_error`, `redirect`, `too_large`, `not_json` or `no_reply_at_path` — and `status_code`, `latency_ms`, a `headline` and `detail` in words, and `"stored": false`. On `ok` it adds `reply_preview` (at most 200 characters); on `no_reply_at_path` it adds `top_level_keys`, names only, and `suggested_path` when one can be found. Gate on `outcome`; the sentences may change.
 
 ## Recording a failure from production
 

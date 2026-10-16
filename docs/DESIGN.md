@@ -109,10 +109,15 @@ a comparison on one screen. Polished, and crowded.
 four figures, each optionally one link), `AttentionList` (five at most, tone as a word and a dot),
 `HealthLine`, `TabNav` (tabs as addresses, rendered on the server), `Disclosure` (one level).
 
-**Navigation by account mode.** Personal: Overview · My agent · My runs · My reports · Settings.
-Agency: Overview · Work (Review, Runs, Regressions) · Reports · Library (Agents, Scenarios) ·
-Settings. Enterprise adds Workspaces and Audit. Every existing URL still resolves. The bar's run
-control is quiet (outlined) so a page's own primary action is the only filled button on it.
+**Navigation by account mode.** *Revised 2026-10-16 (Block 6): Connect → Run → Share.* Five places in
+the order the work happens — Dashboard · Agents · Scenarios · Runs · Settings ("My agent", "My runs" in
+personal mode); enterprise adds Workspaces and Audit. A place's secondary views are section tabs above its
+pages' headers (`src/components/shell/section-nav.tsx`), never more top-level items: Runs holds All runs,
+Review, Reports and Compare (review and reports are read from runs); Scenarios holds Library, Catalog,
+Drafts, Draft or import, Builder and Regressions (a production failure becomes a scenario draft). The
+table is `src/components/shell/nav-model.ts`; a place lights for every page that belongs to it. Every
+existing URL still resolves. The bar's run control is quiet (outlined) so a page's own primary action is
+the only filled button on it.
 
 **Without JavaScript.** A signed-in page streams inside a Suspense boundary that only a script
 swaps in; with scripting off it stayed on "Loading…". The streamed block is shown and the fallback

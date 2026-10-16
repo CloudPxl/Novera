@@ -138,7 +138,10 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
         back={{ href: "/agents", label: context.accountMode === "personal" ? "My agents" : "Agents" }}
         eyebrow={<span className="normal-case tracking-normal">{config.url}</span>}
         title={agent.name}
-        status={archivedAt ? <Badge tone="neutral">Archived</Badge> : agent.attested_at ? <Badge tone="neutral">Authorisation recorded</Badge> : <Badge tone="error">No authorisation recorded</Badge>}
+        status={<>
+          {isNoveraFixture(agent.config as AgentConfig) && <Badge tone="error">Test fixture</Badge>}
+          {archivedAt ? <Badge tone="neutral">Archived</Badge> : agent.attested_at ? <Badge tone="neutral">Authorisation recorded</Badge> : <Badge tone="error">No authorisation recorded</Badge>}
+        </>}
         action={
           archivedAt ? <ButtonLink href={`/agents/${agent.id}?tab=connection`} variant="secondary">Archived — restore</ButtonLink>
           : !can(role, "run.start") ? undefined

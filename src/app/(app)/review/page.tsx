@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { Disclosure, PageHeader, Panel, Rows, TabNav } from "@/components/ui/page.tsx";
+import { SectionNav } from "@/components/shell/section-nav.tsx";
 import { LENSES, type Lens } from "../runs/[id]/lenses.ts";
 import type { CaseRow } from "../runs/[id]/case-table.tsx";
 import { noVerdictRow, repairFor, retryWords, type Repair } from "@/lib/evidence/repair.ts";
@@ -188,8 +189,8 @@ export default async function ReviewPage({
 
   return (
     <main className="w-full pb-10 text-ink">
+      <SectionNav section="runs" current="review" />
       <PageHeader
-        eyebrow="Work"
         title="Review"
         status={<Badge tone={total ? "high" : "neutral"}>{total ? `${total} need action` : "Nothing waiting"}</Badge>}
         description={`What needs a person across your last ${RECENT_RUNS} completed runs. Each row opens the scenario where it is resolved.`}

@@ -7,6 +7,7 @@ import { regressionStage, type RegressionStage } from "@/lib/regressions/draft.t
 import type { SuiteCase } from "@/lib/runner/types.ts";
 import type { RedactionRecord } from "@/lib/redact/store.ts";
 import { PageHeader } from "@/components/ui/page.tsx";
+import { SectionNav } from "@/components/shell/section-nav.tsx";
 import { FailureForm } from "./client.tsx";
 
 export const metadata: Metadata = { title: "Regressions · Novera" };
@@ -110,8 +111,8 @@ export default async function RegressionsPage() {
 
   return (
     <main className="w-full pb-10 text-ink">
+      <SectionNav section="scenarios" current="regressions" />
       <PageHeader
-        eyebrow="Work"
         title="Regressions from production"
         description="A mistake your agent made with a real customer is the best test case you have. Record it once, and every later run shows whether it came back."
       />

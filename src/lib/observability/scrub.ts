@@ -51,6 +51,15 @@ const TEXT_RULES: Array<[RegExp, string]> = [
   [/\bbase64-[A-Za-z0-9+/=_-]{16,}/g, "[COOKIE]"],
   [/\b(cookie|set-cookie)\s*[:=]\s*[^\n]*/gi, "$1: [REDACTED]"],
   [/\b(authorization|proxy-authorization|x-api-key|apikey)\s*[:=]\s*[^\n;,]*/gi, "$1: [REDACTED]"],
+  // A bearer token of any length (the redactor below takes the long ones; a short one is still a
+  // credential), and the key shapes of providers the redactor does not know by name: Supabase's
+  // `sb_secret_` / `sb_publishable_` keys and Resend's `re_<id>_<secret>`.
+  [/\bBearer\s+(?!\[)[^\s"'`,;)]{3,}/gi, "Bearer [REDACTED]"],
+  [/\bsb_(?:secret|publishable)_[A-Za-z0-9_-]{8,}/g, "[REDACTED]"],
+  [/\bre_[A-Za-z0-9]{6,}_[A-Za-z0-9]{10,}/g, "[REDACTED]"],
+  // Customer content written after a label naming it: an agent's reply, a transcript, a policy
+  // line, a prompt. The label stays, so the error is still readable; the text goes.
+  [/\b(reply|replies|transcript|policy|policy_text|prompt|response_text|assistant_message|customer_message|conversation)\b(\s*[:=]\s*)(?!\[)[^\n]{30,}/gi, "$1$2[REDACTED_TEXT]"],
   // URLs keep their origin and path (with tokens removed below); the query string carries
   // one-time codes, token hashes and signatures, so it goes.
   [/(https?:\/\/[^\s"'`?#]+)\?[^\s"'`#]*/g, "$1?[QUERY]"],

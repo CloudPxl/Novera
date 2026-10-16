@@ -52,13 +52,13 @@ test("every public page module declares description, canonical and an Open Graph
 test("sitemap lists only allowed public routes, absolute, no /legal and no /verify/<hash>", () => {
   const urls = sitemap().map((e) => e.url);
   for (const u of urls) assert.ok(u.startsWith(`${SITE_ORIGIN}/`), u);
-  for (const must of ["/", "/docs", "/guide", "/apply", "/support", "/verify", "/solutions/eu-ai-act", "/solutions/black-box-testing", "/solutions/agency", "/solutions/regulatory-mapping"]) {
+  for (const must of ["/", "/docs", "/guide", "/apply", "/support", "/verify", "/solutions/eu-ai-act", "/solutions/black-box-testing", "/solutions/agency", "/solutions/regulatory-mapping", "/status"]) {
     assert.ok(urls.includes(`${SITE_ORIGIN}${must === "/" ? "/" : must}`), must);
   }
   assert.ok(urls.some((u) => u.startsWith(`${SITE_ORIGIN}/docs/`)));
   assert.ok(!urls.some((u) => u.includes("/legal")));
   assert.ok(!urls.some((u) => /\/verify\/./.test(u)));
-  const forbidden = /^\/(dashboard|agents|runs|reports?|settings|sign-in|api|auth|invite|status)(\/|$)/;
+  const forbidden = /^\/(dashboard|agents|runs|reports?|settings|sign-in|api|auth|invite)(\/|$)/;
   assert.ok(!urls.some((u) => forbidden.test(u.slice(SITE_ORIGIN.length))));
   assert.equal(new Set(urls).size, urls.length);
 });

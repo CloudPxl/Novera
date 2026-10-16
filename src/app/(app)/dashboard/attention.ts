@@ -18,7 +18,9 @@
  * as a result is the exact thing this product exists not to do.
  */
 
-export type AttentionTone = "fail" | "high" | "medium";
+import { heldSentence, stalledSentence, type StallState } from "../../../lib/workflow/stalled.ts";
+
+export type AttentionTone = "fail" | "high" | "medium" | "info";
 
 export interface AttentionItem {
   text: string;
@@ -29,7 +31,13 @@ export interface AttentionItem {
 
 export interface AttentionInput {
   agents: Array<{ id: string; name: string; attested_at: string | null }>;
-  runs: Array<{ id: string; status: string; agent_id: string }>;
+  runs: Array<{
+    id: string;
+    status: string;
+    agent_id: string;
+    /** For a run in flight: whether it has stopped moving, from its stored timestamps (stalled.ts). */
+    stall?: StallState;
+  }>;
   /** Per-run verdict counts, for completed runs only. */
   outcomes: Map<string, { pass: number; fail: number; error: number }>;
   /** The most recent probe for each agent, by agent id. */
@@ -45,6 +53,8 @@ export interface AttentionInput {
   repliesExpiringSoon?: number;
   /** Webhook deliveries that gave up in the last week. */
   failedDeliveries?: number;
+  /** Whether the person may start runs, and so continue one: otherwise the stalled run is only opened. */
+  mayContinue?: boolean;
 }
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
@@ -56,14 +66,23 @@ export function buildAttention(input: AttentionInput): AttentionItem[] {
   // A run left mid-flight. Vercel kills a function at 60 seconds and runs resume in
   // slices, so an unfinished run is normal for a minute and a problem after that —
   // either way the operator is the one who can tell, and only if they are told.
-  const unfinished = input.runs.find((r) => r.status === "running" || r.status === "queued");
+  //
+  // One that has recorded nothing for three minutes with no slice holding it has stopped
+  // moving (src/lib/workflow/stalled.ts) and is named first. Opening its page continues it —
+  // the run page drives a run in flight through the one advance path — so "Continue run"
+  // leads there. One a slice holds is being advanced elsewhere and asks nothing of anyone.
+  const inFlight = input.runs.filter((r) => r.status === "running" || r.status === "queued");
+  const unfinished = inFlight.find((r) => r.stall?.kind === "stalled") ?? inFlight[0];
   if (unfinished) {
-    items.push({
-      text: `A run against ${nameOf.get(unfinished.agent_id) ?? "an agent"} has not finished.`,
-      href: `/runs/${unfinished.id}`,
-      action: "Open it",
-      tone: "high",
-    });
+    const subject = `The run against ${nameOf.get(unfinished.agent_id) ?? "an agent"}`;
+    const stall = unfinished.stall;
+    items.push(
+      stall?.kind === "stalled"
+        ? { text: stalledSentence(stall.minutes, subject), href: `/runs/${unfinished.id}`, action: input.mayContinue === false ? "Open it" : "Continue run", tone: "high" }
+        : stall?.kind === "held"
+          ? { text: heldSentence(stall.minutes, subject), href: `/runs/${unfinished.id}`, action: "Open it", tone: "info" }
+          : { text: `A run against ${nameOf.get(unfinished.agent_id) ?? "an agent"} has not finished.`, href: `/runs/${unfinished.id}`, action: "Open it", tone: "high" },
+    );
   }
 
   for (const agent of input.agents) {

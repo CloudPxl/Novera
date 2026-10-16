@@ -21,7 +21,7 @@ const TONE: Record<Readiness, "pass" | "fail" | "neutral" | "error"> = {
  * The checks whose terms the glossary explains, by the label `readinessOf` gives them
  * (src/lib/report/readiness.ts; tests/explainability.test.ts keeps the two in step). The grade
  * itself is explained once, on the scorecard above, and the seal's digest once, in the Seal
- * dialog above the tabs, so no check repeats either.
+ * dialog beside this panel on the Evidence tab, so no check repeats either.
  */
 const EXPLAINS: Record<string, ExplainKey> = {
   "Inputs declared before the run": "declared_manifest",

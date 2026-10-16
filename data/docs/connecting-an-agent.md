@@ -14,6 +14,27 @@ If your endpoint needs an auth header, you name the header and paste the value. 
 
 Before any suite run, Novera sends one harmless request and saves the reply as a receipt. Read that receipt before trusting a full run: it is how you confirm you are testing the thing you think you are testing.
 
+## Testing before you save
+
+**Test connection**, beside the endpoint fields on the connect form and under **Change the connection**, sends one message — "Hello, this is a connection check from Novera. Please reply briefly." — from what is in the form now, before anything is saved. It uses the same request template, auth header and public-address check a run uses, and waits at most 10 seconds. Nothing is stored: no agent, no receipt. The form keeps what you typed, credential included.
+
+The result says one of these:
+
+- **Connected** — the HTTP status, how long the round trip took, and the first 200 characters of the reply Novera read at your reply path.
+- **Could not reach the endpoint within 10 s** — the name did not resolve, no connection could be made, or nothing came back in time.
+- **Not a public address** — the name resolves to a private, loopback or internal address, so nothing was sent.
+- **HTTP 401 or 403** — the endpoint refused the request; check the header name and the credential.
+- **Another HTTP status**, or a **redirect**, which Novera does not follow.
+- **No reply text at the reply path** — the endpoint answered, but not where the reply path points. The result lists the reply's top-level keys (names only, never their values) and, when it can tell, where the reply appears to be, with a button that puts that path in the form so you can test again.
+
+On an agent you already saved, leaving the credential empty tests with the stored one — but only while the address stays on the same host. A stored credential never follows its address to another host: paste it again for the new host, or tick **Remove the stored credential**. The owner, an admin or an operator can test; a workspace can make 20 tests in ten minutes. The same test is `POST /api/v1/agents/test-connection` (see **The Novera API**).
+
+## Trying the sample agent first
+
+Where this deployment offers it, **Or try a sample support agent first** — on the getting-started steps and on the connect page — adds **Sample support agent (Novera test fixture)**: Novera's own scripted agent, with failures planted on purpose, and a stand-in system of record, so a claimed refund that never happened shows up as contradicted. It comes with a sample policy, so the next step is a run.
+
+It is never presented as a real agent. Its name says what it is, it carries a **Test fixture** badge, and every run against it — on screen and on its sealed report — is labelled test data, not a real agent or a real customer interaction. It is a test target, because nothing it does happens anywhere. Pressing the button again opens the one you already have. A run against it is counted like any run: on the trial, it is one of your three.
+
 You must own the agent you connect, or be authorised to test it. That confirmation is recorded and copied onto every run, so a report can always say on whose authority the test was performed.
 
 ## Changing or archiving an agent

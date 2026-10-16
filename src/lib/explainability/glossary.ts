@@ -32,6 +32,7 @@ export type ExplainKey =
   | "readback_unavailable"
   | "action_not_verified"
   | "agent_unreachable"
+  | "status_scope"
   | "sha256_seal"
   | "seal_ledger"
   | "chained_report"
@@ -171,6 +172,18 @@ export const GLOSSARY: Record<ExplainKey, ExplainEntry> = {
     nextAction:
       "Check that the agent's endpoint is up and reachable from the internet, re-check the connection on the agent's page, then run the suite again.",
     docsHref: "/docs/connecting-an-agent",
+  },
+
+  status_scope: {
+    id: "status_scope",
+    title: "Novera's status and your agent",
+    whatItMeans:
+      "This page reports Novera's own components. An agent that cannot be reached during a run is a result about your agent's endpoint, not about Novera, and it is recorded as a case error, never as a failure.",
+    whyItMatters:
+      "A run that could not finish is never sealed, and three unreachable answers in a row stop it, so an outage on either side cannot pass for a result. Nothing on this page changes a stored verdict.",
+    nextAction:
+      "If a run stopped on an unreachable agent, check the agent's endpoint and run the suite again. If a component here is degraded, try again later or contact support.",
+    docsHref: "/docs/how-a-run-works",
   },
 
   sha256_seal: {

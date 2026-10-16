@@ -2,7 +2,7 @@
 title: Regressions from production
 published: true
 ---
-When your agent gets something wrong with a real customer, that conversation is the best test case you have. The **Regressions** page turns it into a scenario, and every later run shows whether the same mistake came back.
+When your agent gets something wrong with a real customer, that conversation is the best test case you have. The **Regressions** page (under Scenarios) turns it into a scenario, and every later run shows whether the same mistake came back.
 
 ## Recording a failure
 

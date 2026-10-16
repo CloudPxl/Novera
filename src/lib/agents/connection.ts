@@ -85,28 +85,34 @@ export interface ConnectionEdit {
   newCredential?: string;
 }
 
+/** The fields that say how Novera reaches an agent, as both forms and the API carry them. */
+export interface EndpointFields {
+  url: string;
+  bodyTemplate: Record<string, unknown>;
+  responsePath: string;
+  toolActivityPath: string | null;
+  /** Seconds; null is the default (the longest Novera waits). */
+  timeoutSeconds: number | null;
+  authHeaderName: string | null;
+}
+
+const str = (v: unknown) => (typeof v === "string" ? v : "");
+
 /**
- * The edit form, read and checked. `hasStoredCredential` decides whether a header name
- * may be left with nothing to send, or a credential with nowhere to go.
+ * Address, request and reply format, timeout and header name, read and checked. Shared by
+ * connecting, editing and testing a connection, so none of them can accept what another
+ * refuses. Pure: the address's resolution is checked by the caller (`assertPublicUrl`).
  */
-export function parseConnectionEdit(fields: {
-  name: unknown; url: unknown; bodyTemplate: unknown; responsePath: unknown; toolActivityPath: unknown;
-  timeoutSeconds: unknown; authHeaderName: unknown; credential: unknown; removeCredential: unknown;
-}, hasStoredCredential: boolean, currentUrl?: string): Parsed<ConnectionEdit> {
-  const str = (v: unknown) => (typeof v === "string" ? v : "");
-  const name = str(fields.name).trim();
+export function parseEndpointFields(fields: {
+  url: unknown; bodyTemplate: unknown; responsePath: unknown; toolActivityPath: unknown;
+  timeoutSeconds?: unknown; authHeaderName: unknown;
+}): Parsed<EndpointFields> {
   const url = str(fields.url).trim();
   const responsePath = str(fields.responsePath).trim();
   const toolActivityPath = str(fields.toolActivityPath).trim();
   const timeoutRaw = str(fields.timeoutSeconds).trim();
   const authHeaderName = str(fields.authHeaderName).trim();
-  const credential = str(fields.credential);
-  const remove = fields.removeCredential === "on";
 
-  if (!name) return { ok: false, error: "Give the agent a name." };
-  if (name.length > MAX_AGENT_NAME || /[\u0000-\u001f\u007f]/.test(name)) {
-    return { ok: false, error: `The name must be at most ${MAX_AGENT_NAME} printable characters.` };
-  }
   if (!url) return { ok: false, error: "Enter the agent's endpoint URL." };
   let parsedUrl: URL;
   try {
@@ -142,13 +148,63 @@ export function parseConnectionEdit(fields: {
   if (authHeaderName && (!HEADER_NAME.test(authHeaderName) || RESERVED_HEADERS.has(authHeaderName.toLowerCase()))) {
     return { ok: false, error: "That is not a header Novera can put a credential in. Use a name such as authorization or x-api-key." };
   }
+
+  return {
+    ok: true,
+    value: {
+      url, bodyTemplate: body.value, responsePath, toolActivityPath: toolActivityPath || null,
+      timeoutSeconds, authHeaderName: authHeaderName || null,
+    },
+  };
+}
+
+/** A credential as pasted: one line, and not the length of a file. */
+export function credentialProblem(credential: string): string | null {
+  return credential.length > 4_000 || /[\r\n]/.test(credential)
+    ? "A credential is one line, and not this long — check what was pasted."
+    : null;
+}
+
+/** A new agent's configuration from checked fields. */
+export function newHttpConfig(fields: EndpointFields): HttpAgentConfig {
+  return {
+    kind: "http",
+    url: fields.url,
+    bodyTemplate: fields.bodyTemplate,
+    responsePath: fields.responsePath,
+    ...(fields.toolActivityPath ? { toolActivityPath: fields.toolActivityPath } : {}),
+    ...(fields.timeoutSeconds !== null ? { timeoutMs: fields.timeoutSeconds * 1000 } : {}),
+    ...(fields.authHeaderName ? { authHeaderName: fields.authHeaderName } : {}),
+  };
+}
+
+/**
+ * The edit form, read and checked. `hasStoredCredential` decides whether a header name
+ * may be left with nothing to send, or a credential with nowhere to go.
+ */
+export function parseConnectionEdit(fields: {
+  name: unknown; url: unknown; bodyTemplate: unknown; responsePath: unknown; toolActivityPath: unknown;
+  timeoutSeconds: unknown; authHeaderName: unknown; credential: unknown; removeCredential: unknown;
+}, hasStoredCredential: boolean, currentUrl?: string): Parsed<ConnectionEdit> {
+  const name = str(fields.name).trim();
+  const credential = str(fields.credential);
+  const remove = fields.removeCredential === "on";
+
+  if (!name) return { ok: false, error: "Give the agent a name." };
+  if (name.length > MAX_AGENT_NAME || /[\u0000-\u001f\u007f]/.test(name)) {
+    return { ok: false, error: `The name must be at most ${MAX_AGENT_NAME} printable characters.` };
+  }
+  const endpoint = parseEndpointFields(fields);
+  if (!endpoint.ok) return endpoint;
+  const { url, authHeaderName } = endpoint.value;
+  const parsedUrl = new URL(url);
+
   if (remove && credential) return { ok: false, error: "Either paste a new credential or remove the stored one, not both." };
   const change: CredentialChange = remove ? "remove" : credential ? "replace" : "keep";
   if (change === "replace") {
     if (!authHeaderName) return { ok: false, error: "Name the header the credential goes in." };
-    if (credential.length > 4_000 || /[\r\n]/.test(credential)) {
-      return { ok: false, error: "A credential is one line, and not this long — check what was pasted." };
-    }
+    const problem = credentialProblem(credential);
+    if (problem) return { ok: false, error: problem };
   }
   // A stored credential was given for one host. Moving the address to another would send it
   // there on the next check, by whoever may edit agents, though nobody can read it back
@@ -163,9 +219,7 @@ export function parseConnectionEdit(fields: {
   return {
     ok: true,
     value: {
-      name, url, bodyTemplate: body.value, responsePath,
-      toolActivityPath: toolActivityPath || null, timeoutSeconds,
-      authHeaderName: authHeaderName || null, credential: change,
+      name, ...endpoint.value, credential: change,
       ...(change === "replace" ? { newCredential: credential } : {}),
     },
   };

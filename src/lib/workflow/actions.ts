@@ -24,7 +24,7 @@ import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { spendModelCall } from "@/lib/workflow/model-budget.ts";
 import { track } from "@/lib/analytics/track.ts";
-import { DEFAULT_BODY_TEMPLATE, parseBodyTemplate } from "@/lib/agents/connection.ts";
+import { credentialProblem, MAX_AGENT_NAME, newHttpConfig, parseEndpointFields } from "@/lib/agents/connection.ts";
 
 export interface FormState {
   error?: string;
@@ -43,40 +43,37 @@ export async function connectAgent(_prev: FormState, form: FormData): Promise<Fo
   const { user, workspace } = await requireWorkspace();
 
   const name = String(form.get("name") ?? "").trim();
-  const url = String(form.get("url") ?? "").trim();
-  const responsePath = String(form.get("responsePath") ?? "").trim();
-  const bodyTemplateRaw = String(form.get("bodyTemplate") ?? "").trim();
-  const toolActivityPath = String(form.get("toolActivityPath") ?? "").trim();
-  const authHeaderName = String(form.get("authHeaderName") ?? "").trim();
   const authValue = String(form.get("authValue") ?? "");
   const attested = form.get("attested") === "on";
 
   if (!name) return { error: "Give the agent a name." };
-  if (!url) return { error: "Enter the agent's endpoint URL." };
+  if (name.length > MAX_AGENT_NAME || /[\u0000-\u001f\u007f]/.test(name)) {
+    return { error: `The name must be at most ${MAX_AGENT_NAME} printable characters.` };
+  }
+  // The same reading the edit form and "Test connection" use (`src/lib/agents/connection.ts`),
+  // so a connection that tested fine cannot be refused on saving, or the other way round.
+  const endpoint = parseEndpointFields({
+    url: form.get("url"), bodyTemplate: form.get("bodyTemplate"), responsePath: form.get("responsePath"),
+    toolActivityPath: form.get("toolActivityPath"), timeoutSeconds: form.get("timeoutSeconds"),
+    authHeaderName: form.get("authHeaderName"),
+  });
+  if (!endpoint.ok) return { error: endpoint.error };
   try {
-    await assertPublicUrl(url);
+    await assertPublicUrl(endpoint.value.url);
   } catch (e) {
     return { error: e instanceof PrivateAddressError ? e.message : "That endpoint URL is not valid." };
   }
-  if (!responsePath) return { error: "Tell us where the reply text sits in the response." };
+  if (authValue) {
+    if (!endpoint.value.authHeaderName) return { error: "Name the header the credential goes in." };
+    const problem = credentialProblem(authValue);
+    if (problem) return { error: problem };
+  }
   if (!attested) {
     return { error: "Confirm that you own this agent or are authorised to test it." };
   }
 
-  // The same check the edit form uses (`src/lib/agents/connection.ts`), so the two cannot
-  // accept different templates.
-  const parsedTemplate = parseBodyTemplate(bodyTemplateRaw || DEFAULT_BODY_TEMPLATE);
-  if (!parsedTemplate.ok) return { error: parsedTemplate.error };
-  const bodyTemplate = parsedTemplate.value;
-
-  const config: HttpAgentConfig = {
-    kind: "http",
-    url,
-    bodyTemplate,
-    responsePath,
-    ...(toolActivityPath ? { toolActivityPath } : {}),
-    ...(authHeaderName ? { authHeaderName } : {}),
-  };
+  const config: HttpAgentConfig = newHttpConfig(endpoint.value);
+  const authHeaderName = endpoint.value.authHeaderName;
 
   const gated = await gate(user.id, workspace.id, "agent.write");
   if ("error" in gated) return { error: gated.error };

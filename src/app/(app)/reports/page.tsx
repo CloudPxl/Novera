@@ -4,6 +4,7 @@ import { requireWorkspace } from "@/lib/auth/session.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { Badge, EmptyState } from "@/components/ui/primitives.tsx";
 import { PageHeader, Panel, Rows } from "@/components/ui/page.tsx";
+import { SectionNav } from "@/components/shell/section-nav.tsx";
 import { readinessOf, READINESS_LABEL, type Readiness } from "@/lib/report/readiness.ts";
 import type { ReportPayload } from "@/lib/report/payload.ts";
 import { formatWhen } from "@/lib/format/when.ts";
@@ -31,7 +32,6 @@ export default async function ReportsPage() {
     db.from("agents").select("id, name").eq("workspace_id", workspace.id),
   ]);
   const agentName = new Map((agents ?? []).map((a) => [a.id as string, a.name as string]));
-  const personal = context.accountMode === "personal";
 
   const rows = (reports ?? []).map((r) => {
     const payload = r.payload as unknown as ReportPayload;
@@ -44,8 +44,8 @@ export default async function ReportsPage() {
 
   return (
     <main className="w-full pb-8 text-ink">
+      <SectionNav section="runs" current="reports" />
       <PageHeader
-        eyebrow={personal ? "My reports" : "Reports"}
         title="Reports"
         description="Sealed documents you can hand over. Each is ready to share only when its sealed evidence supports it."
       />

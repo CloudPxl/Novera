@@ -6,6 +6,7 @@ import { HealthLine, Metrics, PageHeader, Panel, Rows, Section, TabNav } from "@
 import { buildStatus, countStates, deploymentEnvironment, STATE_LABEL, type ReadinessState, type StatusCheck } from "@/lib/readiness/status.ts";
 import { buildGates, type Gate } from "@/lib/readiness/gates.ts";
 import { AREA_LABEL, DECISIONS, type Decision, type DecisionArea } from "@/lib/readiness/decisions.ts";
+import { diskLaunchFiles, runLaunchChecks, supabaseLaunchDb, type CheckStatus, type LaunchCheck } from "@/lib/readiness/launch-checks.ts";
 import { parseLaunchLedger, prepareRepoDoc, readRepoDoc, READINESS_DOCS } from "@/lib/readiness/repo-docs.ts";
 import { BRIEF_DATE, BRIEF_TRACKER, type TrackerRow, type TrackerStatus } from "@/lib/legal/framework.ts";
 import { parseLegalBody } from "@/lib/legal/document.ts";
@@ -61,12 +62,52 @@ function Row({ badge, title, children }: { badge: ReactNode; title: ReactNode; c
 
 // ------------------------------------------------------------------ Status
 
-function StatusTab({ checks, environment }: { checks: StatusCheck[]; environment: string }) {
+const CHECK_TONE: Record<CheckStatus, BadgeTone> = { pass: "pass", fail: "fail", pending: "medium" };
+const CHECK_WORD: Record<CheckStatus, string> = { pass: "Pass", fail: "Fail", pending: "Waiting" };
+
+/** The automated checks, or one failing row saying they could not be computed: the page never crashes on them. */
+async function loadLaunchChecks(): Promise<LaunchCheck[]> {
+  try {
+    return await runLaunchChecks({ db: await supabaseLaunchDb(), files: diskLaunchFiles() });
+  } catch {
+    return [{ id: "launch", title: "Automated checks", group: "platform", status: "fail", detail: "Could not be computed on this deployment.", remediation: "npm run verify:launch" }];
+  }
+}
+
+function AutomatedChecks({ checks }: { checks: LaunchCheck[] }) {
+  const platform = checks.filter((c) => c.group === "platform");
+  const failing = platform.filter((c) => c.status === "fail").length;
+  return (
+    <Section title="Automated checks (live)" id="automated">
+      <Panel>
+        <HealthLine
+          tone={failing ? "fail" : "pass"}
+          title={failing ? `${failing} of ${platform.length} automated checks failing` : `${platform.length} of ${platform.length} automated checks pass`}
+          detail="Computed on this request from the database, the repository files in this deployment and configuration (present or absent, never a value). The same list is printed by npm run verify:launch. Email and company details are under Founder sign-off."
+        />
+        <Rows label="Automated checks">
+          {platform.map((c) => (
+            <Row key={c.id} badge={<Badge tone={CHECK_TONE[c.status]} className="whitespace-nowrap">{CHECK_WORD[c.status]}</Badge>} title={c.title}>
+              <p className="mt-1 text-sm text-ink-soft [overflow-wrap:anywhere]">{c.detail}</p>
+              {c.remediation && (
+                <p className="mt-1.5 text-xs text-ink-soft">To fix: <code className="type-mono rounded bg-sunken px-1 py-0.5 text-ink-soft [overflow-wrap:anywhere]">{c.remediation}</code></p>
+              )}
+            </Row>
+          ))}
+        </Rows>
+      </Panel>
+    </Section>
+  );
+}
+
+function StatusTab({ checks, environment, launch }: { checks: StatusCheck[]; environment: string; launch: LaunchCheck[] }) {
   const counts = countStates(checks);
   const waiting = counts.david + counts.counsel + counts.accountant;
   return (
     <>
-      <Panel className="mt-6">
+      <AutomatedChecks checks={launch} />
+      <Section title="Founder sign-off" id="founder">
+        <Panel>
         <HealthLine
           tone={counts.blocked ? "fail" : counts.ready === checks.length ? "pass" : "warning"}
           title={`${counts.ready} of ${checks.length} checks ready`}
@@ -80,10 +121,8 @@ function StatusTab({ checks, environment }: { checks: StatusCheck[]; environment
           ]} />
         </div>
       </Panel>
-
-      <Section title="Checks" id="checks">
-        <Panel>
-          <Rows label="Checks">
+        <Panel className="mt-4">
+          <Rows label="Founder sign-off checks">
             {checks.map((c) => (
               <Row key={c.id} badge={<StateBadge state={c.state} />} title={c.title}>
                 <p className="mt-1 text-sm text-ink-soft">{c.summary}</p>
@@ -284,6 +323,7 @@ export default async function ReadinessPage({ searchParams }: { searchParams: Pr
 
   const environment = deploymentEnvironment();
   const checks = buildStatus();
+  const launch = tab === "status" ? await loadLaunchChecks() : [];
   const ledgerText = await readRepoDoc("launch");
   const gates = buildGates({ ledger: ledgerText === null ? null : parseLaunchLedger(ledgerText) });
   const notReady = (list: Array<{ state: ReadinessState }>) => list.filter((x) => x.state !== "ready").length;
@@ -308,7 +348,7 @@ export default async function ReadinessPage({ searchParams }: { searchParams: Pr
         description="What stands between Novera and a controlled B2B pilot, and a paid B2B launch: computed from the code and this deployment's configuration, or quoted from the repository's documents. Visible to staff only."
       />
       <TabNav label="Readiness sections" current={tab} tabs={tabs} />
-      {tab === "status" && <StatusTab checks={checks} environment={environment} />}
+      {tab === "status" && <StatusTab checks={checks} environment={environment} launch={launch} />}
       {tab === "brief" && <BriefTab rows={BRIEF_TRACKER} />}
       {tab === "gates" && <GatesTab gates={gates} ledgerRead={ledgerText !== null} />}
       {tab === "decisions" && <DecisionsTab decisions={DECISIONS} />}

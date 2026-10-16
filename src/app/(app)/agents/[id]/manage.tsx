@@ -7,6 +7,7 @@ import { SubmitButton } from "@/components/ui/button.tsx";
 import { Field, inputClass } from "@/components/ui/primitives.tsx";
 import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 import { MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS } from "@/lib/agents/connection.ts";
+import { ConnectionTest } from "../connection-test.tsx";
 
 export interface EditableConnection {
   name: string;
@@ -89,6 +90,9 @@ export function ConnectionEditor({ agentId, current, hasCredential }: {
             </label>
           )}
         </fieldset>
+        {/* The values above, unsaved. An empty credential tests with the stored one only while the
+            address stays on its host (parseConnectionEdit), exactly as saving would. */}
+        <ConnectionTest idPrefix="edit" />
         <div className="flex flex-wrap items-center gap-3">
           <SubmitButton size="sm" pendingLabel="Saving and checking…">Save and check</SubmitButton>
           <span className="text-xs text-ink-faint">Saved first, then one harmless request proves it; the receipt above is replaced.</span>

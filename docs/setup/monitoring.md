@@ -24,8 +24,9 @@ The event is built from an allow list (`scrubEvent`), never by copying the error
 | Environment, release | `VERCEL_ENV`, first 12 characters of `VERCEL_GIT_COMMIT_SHA` |
 
 The scrubber removes, wherever they appear in a kept string: provider keys (`sk-…`, `gsk_…`,
-Google), Novera's `nvk_` keys and `whsec_` secrets, Stripe `sk_live_`/`rk_` keys, `Bearer`
-tokens, JWTs, emails, phone numbers, IBANs, card numbers, IP addresses, Supabase session
+Google), Novera's `nvk_` keys and `whsec_` secrets, Stripe `sk_live_`/`rk_` keys, Supabase
+`sb_secret_`/`sb_publishable_` keys, Resend `re_…` keys, `Bearer` tokens of any length, JWTs,
+customer content written after a label (`reply:`, `transcript=`, `policy:`, `prompt:`, …), emails, phone numbers, IBANs, card numbers, IP addresses, Supabase session
 cookies, `cookie:` / `authorization:` / `x-api-key:` text, URL query strings and
 `code=` / `token=` / `token_hash=` / `signature=` parameters, the row Postgres quotes in
 `Failing row contains (…)` and the value in `Key (…)=(…)`, any quoted passage over 40
@@ -38,6 +39,22 @@ any other property of the error, the user, the workspace, the server name.
 What the scrubber cannot know: a short unquoted fragment of policy or agent text written
 into an error message by our own code. Error messages in `src/` should name what failed,
 not quote what it failed on.
+
+## Client disconnects are not errors
+
+A visitor who closes a tab or loses signal mid-response makes Node and Next raise an error on the
+server side of that connection. These are recognised (`src/lib/observability/benign.ts`) and not
+reported: no `[novera:error]` line, no vendor call. The rule matches an error named `AbortError`,
+the Node codes `ECONNRESET`, `ECONNABORTED`, `EPIPE`, `ERR_STREAM_PREMATURE_CLOSE`,
+`ERR_STREAM_DESTROYED` and `UND_ERR_ABORTED`, and the messages "The destination stream errored
+while writing data", "premature close", "aborted", "request aborted" and "connection closed/reset",
+following `cause` up to three levels. It does **not** match the bare word "aborted" inside a longer
+message, nor a `TimeoutError` ("The operation was aborted due to timeout"): a missed deadline, a
+database transaction abort and a run Novera aborted are still reported. What is logged instead is
+one `[novera:debug] client disconnect ignored: <Name> <CODE>` line, never the message. Trade-off:
+an `ECONNRESET` from an outbound call that nobody handled is also filtered; calls to the agent,
+the database and providers handle their own failures, so such an error reaching the hook is
+almost always the visitor's connection.
 
 ## Proving it
 
@@ -78,7 +95,9 @@ Preview if wanted), then redeploy.
 
 Vendor calls are server-side only, through the same public-address guard as every other
 outbound request, with a 3-second deadline, no redirects followed, and at most 30 per minute
-per function instance. The browser never talks to a vendor, so `src/proxy.ts`'s CSP is
+per function instance (`src/lib/observability/limiter.ts`; events over the limit still get their
+console line). The names are `NOVERA_ERROR_SENTRY_DSN` and `NOVERA_ERROR_WEBHOOK_URL`, not the
+generic `SENTRY_DSN`; the vendor call is bounded by the 3-second deadline and never throws. The browser never talks to a vendor, so `src/proxy.ts`'s CSP is
 unchanged. Browser-side errors (`error.tsx`, `global-error.tsx`) are not reported; adding
 that would mean a browser-to-vendor call and a CSP `connect-src` entry, a separate decision.
 

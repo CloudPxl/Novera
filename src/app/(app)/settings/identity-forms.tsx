@@ -242,7 +242,7 @@ function Group({ title, note, children }: { title: string; note: string; childre
 }
 
 const MODE_COPY: Record<AccountMode, { title: string; body: string }> = {
-  personal: { title: "Personal", body: "Just you and your agents. The simplest screens: My agent, My runs, My findings." },
+  personal: { title: "Personal", body: "Just you and your agents. The simplest screens: My agent, My runs and their reports." },
   agency: { title: "Agency or team", body: "Clients as workspaces, a switcher, members and roles, a portfolio of what needs review." },
   enterprise: { title: "Company", body: "Agency views plus governance first: roles, the audit log, retention and evidence reads." },
 };

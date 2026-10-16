@@ -7,7 +7,8 @@ import type { SuiteCase } from "@/lib/runner/types.ts";
 import { describeCheck } from "@/lib/judge/checks.ts";
 import { DraftForm, DecideForm, ExtendForm, ImportForm, PromoteForm } from "./client.tsx";
 import { SOURCE_LABELS, type ImportProvenance, type SourceTool } from "@/lib/imports/datasets.ts";
-import { PageHeader, TabNav } from "@/components/ui/page.tsx";
+import { PageHeader } from "@/components/ui/page.tsx";
+import { SectionNav } from "@/components/shell/section-nav.tsx";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { can } from "@/lib/auth/permissions.ts";
 import { ImportSuite } from "@/components/shell/import-suite.tsx";
@@ -129,18 +130,12 @@ export default async function ScenariosPage({ searchParams }: {
 
   return (
     <main className="w-full pb-10 text-ink">
+      <SectionNav section="scenarios" current={tab} counts={{ drafts: pending.length }} />
       <PageHeader
-        eyebrow="Library"
         title="Scenarios"
         description="The scenarios that run, and the drafts that might: each tied to the sentence of your policy it tests. A draft runs only once someone approves it."
         action={can(role, "scenario.draft") ? <ButtonLink href="/builder">Build a suite</ButtonLink> : <ButtonLink href="/builder" variant="secondary">Suite Builder</ButtonLink>}
       />
-      <TabNav label="Scenario sections" current={tab} tabs={[
-        { key: "library", label: "Suite library", href: "/scenarios" },
-        { key: "catalog", label: "Catalog", href: "/scenarios?tab=catalog" },
-        { key: "drafts", label: "Drafts", href: "/scenarios?tab=drafts", count: pending.length },
-        { key: "create", label: "Draft or import", href: "/scenarios?tab=create" },
-      ]} />
 
       {tab === "library" && (
         <>

@@ -8,6 +8,7 @@ import { sessionClient } from "@/lib/supabase/server.ts";
 import { Badge } from "@/components/ui/primitives.tsx";
 import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
 import { buildAttention } from "./attention.ts";
+import { readClock, stallState } from "@/lib/workflow/stalled.ts";
 import { summariseRun } from "./summary.ts";
 import { readinessOf, READINESS_LABEL, type Readiness } from "@/lib/report/readiness.ts";
 import { OBLIGATION_LABELS, type ReportPayload } from "@/lib/report/payload.ts";
@@ -61,7 +62,7 @@ export default async function DashboardPage() {
     { data: wsRow }, { count: failedDeliveries },
   ] = await Promise.all([
     db.from("agents").select("id, name, config, attested_at, is_production, archived_at").eq("workspace_id", workspace.id).order("created_at"),
-    db.from("runs").select("id, status, created_at, agent_id, suite_id, schedule_id, api_key_id").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
+    db.from("runs").select("id, status, created_at, started_at, lease_until, agent_id, suite_id, schedule_id, api_key_id").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
     db.from("reports").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id),
     // Enough recent receipts to find the latest for each agent, in one query.
     db.from("probes").select("agent_id, error, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(60),
@@ -155,10 +156,24 @@ export default async function DashboardPage() {
     for (const c of r.cases.values()) o[c.status] += 1;
     outcomes.set(r.id, o);
   }
+  // Runs in flight among the six the attention list reads: has each stopped moving? From each
+  // run's newest recorded scenario and its own timestamps, as the idle sweep reads them (0040).
+  const attentionRuns = runList.slice(0, 6);
+  const checkedAt = readClock();
+  const stalls = new Map(await Promise.all(
+    attentionRuns.filter((r) => r.status === "queued" || r.status === "running").map(async (r) => {
+      const { data: newest } = await db.from("run_cases").select("created_at").eq("run_id", r.id as string)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      return [r.id as string, stallState({
+        status: r.status as string, createdAt: r.created_at as string, startedAt: (r.started_at as string | null) ?? null,
+        lastCaseAt: (newest?.created_at as string | undefined) ?? null, leaseUntil: (r.lease_until as string | null) ?? null,
+      }, checkedAt)] as const;
+    }),
+  ));
   const notReady = [...readinessByAgent.entries()].find(([, r]) => r.state !== "READY_TO_SHARE" && r.state !== "EXPIRED" && r.state !== "REVOKED");
   const attention = buildAttention({
     agents: agentList.map((a) => ({ id: a.id as string, name: a.name as string, attested_at: (a.attested_at as string | null) ?? null })),
-    runs: runList.slice(0, 6).map((r) => ({ id: r.id as string, status: r.status as string, agent_id: r.agent_id as string })),
+    runs: attentionRuns.map((r) => ({ id: r.id as string, status: r.status as string, agent_id: r.agent_id as string, stall: stalls.get(r.id as string) })),
     outcomes,
     latestProbe,
     draftCount: draftCount ?? 0,
@@ -167,6 +182,7 @@ export default async function DashboardPage() {
     reportNotReady: notReady ? { runId: notReady[1].runId, agentId: notReady[0], label: READINESS_LABEL[notReady[1].state], gap: notReady[1].gap } : null,
     repliesExpiringSoon: expiringSoon ?? 0,
     failedDeliveries: failedDeliveries ?? 0,
+    mayContinue: can(role, "run.start"),
   });
 
   const admin = await assertMembership(user.id, workspace.id);

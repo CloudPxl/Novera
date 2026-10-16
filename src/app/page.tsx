@@ -352,7 +352,7 @@ export default async function Home() {
           </div>
           <FooterCol title="Product" links={[["How it works", "/#how-it-works"], ["Step-by-step guide", "/guide"], ["Solutions", "/solutions"], ["Regulatory mapping", "/solutions/regulatory-mapping"], ["Verify a report", "/verify"], ["Sign in", "/sign-in"]]} />
           <FooterCol title="Documentation" links={[["All documentation", "/docs"], ["Data and privacy", "/docs/data-and-privacy"], ["Limitations", "/docs/limitations"], ["CLI and CI", "/docs/cli-and-ci"]]} />
-          <FooterCol title="People" links={[["Support", "/support"], ["Talk to us first", "/apply"]]} />
+          <FooterCol title="People" links={[["Support", "/support"], ["Status", "/status"], ["Talk to us first", "/apply"]]} />
         </div>
       </footer>
     </div>

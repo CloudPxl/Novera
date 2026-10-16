@@ -40,7 +40,7 @@ export function buildOpenApi() {
         "Novera runs a versioned scenario suite against an AI support agent and seals a dated, hash-sealed report. " +
         "Novera is evidence of testing, not a legal certification. " +
         "Every call is made with a workspace API key (`Authorization: Bearer nvk_…`) and sees only that workspace. " +
-        "A key reads by default; starting runs, reading the agent's replies and recording failures need the `run`, `responses` and `write` scopes, chosen when the key is created. " +
+        "A key reads by default; starting runs, reading the agent's replies, and recording failures or testing a connection need the `run`, `responses` and `write` scopes, chosen when the key is created. " +
         "A fifth scope, `probe`, is for single-scenario checks; like every scope beyond `read`, it is granted only together with `read`. " +
         "For a CI gate, `POST /api/v1/ci/trigger` starts one run per commit and `GET /api/v1/ci/runs/{id}` answers with the exit code (0 pass, 1 fail, 2 incomplete, 3 configuration, 4 infrastructure), in JSON or JUnit. " +
         "There is no endpoint that reads a report by id: a finished run carries `report.url` and `report.content_hash`, and the report's JSON and JUnit downloads carry the CI exit code. " +
@@ -54,6 +54,7 @@ export function buildOpenApi() {
       { name: "Runs", description: "Starting and advancing runs needs the `run` scope." },
       { name: "Regressions", description: "Needs the `write` scope." },
       { name: "CI", description: "Gating a pipeline on a run: triggering needs the `run` scope, reading the result `read`." },
+      { name: "Agents", description: "Testing a connection before saving it. Needs the `write` scope." },
       { name: "Checks", description: "Single-scenario checks: one scenario against one agent, never a run. Needs the `probe` scope." },
     ],
     paths: {
@@ -79,6 +80,65 @@ export function buildOpenApi() {
             "400": errorResponse("`archived` is not exclude, include or only."),
             "403": { $ref: "#/components/responses/MissingScope" },
             ...authErrors,
+          },
+        },
+      },
+      "/api/v1/agents/test-connection": {
+        post: {
+          operationId: "testAgentConnection",
+          tags: ["Agents"],
+          summary: "Test an agent connection without saving it",
+          description:
+            `${scopeNote("write")} Sends one diagnostic message — "Hello, this is a connection check from Novera. Please reply briefly." — to a connection described in the body, or to a saved agent (\`agent_id\`, on its stored credential), and says what came back. ` +
+            "The same function as \"Test connection\" on the connect and edit forms: the same request template, header and public-address check a run uses, a 10-second deadline, and nothing stored — no agent, no probe receipt. " +
+            "A test result is always 200 with a stable `outcome`: `ok`, `timeout`, `unreachable`, `refused_address`, `unauthorized` (HTTP 401 or 403), `http_error`, `redirect`, `too_large`, `not_json` or `no_reply_at_path` (with `top_level_keys`, names only, and `suggested_path` when one can be found). " +
+            "20 tests per workspace in ten minutes, shared with the forms.",
+          security: bearer,
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  oneOf: [
+                    {
+                      type: "object",
+                      required: ["agent_id"],
+                      properties: { agent_id: { ...UUID, description: "A saved agent from `GET /api/v1/agents`. Sent alone." } },
+                    },
+                    {
+                      type: "object",
+                      required: ["url"],
+                      properties: {
+                        url: { type: "string", format: "uri", description: "The agent's endpoint, http or https, on a public address." },
+                        body_template: { description: "A JSON object (or that object as a string) carrying `{{input}}`. Default `{\"message\":\"{{input}}\"}`.", oneOf: [{ type: "object" }, { type: "string" }] },
+                        response_path: { type: "string", default: "reply", description: "Dot path to the reply text, such as `choices.0.message.content`." },
+                        tool_activity_path: { type: "string" },
+                        timeout_seconds: { type: "integer", minimum: 2, maximum: 30, description: "Checked as on saving; a test always waits at most 10 seconds." },
+                        auth_header_name: { type: "string", examples: ["authorization"] },
+                        auth_value: { type: "string", description: "Used for this one request and never stored or returned." },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "The message was sent, or refused by the public-address check; `outcome` says which and what came back.",
+              content: { "application/json": { schema: { $ref: "#/components/schemas/ConnectionTest" } } },
+            },
+            "400": errorResponse("The body is not a JSON object, or a field is missing or malformed (`code`: `invalid_request`)."),
+            "403": { $ref: "#/components/responses/MissingScope" },
+            "404": errorResponse("No such agent in this workspace (`code`: `not_found`)."),
+            "409": errorResponse("The agent is archived (`archived`) or is not an HTTP agent (`not_http`)."),
+            "429": {
+              description: "20 tests by this workspace in the last ten minutes (`code`: `rate_limited`), or more than 120 requests a minute for this key.",
+              headers: { "Retry-After": { $ref: "#/components/headers/RetryAfter" } },
+              content: { "application/json": { schema: error } },
+            },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "503": errorResponse("The tests in the last ten minutes could not be counted, so nothing was sent (`code`: `limit_unavailable`)."),
           },
         },
       },
@@ -475,6 +535,23 @@ export function buildOpenApi() {
             policy_version: { type: ["integer", "null"], description: "Latest policy version; null when there is none." },
             created_at: { type: "string", format: "date-time" },
             archived_at: { ...NULLABLE_STRING, format: "date-time" },
+          },
+        },
+        ConnectionTest: {
+          type: "object",
+          required: ["outcome", "ok", "headline", "detail", "status_code", "latency_ms", "stored"],
+          properties: {
+            outcome: { type: "string", enum: ["ok", "timeout", "unreachable", "refused_address", "unauthorized", "http_error", "redirect", "too_large", "not_json", "no_reply_at_path"] },
+            ok: { type: "boolean", description: "True only for `ok`: the reply text was found at the reply path." },
+            headline: { type: "string", description: "One sentence for a person. The wording may change; `outcome` does not." },
+            detail: { type: "string" },
+            status_code: { type: ["integer", "null"], description: "The endpoint's HTTP status; null when nothing answered." },
+            latency_ms: { type: ["integer", "null"], description: "Round trip, when a request was sent." },
+            reply_preview: { type: "string", description: "On `ok`: the reply text, at most 200 characters." },
+            reply_truncated: { type: "boolean" },
+            top_level_keys: { type: "array", items: { type: "string" }, description: "On `no_reply_at_path`: the reply's top-level JSON keys. Names only, never values." },
+            suggested_path: { ...NULLABLE_STRING, description: "On `no_reply_at_path`: where the reply text appears to be." },
+            stored: { type: "boolean", const: false, description: "A test stores nothing." },
           },
         },
         Suite: {

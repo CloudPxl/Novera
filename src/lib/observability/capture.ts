@@ -1,5 +1,7 @@
 import { scrubEvent, type RawRequest, type ScrubbedEvent } from "./scrub.ts";
 import { consoleReporter, sentryReporter, webhookReporter, type Reporter } from "./reporter.ts";
+import { benignLabel, isBenignDisconnect } from "./benign.ts";
+import { windowLimiter } from "./limiter.ts";
 
 /**
  * The one way the server reports an error: build the event from an allow list, scrub it,
@@ -15,18 +17,14 @@ import { consoleReporter, sentryReporter, webhookReporter, type Reporter } from 
  *   NOVERA_ERROR_SENTRY_DSN=…         also send to Sentry or a Sentry-compatible collector
  *   NOVERA_ERROR_WEBHOOK_URL=…        also POST the JSON event here
  *   NOVERA_ERROR_WEBHOOK_TOKEN=…      sent as `Authorization: Bearer …` to that webhook
+ *
+ * A client disconnect (src/lib/observability/benign.ts) is never reported. Vendor calls are at
+ * most 30 a minute per instance, each with a 3-second deadline.
  */
 
 /** A burst of identical failures must not become a burst of vendor calls. Per instance. */
-const VENDOR_SENDS_PER_MINUTE = 30;
-let windowStart = 0;
-let windowSends = 0;
-
-function vendorAllowance(now: number): boolean {
-  if (now - windowStart > 60_000) { windowStart = now; windowSends = 0; }
-  windowSends++;
-  return windowSends <= VENDOR_SENDS_PER_MINUTE;
-}
+export const VENDOR_SENDS_PER_MINUTE = 30;
+const vendorAllowance = windowLimiter(VENDOR_SENDS_PER_MINUTE, 60_000);
 
 export function configuredReporters(env: Record<string, string | undefined> = process.env): { console: boolean; vendors: Reporter[]; problems: string[] } {
   if (env.NOVERA_ERROR_REPORTING === "off") return { console: false, vendors: [], problems: [] };
@@ -57,6 +55,11 @@ export interface CaptureInput {
 /** Reports `error`. Returns the event that left, or null when reporting is off or failed. */
 export async function captureError(error: unknown, input: CaptureInput = {}): Promise<ScrubbedEvent | null> {
   try {
+    // A visitor who left mid-response is not a fault: no error line, no vendor call.
+    if (isBenignDisconnect(error)) {
+      console.debug(`[novera:debug] client disconnect ignored: ${benignLabel(error)}`);
+      return null;
+    }
     const { console: toConsole, vendors, problems } = configuredReporters();
     if (!toConsole) return null;
     const event = scrubEvent({

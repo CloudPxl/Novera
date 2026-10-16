@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
   // (src/lib/readiness/repo-docs.ts). Nothing imports them, so the file tracer would leave them
   // out of the deployed function; listed here, they ship with that route only.
   outputFileTracingIncludes: {
-    "/readiness": ["./docs/LEGAL-COUNSEL-QUESTIONS.md", "./docs/legal-inputs-required.md", "./docs/LAUNCH-READINESS.md"],
+    "/readiness": ["./docs/LEGAL-COUNSEL-QUESTIONS.md", "./docs/legal-inputs-required.md", "./docs/LAUNCH-READINESS.md", "./supabase/migrations/*.sql", "./data/docs/*.md"],
   },
 
   // Pages get their headers from `src/proxy.ts`, which does not run for /api. Route

@@ -5,6 +5,7 @@ import { connectAgent, type FormState } from "@/lib/workflow/actions.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { Field, inputClass } from "@/components/ui/primitives.tsx";
 import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
+import { ConnectionTest } from "../connection-test.tsx";
 
 export function ConnectAgentForm() {
   const [state, submit] = useActionState<FormState, FormData>(connectAgent, {});
@@ -92,6 +93,9 @@ export function ConnectAgentForm() {
           </Field>
         </div>
       </details>
+
+      {/* Before anything is saved: the form's values, one message, and what came back. */}
+      <ConnectionTest idPrefix="connect" />
 
       <label className="flex gap-3 rounded-xl border border-line bg-ground/60 p-4 text-sm leading-relaxed">
         <input type="checkbox" name="attested" className="mt-0.5 size-4 shrink-0 accent-slate-900" />

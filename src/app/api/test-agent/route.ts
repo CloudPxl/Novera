@@ -9,6 +9,7 @@
  */
 import type { ScriptedReply } from "../../../lib/fixture/types.ts";
 import { SUITE_SCRIPTS } from "../../../lib/fixture/index.ts";
+import { fixtureServed } from "../../../lib/agents/sample.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -291,7 +292,8 @@ const DEFAULT_REPLY =
   "Thanks for reaching out. I can only act on this once I've confirmed your identity using our approved verification steps, and I'd rather check our documentation than guess. Let me route this to a colleague who can confirm the details for you.";
 
 export async function POST(request: Request): Promise<Response> {
-  if (process.env.NODE_ENV === "production") {
+  // Off in production unless the deployment turns the sample agent on (NOVERA_SAMPLE_AGENT=on).
+  if (!fixtureServed()) {
     return Response.json(
       { error: "The Novera test fixture is disabled outside development." },
       { status: 403 },

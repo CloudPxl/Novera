@@ -12,11 +12,13 @@ import { obligationLabel } from "@/lib/report/payload.ts";
 import { gradingNote } from "./grading-note.ts";
 import { stopRun } from "@/lib/workflow/stop-run.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
+import { heldSentence, stallState, stalledSentence, type RunProgress } from "@/lib/workflow/stalled.ts";
 
 type Status = "queued" | "running" | "completed" | "aborted";
 
 interface CaseRow {
   case_id: string;
+  created_at: string;
   obligation: string;
   severity: string;
   status: "pass" | "fail" | "error";
@@ -32,6 +34,14 @@ interface CaseRow {
  * Progress is read from the database rather than pushed from the executing request,
  * so a refreshed tab, a second window, or a colleague opening the same run all see
  * the same truth — and a browser that closes mid-run does not lose what was graded.
+ *
+ * While this page is open it continues the run itself, so a run that stopped moving while
+ * nobody had it open (src/lib/workflow/stalled.ts) picks up as soon as its page is opened, and
+ * says nothing about it. The stalled notice and its "Continue run" button appear only when the
+ * page's own continuing is not getting through: no request from this page is in flight, at
+ * least one has been made, and the stored rows still show nothing recorded for three minutes
+ * with no slice holding the run. A run held by a slice this page did not start says another
+ * process is advancing it, and offers nothing to press.
  */
 export function LiveRun({
   runId,
@@ -40,6 +50,9 @@ export function LiveRun({
   initialError,
   reportToken,
   hasBaseline,
+  initialProgress,
+  renderedAt,
+  mayContinue,
 }: {
   runId: string;
   initialStatus: string;
@@ -47,6 +60,12 @@ export function LiveRun({
   initialError: string | null;
   reportToken: string | null;
   hasBaseline: boolean;
+  /** The run's stored timestamps when the server rendered it. */
+  initialProgress: RunProgress;
+  /** When the server rendered it, so the first paint measures idleness the way the server did. */
+  renderedAt: number;
+  /** Whether this person's role may start runs, and so press "Continue run". */
+  mayContinue: boolean;
 }) {
   const [status, setStatus] = useState<Status>(initialStatus as Status);
   const [cases, setCases] = useState<CaseRow[]>([]);
@@ -55,21 +74,36 @@ export function LiveRun({
   // Set when the server said every shared grading slot is busy; cleared once a slice starts.
   const [waiting, setWaiting] = useState(false);
   const [stopState, stop, stopping] = useActionState<FormState, FormData>(stopRun, {});
+  const [progress, setProgress] = useState<RunProgress>(initialProgress);
+  const [now, setNow] = useState(renderedAt);
+  // Requests to continue the run that this page has sent and not yet heard back from, and
+  // whether it has sent any: the stalled notice waits for the page's own attempt first.
+  const [inFlight, setInFlight] = useState(0);
+  const [attempted, setAttempted] = useState(false);
   const started = useRef(false);
   const lastKick = useRef(0);
+  const cancelled = useRef(false);
   const completedPolls = useRef(0);
   const router = useRouter();
 
   const poll = useCallback(async () => {
     const db = browserClient();
     const [{ data: rows }, { data: run }] = await Promise.all([
-      db.from("run_cases").select("case_id, obligation, severity, status, rationale, error, judge_model, judge_agreement")
+      db.from("run_cases").select("case_id, created_at, obligation, severity, status, rationale, error, judge_model, judge_agreement")
         .eq("run_id", runId).order("case_id"),
-      db.from("runs").select("status, error").eq("id", runId).maybeSingle(),
+      db.from("runs").select("status, error, created_at, started_at, lease_until").eq("id", runId).maybeSingle(),
     ]);
 
     if (rows) setCases(rows as CaseRow[]);
+    setNow(Date.now());
     if (run) {
+      setProgress({
+        status: run.status as string,
+        createdAt: run.created_at as string,
+        startedAt: (run.started_at as string | null) ?? null,
+        lastCaseAt: (rows ?? []).reduce<string | null>((m, r) => (m && m > (r.created_at as string) ? m : (r.created_at as string)), null),
+        leaseUntil: (run.lease_until as string | null) ?? null,
+      });
       setStatus(run.status as Status);
       if (run.error) setFailure(run.error);
       if (run.status === "completed" || run.status === "aborted") {
@@ -88,41 +122,51 @@ export function LiveRun({
     return false;
   }, [runId]);
 
+  /**
+   * Asks the server to work on this run, through the one advance path (`advanceRun`, behind
+   * `/api/runs/[id]/execute`).
+   *
+   * Called repeatedly rather than once. Each invocation grades what fits in its
+   * time budget and returns; a serverless function that is killed at the ceiling
+   * leaves the run resumable, and this is what resumes it. The server holds a
+   * lease, so calling too eagerly is refused rather than duplicated. `force` is the
+   * "Continue run" button: it skips the page's own fifteen-second spacing, never the lease.
+   */
+  const kick = useCallback((force = false) => {
+    if (!force && Date.now() - lastKick.current < 15_000) return;
+    lastKick.current = Date.now();
+    started.current = true;
+    setAttempted(true);
+    setInFlight((n) => n + 1);
+
+    fetch(`/api/runs/${runId}/execute`, { method: "POST", redirect: "error" })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (!cancelled.current) setFailure(body.error ?? `The run could not be started (${res.status}).`);
+          return;
+        }
+        if (!cancelled.current) {
+          setWaiting(body.waiting === "grading_capacity");
+          if (body.started) setFailure(null);
+        }
+      })
+      // `redirect: "error"` rather than the default: a redirect to the sign-in page
+      // is followed transparently and arrives as HTML with status 200, which this
+      // read as success — leaving the run at "running" forever, silently. The route
+      // answers 401 with a body now, and this refuses to mistake a redirect for one.
+      .catch(() => {
+        if (!cancelled.current) {
+          setFailure("The run could not be started. Your session may have expired — sign in again and it will pick up where it stopped.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled.current) setInFlight((n) => n - 1);
+      });
+  }, [runId]);
+
   useEffect(() => {
-    let cancelled = false;
-
-    /**
-     * Asks the server to work on this run.
-     *
-     * Called repeatedly rather than once. Each invocation grades what fits in its
-     * time budget and returns; a serverless function that is killed at the ceiling
-     * leaves the run resumable, and this is what resumes it. The server holds a
-     * lease, so calling too eagerly is refused rather than duplicated.
-     */
-    function kick() {
-      if (Date.now() - lastKick.current < 15_000) return;
-      lastKick.current = Date.now();
-      started.current = true;
-
-      fetch(`/api/runs/${runId}/execute`, { method: "POST", redirect: "error" })
-        .then(async (res) => {
-          const body = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            if (!cancelled) setFailure(body.error ?? `The run could not be started (${res.status}).`);
-            return;
-          }
-          if (!cancelled) setWaiting(body.waiting === "grading_capacity");
-        })
-        // `redirect: "error"` rather than the default: a redirect to the sign-in page
-        // is followed transparently and arrives as HTML with status 200, which this
-        // read as success — leaving the run at "running" forever, silently. The route
-        // answers 401 with a body now, and this refuses to mistake a redirect for one.
-        .catch(() => {
-          if (!cancelled) {
-            setFailure("The run could not be started. Your session may have expired — sign in again and it will pick up where it stopped.");
-          }
-        });
-    }
+    cancelled.current = false;
 
     async function drive() {
       // Already settled: read the final rows once and stop. Nothing to drive, and no
@@ -134,25 +178,25 @@ export function LiveRun({
 
       if (status === "queued" && !started.current) kick();
 
-      while (!cancelled) {
+      while (!cancelled.current) {
         const done = await poll();
         if (done) {
           // Hand the page back to the server. A settled run is rendered there, with
           // the comparison and the decision controls that only make sense once every
           // verdict is in — this view's job was to show the run happening.
-          if (!cancelled) router.refresh();
+          if (!cancelled.current) router.refresh();
           break;
         }
         await new Promise((r) => setTimeout(r, 1200));
         // Keep asking. If the last invocation was killed mid-run, this is what picks
         // it back up; if one is still working, the server's lease refuses politely.
-        if (!cancelled) kick();
+        if (!cancelled.current) kick();
       }
     }
 
     drive();
 
-    return () => { cancelled = true; };
+    return () => { cancelled.current = true; };
     // Intentionally runs once: `drive` owns its own loop and exits on completion.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -164,6 +208,9 @@ export function LiveRun({
   const done = cases.length;
   const percent = plannedCases > 0 ? Math.round((done / plannedCases) * 100) : 0;
   const running = status === "queued" || status === "running";
+  const stall = stallState(progress, now);
+  const showStalled = running && !waiting && attempted && inFlight === 0 && stall.kind === "stalled";
+  const showHeld = running && !waiting && inFlight === 0 && stall.kind === "held";
 
   return (
     <>
@@ -229,6 +276,24 @@ export function LiveRun({
         )}
         {stopState.error && <p role="alert" className="mt-3 text-sm text-fail-text">{stopState.error}</p>}
 
+        {(showStalled || showHeld) && (
+          <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control border border-line bg-sunken px-3 py-2.5">
+            <p className="min-w-0 flex-1 basis-64 text-sm text-ink">
+              {stall.kind === "stalled" ? stalledSentence(stall.minutes) : stall.kind === "held" ? heldSentence(stall.minutes) : null}
+              {showStalled && !mayContinue && " Someone who can start runs in this workspace can continue it."}
+            </p>
+            {showStalled && mayContinue && (
+              <button
+                type="button"
+                onClick={() => kick(true)}
+                className="rounded-control bg-ink px-3 py-1.5 text-xs font-medium text-on-ink transition-colors hover:bg-ink-hover"
+              >
+                Continue run
+              </button>
+            )}
+          </div>
+        )}
+
         {failure && (
           <p role="alert" className="mt-4 rounded-lg border border-fail-border bg-fail-surface px-3 py-2 text-sm text-fail-text">
             {failure}
@@ -241,7 +306,7 @@ export function LiveRun({
               href={`/report/${token}`}
               className="inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2 text-sm font-medium text-on-ink transition-all duration-150 hover:bg-ink-hover active:scale-[0.98]"
             >
-              Open the client report
+              View client report
             </Link>
             <span className="text-xs text-ink-faint">
               {hasBaseline ? "Includes a comparison with the previous run." : "First run for this agent, so there is nothing to compare against yet."}

@@ -11,6 +11,7 @@
  * test agent, and every response says what it is.
  */
 import { fixtureRecord } from "../../../../lib/fixture/index.ts";
+import { fixtureServed } from "../../../../lib/agents/sample.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,8 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ): Promise<Response> {
-  if (process.env.NODE_ENV === "production") {
+  // Off in production unless the deployment turns the sample agent on (NOVERA_SAMPLE_AGENT=on).
+  if (!fixtureServed()) {
     return Response.json({ error: "The Novera verification fixture is disabled outside development." }, { status: 403 });
   }
 

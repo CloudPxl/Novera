@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 /**
  * What a person can do with the document they are looking at.
  *
@@ -16,6 +18,14 @@
  * a printout is worse than noise.
  */
 export function ReportToolbar({ token }: { token: string }) {
+  // Opened from the run page's "Print / save PDF" (`?print=1`): the browser's print dialog, once,
+  // over the finished page. The address is left as it is, so a reload asks again — as the link did.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("print") !== "1") return;
+    const t = setTimeout(() => window.print(), 400);
+    return () => clearTimeout(t);
+  }, []);
+
   const link =
     "rounded-control border border-line-strong px-3 py-1.5 text-xs font-medium text-ink-soft "
     + "transition-colors hover:border-ink hover:text-ink focus-visible:outline-2 "

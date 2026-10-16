@@ -9,6 +9,7 @@ import { REPORT_NOTICE_SHORT, REPORT_NOTICE_TITLE } from "@/lib/legal/notices.ts
 import { NOVERA_ATTRIBUTION } from "@/lib/report/seal.ts";
 import { Badge } from "@/components/ui/primitives.tsx";
 import { HealthLine, PageHeader, Panel, TabNav } from "@/components/ui/page.tsx";
+import { SectionNav } from "@/components/shell/section-nav.tsx";
 import { ScenarioRow, VERDICT_WORD } from "./scenario-row.tsx";
 
 export const metadata: Metadata = { title: "Compare runs · Novera" };
@@ -42,10 +43,12 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
       : [];
     return (
       <main className="w-full pb-8 text-ink">
+        {/* With no runs named this is the Compare view of Runs; a refused pair is still a pair, reached from a run. */}
+        {loaded.reason === "missing" && <SectionNav section="runs" current="compare" />}
         <PageHeader
-          eyebrow="Comparison"
+          eyebrow={loaded.reason === "missing" ? undefined : "Comparison"}
           title={loaded.reason === "missing" ? "Choose two runs to compare" : "These runs cannot be compared here"}
-          back={{ href: "/runs", label: "Runs" }}
+          back={loaded.reason === "missing" ? undefined : { href: "/runs", label: "Runs" }}
         />
         <div className="max-w-2xl rounded-shell border border-line bg-surface px-5 py-4">
           <p className="type-body text-ink">{loaded.sentence}</p>

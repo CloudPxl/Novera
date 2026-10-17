@@ -20,7 +20,7 @@ export const GUIDE_STEPS: Array<{ title: string; body: string; where: string; ta
   },
   {
     title: "Run the suite",
-    body: "A suite is a fixed set of scenarios — ordinary requests, tricky ones and deliberate attacks. Novera sends each one to your agent and grades the answer. The newest suite version is picked for you. A run takes about a minute and keeps going even if some scenarios fail.",
+    body: "A suite is a fixed set of scenarios — ordinary requests, tricky ones and deliberate attacks. Novera sends each one to your agent and grades the answer. The newest suite version is picked for you. A run takes a few minutes and keeps going even if some scenarios fail.",
     where: "The agent's page → Run the suite",
     target: "agent",
   },
@@ -54,7 +54,7 @@ export const GUIDE_TERMS: Array<[string, string]> = [
   ["Scenario", "One test: a message sent to your agent, what it should do, and what would count as failing."],
   ["Suite", "A numbered set of scenarios. A published version never changes, so two reports on the same version are comparable."],
   ["Policy", "Your written rules for the agent. Verdicts are judged against the version that was current when the run started."],
-  ["Verdict", "Passed or failed, decided by a rule in the scenario or by two grading models from different companies. A third model settles any disagreement."],
+  ["Verdict", "Passed or failed. A rule in the scenario can fail it on its own; otherwise two grading models from different companies decide, and a third settles any disagreement."],
   ["No result", "The agent errored, the models could not agree, or a claimed action could not be checked. Counted separately — never as a pass."],
   ["Assurance gap", "The share of the suite that produced no verdict. The larger it is, the less the score says."],
   ["Read-back", "An optional read-only address in your own system that Novera checks to confirm an action the agent says it took, such as a refund."],

@@ -33,7 +33,17 @@ export interface CaseEffect {
    * meaningful with `evidence: "state_confirmed"`; without it, the scenario says a
    * state change is expected but not how anyone would know.
    */
-  verify?: { path?: string; expect: DeterministicCheck[] };
+  verify?: {
+    path?: string;
+    expect: DeterministicCheck[];
+    /**
+     * The suite author's declaration that a 404 at this path means the record does not exist,
+     * so the read-back contradicts the claimed action (unless the 404 is a router's HTML page).
+     * Absent on every scenario written before 2026-10-17; the agent's read-back setting then
+     * decides, and its default reads a 404 as unavailable.
+     */
+    not_found_means?: "contradicted";
+  };
 }
 
 /** Why a case produced no verdict, when the reason is missing evidence rather than a fault. */

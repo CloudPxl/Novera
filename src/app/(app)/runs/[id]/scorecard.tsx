@@ -3,6 +3,7 @@ import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
 import type { Grade } from "@/lib/evidence/grade.ts";
 import type { Coverage } from "@/lib/evidence/coverage.ts";
 import { describeVendor, type GradingHealth } from "@/lib/evidence/grading-health.ts";
+import { emptyAbortNote } from "@/lib/billing/allowance.ts";
 import { engineLine, type Corroboration } from "./grading-note.ts";
 
 export type { Corroboration };
@@ -66,6 +67,7 @@ export function Scorecard({
   startedBy?: string | null;
 }) {
   const took = duration(startedAt, finishedAt);
+  const freeAbort = emptyAbortNote(status, coverage.graded + coverage.errored + coverage.notSent);
   // Two reasons for no letter: the run did not finish, or it finished and the evidence
   // does not support one. Both hide the badge; only the wording differs.
   const ungraded = grade.band === "INCOMPLETE" || grade.band === "WITHHELD";
@@ -191,6 +193,8 @@ export function Scorecard({
               {runError}
             </p>
           )}
+          {/* Every recorded row is graded, errored or never sent, so their sum is the rows (0074). */}
+          {freeAbort && <p className="mt-2 text-sm text-ink-soft">{freeAbort}</p>}
         </div>
       </div>
     </section>

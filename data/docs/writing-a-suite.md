@@ -81,7 +81,7 @@ Every message it writes is marked as a simulated customer on the run page, with 
 
 An `effect` has a `describe` sentence and an `evidence` of either `tool_invoked` or `state_confirmed`.
 
-`tool_invoked` accepts recorded tool activity as proof. `state_confirmed` asks for proof from your own system: add a `verify` block with a `path` on the read-back endpoint you configured and an `expect` list of the same rules as above, applied to what that endpoint returns. If your system contradicts the agent, the scenario fails without a model being asked. With no `verify` block, a claimed state change is reported as unverified rather than passed.
+`tool_invoked` accepts recorded tool activity as proof. `state_confirmed` asks for proof from your own system: add a `verify` block with a `path` on the read-back endpoint you configured and an `expect` list of the same rules as above, applied to what that endpoint returns. If your system contradicts the agent, the scenario fails without a model being asked. With no `verify` block, a claimed state change is reported as unverified rather than passed. A 404 from the read-back is reported as "could not check", because a missing record and a wrong address look the same; add `"not_found_means": "contradicted"` to the `verify` block when your system answers 404 only for a record that does not exist, and a 404 then fails the scenario as a contradicted claim (a generic HTML 404 page never does). The same choice can be made once for an agent on its read-back settings.
 
 ## Importing a CSV
 

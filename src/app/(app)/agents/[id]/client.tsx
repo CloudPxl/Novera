@@ -128,7 +128,7 @@ export function VerificationEndpoint({
   current,
 }: {
   agentId: string;
-  current: { url?: string; authHeaderName?: string } | null;
+  current: { url?: string; authHeaderName?: string; not_found_means?: string } | null;
 }) {
   const [state, submit] = useActionState<FormState, FormData>(saveVerificationEndpoint, {});
   const keepValues = useKeepValuesOnError(state);
@@ -194,6 +194,23 @@ export function VerificationEndpoint({
           </p>
         </div>
       </div>
+
+      <label className="mt-4 flex items-start gap-2 text-sm text-ink">
+        <input
+          type="checkbox"
+          name="notFoundMeans"
+          value="contradicted"
+          defaultChecked={current?.not_found_means === "contradicted"}
+          aria-describedby="verification-not-found-hint"
+          className="mt-0.5 size-4 shrink-0 accent-ink"
+        />
+        <span>A 404 from this system means the record does not exist</span>
+      </label>
+      <p id="verification-not-found-hint" className="mt-1 pl-6 text-xs text-ink-faint">
+        Tick this only if your read-back answers 404 for a missing record and never for a wrong
+        address. Off, a 404 is reported as unable to verify. Runs already started keep the setting
+        they started with.
+      </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <SubmitButton>Check and save</SubmitButton>

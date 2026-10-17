@@ -82,6 +82,7 @@ someone with the service role, not merely someone using the application.
 | Deleting an account erases the workspaces it owns, ends its memberships and keys elsewhere, deletes its profile, conversations and memory, and pseudonymises the sign-in so evidence elsewhere stays attributed to an id without personal data — except an attestation connected before 2026-10-16, whose frozen text names the attester's email; new attestations name a workspace role and user id (`src/lib/legal/attestation.ts`) | 0054 `erase_account`, `src/lib/workflow/identity.ts` |
 | A row can refer only to rows in its own workspace — agents, policies, runs, cases, failures, suites (built-ins shared) — even for the service role | 0034 `refuse_cross_workspace()`, `verify:tenancy` |
 | Every `/api/v1` write route reads at most 64 KB of body (256 KB for a production failure) and answers 413 past it, before parsing or counting; a stopped run's reason names a role and user id, never an email, because API and MCP keys read it | `src/lib/api/body.ts`, `src/lib/workflow/stop-run.ts`, `tests/api-body-limit.test.ts` |
+| A run aborted before it recorded any scenario — stopped, superseded, halted before reaching the agent — spends no trial run, grant unit or managed run; fair use still counts every start | 0074 `counts_against_allowance(runs)`, `src/lib/billing/allowance.ts`, `tests/allowance-empty-abort.test.ts`, `verify:billing` |
 | An API key is stored only as an HMAC, reads by default, and starts runs or reads the agent's replies only if its creator chose that (never `run` or `responses` without `read`), cannot be altered, and once revoked stays revoked; a key reads only its own workspace, and a run it starts names it | 0033 + 0035 + 0052 + `src/lib/api/`, `verify:api` |
 | An assistant on MCP is offered only its key's scopes; with `write` it can ask for scenario drafts and diagnoses, which land as drafts and proposals naming the key — no scope approves, publishes, revokes, changes a policy or sends | 0039, `src/lib/mcp/tools.ts`, `src/lib/workflow/propose.ts`, `verify:mcp` |
 | A schedule starts a due run once however many ticks race, runs a pinned suite at a fixed UTC time, pauses with its reason when a run cannot start, and is never deleted — the runs it started name it; who started any run cannot be rewritten | 0036, `src/lib/schedules/`, `verify:schedules` |
@@ -154,7 +155,7 @@ no judge, no votes, no agreement.
 would count as proof (`tool_invoked` or `state_confirmed`). Three outcomes from the
 read-back: confirmed, contradicted (a failure settled without asking a model — the
 strongest finding this product makes), unavailable (withheld, and a different gap from
-having no read-back configured). GET only by construction, the path cannot escape the
+having no read-back configured). A 404 is unavailable — a missing record and a wrong address look the same — unless the scenario (`verify.not_found_means`) or the agent's read-back settings declare that a 404 means the record does not exist; then a non-HTML 404 is contradicted. The setting in force is frozen into the run's manifest. GET only by construction, the path cannot escape the
 configured origin, the credential has its own revocable scope, and the response body is
 never stored.
 
@@ -266,7 +267,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 1192 unit tests | free |
+| `npm test` | 1240 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |

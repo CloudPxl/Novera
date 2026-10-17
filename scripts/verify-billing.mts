@@ -75,8 +75,25 @@ try {
     workspace_id: workspaceId, agent_id: agent!.id, policy_id: policy!.id, suite_id: suite!.id, ...extra,
   });
 
+  // A run aborted before it recorded any scenario uses no trial run (0074); one that recorded a
+  // scenario does.
+  const { data: emptyAbort } = await db.from("runs").insert(runRow({ status: "aborted", judge_source: "trial_free" })).select("id").single();
+  const freeAbort = await workspaceEntitlement({ client: db, workspaceId });
+  report(freeAbort.runsUsed === 0 && freeAbort.canRun, "a trial run aborted before any scenario does not count against the trial", `${freeAbort.runsUsed} used`);
+  const { error: caseErr } = await db.from("run_cases").insert({
+    workspace_id: workspaceId, run_id: emptyAbort!.id, case_id: "T01", category: "c", obligation: "privacy", severity: "high",
+    input: "hi", expected: "x", assertions: [], status: "error", error: "verify:billing — the agent could not be reached",
+  });
+  const recorded = await workspaceEntitlement({ client: db, workspaceId });
+  report(!caseErr && recorded.runsUsed === 1, "once it holds a recorded scenario, the aborted run counts", caseErr?.message.slice(0, 70) ?? `${recorded.runsUsed} used`);
+
   // The trial, used up.
-  for (let i = 0; i < 3; i++) await db.from("runs").insert(runRow({ status: "completed", judge_source: "trial_free" }));
+  for (let i = 0; i < 2; i++) {
+    const { error } = await db.from("runs").insert(runRow({ status: "completed", judge_source: "trial_free" }));
+    if (error) report(false, "filling the trial", error.message.slice(0, 70));
+  }
+  const { error: overTrial } = await db.from("runs").insert(runRow({ status: "aborted", judge_source: "trial_free" }));
+  report(/trial_exhausted/.test(overTrial?.message ?? ""), "the database refuses a fourth trial run, the aborted one with a scenario counted", overTrial?.message.slice(0, 70) ?? "it was accepted");
   const used = await workspaceEntitlement({ client: db, workspaceId });
   report(!used.canRun && used.blocker === "trial_used", "after three trial runs the workspace cannot run", used.blocker ?? "");
   report(remedyFor(used.blocker!)?.href === "/billing", "and the refusal points to /billing", remedyFor(used.blocker!)?.href ?? "none");
@@ -129,15 +146,20 @@ try {
     "each accepted run is stamped plan_managed and funded_by_subscription");
   const { error: frozen } = await db.from("runs").update({ funded_by_subscription: null }).eq("workspace_id", workspaceId).eq("status", "queued");
   report(/cannot be changed/.test(frozen?.message ?? ""), "a run's funding cannot be rewritten afterwards", frozen?.message.slice(0, 60) ?? "it was changed");
+  const counted = await workspaceEntitlement({ client: db, workspaceId });
   await db.from("runs").update({ status: "aborted", finished_at: new Date().toISOString() }).eq("workspace_id", workspaceId).eq("status", "queued");
+  // Stopped before recording any scenario, the three raced runs give their units back (0074).
+  const freed = await workspaceEntitlement({ client: db, workspaceId });
+  report(counted.billing.runsUsed === accepted && freed.billing.runsUsed === 0 && freed.canRun,
+    "queued managed runs count; stopped before any scenario, they no longer use the managed allowance",
+    `${counted.billing.runsUsed} while queued, ${freed.billing.runsUsed} after stopping`);
 
-  // The managed allowance: 100 a period, the 101st refused.
-  const managedSoFar = accepted;
-  const managed = Array.from({ length: 100 - managedSoFar }, () => runRow({ status: "aborted", judge_source: "plan_managed", funded_by_subscription: subId }));
+  // The managed allowance: 100 a period, the 101st refused. Completed runs count; empty aborted ones do not.
+  const managed = Array.from({ length: 100 }, () => runRow({ status: "completed", judge_source: "plan_managed", funded_by_subscription: subId }));
   const { error: fillErr } = await db.from("runs").insert(managed);
-  report(!fillErr, "managed runs up to the allowance of 100 are accepted", fillErr?.message.slice(0, 70) ?? "");
+  report(!fillErr, "managed runs up to the allowance of 100 are accepted, the three stopped empty not counted", fillErr?.message.slice(0, 70) ?? "");
   const { error: overManaged } = await db.from("runs").insert(runRow({ status: "aborted", judge_source: "plan_managed", funded_by_subscription: subId }));
-  report(/managed_allowance_exhausted/.test(overManaged?.message ?? ""), "the 101st managed run in the period is refused", overManaged?.message.slice(0, 70) ?? "it was accepted");
+  report(/managed_allowance_exhausted: 100 of 100/.test(overManaged?.message ?? ""), "the 101st managed run in the period is refused", overManaged?.message.slice(0, 70) ?? "it was accepted");
 
   // With the customer's own key, the same plan grades on that key.
   await storeSecret({ client: db, workspaceId, scope: "judge_key", plaintext: "sk-not-a-real-key-only-used-to-prove-resolution", provider: "groq" });
@@ -168,8 +190,23 @@ try {
   report(!lapsed.canRun && remedyFor(lapsed.blocker)?.href === "/billing", "and the application sends the workspace back to /billing", lapsed.blocker ?? "");
 
 
+  // ---------------------------------------------------------------- a metered grant
+  // A grant's units count like the trial: an empty aborted run is free (0074). The window opens
+  // now, so only runs from here on count against it.
+  const { data: metered } = await db.from("billing_entitlement_grants").insert({
+    workspace_id: workspaceId, kind: "pilot", runs_allowed: 1, reason: "verify:billing metered", granted_by: userId,
+  }).select("id").single();
+  const { error: emptyGrantRun } = await db.from("runs").insert(runRow({ status: "aborted", judge_source: "workspace_key", funded_by_grant: metered!.id }));
+  const { error: firstGrantRun } = await db.from("runs").insert(runRow({ status: "completed", judge_source: "workspace_key", funded_by_grant: metered!.id }));
+  report(!emptyGrantRun && !firstGrantRun, "a one-run grant accepts an empty aborted run and then its one counted run",
+    (emptyGrantRun ?? firstGrantRun)?.message.slice(0, 70) ?? "");
+  const { error: overGrant } = await db.from("runs").insert(runRow({ status: "aborted", judge_source: "workspace_key", funded_by_grant: metered!.id }));
+  report(/grant_exhausted/.test(overGrant?.message ?? ""), "and refuses a second counted run grant_exhausted", overGrant?.message.slice(0, 70) ?? "it was accepted");
+  await db.from("billing_entitlement_grants").update({ revoked_at: new Date().toISOString(), revoked_by: userId, revoke_reason: "verify:billing metered done" }).eq("id", metered!.id);
+
   // ---------------------------------------------------------------- fair use, 1,000 in 30 days
-  // An unmetered grant funds the rest, so the ceiling met is fair use and not funding.
+  // An unmetered grant funds the rest, so the ceiling met is fair use and not funding. The window
+  // is filled with runs aborted before any scenario: free for every allowance, counted by fair use.
   const { data: grant } = await db.from("billing_entitlement_grants").insert({
     workspace_id: workspaceId, kind: "internal", runs_allowed: null, reason: "verify:billing", granted_by: userId,
   }).select("id").single();

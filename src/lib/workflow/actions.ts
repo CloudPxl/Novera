@@ -19,6 +19,7 @@ import { cleanDeclared } from "@/lib/report/manifest.ts";
 import { assertPublicUrl, PrivateAddressError } from "@/lib/net/public-url.ts";
 import { diagnoseRunCase } from "./propose.ts";
 import { httpVerificationConnector } from "../evidence/connectors/http.ts";
+import { storedNotFoundMeaning } from "../evidence/connectors/index.ts";
 import { connectionFor } from "@/lib/providers/workspace-connections.ts";
 import { agentAttestation } from "@/lib/legal/attestation.ts";
 import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
@@ -803,10 +804,24 @@ export async function saveVerificationEndpoint(_prev: FormState, form: FormData)
   const url = String(form.get("url") ?? "").trim();
   const authHeaderName = String(form.get("authHeaderName") ?? "").trim();
   const credential = String(form.get("credential") ?? "").trim();
+  // Declared by a person who knows the system, never inferred from an answer (2026-10-17).
+  const notFoundMeans = form.get("notFoundMeans") === "contradicted" ? "contradicted" as const : "unavailable" as const;
 
   const gated = await gate(user.id, workspace.id, "agent.write");
   if ("error" in gated) return { error: gated.error };
   const admin = gated.admin;
+
+  const { data: currentAgent } = await admin.from("agents").select("verification")
+    .eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
+  const previousMeaning = storedNotFoundMeaning(currentAgent?.verification);
+  // It decides whether a 404 fails a case, so who changed it, and when, is on the audit trail.
+  const auditMeaning = async (now: "unavailable" | "contradicted") => {
+    if (now === previousMeaning) return;
+    await recordAudit(admin, {
+      workspaceId: workspace.id, actorId: user.id, action: "agent.read_back_changed",
+      detail: { agent: agentId, not_found_means: now, previously: previousMeaning },
+    });
+  };
 
   if (!url) {
     // Removing it is a real choice, and it has to be as easy as adding it.
@@ -815,6 +830,7 @@ export async function saveVerificationEndpoint(_prev: FormState, form: FormData)
     if (error) return { error: `Could not remove it: ${error.message}` };
     // Its credential goes with it: one left behind would be sent to whatever address is set next.
     await admin.from("secrets").delete().eq("workspace_id", workspace.id).eq("scope", "verification_auth").eq("agent_id", agentId);
+    await auditMeaning("unavailable");
     revalidatePath(`/agents/${agentId}`);
     return { notice: "Removed. Scenarios expecting a change of state will report as unverified." };
   }
@@ -841,12 +857,12 @@ export async function saveVerificationEndpoint(_prev: FormState, form: FormData)
     kind: "http_read" as const,
     url: parsed.toString(),
     ...(authHeaderName ? { authHeaderName } : {}),
+    // Stored only when declared: absent is the default, a 404 read as unavailable.
+    ...(notFoundMeans === "contradicted" ? { not_found_means: "contradicted" as const } : {}),
   };
 
   // A stored credential was given for one host and never follows the address to another
   // (security audit, 2026-10-11): without a new one, a moved read-back runs without it.
-  const { data: currentAgent } = await admin.from("agents").select("verification")
-    .eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
   const currentUrl = (currentAgent?.verification as { url?: string } | null)?.url;
   let previousOrigin: string | null = null;
   try { previousOrigin = currentUrl ? new URL(currentUrl).origin : null; } catch { previousOrigin = null; }
@@ -876,12 +892,16 @@ export async function saveVerificationEndpoint(_prev: FormState, form: FormData)
     // After the new one is stored, never before: the connector reads the newest credential.
     await admin.from("secrets").delete().in("id", staleSecretIds);
   }
+  await auditMeaning(notFoundMeans);
 
   revalidatePath(`/agents/${agentId}`);
   return {
     notice:
       `Saved and checked — it answered. ${check.detail} Scenarios that expect a change of state `
-      + "will now be confirmed against this endpoint rather than reported as unverified.",
+      + "will now be confirmed against this endpoint rather than reported as unverified."
+      + (notFoundMeans === "contradicted"
+        ? " A 404 from it will be read as a missing record in runs started from now on."
+        : ""),
   };
 }
 

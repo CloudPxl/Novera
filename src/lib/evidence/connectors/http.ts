@@ -25,9 +25,45 @@ export interface HttpVerificationConfig {
   /** Header the sealed credential is injected into, if the endpoint needs one. */
   authHeaderName?: string;
   timeoutMs?: number;
+  /**
+   * Declared by the customer on the agent's read-back settings: this system answers 404 for a
+   * missing record and never for a wrong address. Stored only when set; absent is the default,
+   * under which a 404 is `unavailable`. A run reads the value its manifest froze, not this one.
+   */
+  not_found_means?: "contradicted";
 }
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
+
+/** The answer a GET produced, or why there is nothing to read. */
+type Fetched =
+  | { ok: true; text: string; status: number }
+  | { ok: false; why: string; notFound?: { page: boolean } };
+
+/**
+ * Whether a 404's body is a page a router or proxy rendered rather than an answer from the
+ * record's own API. An HTML 404 is what a wrong address gets from almost every web server, so it
+ * is never read as a missing record, whatever was declared.
+ */
+export function isGenericNotFoundPage(contentType: string | null, body: string): boolean {
+  if (contentType && /\b(?:text\/html|application\/xhtml\+xml)\b/i.test(contentType)) return true;
+  return body.replace(/^\uFEFF/, "").trimStart().startsWith("<");
+}
+
+/** The fixed sentences for a 404, so the tests and the report read the same words. */
+export const NOT_FOUND_TEXT = {
+  page: "The read-back answered with a generic 404 page, which usually means the address is wrong, not that the record is missing.",
+  undeclared:
+    "The read-back answered 404. Novera cannot tell a missing record from a wrong address; if your system answers 404 only "
+    + "for missing records, turn on 'A 404 from this system means the record does not exist' on the agent's read-back settings.",
+  bySetting: "When this test started, the agent's read-back settings declared that a 404 from this system means the record does not exist.",
+  byScenario: "This scenario declares that a 404 at this path means the record does not exist.",
+} as const;
+
+/** The scenario's own path, never the configured base: the base can carry a token in its path. */
+function describeTarget(path: string | undefined): string {
+  return path ? `GET …/${path}` : "GET on the configured address";
+}
 
 /**
  * Never let a scenario's path escape the configured base: not to another host, and not out of
@@ -65,7 +101,7 @@ export function httpVerificationConnector(
 ): VerificationConnector {
   const mode: ConnectorMode = "read_only";
 
-  async function fetchBody(path?: string, reachableOnly = false): Promise<{ ok: true; text: string; status: number } | { ok: false; why: string }> {
+  async function fetchBody(path?: string, reachableOnly = false): Promise<Fetched> {
     const url = resolveReadBack(config.url, path);
     if (!url) return { ok: false, why: "The scenario's verification path does not resolve inside the configured endpoint." };
 
@@ -96,6 +132,16 @@ export function httpVerificationConnector(
       if (reachableOnly && [400, 404, 405].includes(response.status)) {
         await discardBody(response);
         return { ok: true, text: "", status: response.status };
+      }
+      // A 404 is read, briefly, only to tell a router's page from an API's answer. The body is
+      // inspected for its first character and never stored or quoted.
+      if (response.status === 404) {
+        const text = await readTextLimited(response, MAX_READBACK_BYTES);
+        return {
+          ok: false,
+          why: `The verification endpoint answered ${response.status}.`,
+          notFound: { page: isGenericNotFoundPage(response.headers.get("content-type"), text) },
+        };
       }
       if (!response.ok) {
         await discardBody(response);
@@ -137,6 +183,25 @@ export function httpVerificationConnector(
       const result = await fetchBody(input.path);
       const latencyMs = Date.now() - started;
       const base = { connector: "http_read", connectorVersion: VERSION, mode, latencyMs, checked: input.expect };
+
+      if (!result.ok && result.notFound) {
+        // A 404 is a missing record only where someone who knows this system said so, and only
+        // when it is not a router's page. Anything else is a wrong address as far as Novera can
+        // tell, and a false contradiction is the worst finding this product could make.
+        const declaredBy = input.notFoundMeans === "contradicted"
+          ? NOT_FOUND_TEXT.byScenario
+          : config.not_found_means === "contradicted" ? NOT_FOUND_TEXT.bySetting : null;
+        if (result.notFound.page) return { ...base, status: "unavailable", detail: NOT_FOUND_TEXT.page };
+        if (!declaredBy) return { ...base, status: "unavailable", detail: NOT_FOUND_TEXT.undeclared };
+        return {
+          ...base,
+          status: "contradicted",
+          detail: redactCredentials(
+            `Record not found in the system of record: ${describeTarget(input.path)} answered 404. ${declaredBy}`,
+            secret,
+          ),
+        };
+      }
 
       if (!result.ok) {
         // Could not look. Not the agent's failure, and not a pass either.

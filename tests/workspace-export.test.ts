@@ -123,7 +123,7 @@ test("the document is versioned, counted from its rows, and says what it leaves 
   // An agent is its host and attestation; a read-back is its kind and host.
   const agents = doc.agents as Array<Record<string, unknown>>;
   assert.deepEqual(agents[0].endpoint, { kind: "http", host: "bot.acme.example" });
-  assert.deepEqual(agents[0].read_back, { kind: "http_read", host: "api.acme.example" });
+  assert.deepEqual(agents[0].read_back, { kind: "http_read", host: "api.acme.example", not_found_means: "unavailable" });
   assert.deepEqual(agents[1].endpoint, { kind: "model", provider: "anthropic", model: "claude-x" });
   // A sealed report's payload is exactly as stored, so its hash still verifies.
   assert.deepEqual((doc.reports as Array<Record<string, unknown>>)[0].payload, fixture().reports[0].payload);

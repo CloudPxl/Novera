@@ -47,7 +47,7 @@ const STANDING: Record<Standing, { label: string; tone: BadgeTone }> = {
 function runsLine(e: BillingEntitlement): string {
   if (e.source === "trial" && e.trial) return `${Math.min(e.trial.used, e.trial.limit)} of ${e.trial.limit} trial runs used`;
   if (e.runsAllowed === null) {
-    const started = e.source === "subscription" ? `${e.runsUsed} this period` : `${e.runsUsed} started`;
+    const started = e.source === "subscription" ? `${e.runsUsed} this period` : `${e.runsUsed} used`;
     return `${started} · unlimited on your own key`;
   }
   return e.runsOn === "novera" ? `${e.runsUsed} of ${e.runsAllowed} on Novera's keys` : `${e.runsUsed} of ${e.runsAllowed} runs`;
@@ -205,6 +205,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                   After the trial, a plan or a grant decides whether a run can start, own model key or not. Fair use on every plan: at most{" "}
                   {MAX_RUNS_IN_FLIGHT} runs in progress at once and {FAIR_USE_RUNS.toLocaleString("en-GB")} runs in {FAIR_USE_WINDOW_DAYS} days
                   <span className="tnum"> (now: {view.usage.inFlight} in progress, {view.usage.inWindow} in the last {FAIR_USE_WINDOW_DAYS} days)</span>.
+                  A run stopped before it recorded any scenario uses none of the trial, a grant or a plan&rsquo;s runs; fair use still counts it.
                   Every run, case and report stays readable and exportable whatever happens to a subscription.
                 </p>
               </div>

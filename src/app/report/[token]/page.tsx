@@ -13,6 +13,8 @@ import { CLIENT_EXPLAINS, explainEntries } from "@/lib/explainability/entries.ts
 import { BadgeShare } from "@/components/ui/badge-share.tsx";
 import { badgeShareFor } from "@/lib/report/badge.ts";
 import { SEAL_ATTRIBUTION, extensionSentence, sealContents } from "@/lib/report/seal.ts";
+import { buildReportGuide, guideFactsFromPayload } from "@/lib/explainability/report-guide.ts";
+import { ReportGuideBox } from "@/components/ui/report-guide.tsx";
 
 const FINGERPRINT_LABELS: Record<string, string> = {
   agent_endpoint: "Agent endpoint",
@@ -104,6 +106,10 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           {REPORT_NOTICE_SHORT.replace(/^Testing evidence, not certification: (\w)/, (_, first: string) => first.toUpperCase())}{" "}
           <a href="#standing-notice" className="underline underline-offset-2 print:no-underline">Full notice</a>
         </p>
+        {/* How to read the document, for a reader who has never met its words: closed on screen, a
+            four-entry legend on the printed cover. Outside the sealed content, like the notice above;
+            every number in it is read from this payload (src/lib/explainability/report-guide.ts). */}
+        <ReportGuideBox className="mt-4" print guide={buildReportGuide(guideFactsFromPayload(payload))} />
         <dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 text-sm sm:grid-cols-3">
           <Field label="Agent" value={subject.agent} />
           <Field label="Policy version" value={`v${subject.policy_version}`} />

@@ -53,7 +53,7 @@ const MB = MAX_REPORT_FILE_BYTES / (1024 * 1024);
 const PROBLEMS: Record<FileProblem | "no_crypto", string> = {
   too_large: `This file is larger than ${MB} MB, so it was not read. A Novera report's JSON export is far smaller: check that you chose the right file.`,
   empty: "This file is empty.",
-  not_json: "This file is not valid JSON. Choose the report's JSON export (Download → JSON on the report), not its Markdown, CSV or JUnit file.",
+  not_json: "This file is not valid JSON. Choose the report's JSON export (the JSON button on the report), not its Markdown, CSV or JUnit file.",
   no_crypto: "This browser cannot compute SHA-256 on this page: Web Crypto needs a secure (https) connection. Use the command below instead.",
 };
 
@@ -151,7 +151,7 @@ export function FileCheck() {
           Report JSON export
         </label>
         <p id="report-file-hint" className="mt-0.5 text-sm text-ink-soft">
-          Drop the file here, or choose it. The JSON export (Download → JSON on the report) or a
+          Drop the file here, or choose it. The JSON export (the JSON button on the report) or a
           bare report payload, up to {MB} MB.
         </p>
         <input

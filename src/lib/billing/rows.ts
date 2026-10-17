@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { billingConfig, storedLivemode, type BillingConfig } from "./config.ts";
 import { currentSubscription, DAY_MS, subscriptionStanding, type GrantRow, type SubscriptionRow } from "./entitlement.ts";
+import { ALLOWANCE_COLUMN } from "./allowance.ts";
 import { FAIR_USE_WINDOW_DAYS } from "./limits.ts";
 import { supabaseBillingStore } from "./supabase-store.ts";
 
@@ -20,8 +21,10 @@ export interface BillingRows {
 }
 
 /**
- * Every run since `from`, and which of them were graded on Novera's keys under a plan
- * (`plan_managed`, 0067), paged so PostgREST's row cap can never turn into an undercount.
+ * Every run since `from` that uses an allowance, and which of them were graded on Novera's keys
+ * under a plan (`plan_managed`, 0067), paged so PostgREST's row cap can never turn into an
+ * undercount. A run aborted before it recorded any scenario uses none (0074, the same rule
+ * runs_fair_use_and_funding counts under its lock); fair use counts it separately below.
  */
 async function runTimesSince(db: SupabaseClient, workspaceId: string, from: string | null): Promise<{ all: string[]; managed: string[] }> {
   const all: string[] = [];
@@ -29,7 +32,7 @@ async function runTimesSince(db: SupabaseClient, workspaceId: string, from: stri
   if (!from) return { all, managed };
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await db.from("runs").select("created_at, judge_source")
-      .eq("workspace_id", workspaceId).gte("created_at", from)
+      .eq("workspace_id", workspaceId).gte("created_at", from).eq(ALLOWANCE_COLUMN, true)
       .order("created_at", { ascending: true }).order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error) throw new Error(`Could not count runs: ${error.message}`);
@@ -56,6 +59,7 @@ export async function loadBillingRows(db: SupabaseClient, workspaceId: string, n
       return n ?? 0;
     });
 
+  // Fair use counts every start, an empty aborted one included (0074): it is a rate limit.
   const [stored, grants, totalRuns, runsInFlight, runsInWindow] = await Promise.all([
     store.listSubscriptions(workspaceId, livemode),
     store.listGrants(workspaceId),

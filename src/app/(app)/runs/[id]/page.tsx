@@ -54,6 +54,8 @@ import { TryScenarioAlone } from "@/components/ui/try-scenario-alone.tsx";
 import { DeliverableBar } from "./deliverable-bar.tsx";
 import { deliverableFor } from "./deliverable.ts";
 import { readClock } from "@/lib/workflow/stalled.ts";
+import { buildReportGuide, guideFactsFromRun } from "@/lib/explainability/report-guide.ts";
+import { ReportGuideBox } from "@/components/ui/report-guide.tsx";
 
 export const metadata: Metadata = { title: "Run · Novera" };
 export const dynamic = "force-dynamic";
@@ -728,6 +730,17 @@ export default async function RunPage({
             </div>
           )}
 
+          {/* The 60-second guide, read from this run's rows (src/lib/explainability/report-guide.ts). */}
+          <ReportGuideBox
+            className="mt-4"
+            guide={buildReportGuide(guideFactsFromRun({
+              coverage: runCoverage, grade, sealed: Boolean(report?.content_hash),
+              fixture: Boolean(agent?.config && isNoveraFixture(agent.config as AgentConfig)),
+              simulated: caseRows.some((c) => c.transcript?.some((t) => t.simulated)),
+              oneGrader: corroboration.unconfirmed,
+            }))}
+          />
+
           <div className="print-hide mt-8">
             <TabNav
               label="Run sections"
@@ -752,6 +765,7 @@ export default async function RunPage({
               gradersMoved={gradersMoved}
               canCompare={comparable.length > 0}
               undecided={undecided}
+              recorded={caseRows.length}
             />
           )}
           {tab === "overview" && undisclosedReviews > 0 && <ReissueReport runId={run.id} pending={undisclosedReviews} />}

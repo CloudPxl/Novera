@@ -102,6 +102,39 @@ export interface RunManifest {
    * runs declared before 2026-09-29, which sent every grader the reply as written.
    */
   data_policy?: number;
+  /**
+   * How a 404 from the agent's read-back is read in this run, as its settings stood when the run
+   * was declared. Present only when the customer declared that a 404 means the record does not
+   * exist (`contradicted`); absent is the default — a 404 is unavailable — and is what every run
+   * declared before 2026-10-17 did. The runner reads this, never the live setting, so a change
+   * made mid-run cannot reach scenarios already declared. `host` is the read-back's host as
+   * declared (never its path, which can carry a token): the declaration was made about that
+   * system, so it never follows the read-back to another one.
+   */
+  read_back?: { not_found_means: "contradicted"; host: string };
+}
+
+/**
+ * Whether stored read-back settings declare that a 404 means the record does not exist. Only a
+ * complete read-back with exactly that value counts; anything else is the default.
+ */
+function declaredNotFoundContradicts(verification: unknown): boolean {
+  const v = (verification ?? null) as Record<string, unknown> | null;
+  return Boolean(v && typeof v === "object" && v.kind === "http_read" && typeof v.url === "string" && v.url
+    && v.not_found_means === "contradicted");
+}
+
+/**
+ * How a run reads a 404 from its read-back: what its manifest declared, and only while the
+ * read-back is still on the host the declaration was made about. A run with no manifest, one
+ * declared before the setting existed, or one whose read-back has since moved to another host
+ * reads a 404 as unavailable — the default, and what every such run did.
+ */
+export function readBackNotFoundMeans(manifest: unknown, verification: unknown): "unavailable" | "contradicted" {
+  const m = (manifest ?? null) as Partial<RunManifest> | null;
+  if (m?.read_back?.not_found_means !== "contradicted" || !m.read_back.host) return "unavailable";
+  const now = (verification ?? null) as { url?: unknown } | null;
+  return typeof now?.url === "string" && endpointHost(now.url) === m.read_back.host ? "contradicted" : "unavailable";
 }
 
 /** Twelve hex characters is plenty to notice a change; the full digest is noise here. */
@@ -191,6 +224,8 @@ export function buildRunManifest(args: {
   runnerVersion: string;
   agentConfig?: unknown;
   declared?: Declared;
+  /** The agent's stored read-back settings (`agents.verification`), when it has any. */
+  verification?: unknown;
 }): { manifest: RunManifest; hash: string } {
   const routes = args.routes ?? DEFAULT_ROUTES;
   const manifest: RunManifest = {
@@ -239,6 +274,10 @@ export function buildRunManifest(args: {
     runner_version: args.runnerVersion,
     pass_threshold: args.passThreshold,
     data_policy: DATA_POLICY_VERSION,
+    ...(() => {
+      const host = declaredNotFoundContradicts(args.verification) ? endpointHost((args.verification as { url: string }).url) : null;
+      return host ? { read_back: { not_found_means: "contradicted" as const, host } } : {};
+    })(),
   };
 
   return { manifest, hash: contentHash(manifest as unknown as Json) };
@@ -284,7 +323,7 @@ export async function manifestForNewRun(args: {
 
   try {
     const [{ data: agent }, { data: policy }, { data: suite }] = await Promise.all([
-      args.client.from("agents").select("config").eq("id", args.agentId).maybeSingle(),
+      args.client.from("agents").select("config, verification").eq("id", args.agentId).maybeSingle(),
       args.client.from("policies").select("version").eq("id", args.policyId).maybeSingle(),
       args.client.from("suites").select("key, version, name, cases, provenance").eq("id", args.suiteId).maybeSingle(),
     ]);
@@ -320,6 +359,7 @@ export async function manifestForNewRun(args: {
       runnerVersion: args.runnerVersion ?? RUNNER_VERSION,
       agentConfig: agent?.config ?? null,
       declared: args.declared,
+      verification: (agent as { verification?: unknown } | null)?.verification ?? null,
       extension: ext && extDigests
         ? { key: ext.key, version: ext.version, scenarios: ext.base_scenarios, ...extDigests }
         : null,

@@ -23,7 +23,7 @@ export type AuditAction =
   | "billing.checkout_started" | "billing.portal_opened" | "billing.cancellation_scheduled" | "billing.cancellation_withdrawn"
   | "contract.accepted"
   | "workspace.export_requested" | "workspace.exported"
-  | "agent.updated" | "agent.archived" | "agent.restored";
+  | "agent.updated" | "agent.archived" | "agent.restored" | "agent.read_back_changed";
 
 export async function recordAudit(admin: SupabaseClient, event: {
   workspaceId: string | null;
@@ -66,6 +66,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   "retention.changed": "changed evidence retention",
   "report.withdrawn": "withdrew a report",
   "agent.environment_changed": "changed whether an agent is production or a test target",
+  "agent.read_back_changed": "changed what a 404 from an agent's read-back means",
   "judgekey.connected": "connected a model key",
   "judgekey.removed": "removed the model key",
   "memory.created": "saved an assistant memory",

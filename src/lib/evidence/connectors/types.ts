@@ -44,9 +44,23 @@ export interface VerificationObservation {
  */
 export type ConnectorMode = "read_only" | "test_write";
 
+/**
+ * What a 404 from the read-back is taken to mean. The default, `unavailable`, is the only safe
+ * reading without a declaration: a framework answers an unknown *route* with the same 404 (often
+ * JSON, e.g. FastAPI's `{"detail":"Not Found"}`) as a missing *record*, and a false contradiction
+ * is the worst error this product can make. `contradicted` is never inferred — the agent's
+ * read-back settings or the scenario itself has to declare it.
+ */
+export type NotFoundMeaning = "unavailable" | "contradicted";
+
 export interface VerificationInput {
   /** Scenario-supplied path or query, appended to the configured base. */
   path?: string;
+  /**
+   * Set only when the scenario itself declares that a 404 at its path means the record does
+   * not exist (`effect.verify.not_found_means`). Absent, the agent's read-back setting decides.
+   */
+  notFoundMeans?: "contradicted";
   /** What must hold in the read-back for the effect to count as confirmed. */
   expect: DeterministicCheck[];
   /** The case id, for provenance only. Never sent to the customer's system. */

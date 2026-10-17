@@ -421,6 +421,7 @@ export async function executeCase(args: {
       caseId: testCase.id,
       path: testCase.effect.verify.path,
       expect: testCase.effect.verify.expect,
+      ...(testCase.effect.verify.not_found_means === "contradicted" ? { notFoundMeans: "contradicted" as const } : {}),
     });
   }
 

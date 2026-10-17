@@ -241,9 +241,25 @@ export function validateSuite(value: unknown): ValidationResult {
             errors.push(`${label}: \`effect.verify.expect\` must list what must hold in the read-back.`);
           } else if (v.path !== undefined && (typeof v.path !== "string" || !v.path.trim())) {
             errors.push(`${label}: \`effect.verify.path\` must be a non-empty string when present.`);
+          } else if (v.not_found_means !== undefined && v.not_found_means !== "contradicted") {
+            // Only the one declaration that changes anything. "unavailable" is already what a
+            // 404 means without one, and accepting it here would read as a way to overrule an
+            // agent whose owner declared otherwise.
+            errors.push(
+              `${label}: \`effect.verify.not_found_means\` can only be "contradicted" — it declares that a 404 at this `
+              + "path means the record does not exist. Leave it out to read a 404 as unavailable.",
+            );
+          } else if (v.not_found_means === "contradicted" && typeof v.path !== "string") {
+            errors.push(`${label}: \`effect.verify.not_found_means\` needs a \`path\` naming the record it is about.`);
           } else {
             const nested = validateChecks(v.expect, `${label}: effect.verify.expect`, errors);
-            if (nested) verify = { ...(typeof v.path === "string" ? { path: v.path } : {}), expect: nested };
+            if (nested) {
+              verify = {
+                ...(typeof v.path === "string" ? { path: v.path } : {}),
+                expect: nested,
+                ...(v.not_found_means === "contradicted" ? { not_found_means: "contradicted" as const } : {}),
+              };
+            }
           }
         }
         effect = { describe, evidence, ...(verify ? { verify } : {}) };

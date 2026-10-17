@@ -5,6 +5,7 @@ import { connectionFor, modelsForStoredKey } from "../providers/workspace-connec
 import { DEFAULT_ROUTES, routesForConnection, type RouteTable } from "../router/routes.ts";
 import { serviceClient } from "../supabase/service.ts";
 import { loadBillingRows } from "../billing/rows.ts";
+import { ALLOWANCE_COLUMN } from "../billing/allowance.ts";
 import { fundingLine, resolveEntitlement, type BillingEntitlement, type Blocker, type JudgeSource } from "../billing/entitlement.ts";
 
 /**
@@ -28,7 +29,7 @@ export interface Entitlement {
   /** True once the workspace has supplied its own model key. */
   ownKey: boolean;
   provider: string | null;
-  /** Runs counted against the trial: every run of every workspace the owner owns (0055). */
+  /** Runs counted against the trial: every run of every workspace the owner owns (0055), except one aborted before it recorded a scenario (0074). */
   runsUsed: number;
   canRun: boolean;
   /** Why not, in words a customer should read. Null when they can run. */
@@ -62,6 +63,8 @@ export async function workspaceEntitlement(args: {
   // Counted from stored rows, like every other number in this product. Queued and
   // running rows count too: three runs started in parallel is still three runs. The trial
   // belongs to the owner across every workspace they own (0055), so the count does too.
+  // A run aborted before it recorded any scenario does not count (0074, `ALLOWANCE_COLUMN`),
+  // exactly as runs_trial_cap counts under its lock.
   const { data: ws } = await client.from("workspaces").select("owner_id").eq("id", workspaceId).maybeSingle();
   const { data: owned } = ws
     ? await client.from("workspaces").select("id").eq("owner_id", ws.owner_id as string)
@@ -69,7 +72,8 @@ export async function workspaceEntitlement(args: {
   const { count } = await client
     .from("runs")
     .select("id", { count: "exact", head: true })
-    .in("workspace_id", (owned ?? []).map((w) => w.id as string));
+    .in("workspace_id", (owned ?? []).map((w) => w.id as string))
+    .eq(ALLOWANCE_COLUMN, true);
   const runsUsed = count ?? 0;
 
   // A key that cannot be routed is worse than no key: every case of every run would come back

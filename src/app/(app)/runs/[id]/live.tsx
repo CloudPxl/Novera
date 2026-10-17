@@ -11,6 +11,7 @@ import { Reveal } from "@/components/ui/reveal.tsx";
 import { obligationLabel } from "@/lib/report/payload.ts";
 import { gradingNote } from "./grading-note.ts";
 import { stopRun } from "@/lib/workflow/stop-run.ts";
+import { EMPTY_ABORT_IS_FREE } from "@/lib/billing/allowance.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
 import { heldSentence, stallState, stalledSentence, type RunProgress } from "@/lib/workflow/stalled.ts";
 
@@ -324,7 +325,7 @@ export function LiveRun({
             <EmptyState title={running ? "Waiting for the first result" : "Nothing was graded"}>
               {running
                 ? "Each scenario is sent to your agent and graded as its answer comes back."
-                : "This run produced no gradable result. The failures above explain why."}
+                : `This run produced no gradable result. The failures above explain why.${status === "aborted" ? ` ${EMPTY_ABORT_IS_FREE}` : ""}`}
             </EmptyState>
           </div>
         ) : (

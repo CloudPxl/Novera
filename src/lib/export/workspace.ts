@@ -93,7 +93,7 @@ function agent(a: Row): Row {
     endpoint: config.kind === "model"
       ? { kind: "model", provider: config.provider ?? null, model: config.model ?? null }
       : { kind: "http", host: hostOf(config.url) },
-    read_back: verification ? { kind: verification.kind ?? null, host: hostOf(verification.url) } : null,
+    read_back: verification ? { kind: verification.kind ?? null, host: hostOf(verification.url), not_found_means: verification.not_found_means === "contradicted" ? "contradicted" : "unavailable" } : null,
   };
 }
 

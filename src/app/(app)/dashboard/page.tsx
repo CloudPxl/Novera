@@ -21,6 +21,7 @@ import { portfolio } from "@/lib/workspaces/portfolio.ts";
 import { formatWhen, zoneLabel } from "@/lib/format/when.ts";
 import { nextAction, onboardingRail } from "./next-action.ts";
 import { OnboardingRail } from "./onboarding-rail.tsx";
+import { PLAIN_WORDS_HREF } from "@/lib/explainability/report-guide.ts";
 import { ChannelNote, ClientStrip, GovernancePanel } from "./mode-panels.tsx";
 import { AttentionList, HealthLine, Metrics, PageHeader, Panel, Rows, Section, ViewAll } from "@/components/ui/page.tsx";
 
@@ -196,7 +197,7 @@ export default async function DashboardPage() {
   const setup = [
     { done: agentList.length > 0, label: "Connect an agent", href: "/agents/new" },
     { done: (policyCount ?? 0) > 0, label: "Write its policy", href: firstAgent ? `/agents/${firstAgent}` : "/agents/new" },
-    { done: runList.length > 0, label: "Run the suite", href: firstAgent ? `/agents/${firstAgent}` : "/agents/new" },
+    { done: runList.length > 0, label: "Run the first evaluation", href: firstAgent ? `/agents/${firstAgent}` : "/agents/new" },
     { done: (reportCount ?? 0) > 0, label: "Open the report", href: runList[0] ? `/runs/${runList[0].id}` : "/guide" },
   ];
   const setupDone = setup.filter((s) => s.done).length;
@@ -299,6 +300,11 @@ export default async function DashboardPage() {
       {rail ? (
         <>
           <OnboardingRail steps={rail} />
+          <p className="mt-3 text-sm text-ink-soft">
+            New to Novera?{" "}
+            <Link href={PLAIN_WORDS_HREF} className="font-medium text-ink underline underline-offset-2">The plain-words guide</Link>{" "}
+            explains each part, the navigation and how to read a report, without the jargon.
+          </p>
           {attentionItems.length > 0 && (
             <Section id="attention" title="Needs attention">
               <AttentionList items={attentionItems} more={{ href: "/review", count: attentionItems.length }} />

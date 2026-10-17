@@ -13,7 +13,7 @@ export function ConnectAgentForm() {
 
   return (
     <form onSubmitCapture={keepValues} action={submit} className="mt-8 space-y-6">
-      <Field label="Name" htmlFor="name" hint="How you'll recognise it. Your client never sees this.">
+      <Field label="Name" htmlFor="name" hint="How you'll recognise it. It is printed on the report you share.">
         <input id="name" name="name" required className={inputClass} placeholder="Northwind support bot" />
       </Field>
 

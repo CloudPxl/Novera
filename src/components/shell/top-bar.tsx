@@ -188,6 +188,7 @@ export async function TopBar() {
               {can(role, "audit.view") && mode === "agency" && <Link href="/settings/audit" className={menuItemClass}>Audit log</Link>}
               <Link href="/settings/profile" className={menuItemClass}>Your profile</Link>
               <Link href="/guide" className={menuItemClass}>Step-by-step guide</Link>
+              <Link href="/docs/novera-in-plain-words" className={menuItemClass}>Novera in plain words</Link>
               <Link href="/docs" className={menuItemClass}>Documentation</Link>
             </div>
 

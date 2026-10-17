@@ -13,6 +13,7 @@ import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
 import { publishReport } from "./run.ts";
 import { reportEnvironment } from "../agents/environment.ts";
 import { declaredLocalisation } from "./localised-run.ts";
+import { readBackNotFoundMeans } from "../report/manifest.ts";
 
 /**
  * Loads everything a queued run refers to and executes it, then publishes a report.
@@ -95,6 +96,8 @@ export async function startRunExecution(args: {
     // than passed, which is the honest outcome and always has been.
     verifier: await buildVerifier({
       client, workspaceId, agentId: run.agent_id as string, verification: agent.verification,
+      // How a 404 is read was declared with the run, not whatever the setting says now.
+      notFoundMeans: readBackNotFoundMeans(run.manifest, agent.verification),
     }),
     // Undefined would be read as production, which is the safe default but not the
     // true one. The column has a value for every agent, so pass it.

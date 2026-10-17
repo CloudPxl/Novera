@@ -133,6 +133,37 @@ runs, every run/case/report stays readable and exportable.
 - **Before billing opens**, a workspace past its trial runs only under a manual grant (below). The
   billing page says to contact support for a pilot.
 
+### A run aborted before any scenario is free (0074, 2026-10-17)
+
+- **Decision (David, 2026-10-17):** a run that is superseded or stopped before it executes costs
+  nothing. A run stopped by a person, superseded by a newer commit (`ci_triggers`), ended by a slice
+  failure, or stopped by the 24-hour idle sweep **before it recorded any scenario** uses none of the
+  trial's three runs, a grant's units, or a plan's managed allowance.
+- **Why:** such a run never reached the agent and produced no evidence; charging it punishes the
+  behaviour we want (cancelling a pipeline run its newer commit replaced, stopping a run started by
+  mistake). A CI branch pushed three times in a minute spent two trial runs on nothing.
+- **The rule**, identical in SQL and TypeScript: a run counts unless
+  `status = 'aborted' and not exists (select 1 from run_cases where run_id = runs.id)`.
+  - A queued or running run counts — it holds its place while it can still execute, which is
+    what keeps 12 racing starts at 3. If it is then aborted empty it stops counting, and a new start
+    is allowed; that is intended.
+  - A completed run counts. An aborted run with at least one recorded scenario counts — including a
+    run halted after three transport failures, which records those failures as case errors (it
+    reached the agent), and a run whose in-flight scenario was saved after Stop (0043 lets an
+    aborted run take rows).
+- **Where:** 0074 redefines `runs_trial_cap()` (per-owner lock) and `runs_fair_use_and_funding()`
+  (per-workspace lock; the grant count and the managed-period count) with the exclusion, and adds
+  the computed column `counts_against_allowance(runs)`. The application filters on it in
+  `workspaceEntitlement` (trial) and `loadBillingRows` (grant and managed windows,
+  `src/lib/billing/allowance.ts`), so the badge, Settings, Billing, the dashboard, the agent page
+  and every refusal show the numbers the database enforces. Locks and lock order are unchanged.
+- **Fair use is unchanged and counts every start**, an empty aborted one included: 3 in progress
+  and 1,000 per 30 days are rate and abuse limits, not allowances. A person or pipeline that starts
+  and stops runs in a loop still meets them.
+- **Rows are unchanged.** Runs, their status and their frozen funding stay as written; only the
+  counting changed. The run page says "This run recorded no scenario, so it does not count against
+  your runs." on an aborted run with no recorded scenario.
+
 ### Deliberately not done yet
 
 - **Erasing a workspace while Stripe could still charge** (active, trialing, past due — in

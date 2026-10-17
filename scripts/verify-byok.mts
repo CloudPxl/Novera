@@ -94,6 +94,21 @@ try {
   report(/trial_exhausted/.test(fourth?.message ?? ""), `a trial run past the ${TRIAL_RUN_LIMIT}rd is refused by the database, even inserted directly`,
     fourth?.message.slice(0, 70) ?? "the fourth run was accepted");
 
+  // Stopped before it recorded any scenario, the queued run gives its trial run back (0074);
+  // once a scenario is recorded on it, it counts again.
+  const { data: stoppedRun } = await db.from("runs").update({ status: "aborted", finished_at: new Date().toISOString() })
+    .eq("workspace_id", workspaceId).eq("status", "queued").eq("judge_source", "trial_free").select("id").single();
+  const afterStop = await workspaceEntitlement({ client: db, workspaceId });
+  report(afterStop.runsUsed === TRIAL_RUN_LIMIT - 1 && afterStop.canRun, "a trial run stopped before any scenario does not count",
+    `${afterStop.runsUsed} used`);
+  const { error: caseErr } = await db.from("run_cases").insert({
+    workspace_id: workspaceId, run_id: stoppedRun!.id, case_id: "T01", category: "c", obligation: "privacy", severity: "high",
+    input: "hi", expected: "x", assertions: [], status: "error", error: "verify:byok — the agent could not be reached",
+  });
+  const afterCase = await workspaceEntitlement({ client: db, workspaceId });
+  report(!caseErr && afterCase.runsUsed === TRIAL_RUN_LIMIT && !afterCase.canRun, "an aborted run that recorded a scenario counts",
+    caseErr?.message.slice(0, 70) ?? `${afterCase.runsUsed} used`);
+
   // Now the workspace brings its own key.
   await storeSecret({
     client: db, workspaceId, scope: "judge_key",
@@ -124,12 +139,12 @@ try {
     unfunded?.message.slice(0, 70) ?? "it was accepted");
   const { error: wrongGrant } = await insertRun({ status: "aborted", judge_source: "workspace_key", funded_by_grant: crypto.randomUUID() });
   report(/run_not_funded/.test(wrongGrant?.message ?? ""), "a run naming a grant that is not this workspace's is refused");
-  // One queued run is already in flight (the trial's third); two more reach the ceiling.
+  // Nothing is in flight (the trial's queued run was stopped above); three reach the ceiling.
   const inFlight: string[] = [];
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 3; i++) {
     const { data, error } = await insertRun({ status: "queued", judge_source: "workspace_key", funded_by_grant: grant.id });
     if (data) inFlight.push(data.id as string);
-    report(!error, `a funded run ${i + 2} of 3 in flight is accepted`, error?.message.slice(0, 70) ?? "");
+    report(!error, `a funded run ${i + 1} of 3 in flight is accepted`, error?.message.slice(0, 70) ?? "");
   }
   const { error: fourthInFlight } = await insertRun({ status: "queued", judge_source: "workspace_key", funded_by_grant: grant.id });
   report(/concurrent_runs_limit/.test(fourthInFlight?.message ?? ""), "a fourth run in flight is refused by the database",

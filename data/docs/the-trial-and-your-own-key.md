@@ -11,6 +11,8 @@ After the three trial runs, recurring testing needs a plan, whether or not you h
 - **Team BYOK** grades every run on your own model key, with no run allowance counted.
 - **Agency Pro** does the same, and adds 100 runs a month graded on Novera's keys, for workspaces with no key of their own.
 
+A run that is stopped, or replaced by a newer commit in CI, before it records any scenario does not count against your trial runs, a pilot grant or a plan's runs on Novera's keys; it still counts toward the fair-use limit below.
+
 Plans are chosen under **Billing**, by the workspace's owner or an admin. Billing is not open yet. Until it is, contact support to arrange a pilot.
 
 Every plan has a fair-use limit, so a runaway pipeline cannot start thousands of runs: at most three runs in progress at once in a workspace, and at most 1,000 runs in any 30 days. Support can raise it for a workspace that needs more. Over the API, a run refused for fair use is answered with status 429, so a pipeline can back off and try again.

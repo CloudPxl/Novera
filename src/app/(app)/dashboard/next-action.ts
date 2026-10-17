@@ -54,7 +54,7 @@ export function nextAction(s: NextInput): NextAction {
       return { title: remedy.href === "/billing" ? "Choose a plan to keep testing" : "Runs cannot start yet", body: s.blockedReason, href: remedy.href, label: remedy.label };
     }
     return s.may.run
-      ? { title: "Run your first evaluation", body: "Forty-nine scenarios against your agent, graded against your policy, sealed into a dated report.", href: `/agents/${s.firstAgentId}`, label: "Run the suite" }
+      ? { title: "Run your first evaluation", body: "Every scenario of the newest built-in suite against your agent, graded against your policy, sealed into a dated report.", href: `/agents/${s.firstAgentId}`, label: "Run the suite" }
       : { title: "Waiting for the first run", body: "An operator, admin or owner starts runs. Its findings come to you for review.", href: "/review", label: "Open review" };
   }
   if (s.topFinding && s.may.review) {

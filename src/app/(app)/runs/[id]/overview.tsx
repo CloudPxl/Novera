@@ -11,7 +11,7 @@ const STATUS = { pass: { tone: "pass", word: "passed" }, fail: { tone: "fail", w
  * first, five shown), and what changed against its baseline. Each line opens the place where it
  * is investigated; the evidence itself is one tab away, never here.
  */
-export function RunOverview({ runId, readiness, findings, comparison, gradersMoved, canCompare, undecided }: {
+export function RunOverview({ runId, readiness, findings, comparison, gradersMoved, canCompare, undecided, recorded }: {
   runId: string;
   readiness: { label: string; state: Readiness; gap: string | null } | null;
   findings: Array<{ caseId: string; status: "pass" | "fail" | "error"; severity: string; title: string; category: string }>;
@@ -20,6 +20,8 @@ export function RunOverview({ runId, readiness, findings, comparison, gradersMov
   gradersMoved?: { sentence: string; sealedSentence: string | null } | null;
   canCompare: boolean;
   undecided: number;
+  /** Scenarios this run recorded; none means nothing passed either (an aborted run, or one still queued). */
+  recorded?: number;
 }) {
   const ready = readiness?.state === "READY_TO_SHARE";
   return (
@@ -30,7 +32,7 @@ export function RunOverview({ runId, readiness, findings, comparison, gradersMov
           {findings.length > 5 && <Link href={`/runs/${runId}?tab=cases`} className="text-sm font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline">All {findings.length} →</Link>}
         </div>
         {findings.length === 0 ? (
-          <p className="mt-3 rounded-shell border border-line bg-surface px-5 py-4 text-sm text-ink-soft">Every scenario passed.</p>
+          <p className="mt-3 rounded-shell border border-line bg-surface px-5 py-4 text-sm text-ink-soft">{recorded === 0 ? "No scenario was recorded in this run, so there is nothing to look at yet." : "Every scenario passed."}</p>
         ) : (
           <Panel className="mt-3">
             <Rows label="Failed and no-result scenarios">

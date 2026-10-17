@@ -64,7 +64,7 @@ export interface GrantRow {
 export interface EntitlementInput {
   now: Date;
   graceDays: number;
-  /** Runs counted against the trial: every run of every workspace this workspace's owner owns (0055). */
+  /** Runs counted against the trial: every run of every workspace this workspace's owner owns (0055), except one aborted before it recorded a scenario (0074). */
   trialRunsUsed: number;
   trialLimit: number;
   /** A model key is stored, and whether it can actually grade (see auth/entitlement.ts). */
@@ -83,9 +83,11 @@ export interface EntitlementInput {
   subscriptions: SubscriptionRow[];
   grants: GrantRow[];
   /**
-   * When each run in this workspace was created (ISO): every run since the earliest window
-   * start among the sources (the subscription's period start, each grant's start). A missing
-   * row would be an undercount, so the loader pages through all of them.
+   * When each run in this workspace was created (ISO): every run that uses an allowance since
+   * the earliest window start among the sources (the subscription's period start, each grant's
+   * start) — every run except one aborted before it recorded a scenario (0074,
+   * src/lib/billing/allowance.ts). A missing row would be an undercount, so the loader pages
+   * through all of them.
    */
   runTimes: string[];
   /**

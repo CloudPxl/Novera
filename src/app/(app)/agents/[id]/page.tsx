@@ -407,7 +407,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
               </p>
               <VerificationEndpoint
                 agentId={agent.id}
-                current={(agent.verification as { url?: string; authHeaderName?: string } | null) ?? null}
+                current={(agent.verification as { url?: string; authHeaderName?: string; not_found_means?: string } | null) ?? null}
               />
             </section>
             {!archivedAt && (

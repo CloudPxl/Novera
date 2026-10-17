@@ -186,7 +186,8 @@ try {
   const { data: agentB } = await admin.from("agents").insert({ workspace_id: B, name: "b", kind: "http", config: { url: "https://b.invalid" }, is_production: false }).select("id").single();
   const { data: polB } = await admin.from("policies").insert({ workspace_id: B, agent_id: agentB!.id, version: 1, body: "x" }).select("id").single();
   const { data: suite } = await admin.from("suites").select("id").eq("key", "eu-support").is("workspace_id", null).order("version", { ascending: false }).limit(1).single();
-  const run = (ws: string, ag: string, po: string) => admin.from("runs").insert({ workspace_id: ws, agent_id: ag, policy_id: po, suite_id: suite!.id, status: "aborted", judge_source: "trial_free", manifest_hash: `identity-${crypto.randomUUID()}` });
+  // Completed, not aborted: a run aborted before it recorded any scenario uses no trial run (0074).
+  const run = (ws: string, ag: string, po: string) => admin.from("runs").insert({ workspace_id: ws, agent_id: ag, policy_id: po, suite_id: suite!.id, status: "completed", judge_source: "trial_free", manifest_hash: `identity-${crypto.randomUUID()}` });
   const r1 = await run(A, agent!.id, pol!.id), r2 = await run(A, agent!.id, pol!.id), r3 = await run(B, agentB!.id, polB!.id), r4 = await run(B, agentB!.id, polB!.id);
   check(!r1.error && !r2.error && !r3.error && /trial_exhausted/.test(r4.error?.message ?? ""),
     "three trial runs per owner across two workspaces; the fourth is refused", r4.error?.message.slice(0, 70) ?? "fourth accepted");

@@ -133,7 +133,7 @@ export default async function InboxPage() {
                         </Badge>
                         {current.model ? (
                           <span className="font-mono text-[11px] text-ink-faint">
-                            drafted by {current.model as string}
+                            drafted by a language model ({current.model as string})
                           </span>
                         ) : (
                           <span className="text-[11px] text-ink-faint">written by hand</span>

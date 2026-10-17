@@ -26,9 +26,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ): Promise<Response> {
-  // Off in production unless the deployment turns the sample agent on (NOVERA_SAMPLE_AGENT=on).
+  // Off only where the deployment turned the sample agent off (NOVERA_SAMPLE_AGENT=off).
   if (!fixtureServed()) {
-    return Response.json({ error: "The Novera verification fixture is disabled outside development." }, { status: 403 });
+    return Response.json({ error: "The Novera verification fixture is turned off on this deployment." }, { status: 403 });
   }
 
   const { path } = await params;

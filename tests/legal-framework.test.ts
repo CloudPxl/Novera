@@ -27,7 +27,7 @@ import { planAction } from "../src/lib/billing/plan-action.ts";
 const form = (fields: Record<string, string>) => ({ get: (k: string) => (k in fields ? fields[k] : null) });
 const GOOD = {
   legalName: "Example Agency SRL", registeredAddress: "Strada Exemplu 1, Bucharest", country: "ro", vatId: "ro 123 456",
-  signerName: "Ana Pop", signerTitle: "Director", accept_terms: "on", accept_unusual: "on", accept_business: "on",
+  signerName: "Ana Pop", signerTitle: "Director", accept_terms: "on", accept_unusual: "on", accept_business: "on", accept_authority: "on",
 };
 
 test("every unusual clause is a section of the Terms, and the Terms name exactly those sections", () => {
@@ -86,7 +86,7 @@ test("the business gate: every field and each declaration separately, nothing im
   refused({ vatId: "123" }, "vatId");
   refused({ signerName: "" }, "signerName");
   refused({ signerTitle: "" }, "signerTitle");
-  for (const box of ["accept_terms", "accept_unusual", "accept_business"]) refused({ [box]: "" }, box);
+  for (const box of ["accept_terms", "accept_unusual", "accept_business", "accept_authority"]) refused({ [box]: "" }, box);
   assert.equal(countryName("RO"), "Romania");
   assert.equal(countryName("ro"), null, "upper case only; the reader upper-cases first");
 });
@@ -203,4 +203,56 @@ test("a production deployment refuses a Stripe test key; Preview keeps the sandb
   assert.equal(prod.mode, null, "and it reads live rows, so sandbox subscriptions never count there");
   assert.equal(billingConfig({ ...env, VERCEL_ENV: "preview" }).active, true);
   assert.equal(billingConfig(env).active, true, "local development keeps the sandbox");
+});
+
+// ------------------------------------------------------------------ the founder's memo (2026-10-16)
+
+test("a new attestation names a role and a user id, never an email; both connect paths use it", async () => {
+  const { agentAttestation, attestationActor } = await import("../src/lib/legal/attestation.ts");
+  const id = "3f2a0000-0000-4000-8000-000000000001";
+  const text = agentAttestation({ userId: id, role: "admin", date: "2026-10-16" });
+  assert.equal(text, `A workspace admin (user id ${id}) confirmed on 2026-10-16 that this agent is owned by their organisation or tested with permission.`);
+  assert.doesNotMatch(text, /@/);
+  assert.equal(attestationActor(id, null), `A workspace member (user id ${id})`);
+  assert.equal(attestationActor(id, "nonsense" as never), `A workspace member (user id ${id})`, "an unknown role is not repeated");
+  const actions = readFileSync("src/lib/workflow/actions.ts", "utf8");
+  assert.match(actions, /attestation_text: agentAttestation\(\{ userId: user\.id, role,/);
+  assert.doesNotMatch(actions, /\$\{user\.email\} confirmed on/);
+  assert.match(readFileSync("src/lib/workflow/connection-actions.ts", "utf8"), /sampleAttestation\(attestationActor\(user\.id, role\)/);
+});
+
+test("the receipt says when one checkbox covered both declarations (format 1)", async () => {
+  const { acceptanceReceipt } = await import("../src/lib/legal/acceptance-store.ts");
+  const row = {
+    id: "r", workspace_id: "w", user_id: "u", source_surface: "checkout", livemode: false, legal_entity_name_at_acceptance: "Example SRL",
+    registered_address: "Strada Exemplu 1", country: "RO", vat_id_declared: null, vat_id_verified: false, signer_name_at_acceptance: "Ana Pop",
+    signer_title_at_acceptance: "Director", signer_authority_declared: true, b2b_purpose_declared: true, unusual_terms_expressly_accepted: true,
+    terms_version: "0.3 draft", terms_sha256: "a".repeat(64), privacy_version: "x", dpa_version: "x", unusual_terms_version: "x", unusual_terms_sha256: "b".repeat(64),
+    billing_terms_version: "x", documents: [], documents_status: "draft", plan_key: null, user_agent: null, consent_receipt_version: 2, accepted_at: "2026-10-16T00:00:00Z",
+  };
+  assert.doesNotMatch(acceptanceReceipt(row, "WS"), /one checkbox covered both/);
+  assert.match(acceptanceReceipt({ ...row, consent_receipt_version: 1 }, "WS"), /one checkbox covered both/);
+  assert.match(acceptanceReceipt(row, "WS"), /Acquired exclusively for the organisation's trade/);
+});
+
+test("DPA Annex 1 states every ceiling the router enforces, from the router's own table", async () => {
+  const { CONNECTION_CEILINGS, describeClass } = await import("../src/lib/privacy/data-class.ts");
+  const body = legalDocument("dpa")!.body;
+  for (const [, ceiling] of Object.entries(CONNECTION_CEILINGS)) assert.ok(body.includes(`up to ${describeClass(ceiling)}`));
+  assert.equal((body.match(/\| up to /g) ?? []).length, Object.keys(CONNECTION_CEILINGS).length);
+});
+
+test("B2B only: no consumer dispute-resolution link in the texts; consumers are suspended and isolated", () => {
+  for (const doc of LEGAL_DOCUMENTS) assert.doesNotMatch(doc.body, /ec\.europa\.eu\/consumers\/odr|anpc\.ro\/.*sal/i, doc.slug);
+  assert.match(sectionText(legalDocument("terms")!.body, "2. Business customers only")!, /suspend the account and isolate its workspaces/);
+  assert.match(sectionText(legalDocument("terms")!.body, "14. Limitation of liability")!, /intentionally \(dol\) or through gross negligence \(culpă gravă\)/);
+});
+
+test("AI-generated text is labelled where a person reads it", () => {
+  const assistant = readFileSync("src/components/shell/assistant.tsx", "utf8");
+  assert.match(assistant, /An AI assistant: its answers are generated by a language model and can be wrong\./);
+  assert.match(assistant, /Generated by a language model/);
+  assert.match(readFileSync("src/app/(app)/scenarios/page.tsx", "utf8"), /Drafted by a language model \(\$\{d\.model\}\)/);
+  assert.match(readFileSync("src/app/(app)/builder/[id]/page.tsx", "utf8"), /drafted by a language model \(\$\{c\.model\}\)/);
+  assert.match(readFileSync("src/app/(app)/runs/[id]/diagnose.tsx", "utf8"), /Drafted by a language model from this scenario/);
 });

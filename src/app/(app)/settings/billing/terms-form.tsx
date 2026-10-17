@@ -15,10 +15,11 @@ export interface ClauseLine {
 }
 
 /**
- * The business details and acceptance before a paid plan (legal build brief §2–3). Three
+ * The business details and acceptance before a paid plan (legal build brief §2–3). Four
  * declarations, each its own checkbox, none pre-ticked: the documents; the clauses Romanian law
  * requires to be accepted expressly and separately (Civil Code art. 1203), each named with its
- * section; and business purpose with authority to bind the organisation. The server checks all
+ * section; acquisition exclusively for business purposes; and authority to bind the organisation
+ * (separate since 2026-10-16, as the founder's memo asks). The server checks all
  * of it again and records exactly which versions were on this page (`set`).
  */
 export function TermsAcceptanceForm({ set, clauses, documents, draft }: {
@@ -107,9 +108,12 @@ export function TermsAcceptanceForm({ set, clauses, documents, draft }: {
         <label className="flex gap-3">
           <input type="checkbox" name="accept_business" required className="mt-1 size-4 shrink-0" {...invalid("accept_business")} />
           <span>
-            I confirm that the organisation enters into this agreement exclusively for its trade, business, craft or profession, and that I have
-            authority to bind it.
+            I confirm that the organisation acquires Novera exclusively for its trade, business, craft or profession, and not as a consumer.
           </span>
+        </label>
+        <label className="flex gap-3">
+          <input type="checkbox" name="accept_authority" required className="mt-1 size-4 shrink-0" {...invalid("accept_authority")} />
+          <span>I confirm that I have authority to bind the organisation to these terms.</span>
         </label>
       </fieldset>
 

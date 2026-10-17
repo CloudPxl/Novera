@@ -103,8 +103,9 @@ export function ConnectAgentForm() {
           <span className="font-medium">I own this agent, or I am authorised to test it.</span>
           <br />
           <span className="text-ink-soft">
-            Recorded with your email and today&apos;s date, and attached to every run, so a report can
-            always say on whose authority the testing happened.
+            Recorded with your role in this workspace, your user id (not your email) and today&apos;s date,
+            and attached to every run and its reports, so a report can always say on whose authority the
+            testing happened.
           </span>
         </span>
       </label>

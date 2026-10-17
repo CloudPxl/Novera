@@ -9,6 +9,11 @@
  * src/lib/workflow/identity.ts (nv_ws, nv_invite), @supabase/ssr's defaults and
  * src/proxy.ts (sb-*), src/components/ui/motion.ts (localStorage), src/lib/auth/recovery.ts
  * (nv_recovery). No analytics, advertising or monitoring script exists in the code.
+ *
+ * Version 0.2 (2026-10-16): re-read against the code (cookies().set, response.cookies.set,
+ * localStorage) — the list is unchanged. The founder's memo of that date takes the no-banner
+ * position for these items and for server-side product events; that is now the stated draft
+ * position. The memo's own list leaves out nv_invite, which the code does set; it stays here.
  */
 import type { LegalDocument } from "./types.ts";
 
@@ -87,8 +92,8 @@ export const cookies: LegalDocument = {
   title: "Cookies and storage",
   summary: "The cookies and browser storage Novera actually uses, and the boundary for anything added later.",
   status: "draft",
-  version: "0.1 draft",
-  lastReviewed: "2026-10-09",
+  version: "0.2 draft",
+  lastReviewed: "2026-10-16",
   sources: ["eprivacy", "ro-506-2004", "gdpr"],
   body: `This notice lists everything Novera stores in a visitor's browser. It was written from the code, not from a template.
 
@@ -104,11 +109,11 @@ Novera uses no analytics, advertising, tracking or social-media cookies or scrip
 
 ## Consent
 
-Novera does not show a cookie banner, because the cookies above are, in Novera's assessment, strictly necessary for a service the person asked for: signing in, staying in the right workspace, accepting an invitation and resetting a password. [COUNSEL TO CONFIRM THAT EACH ENTRY QUALIFIES FOR THE STRICTLY-NECESSARY EXEMPTION, IN PARTICULAR THE 400-DAY SESSION LIFETIME AND THE ANIMATION PREFERENCE IN LOCAL STORAGE.]
+Novera does not show a cookie banner, because the cookies above are, in Novera's assessment, strictly necessary for a service the person asked for: signing in, staying in the right workspace, accepting an invitation and resetting a password. The animation preference only remembers a choice the person made on the page (user-interface persistence). [DRAFT POSITION — COUNSEL TO CONFIRM THAT EACH ENTRY QUALIFIES FOR THE EXEMPTION IN LAW 506/2004 ARTICLE 4(6) AND DIRECTIVE 2002/58/EC ARTICLE 5(3), IN PARTICULAR THE 400-DAY SESSION LIFETIME AND THE ANIMATION PREFERENCE IN LOCAL STORAGE.]
 
 ## Before anything else is added
 
-Analytics, monitoring or any other non-essential storage will not be added until this notice is updated and, where the law requires it, consent is asked for before anything is stored. Novera records first-party product events on its own servers (for example that a report was viewed); they store nothing in the browser and are described in the privacy notice. [COUNSEL TO CONFIRM WHETHER A CONSENT MECHANISM IS NEEDED FOR THEM.]
+Analytics, monitoring or any other non-essential storage will not be added until this notice is updated and, where the law requires it, consent is asked for before anything is stored. Novera records first-party product events on its own servers (for example that a report was viewed); they store and read nothing in the browser, name a person only by a keyed hash, are not used to track anyone across sites, are kept for 13 months, and are described in the privacy notice. Draft position: they need no consent banner. [COUNSEL TO CONFIRM WHETHER A CONSENT MECHANISM IS NEEDED FOR THEM.]
 
 ## Contact
 

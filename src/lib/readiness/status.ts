@@ -16,6 +16,7 @@ import { contractSet, livePublicationProblems } from "../legal/contract.ts";
 import { billingConfig, keyMode, PRICE_ENV } from "../billing/config.ts";
 import { PLAN_KEYS, PLAN_CATALOG } from "../billing/plans.ts";
 import { mailDiagnostics } from "../mail/diagnostics.ts";
+import { FOUNDER_MEMO } from "../legal/framework.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -90,8 +91,9 @@ export function entityCheck(entity: LegalEntity = LEGAL_ENTITY): StatusCheck {
       ? `${filled} of ${REQUIRED_ENTITY_FIELDS.length} required fields filled. Live checkout and live acceptance are refused until every one is.`
       : `All ${REQUIRED_ENTITY_FIELDS.length} required fields are filled.`,
     items: [
-      ...(missing.length ? [{ label: "Missing, required for a live sale", value: missing.map((k) => ENTITY_LABEL[k]).join(", "), state: "david" as const }] : []),
+      ...(missing.length ? [{ label: "Missing, required for a live sale and the imprint (Law 365/2002 art. 5)", value: missing.map((k) => ENTITY_LABEL[k]).join(", "), state: "david" as const }] : []),
       ...(optional.length ? [{ label: "Not filled, which counsel confirms per legal form", value: optional.map((k) => ENTITY_LABEL[k]).join(", ") }] : []),
+      ...(missing.length === REQUIRED_ENTITY_FIELDS.length ? [{ label: "Imprint", value: "Every company detail reads \"pending incorporation\": the SRL is not incorporated yet" }] : []),
     ],
     enforcedAt: ["data/legal/entity.ts", "livePublicationProblems (src/lib/legal/contract.ts)"],
   };
@@ -220,6 +222,27 @@ export function vatCheck(env: Env = process.env): StatusCheck {
   };
 }
 
+/**
+ * The founder's memo of 2026-10-16: received, its answers proposed and none confirmed. Waits on
+ * counsel until counsel and the accountant sign off; nothing in the code can make it ready.
+ */
+export function memoCheck(): StatusCheck {
+  const items: CheckItem[] = [
+    { label: "Memo", value: `${FOUNDER_MEMO.file} (received ${FOUNDER_MEMO.date}; AI-assisted research, not advice)` },
+    { label: "Counsel questions with a proposed answer", value: `${FOUNDER_MEMO.answered.length} of 42, each awaiting counsel confirmation`, state: "counsel" },
+    ...FOUNDER_MEMO.outOfReach.map((o) => ({ label: "Out of reach for the code", value: o.item, state: o.owner })),
+    ...FOUNDER_MEMO.gaps.map((g) => ({ label: "Pending: recorded, not changed", value: g.item, state: g.owner })),
+  ];
+  return {
+    id: "memo",
+    title: "Founder's legal memo",
+    state: "counsel",
+    summary: `Memo of ${FOUNDER_MEMO.date} received: proposed answers to ${FOUNDER_MEMO.answered.length} of 42 counsel questions, adopted as draft positions only. Awaiting counsel and accountant sign-off. The SRL is not incorporated.`,
+    items,
+    enforcedAt: ["docs/LEGAL-COUNSEL-QUESTIONS.md", FOUNDER_MEMO.file, "FOUNDER_MEMO (src/lib/legal/framework.ts)"],
+  };
+}
+
 /** Every Status-tab check, in the order the page shows them. */
 export function buildStatus(input: StatusInput = {}): StatusCheck[] {
   const env = input.env ?? process.env;
@@ -227,6 +250,7 @@ export function buildStatus(input: StatusInput = {}): StatusCheck[] {
   const documents = input.documents ?? LEGAL_DOCUMENTS;
   return [
     entityCheck(entity),
+    memoCheck(),
     documentsCheck(documents, entity),
     billingCheck(env, documents, entity),
     emailCheck(env),

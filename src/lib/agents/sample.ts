@@ -86,10 +86,16 @@ export function sampleAgentDecision(rows: AgentRow[], appUrl?: string): { action
 }
 
 /**
- * Whether this deployment answers on its fixture. It refuses outside development unless the
- * operator of the deployment turned the sample on (`NOVERA_SAMPLE_AGENT=on`), so production
- * keeps its 2026-09-20 behaviour until someone decides otherwise.
+ * Whether this deployment answers on its fixture. On everywhere since 2026-10-16, production
+ * included, so a new workspace can reach a sealed (test-data) report before it has an endpoint
+ * of its own: the fixture is scripted text with no model call and no storage, and reads at most
+ * `FIXTURE_MAX_BODY_BYTES`, so serving it costs no more than a static page. The grading a run
+ * of it triggers is the trial's, counted like any run. A deployment turns it off with
+ * `NOVERA_SAMPLE_AGENT=off`, which also hides the sample-agent button.
  */
 export function fixtureServed(env: { NODE_ENV?: string; NOVERA_SAMPLE_AGENT?: string } = process.env): boolean {
-  return env.NODE_ENV !== "production" || env.NOVERA_SAMPLE_AGENT === "on";
+  return env.NOVERA_SAMPLE_AGENT !== "off";
 }
+
+/** The most the fixture reads of a request: its longest scripted conversation is a few KB. */
+export const FIXTURE_MAX_BODY_BYTES = 64 * 1024;

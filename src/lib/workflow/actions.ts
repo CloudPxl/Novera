@@ -20,6 +20,7 @@ import { assertPublicUrl, PrivateAddressError } from "@/lib/net/public-url.ts";
 import { diagnoseRunCase } from "./propose.ts";
 import { httpVerificationConnector } from "../evidence/connectors/http.ts";
 import { connectionFor } from "@/lib/providers/workspace-connections.ts";
+import { agentAttestation } from "@/lib/legal/attestation.ts";
 import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { spendModelCall } from "@/lib/workflow/model-budget.ts";
@@ -40,7 +41,7 @@ export interface FormState {
  * onto every run, so a report can always say on whose authority the agent was tested.
  */
 export async function connectAgent(_prev: FormState, form: FormData): Promise<FormState> {
-  const { user, workspace } = await requireWorkspace();
+  const { user, workspace, role } = await requireWorkspace();
 
   const name = String(form.get("name") ?? "").trim();
   const authValue = String(form.get("authValue") ?? "");
@@ -88,7 +89,8 @@ export async function connectAgent(_prev: FormState, form: FormData): Promise<Fo
       config,
       attested_by: user.id,
       attested_at: new Date().toISOString(),
-      attestation_text: `${user.email} confirmed on ${new Date().toISOString().slice(0, 10)} that this agent is owned by their organisation or tested with permission.`,
+      // A role and the user id, not the email: the sentence is sealed into every report (src/lib/legal/attestation.ts).
+      attestation_text: agentAttestation({ userId: user.id, role, date: new Date().toISOString().slice(0, 10) }),
     })
     .select("id")
     .single();

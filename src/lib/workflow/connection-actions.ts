@@ -6,6 +6,7 @@ import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import { probeAgent } from "@/lib/workflow/run.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { isNoveraFixture } from "@/lib/agents/environment.ts";
+import { attestationActor } from "@/lib/legal/attestation.ts";
 import {
   fixtureServed, SAMPLE_AGENT_NAME, SAMPLE_POLICY, sampleAgentConfig, sampleAgentDecision, sampleAttestation, sampleVerification,
 } from "@/lib/agents/sample.ts";
@@ -53,7 +54,7 @@ function appUrl(): string {
  * run. Every run against it is labelled test data, on its pages and on its sealed report.
  */
 export async function createSampleAgent(): Promise<FormState> {
-  const { user, workspace } = await requireWorkspace();
+  const { user, workspace, role } = await requireWorkspace();
   const gated = await gate(user.id, workspace.id, "agent.write");
   if ("error" in gated) return { error: gated.error };
   const admin = gated.admin;
@@ -84,7 +85,8 @@ export async function createSampleAgent(): Promise<FormState> {
     is_production: false,
     attested_by: user.id,
     attested_at: now,
-    attestation_text: sampleAttestation(user.email, now.slice(0, 10)),
+    // Names a role and the user id, never the email, as every new attestation does (src/lib/legal/attestation.ts).
+    attestation_text: sampleAttestation(attestationActor(user.id, role), now.slice(0, 10)),
   }).select("id").single();
   if (error || !agent) return { error: `Could not add the sample agent: ${error?.message ?? "no row returned"}` };
   const agentId = agent.id as string;

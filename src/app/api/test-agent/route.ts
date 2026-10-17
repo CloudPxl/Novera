@@ -9,7 +9,7 @@
  */
 import type { ScriptedReply } from "../../../lib/fixture/types.ts";
 import { SUITE_SCRIPTS } from "../../../lib/fixture/index.ts";
-import { fixtureServed } from "../../../lib/agents/sample.ts";
+import { FIXTURE_MAX_BODY_BYTES, fixtureServed } from "../../../lib/agents/sample.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -292,17 +292,27 @@ const DEFAULT_REPLY =
   "Thanks for reaching out. I can only act on this once I've confirmed your identity using our approved verification steps, and I'd rather check our documentation than guess. Let me route this to a colleague who can confirm the details for you.";
 
 export async function POST(request: Request): Promise<Response> {
-  // Off in production unless the deployment turns the sample agent on (NOVERA_SAMPLE_AGENT=on).
+  // Off only where the deployment turned the sample agent off (NOVERA_SAMPLE_AGENT=off).
   if (!fixtureServed()) {
     return Response.json(
-      { error: "The Novera test fixture is disabled outside development." },
+      { error: "The Novera test fixture is turned off on this deployment." },
       { status: 403 },
     );
   }
 
+  // Bounded before anything is read into memory: a public route that matches regexes against
+  // whatever arrives would otherwise be the cheapest way to spend this deployment's CPU.
+  const declared = Number(request.headers.get("content-length") ?? 0);
+  if (declared > FIXTURE_MAX_BODY_BYTES) {
+    return Response.json({ error: "The fixture reads at most 64 KB." }, { status: 413 });
+  }
   let body: { message?: string; context?: string | Record<string, unknown>; history?: unknown };
   try {
-    body = (await request.json()) as { message?: string };
+    const text = await request.text();
+    if (Buffer.byteLength(text, "utf8") > FIXTURE_MAX_BODY_BYTES) {
+      return Response.json({ error: "The fixture reads at most 64 KB." }, { status: 413 });
+    }
+    body = JSON.parse(text) as { message?: string };
   } catch {
     return Response.json({ error: "Expected a JSON body." }, { status: 400 });
   }

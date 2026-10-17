@@ -41,7 +41,7 @@ export const BRIEF_DATE = "2026-10-13";
 export const BRIEF_TRACKER: readonly TrackerRow[] = [
   {
     brief: "§2 Article 1203 acceptance",
-    exists: "Three separate checkboxes, none pre-ticked: the documents; express acceptance of Terms §§2, 8, 10, 12, 14, 15, 17, each listed with what it covers; business purpose and authority. Each text is fingerprinted, and so is the unusual-clause text on its own.",
+    exists: "Four separate checkboxes, none pre-ticked: the documents; express acceptance of Terms §§2, 8, 10, 12, 14, 15, 17, each listed with what it covers; business purpose; authority (separate since 2026-10-16). Each text is fingerprinted, and so is the unusual-clause text on its own.",
     where: ["src/lib/legal/contract.ts", "src/app/(app)/settings/billing/terms-form.tsx"],
     status: "built",
     statusText: "Built; wording for counsel (question 36)",
@@ -195,3 +195,38 @@ export function sectionsIn(label: string): string[] {
   }
   return out;
 }
+
+// ------------------------------------------------------------------ the founder's memo
+
+/** Who an open item waits on, in the readiness page's own states. */
+export type MemoOwner = "david" | "counsel" | "accountant";
+
+/**
+ * The founder's legal, fiscal and regulatory memo of 2026-10-16 (docs/legal/2026-10-16-founder-memo.md).
+ * It reads as AI-assisted research, not advice: its positions are the drafts' current positions,
+ * each counsel question carries its proposed answer "awaiting counsel confirmation", and nothing is
+ * settled until counsel and the accountant sign off. `answered` must equal the questions in
+ * docs/LEGAL-COUNSEL-QUESTIONS.md that carry that line (tests/launch-readiness.test.ts).
+ */
+export const FOUNDER_MEMO = {
+  date: "2026-10-16",
+  file: "docs/legal/2026-10-16-founder-memo.md",
+  answered: Array.from({ length: 42 }, (_, i) => i + 1),
+  /** The memo's own "out of reach" list: what only people can do. */
+  outOfReach: [
+    { item: "Formal sign-off of the draft legal suite by retained Romanian/EU counsel", owner: "counsel" },
+    { item: "Sign-off of the tax and accounting positions by a certified accountant", owner: "accountant" },
+    { item: "Incorporate the SRL at the Trade Register: CUI and fiscal registration (not yet incorporated)", owner: "david" },
+    { item: "Stripe live mode, the company's bank account, live tax configuration checked with the accountant", owner: "david" },
+    { item: "Email DNS for support@ and dmarc@ (MX), and a proven live transactional send", owner: "david" },
+    { item: "Vercel production tier, and Supabase point-in-time recovery or another verified backup schedule", owner: "david" },
+  ] as ReadonlyArray<{ item: string; owner: MemoOwner }>,
+  /** Where the memo and the code differ, or the memo needs checking: recorded, not changed. */
+  gaps: [
+    { item: "Erasure deletes contract acceptances and Novera's billing rows that the memo says must be kept (5–10 years, Law 82/1991; contract evidence). Migration shape in the counsel file, awaiting sign-off", owner: "counsel" },
+    { item: "A non-owner who accepted terms stays named in the acceptance record after deleting their account", owner: "counsel" },
+    { item: "VAT: Fiscal Code Art. 307(2) looks misdirected; Art. 317 registration may be needed before the first intra-EU sale; reverse-charge wording and VIES before Stripe live", owner: "accountant" },
+    { item: "Attestations made before 2026-10-16 still name an email; new ones name a role and a user id", owner: "counsel" },
+    { item: "The built-in suite eu-support v1–v5 is named \"EU support agent conformity suite\" (sealed; a rename is a new suite version)", owner: "counsel" },
+  ] as ReadonlyArray<{ item: string; owner: MemoOwner }>,
+} as const;

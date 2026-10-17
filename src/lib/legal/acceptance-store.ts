@@ -74,6 +74,7 @@ export async function recordAcceptance(db: SupabaseClient, args: {
     vat_id_declared: input.vatId,
     signer_name_at_acceptance: input.signerName,
     signer_title_at_acceptance: input.signerTitle,
+    // Each from its own checkbox (readAcceptanceForm refuses the form unless both are ticked).
     signer_authority_declared: true,
     b2b_purpose_declared: true,
     terms_accepted: true,
@@ -113,8 +114,9 @@ export function acceptanceReceipt(row: AcceptanceRow, workspaceName: string): st
     `Mode: ${row.livemode ? "live" : "Stripe sandbox"}`,
     "",
     "Declarations:",
-    `- Acting for the organisation's trade, business or profession: ${row.b2b_purpose_declared ? "yes" : "no"}`,
+    `- Acquired exclusively for the organisation's trade, business, craft or profession: ${row.b2b_purpose_declared ? "yes" : "no"}`,
     `- Authority to bind the organisation: ${row.signer_authority_declared ? "yes" : "no"}`,
+    ...(row.consent_receipt_version < 2 ? ["  (Recorded with receipt format 1, where one checkbox covered both declarations.)"] : []),
     `- Separate, express acceptance of the clauses in Terms sections 2, 8, 10, 12, 14, 15 and 17 (Civil Code art. 1203): ${row.unusual_terms_expressly_accepted ? "yes" : "no"}`,
     `  Fingerprint of those sections (SHA-256): ${row.unusual_terms_sha256}`,
     "",

@@ -56,9 +56,11 @@ test("no document claims compliance, certification, EU-only processing or readin
 
 test("company facts are placeholders, never invented", () => {
   const imprint = legalDocument("imprint")!;
-  for (const field of ["[LEGAL ENTITY NAME]", "[REGISTERED ADDRESS]", "[TAX REGISTRATION CODE]", "[CONTACT EMAIL]"]) {
+  // Since 2026-10-16 each imprint placeholder also says why it is empty ("— PENDING INCORPORATION").
+  for (const field of ["[LEGAL ENTITY NAME", "[REGISTERED ADDRESS", "[TAX REGISTRATION CODE", "[CONTACT EMAIL"]) {
     assert.ok(imprint.body.includes(field), field);
   }
+  assert.match(imprint.body, /\[LEGAL ENTITY NAME — PENDING INCORPORATION\]/);
   for (const slug of ["privacy", "terms", "dpa"]) {
     assert.ok(legalDocument(slug)!.body.includes("[LEGAL ENTITY NAME]"), slug);
   }

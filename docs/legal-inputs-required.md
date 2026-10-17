@@ -17,7 +17,8 @@ verify in the provider's dashboard or published terms, then record the URL and d
 **Company details now live in one file, `data/legal/entity.ts`** (since 2026-10-13). Every field is
 `null` until David supplies it. The Imprint renders from it. A live checkout and a live acceptance of
 the terms are refused while any of the legal name, legal form, registered office, trade register
-number, unique registration code, VAT status or contact email is missing
+number, unique registration code, VAT status, share capital (added 2026-10-16: the founder's memo
+proposes an SRL) or contact email is missing
 (`livePublicationProblems`, `src/lib/legal/contract.ts`). Approving a document means setting
 `status: "approved"`, adding its `approval` record, and adding the approved text to
 `data/legal/archive.ts`. The tests refuse an approved document whose text differs from its archived
@@ -55,10 +56,13 @@ version.
 12. Lead supervisory authority (ANSPDCP is drafted as the Romanian authority). Counsel.
 13. Minimum age, if any. Counsel.
 
-**Decided by the code, for counsel to review:** an attestation names the attesting member's email
-address and is sealed into every report of that agent's runs (`src/lib/workflow/actions.ts`,
-`src/lib/report/build.ts`); account deletion cannot remove it from a sealed report. The privacy
-draft now says so. Whether future attestations should name a person, a role or an id is open.
+**Decided by the code, for counsel to review:** until 2026-10-16 an attestation named the attesting
+member's email address, and it is sealed into every report of that agent's runs
+(`src/lib/report/build.ts`); account deletion cannot remove it from a sealed report. Since
+2026-10-16 a new attestation names the member's role and user id instead
+(`src/lib/legal/attestation.ts`), following the founder's memo. Agents connected earlier keep their
+frozen text, so their new runs still carry the email. Future attestations name a role and an id,
+pending counsel's confirmation (question 35).
 
 ## Terms of Service (`/legal/terms`)
 

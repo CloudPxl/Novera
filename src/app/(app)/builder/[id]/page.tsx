@@ -328,7 +328,7 @@ export default async function BuildPage({ params, searchParams }: {
                         </span>
                       }>
                         <div className="grid gap-3 text-sm">
-                          <p className="text-ink-soft">{originLabel(c)}{c.model ? ` · drafted by ${c.model}` : ""}{label?.expected ? ` · measured: the fixture is labelled ${label.expected}` : ""}</p>
+                          <p className="text-ink-soft">{originLabel(c)}{c.model ? ` · drafted by a language model (${c.model})` : ""}{label?.expected ? ` · measured: the fixture is labelled ${label.expected}` : ""}</p>
                           {c.review_note && <p className="rounded-control border border-warning-border bg-warning-surface px-3 py-2 text-warning-text">{c.review_note}</p>}
                           {conflicts.map((k, i) => k.kind === "observed_vs_declared" ? (
                             <dl key={i} className="grid gap-1 rounded-control border border-warning-border bg-warning-surface px-3 py-2 text-warning-text">

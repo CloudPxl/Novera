@@ -8,7 +8,7 @@ import { buildStatus, countStates } from "../src/lib/readiness/status.ts";
 import { buildGates } from "../src/lib/readiness/gates.ts";
 import { DECISIONS } from "../src/lib/readiness/decisions.ts";
 import { parseLaunchLedger, prepareRepoDoc, readRepoDoc, READINESS_DOCS } from "../src/lib/readiness/repo-docs.ts";
-import { BRIEF_ELSEWHERE, BRIEF_TRACKER, sectionsIn } from "../src/lib/legal/framework.ts";
+import { BRIEF_ELSEWHERE, BRIEF_TRACKER, FOUNDER_MEMO, sectionsIn } from "../src/lib/legal/framework.ts";
 import { parseLegalBody } from "../src/lib/legal/document.ts";
 import { isStaff, staffEmails } from "../src/lib/auth/staff-list.ts";
 import robots from "../src/app/robots.ts";
@@ -24,7 +24,7 @@ const byId = <T extends { id: string }>(list: T[], id: string) => list.find((x) 
 const COMPLETE: LegalEntity = {
   ...LEGAL_ENTITY,
   legalName: "Example SRL", legalForm: "SRL", registeredOffice: "Strada Exemplu 1, Bucharest", tradeRegisterNumber: "J40/1/2026",
-  uniqueRegistrationCode: "RO1", vatStatus: "Not VAT-registered", contactEmail: "hello@example.com",
+  uniqueRegistrationCode: "RO1", vatStatus: "Not VAT-registered", shareCapital: "RON 1", contactEmail: "hello@example.com",
 };
 
 // ------------------------------------------------------------------ Status
@@ -231,4 +231,18 @@ test("only staff may open /readiness, and nothing invites a crawler to it", () =
   const rule = robots().rules;
   const disallow = ([] as string[]).concat((Array.isArray(rule) ? rule[0] : rule).disallow ?? []);
   assert.ok(disallow.includes("/readiness"));
+});
+
+test("the founder's memo: every question it answers is marked as a proposal, and the page says nothing is settled", () => {
+  const counsel = read("docs/LEGAL-COUNSEL-QUESTIONS.md");
+  const prepared = prepareRepoDoc(counsel).body.split("\n");
+  const marked = prepared.filter((l) => /^\d+\. /.test(l) && l.includes("Proposed answer (founder's memo, 2026-10-16) — awaiting counsel confirmation")).map((l) => Number(l.split(".")[0]));
+  assert.deepEqual(marked.sort((a, b) => a - b), [...FOUNDER_MEMO.answered]);
+  assert.ok(read(FOUNDER_MEMO.file).includes("NOVERA V2: LEGAL, FISCAL & REGULATORY COUNSEL MEMORANDUM"), "the memo is kept verbatim");
+  const memo = byId(buildStatus({ env: {} }), "memo");
+  assert.equal(memo.state, "counsel");
+  assert.match(memo.summary, /Awaiting counsel and accountant sign-off\. The SRL is not incorporated\./);
+  assert.equal(memo.items!.filter((i) => i.label === "Out of reach for the code").length, FOUNDER_MEMO.outOfReach.length);
+  assert.ok(memo.items!.some((i) => /Erasure deletes contract acceptances/.test(i.value)));
+  assert.doesNotMatch(counsel, /^NOVERA V2/m, "the raw memo is not pasted into the counsel file");
 });

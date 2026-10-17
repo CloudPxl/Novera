@@ -14,6 +14,15 @@
  * governing law — each still subject to counsel. The sections listed in UNUSUAL_CLAUSES
  * (src/lib/legal/contract.ts) are the ones a customer accepts separately and expressly at
  * checkout; their headings here must not change without a new version.
+ *
+ * Version 0.3 (2026-10-16) adopts the founder's memo of that date (docs/legal/2026-10-16-founder-memo.md)
+ * as the draft position: a customer found to be a consumer is suspended and isolated (§2); no
+ * consumer dispute-resolution links, because Novera contracts only with businesses (§2); an express
+ * authorisation-to-test warranty (§5); service messages only, marketing only with prior express
+ * consent (§4); the liability carve-outs for intent (dol) and gross negligence (culpă gravă) named
+ * (§14); switching and export under the Data Act (§18). Each is a proposal awaiting counsel. Changing
+ * §2 and §14 changes the fingerprint of the separately accepted clauses, so an acceptance of 0.2 is
+ * no longer current and the customer accepts again (acceptanceIsCurrent, src/lib/legal/contract.ts).
  */
 import type { LegalDocument } from "./types.ts";
 
@@ -22,12 +31,12 @@ export const terms: LegalDocument = {
   title: "Terms of Service",
   summary: "The agreement for using Novera: business customers only, what each side is responsible for, renewal, liability and what a report does not promise.",
   status: "draft",
-  version: "0.2 draft",
-  lastReviewed: "2026-10-13",
+  version: "0.3 draft",
+  lastReviewed: "2026-10-16",
   sources: ["ro-365-2002", "ro-civil-code-1203", "ro-oug-34-2014", "data-act", "odr-repeal", "ai-act"],
   body: `These terms are a draft. Every bracketed item is a fact or decision still missing, and the whole text requires review by counsel before it is offered to anyone. **DRAFT — COUNSEL REVIEW REQUIRED.**
 
-**Effective date:** [EFFECTIVE DATE]. **Version:** 0.2 draft.
+**Effective date:** [EFFECTIVE DATE]. **Version:** 0.3 draft.
 
 ## 1. Who these terms are with
 
@@ -41,7 +50,9 @@ The Customer shall provide accurate business-identification and billing informat
 
 Novera may refuse, suspend or terminate registration, access, checkout or renewal where it reasonably determines that the proposed use is consumer use, that the Customer cannot provide requested business information, or that the Customer's use would create consumer-law, tax, payment-network, sanctions or compliance risk for Novera.
 
-Nothing in these terms excludes mandatory rights that cannot lawfully be excluded where a Customer is legally determined to be a consumer. [COUNSEL TO CONFIRM WHAT VERIFICATION OF BUSINESS STATUS IS ADEQUATE.]
+If Novera later finds that a Customer is a consumer, it may suspend the account and isolate its workspaces — no new runs, no checkout and no renewal — while the matter is resolved, and may then terminate. A suspension or isolation deletes no evidence already recorded.
+
+Because Novera contracts only with businesses, these terms give no consumer complaint or alternative dispute resolution information. Nothing in these terms excludes mandatory rights that cannot lawfully be excluded where a Customer is legally determined to be a consumer. [COUNSEL TO CONFIRM WHAT VERIFICATION OF BUSINESS STATUS IS ADEQUATE, AND WHAT A CONSUMER WHO GETS THROUGH IS OWED.]
 
 ## 3. What Novera is
 
@@ -52,10 +63,11 @@ Novera runs a versioned scenario suite against an AI support agent the Customer 
 - Each person keeps their own sign-in details secret and is responsible for activity under their account.
 - A workspace's owner decides who is a member and with which role. The owner is responsible for removing access that should end.
 - The Customer keeps the information in its account accurate.
+- Novera sends account holders messages about the service: sign-in, invitations, support replies, billing and changes to these terms. Novera sends commercial communications only to people who gave their prior express consent (Law 365/2002 Article 6). No such consent is asked for today, and none is ever pre-ticked.
 
 ## 5. Authorisation to test
 
-The Customer may connect and test only agents it owns or is authorised to test. Before a run, a member declares that authorisation, and Novera stores that declaration with the run. The Customer is responsible for that declaration being true, and for any permission it needs from the agent's operator, hosting provider or model provider.
+The Customer represents and warrants that every agent it connects is one it owns or is authorised to test in the way Novera tests it, including with adversarial scenarios, and that this remains true for every run. Before a run, a member declares that authorisation, and Novera stores that declaration with the run, naming the member's role and account identifier. The Customer is responsible for that declaration being true, and for any permission it needs from the agent's operator, hosting provider or model provider. Testing, scanning or probing a third party's agent or system without its operator's authorisation is prohibited by the Acceptable Use Policy and is a material breach of these terms.
 
 ## 6. Customer data, test data and data minimisation
 
@@ -113,7 +125,7 @@ To the maximum extent permitted by applicable law, Novera's aggregate liability 
 
 To the maximum extent permitted by applicable law, Novera is not liable for indirect, incidental, special, exemplary, punitive or consequential damages; loss of profit, revenue, business, goodwill, data, opportunity or anticipated savings; business interruption; cost of substitute services; regulatory fines; administrative penalties; legal fees; audit costs; remediation costs; third-party claims; reputational harm; or loss arising from reliance on a report as legal, regulatory or certification evidence.
 
-Nothing in these terms excludes or limits liability to the extent that the law does not allow it, including liability for intentional misconduct, gross negligence where the law does not allow it to be excluded, fraud, or death or personal injury.
+Nothing in these terms excludes or limits liability to the extent that the law does not allow it, including liability for damage caused intentionally (dol) or through gross negligence (culpă gravă), fraud, or death or personal injury. [COUNSEL TO CONFIRM THE ROMANIAN CIVIL CODE PROVISIONS ON NON-EXCLUDABLE LIABILITY, INCLUDING ARTICLE 1355, AND WHETHER THE CAP NEEDS A FIXED FLOOR.]
 
 ## 15. Indemnities
 
@@ -134,8 +146,9 @@ These terms, and any non-contractual obligation arising out of or in connection 
 ## 18. Your data when the agreement ends
 
 - A workspace owner can erase a workspace at any time. Erasure removes its agents, policies, runs, verdicts, reports and other records at once, and leaves only a record that an erasure happened, without personal data. It cannot be undone. Erasure is refused while Stripe could still charge for the workspace; cancel first.
-- Reports can be exported while the workspace exists. An owner or admin can also download a complete workspace export (Settings → General). [COUNSEL TO CONFIRM WHAT DATA-EXPORT AND SWITCHING OBLIGATIONS APPLY, INCLUDING UNDER THE DATA ACT, AND THE PERIOD BEFORE DELETION AFTER TERMINATION.]
-- Stripe keeps invoices and payment records under its own obligations; erasing a workspace in Novera does not delete them. [ACCOUNTANT TO CONFIRM WHICH BILLING RECORDS NOVERA MUST KEEP, AND FOR HOW LONG.]
+- Reports can be exported while the workspace exists, as JSON, Markdown, CSV and JUnit. An owner or admin can also download a complete workspace export in a structured, machine-readable format (JSON; Settings → General).
+- Switching: to move to another service, the Customer uses those exports. Novera will provide the assistance Regulation (EU) 2023/2854 (the Data Act), Chapter VI, requires where it applies. [COUNSEL TO CONFIRM WHETHER CHAPTER VI APPLIES TO NOVERA, AND THE NOTICE, TRANSITION AND DATA-RETRIEVAL PERIODS AND THE PERIOD BEFORE DELETION AFTER TERMINATION THAT FOLLOW.]
+- Stripe keeps invoices and payment records under its own obligations; erasing a workspace in Novera does not delete them. [DRAFT POSITION (FOUNDER'S MEMO): ACCOUNTING RECORDS ARE KEPT FOR THE PERIOD LAW 82/1991 REQUIRES, AND CONTRACT ACCEPTANCE RECORDS AS EVIDENCE OF THE CONTRACT, EVEN AFTER ERASURE. TODAY ERASING A WORKSPACE ALSO DELETES NOVERA'S OWN COPIES OF BOTH; THE CHANGE WAITS ON THE ACCOUNTANT AND COUNSEL.]
 
 ## 19. How these terms are accepted, and changes
 

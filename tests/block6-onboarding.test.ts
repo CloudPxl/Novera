@@ -291,9 +291,9 @@ test("a second press reuses the sample; an archived one or a look-alike does not
 test("the fixture answers outside development only when the deployment turns the sample on", () => {
   assert.equal(fixtureServed({ NODE_ENV: "development" }), true);
   assert.equal(fixtureServed({ NODE_ENV: "test" }), true);
-  assert.equal(fixtureServed({ NODE_ENV: "production" }), false);
-  assert.equal(fixtureServed({ NODE_ENV: "production", NOVERA_SAMPLE_AGENT: "on" }), true);
-  assert.equal(fixtureServed({ NODE_ENV: "production", NOVERA_SAMPLE_AGENT: "true" }), false);
+  assert.equal(fixtureServed({ NODE_ENV: "production" }), true, "on by default since 2026-10-16");
+  assert.equal(fixtureServed({ NODE_ENV: "production", NOVERA_SAMPLE_AGENT: "off" }), false);
+  assert.equal(fixtureServed({ NODE_ENV: "development", NOVERA_SAMPLE_AGENT: "off" }), false);
   for (const route of ["src/app/api/test-agent/route.ts", "src/app/api/test-verification/[...path]/route.ts"]) {
     assert.match(readFileSync(route, "utf8"), /if \(!fixtureServed\(\)\)/, `${route} answers only where the fixture is served`);
   }
@@ -327,4 +327,16 @@ test("every new sentence keeps to the language rule", () => {
       .map((p) => readFileSync(p, "utf8")),
   ];
   for (const text of sentences) assert.deepEqual(scanCustomerLanguage(text), [], text.slice(0, 120));
+});
+
+test("the fixture refuses a body over 64 KB before reading it, and answers a normal one", async () => {
+  const { POST } = await import("../src/app/api/test-agent/route.ts");
+  const big = JSON.stringify({ message: "x".repeat(70 * 1024) });
+  const declared = await POST(new Request("http://localhost/api/test-agent", { method: "POST", body: big, headers: { "content-type": "application/json", "content-length": String(big.length) } }));
+  assert.equal(declared.status, 413);
+  const undeclared = await POST(new Request("http://localhost/api/test-agent", { method: "POST", body: big, headers: { "content-type": "application/json" } }));
+  assert.equal(undeclared.status, 413);
+  const ok = await POST(new Request("http://localhost/api/test-agent", { method: "POST", body: JSON.stringify({ message: "Hello" }), headers: { "content-type": "application/json" } }));
+  assert.equal(ok.status, 200);
+  assert.equal(((await ok.json()) as { fixture?: boolean }).fixture, true);
 });

@@ -44,6 +44,8 @@ export interface AssistantResult {
   actions?: AssistantAction[];
   /** Whose key answered, said plainly: the trial allowance or the workspace's own. */
   fundedBy?: string;
+  /** False when no model answer could be shown and the reply was built from computed facts. */
+  generated?: boolean;
   error?: string;
 }
 
@@ -206,7 +208,8 @@ export async function askAssistant(threadId: string | null, message: string): Pr
       thread = created as { id: string };
     }
     const { data: stored, error: storeError } = await admin.from("assistant_messages")
-      .insert(messageRows(thread.id, question, { reply: parsed.reply, citations: parsed.citations, fundedBy, model }))
+      // A reply built from computed facts names no model: no model wrote it.
+      .insert(messageRows(thread.id, question, { reply: parsed.reply, citations: parsed.citations, fundedBy, model: outcome === "ok" ? model : null }))
       .select("id, role");
     if (storeError) return { error: "The conversation could not be saved. Try again.", fundedBy };
     await admin.from("assistant_threads").update({ last_message_at: new Date().toISOString() }).eq("id", thread.id);
@@ -224,7 +227,7 @@ export async function askAssistant(threadId: string | null, message: string): Pr
     }
     const { remember: _unused, ...shown } = parsed;
     void _unused;
-    return { ...shown, fundedBy, threadId: thread.id, suggestion };
+    return { ...shown, fundedBy, generated: outcome === "ok", threadId: thread.id, suggestion };
   } catch (e) {
     outcome = "error";
     const detail = e instanceof Error ? e.message : String(e);
@@ -259,15 +262,20 @@ export async function listThreads(): Promise<ThreadSummary[]> {
   return (data ?? []).map((t) => ({ id: t.id as string, title: t.title as string, lastMessageAt: t.last_message_at as string }));
 }
 
-export async function loadThread(threadId: string): Promise<Array<{ role: "user" | "assistant"; content: string; citations: string[]; fundedBy: string | null }>> {
+export async function loadThread(threadId: string): Promise<Array<{ role: "user" | "assistant"; content: string; citations: string[]; fundedBy: string | null; generated: boolean }>> {
   const { user, workspace } = await requireContext();
   const admin = await assertMembership(user.id, workspace.id);
   const { data: thread } = await admin.from("assistant_threads").select("id")
     .eq("id", threadId).eq("user_id", user.id).eq("workspace_id", workspace.id).maybeSingle();
   if (!thread) return [];
-  const { data } = await admin.from("assistant_messages").select("role, content, citations, funded_by")
+  const { data } = await admin.from("assistant_messages").select("role, content, citations, funded_by, model")
     .eq("thread_id", threadId).order("created_at").order("role", { ascending: false });
-  return (data ?? []).map((m) => ({ role: m.role as "user" | "assistant", content: m.content as string, citations: (m.citations as string[]) ?? [], fundedBy: (m.funded_by as string | null) ?? null }));
+  return (data ?? []).map((m) => ({
+    role: m.role as "user" | "assistant", content: m.content as string, citations: (m.citations as string[]) ?? [],
+    fundedBy: (m.funded_by as string | null) ?? null,
+    // An answer stored with a model was written by it (a computed fallback is stored without one).
+    generated: m.role === "assistant" && Boolean(m.model),
+  }));
 }
 
 export async function deleteThread(threadId: string): Promise<void> {

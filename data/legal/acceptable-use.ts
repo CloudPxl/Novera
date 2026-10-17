@@ -6,6 +6,9 @@
  * supabase/migrations/0001 and 0057; agents.is_production checked in the runner;
  * src/lib/net/public-url.ts). GDPR is listed for the test-data rule only.
  * Whether unauthorised testing breaches criminal law in a given country is for counsel.
+ *
+ * Version 0.2 (2026-10-16): the founder's memo of that date relies on this policy to prohibit
+ * unauthorised third-party scanning, so the prohibition now names scanning and probing outright.
  */
 import type { LegalDocument } from "./types.ts";
 
@@ -14,8 +17,8 @@ export const acceptableUse: LegalDocument = {
   title: "Acceptable Use and Authorised Testing Policy",
   summary: "Which agents may be tested, with what data, and what Novera may not be used for.",
   status: "draft",
-  version: "0.1 draft",
-  lastReviewed: "2026-10-09",
+  version: "0.2 draft",
+  lastReviewed: "2026-10-16",
   sources: ["gdpr"],
   body: `This policy forms part of the Terms of Service. It is a draft for review by counsel.
 
@@ -34,7 +37,7 @@ export const acceptableUse: LegalDocument = {
 
 ## Do not use Novera to
 
-- test, probe or attack a system you are not authorised to test;
+- test, scan, probe or attack an AI agent, endpoint or other system that you do not own and whose operator has not authorised you to test it in the way Novera tests it;
 - send scenarios designed to cause real-world harm, a real transaction, or a real action against a third party;
 - try to reach private, internal or cloud-metadata addresses through agent, read-back or webhook settings (Novera refuses them);
 - get around the trial limit, rate limits or workspace boundaries, or access another customer's data;

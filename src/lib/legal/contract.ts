@@ -8,8 +8,9 @@
  *   and termination, tacit renewal, governing law, jurisdiction) accepted separately and
  *   expressly, fingerprinted on their own: the text of those sections of the Terms.
  * - The business gate: legal name, registered address, country, an optional VAT number recorded
- *   as declared (never "validated": no validation exists), the signer's name and title, and the
- *   business-purpose and authority declarations.
+ *   as declared (never "validated": no validation exists), the signer's name and title, and two
+ *   declarations, each its own checkbox since 2026-10-16 (the founder's memo asks for both
+ *   separately): acquisition exclusively for trade or business purposes, and authority to bind.
  *
  * Pure apart from hashing, so it is tested without a database.
  */
@@ -22,8 +23,11 @@ import { countryName } from "./countries.ts";
 /** Accepted at checkout, in this order. */
 export const CONTRACT_SLUGS = ["terms", "privacy", "dpa", "acceptable-use", "refunds", "ai-testing-scope"] as const;
 
-/** Bumped when the receipt's shape changes. */
-export const ACCEPTANCE_RECEIPT_VERSION = 1;
+/**
+ * Bumped when the receipt's shape or the form that produced it changes. 1: one checkbox covered
+ * business purpose and authority together. 2 (2026-10-16): each is its own checkbox.
+ */
+export const ACCEPTANCE_RECEIPT_VERSION = 2;
 
 /**
  * The sections of the Terms accepted separately and expressly. Each `heading` must be a heading
@@ -120,12 +124,12 @@ export interface AcceptanceInput {
   signerTitle: string;
 }
 
-export type AcceptanceField = keyof AcceptanceInput | "accept_terms" | "accept_unusual" | "accept_business" | "set";
+export type AcceptanceField = keyof AcceptanceInput | "accept_terms" | "accept_unusual" | "accept_business" | "accept_authority" | "set";
 
 const text = (v: FormDataEntryValue | null | undefined) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "");
 
 /**
- * Reads the business form. Every refusal names the field and says what to do. The three
+ * Reads the business form. Every refusal names the field and says what to do. The four
  * declarations must each be ticked: none is ever pre-ticked, and none implies another.
  */
 export function readAcceptanceForm(form: { get(name: string): FormDataEntryValue | null }, expectedSet: string):
@@ -150,7 +154,8 @@ export function readAcceptanceForm(form: { get(name: string): FormDataEntryValue
   if (signerTitle.length < 2 || signerTitle.length > 120) return { ok: false, field: "signerTitle", error: "Enter your role in the organisation, for example Director." };
   if (form.get("accept_terms") !== "on") return { ok: false, field: "accept_terms", error: "Tick that you have read and accept the Terms, Privacy Notice, Data Processing Agreement and Acceptable Use Policy." };
   if (form.get("accept_unusual") !== "on") return { ok: false, field: "accept_unusual", error: "The clauses listed must be accepted separately and expressly before a plan can start." };
-  if (form.get("accept_business") !== "on") return { ok: false, field: "accept_business", error: "Novera is offered to businesses only. Confirm that the organisation is acquiring it for its business and that you may bind it." };
+  if (form.get("accept_business") !== "on") return { ok: false, field: "accept_business", error: "Novera is offered to businesses only. Confirm that the organisation is acquiring it exclusively for its trade, business, craft or profession." };
+  if (form.get("accept_authority") !== "on") return { ok: false, field: "accept_authority", error: "Confirm that you have authority to bind the organisation. If you do not, ask someone who does to accept." };
   return { ok: true, value: { legalName, registeredAddress, country, vatId: rawVat || null, signerName, signerTitle } };
 }
 

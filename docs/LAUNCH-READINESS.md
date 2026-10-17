@@ -75,12 +75,15 @@ row says which it was.
 | # | Work item | Owner | Status | Proof | Decision |
 |---|---|---|---|---|---|
 | L1 | Privacy, terms, DPA, sub-processors, imprint, cookies, acceptable use, security, AI testing scope, refunds | Counsel | **BLOCKED** (drafts done) | Production: `/legal/*` 200, `noindex`, draft banner; `tests/legal.test.ts` (no compliance wording; placeholders) | `docs/legal-inputs-required.md`; not linked from the site until approved |
-| L2 | Questions for counsel and accountant | Code | PASS | `docs/LEGAL-COUNSEL-QUESTIONS.md` (42 questions; 36–42 from the 2026-10-13 brief) | — |
+| L2 | Questions for counsel and accountant | Code | PASS | `docs/LEGAL-COUNSEL-QUESTIONS.md` (42 questions; 36–42 from the 2026-10-13 brief; each with the founder's memo's proposed answer since 2026-10-16) | — |
 | L3 | A privacy notice where personal data is collected (sign-up, support, apply) | Counsel + David | **BLOCKED** | No page links a privacy notice; `/legal` is draft and unlinked | Approved privacy notice, then link it from those forms |
 | L5 | Contract acceptance before a paid plan: B2B details, Civil Code art. 1203 clauses accepted separately, record per version | Code | PASS (code) | 0068, `tests/legal-framework.test.ts`; local walk 33/33 (refused, recorded, unchangeable, receipt, checkout gated, erased) | Counsel on question 36; texts approved before live |
 | L6 | Every report and export says testing evidence, not certification | Code | PASS | `src/lib/legal/notices.ts`; export tests; report page at 390/1440 | Counsel on question 39 |
 | L7 | Company details on site and invoices (Law 365/2002 art. 5; Law 31/1990 art. 74) | David | **BLOCKED** | `data/legal/entity.ts` all null; live checkout refuses until complete | Entity details |
 | L8 | No Stripe test key in production | David | **ACTION** | Production had test keys (billing active in test mode). Code now refuses a test key on production | Delete the Stripe variables from Production |
+| L9 | Founder's legal memo (2026-10-16) adopted as draft positions | Counsel + accountant | **BLOCKED** (memo received) | `docs/legal/2026-10-16-founder-memo.md`; 42 of 42 counsel questions carry its proposed answer, none confirmed; points to check listed; `/readiness` "Founder's legal memo" | Counsel and accountant sign-off; the SRL incorporated |
+| L10 | Records that must outlive erasure: billing rows and contract acceptances | Counsel + accountant | **BLOCKED** | `erase_workspace()` (0068) deletes `contract_acceptances` and every `billing_*` row; `erase_account()` leaves a non-owner's acceptance naming them. Migration shape in `docs/LEGAL-COUNSEL-QUESTIONS.md` "Retention gap"; no database change | Which records, how long (Law 82/1991; contract evidence) |
+| L11 | Separate business-purpose and authority checkboxes; attestations without email | Code | PASS (code) | `tests/legal-framework.test.ts`; receipt format 2; `src/lib/legal/attestation.ts` | Counsel on questions 35–37 |
 | L4 | Public commercial copy matches the pricing decision | David | PASS | D3 decided 2026-10-12. The home page and `/docs/the-trial-and-your-own-key` say: 3 free runs, then a plan (Team BYOK or Agency Pro). No prices published yet | Publish prices when billing opens |
 
 ## External steps (David), in order
@@ -95,6 +98,6 @@ The full list with owners and verification is in the 2026-10-11 reconciliation r
 6. **Monitoring:** an uptime check on `/api/health`; an error destination.
 7. **Backups:** confirm the Supabase plan's backups, or schedule an off-site dump; set RTO/RPO.
 8. **Stripe sandbox,** corrected: `STRIPE_PRICE_TEAM_BYOK` (Preview), remove `STRIPE_PRICE_MONTHLY` (Production), a Preview deployment, the destination moved to it with a bypass secret, a throwaway workspace.
-9. **Legal and commercial:** entity facts, D1–D10, counsel and accountant review, then link the privacy notice from the forms.
+9. **Legal and commercial:** incorporate the SRL (the founder's memo of 2026-10-16 proposes one), entity facts, D1–D10, counsel and accountant review of the drafts and of the memo's proposed answers (L9, L10), then link the privacy notice from the forms.
 10. **Before charging:** Vercel Pro; live Stripe per BILLING-DECISIONS §7.
 11. **After acceptance:** decide whether to delete the 2026-10-08 audit account (Claude will not do it without your word).

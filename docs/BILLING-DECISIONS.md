@@ -257,6 +257,47 @@ Not legal or tax advice. Each needs a qualified answer before live activation.
     compatible, given Stripe retains the financial records.
 11. **Sign-off.** Accountant and lawyer sign off items 1–10 before P5.
 
+### The founder's memo of 2026-10-16: figures to confirm (internal only)
+
+`docs/legal/2026-10-16-founder-memo.md` gives these positions. They are the memo's figures, recorded
+here so the accountant can confirm or correct them. **Per the founder's memo, to be confirmed by the
+accountant/counsel.** None is shown on a public page, and none changes the code.
+
+- **Entity and income tax:** an SRL. Micro-enterprise tax of 1% of turnover while annual revenue stays
+  under EUR 100,000 (the memo says this needs at least one employee, who can be the founder-administrator);
+  16% profit tax above that; 16% dividend tax.
+- **VAT registration:** mandatory once domestic turnover exceeds RON 395,000 (about EUR 73,930).
+  *To check:* a non-registered Romanian company supplying B2B services to other member states appears
+  to need a special VAT registration (Fiscal Code Art. 317) before the first such supply, whatever its
+  turnover. The memo also cites Fiscal Code Art. 307(2), which concerns a Romanian *recipient*; for
+  Novera's outbound sales the place-of-supply rule (Art. 278(2)) looks like the relevant one.
+- **Intra-EU B2B reverse charge:** invoices to a VAT-registered business in another member state state
+  "Reverse charge — VAT to be accounted for by the recipient (Art. 196 Council Directive 2006/112/EC)".
+- **OSS:** not used while Novera sells to businesses only.
+- **Accounting retention:** 5 to 10 years (Law 82/1991), overriding an erasure request for invoices,
+  transaction logs and billing ledger rows. *Gap:* `erase_workspace()` deletes Novera's own billing rows
+  and contract acceptances today (item 10 above; the proposed migration is in
+  `docs/LEGAL-COUNSEL-QUESTIONS.md`, "Retention gap"). Unchanged until the accountant names the records
+  and periods.
+- **VIES:** accountant review of automatic VIES validation, the reverse-charge annotation and non-EU
+  billing before Stripe live.
+
+### Pre-live tax tasks (from the memo)
+
+1. **Reverse-charge wording on invoices.** Not wired. The natural hook is the Stripe customer's
+   `invoice_settings.footer`, set when `createCustomer` runs (`src/lib/billing/stripe-gateway.ts`), for a
+   customer whose acceptance names another EU country and a VAT number. It is deliberately not built:
+   the VAT number is recorded as declared and never validated, and stamping "reverse charge" on an
+   unvalidated number is the VIES question itself. Stripe Tax (with tax-ID collection) can add the
+   reverse-charge note itself once registrations are configured. The accountant chooses between the
+   two; then one code change, with a test that the note appears only for another EU state with a
+   validated VAT number.
+2. **VIES validation** before any invoice relies on a VAT number. `vat_id_verified` stays false (0068)
+   until a real validation exists, and Novera never calls a number validated.
+3. **Art. 317 registration** (if the accountant confirms it) before the first sale to another member
+   state.
+4. **Retention:** the migration in the counsel file, once the accountant names records and periods.
+
 ---
 
 ## 5. Stripe dashboard configuration (sandbox first)

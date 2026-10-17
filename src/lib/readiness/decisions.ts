@@ -100,7 +100,7 @@ export const DECISIONS: readonly Decision[] = [
   },
   {
     id: "legal-form", area: "legal", title: "Legal form: PFA, SRL or another", state: "open", owner: "David + accountant",
-    detail: "Counsel question 1. Until then every field of data/legal/entity.ts is null (see Status).",
+    detail: "Counsel question 1. The founder's memo (2026-10-16) proposes an SRL on the micro-enterprise regime; not incorporated, and the accountant has not confirmed. Until then every field of data/legal/entity.ts is null (see Status).",
     source: { file: "docs/legal-inputs-required.md", quote: "`[LEGAL FORM]` (for example SRL, PFA, or another country's form)" },
   },
   {
@@ -125,8 +125,8 @@ export const DECISIONS: readonly Decision[] = [
   },
   {
     id: "attestation", area: "legal", title: "Whether an attestation names a person, a role or an id", state: "open", owner: "David + counsel",
-    detail: "Today it names the attesting member's email and is sealed into reports (counsel question 35).",
-    source: { file: "docs/legal-inputs-required.md", quote: "Whether future attestations should name a person, a role or an id is open." },
+    detail: "Since 2026-10-16 a new attestation names the member's role and user id, not the email, as the founder's memo proposes. Agents connected earlier keep their frozen text, which names an email. Awaiting counsel (question 35).",
+    source: { file: "docs/legal-inputs-required.md", quote: "Future attestations name a role and an id, pending counsel's confirmation (question 35)." },
   },
 
   // ------------------------------------------------------------------ operations

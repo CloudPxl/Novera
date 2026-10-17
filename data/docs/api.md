@@ -82,7 +82,7 @@ That label is the point. A check is not a run: it is never sealed, never counted
 - A destructive or fixture-only scenario sent to an agent marked as production is refused with `409` and `"code": "production_guard"`, in the same words a run records. Mark the agent as a test target on its **Connection** tab to run it.
 - A workspace can run 20 checks in any rolling hour, from the API and the app together. The 21st answers `429` with `"code": "rate_limited"`, `Retry-After` and when the next one can start.
 - Your agent's reply comes back only with `?include=responses` and a key that also has **Can also read your agent's replies**; the check then records that the reply was handed to that key. Otherwise personal data a grader quoted in a reason comes back as a placeholder.
-- Every refusal is JSON with a stable `code`: `invalid_request` (400), `missing_scope` (403), `not_found` (404), `production_guard`, `archived`, `no_policy`, `not_funded` (409, with `blocker`), `no_locale_variant` (422), `rate_limited` (429).
+- Every refusal is JSON with a stable `code`: `invalid_request` (400), `missing_scope` (403), `not_found` (404), `production_guard`, `archived`, `no_policy`, `not_funded` (409, with `blocker`), `payload_too_large` (413, a single-scenario check's body is read to 16 KB), `no_locale_variant` (422), `rate_limited` (429).
 
 ## Testing a connection
 

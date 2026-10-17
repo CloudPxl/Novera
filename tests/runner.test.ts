@@ -534,6 +534,36 @@ test("three transport failures in a row abort the run, send nothing more, and ke
   assert.deepEqual(finished, [{ status: "aborted", error: TRANSPORT_HALT_MESSAGE }]);
 });
 
+test("with several workers, a success sent before the endpoint began refusing does not reset the halt (chaos audit 2026-10-17)", async () => {
+  // A WAF that answers the first three scenarios and refuses everything after. The three
+  // successes are slow (graded); the refusals are instant. Counted in completion order, each
+  // late success reset the streak, and six refusals went out before the run stopped.
+  const { store } = memoryStore();
+  const sent: string[] = [];
+  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const slow: Record<string, number> = { m1: 5, m2: 27, m3: 42 };
+  const agent: AgentAdapter = {
+    probe: async () => ({ ok: true, responseText: "p", toolActivity: null, latencyMs: 1 }),
+    send: async ({ input }) => {
+      sent.push(input);
+      if (slow[input] !== undefined) {
+        await delay(slow[input]);
+        return { ok: true, responseText: `reply to ${input}`, toolActivity: null, latencyMs: slow[input] };
+      }
+      await delay(15);
+      return { ok: false, responseText: null, toolActivity: null, statusCode: 429, latencyMs: 15, error: "Agent returned HTTP 429" };
+    },
+    acceptsContext: () => true,
+  };
+  const twelve: Suite = { ...many, cases: Array.from({ length: 12 }, (_, i) => ({ ...many.cases[0], id: `M${i + 1}`, input: `m${i + 1}` })) };
+  const summary = await executeRun({ runId: "r1", suite: twelve, agent, policy: "p", judge: judgeArgs(judgeReturning({})), store, concurrency: 3 });
+  assert.equal(summary.status, "aborted");
+  assert.equal(summary.error, TRANSPORT_HALT_MESSAGE);
+  const refused = sent.filter((s) => slow[s] === undefined);
+  // Three in a row stop it; at most the other workers' scenarios already in flight may follow.
+  assert.ok(refused.length <= 3 + 2, `${refused.length} refusals were sent before the run stopped: ${sent.join(",")}`);
+});
+
 test("error, pass, error, error does not halt the run", async () => {
   const { store, saved } = memoryStore();
   const sent: string[] = [];

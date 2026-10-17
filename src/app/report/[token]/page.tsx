@@ -101,7 +101,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             hash changes (src/lib/legal/notices.ts). */}
         <p className="mt-3 text-sm leading-relaxed text-ink-soft">
           <strong className="font-semibold text-ink">{REPORT_NOTICE_TITLE}.</strong>{" "}
-          {REPORT_NOTICE_SHORT.replace(/^Testing evidence, not certification: /, "")}{" "}
+          {REPORT_NOTICE_SHORT.replace(/^Testing evidence, not certification: (\w)/, (_, first: string) => first.toUpperCase())}{" "}
           <a href="#standing-notice" className="underline underline-offset-2 print:no-underline">Full notice</a>
         </p>
         <dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 text-sm sm:grid-cols-3">

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  CHECK_LABEL, CHECK_LIMIT, LIMIT_UNAVAILABLE, checkVerdict, limitRefusal, parseSingleCheckBody, readSlot, rollingWindow,
+  CHECK_BODY_LIMIT, CHECK_LABEL, CHECK_LIMIT, LIMIT_UNAVAILABLE, checkVerdict, limitRefusal, parseSingleCheckBody, readSlot, rollingWindow,
   secondsUntil, verdictWords,
 } from "../src/lib/checks/single.ts";
 import { checkAnswer, checkView, type CheckRow } from "../src/lib/checks/view.ts";
@@ -13,6 +13,7 @@ import type { CaseOutcome, SuiteCase } from "../src/lib/runner/types.ts";
 import { scanCustomerLanguage } from "../src/lib/report/language.ts";
 import { RECENT_DELIVERIES, statusAndLatency } from "../src/lib/webhooks/latency.ts";
 import { buildOpenApi } from "../src/lib/api/openapi.ts";
+import { BodyTooLarge, readTextLimited } from "../src/lib/net/read-body.ts";
 import euSupportV5 from "../data/suites/eu-support-v5.json" with { type: "json" };
 
 const WS = "11111111-1111-4111-8111-111111111111";
@@ -383,7 +384,7 @@ test("the endpoint is documented with its scope, codes and label", () => {
   assert.ok(op);
   assert.match(op.description, /`probe` scope/);
   assert.match(op.description, /Single-scenario check — not a sealed run\./);
-  for (const status of ["200", "400", "403", "404", "409", "422", "429", "401"]) assert.ok(op.responses[status], status);
+  for (const status of ["200", "400", "403", "404", "409", "413", "422", "429", "401"]) assert.ok(op.responses[status], status);
 });
 
 // ---- Webhook latency --------------------------------------------------------------------
@@ -410,4 +411,20 @@ test("checks stay append-only, inside their workspace, and erased before what th
   const erase = readFileSync("supabase/migrations/0068_contract_acceptances.sql", "utf8");
   const at = (t: string) => erase.indexOf(`delete from ${t} `);
   for (const named of ["api_keys", "policies", "agents", "suites"]) assert.ok(at("case_retests") < at(named), named);
+});
+
+// ---- Track 3 audit: a hostile body ------------------------------------------------------
+
+test("the single-check endpoint reads at most 16 KB of a request, however much is sent", async () => {
+  const send = (body: string, headers: Record<string, string> = {}) =>
+    new Request("http://localhost/api/v1/probes/single", { method: "POST", body, headers });
+  const small = JSON.stringify({ agent_id: AGENT, suite: "eu-support-v5", scenario_id: "T07" });
+  assert.equal(await readTextLimited(send(small) as unknown as Response, CHECK_BODY_LIMIT), small);
+  const huge = JSON.stringify({ agent_id: AGENT, suite: "eu-support-v5", scenario_id: "T07", pad: "x".repeat(CHECK_BODY_LIMIT * 4) });
+  await assert.rejects(readTextLimited(send(huge) as unknown as Response, CHECK_BODY_LIMIT), BodyTooLarge);
+  // The route answers 413 with a stable code, before parsing or counting anything.
+  const route = readFileSync("src/app/api/v1/probes/single/route.ts", "utf8");
+  assert.match(route, /readTextLimited\(request as unknown as Response, CHECK_BODY_LIMIT\)/);
+  assert.match(route, /BodyTooLarge[\s\S]{0,120}payload_too_large[\s\S]{0,40}413/);
+  assert.equal(route.includes("request.json()"), false);
 });

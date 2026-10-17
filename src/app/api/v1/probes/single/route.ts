@@ -1,7 +1,8 @@
 import { authenticateApiKey } from "@/lib/api/auth.ts";
 import { apiJson } from "@/lib/api/respond.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
-import { parseSingleCheckBody, secondsUntil } from "@/lib/checks/single.ts";
+import { CHECK_BODY_LIMIT, CHECK_BODY_TOO_LARGE, parseSingleCheckBody, secondsUntil } from "@/lib/checks/single.ts";
+import { BodyTooLarge, readTextLimited } from "@/lib/net/read-body.ts";
 import { checkAnswer, checkView } from "@/lib/checks/view.ts";
 import { runScenarioCheck } from "@/lib/workflow/scenario-check.ts";
 
@@ -33,8 +34,10 @@ export async function POST(request: Request) {
 
   let raw: unknown;
   try {
-    raw = await request.json();
-  } catch {
+    // The body is four short fields: nothing larger is read, however much is sent.
+    raw = JSON.parse(await readTextLimited(request as unknown as Response, CHECK_BODY_LIMIT));
+  } catch (e) {
+    if (e instanceof BodyTooLarge) return apiJson({ error: CHECK_BODY_TOO_LARGE, code: "payload_too_large" }, 413);
     return apiJson({ error: "Send a JSON body: { \"agent_id\": \"…\", \"suite\": \"eu-support-v5\", \"scenario_id\": \"T07\" }.", code: "invalid_request" }, 400);
   }
   const parsed = parseSingleCheckBody(raw);

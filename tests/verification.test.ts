@@ -37,6 +37,17 @@ test("a read-back that shows otherwise contradicts the agent", async (t) => {
   assert.ok(!o.detail.includes("NW-4417"));
 });
 
+test("a contradiction names the system's record, never 'the response' — that is the agent's reply (chaos audit 2026-10-17)", async (t) => {
+  answer(t, JSON.stringify({ invoice: "NW-4417", state: "open", refunded: false }));
+  const o = await httpVerificationConnector(config).verify({
+    caseId: "T22", path: "invoices/NW-4417",
+    expect: [{ type: "must_contain", value: "refunded" }, { type: "must_not_contain", value: "open" }],
+  });
+  assert.equal(o.status, "contradicted");
+  assert.doesNotMatch(o.detail, /\bthe response\b/i, "the agent's reply never said \"open\"; the record did");
+  assert.match(o.detail, /Its record contains "open", which it must not\./);
+});
+
 test("a read-back answer past its size limit is unavailable, never read for a match (C13)", async (t) => {
   // "refunded" sits past the limit: reading on to find it would confirm on a body Novera refused.
   answer(t, "x".repeat(300 * 1024) + "refunded");

@@ -38,6 +38,13 @@ export async function resolveSuiteRef(db: Db, workspaceId: string, ref: string):
   return null;
 }
 
+/** Whether a suite id names this workspace's own suite or a built-in one, and is not a Builder scan. */
+async function suiteReadable(db: Db, workspaceId: string, suiteId: string): Promise<boolean> {
+  const { data } = await db.from("suites").select("id").eq("id", suiteId)
+    .or(`workspace_id.eq.${workspaceId},workspace_id.is.null`).neq("approval", "exploratory").maybeSingle();
+  return Boolean(data);
+}
+
 /** The newest built-in eu-support — what `startRun` runs when no suite is named — so a commit's row names the suite it ran. */
 async function defaultSuiteId(db: Db): Promise<string | null> {
   const { data } = await db.from("suites").select("id").is("workspace_id", null).eq("key", "eu-support")
@@ -68,6 +75,12 @@ export async function triggerCiRun(args: {
   }
   suiteId ??= await defaultSuiteId(db);
   if (!suiteId) return { kind: "not_found", error: "That suite could not be found." };
+  if (request.suiteId && !(await suiteReadable(db, workspaceId, request.suiteId))) {
+    // Checked before the claim: a `suite_id` that is not this workspace's or a built-in failed
+    // the claim's insert and answered 500 (audit 2026-10-17). The same 404 for an unknown id
+    // and for another workspace's, as `suite` gives.
+    return { kind: "not_found", error: "That suite could not be found. GET /api/v1/suites lists them." };
+  }
   if (request.includeExtensions) {
     // The workspace's newest extension of this official suite (0071): its base scenarios are
     // the official ones byte for byte, plus at most five the workspace approved.

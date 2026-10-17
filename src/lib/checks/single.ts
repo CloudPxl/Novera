@@ -19,6 +19,10 @@ export const CHECK_LABEL = "Single-scenario check — not a sealed run.";
 /** 20 checks per workspace in any rolling hour (0072 `take_scenario_check_slot`). */
 export const CHECK_LIMIT = { max: 20, windowSeconds: 60 * 60 } as const;
 
+/** The most `POST /api/v1/probes/single` reads of a request: its body is four short fields. */
+export const CHECK_BODY_LIMIT = 16 * 1024;
+export const CHECK_BODY_TOO_LARGE = `The request body is larger than ${CHECK_BODY_LIMIT / 1024} KB, so it was not read. Send only agent_id, suite, scenario_id and locale.`;
+
 /** A scenario id as suites hold them (`T07`, `GDPR-12`, `kyc.03`). */
 const SCENARIO_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

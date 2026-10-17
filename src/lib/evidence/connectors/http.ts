@@ -159,8 +159,11 @@ export function httpVerificationConnector(
             ...base,
             status: "contradicted",
             // The read-back body is never quoted: it is the customer's data, and this
-            // sentence travels into a report.
-            detail: `The customer's own system does not show the expected state. ${describeFailures(failures)}`,
+            // sentence travels into a report. The checks word their findings about "the
+            // response"; here that is the system's record, never the agent's reply, so it is
+            // named as such (chaos audit 2026-10-17: "The response contains "open"" sat beside
+            // a reply that said no such thing).
+            detail: `The customer's own system does not show the expected state. ${describeFailures(failures).replace(/\bThe response\b/g, "Its record")}`,
           };
     },
   };

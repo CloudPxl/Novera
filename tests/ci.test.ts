@@ -155,3 +155,11 @@ test("every export carries the standing notice outside the sealed payload, and t
   }
   assert.match(REPORT_NOTICE_SHORT, /^Testing evidence, not certification/);
 });
+
+test("the client report's cover notice starts its sentence with a capital, after the bold title (chaos audit 2026-10-17)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const page = readFileSync(new URL("../src/app/report/[token]/page.tsx", import.meta.url), "utf8");
+  // "Testing evidence, not certification. this report records…" was printed on every report.
+  assert.doesNotMatch(page, /REPORT_NOTICE_SHORT\.replace\(\/\^Testing evidence, not certification: \/, ""\)/);
+  assert.match(page, /REPORT_NOTICE_SHORT\.replace\(\/\^Testing evidence, not certification: \(\\w\)\/, \(_, first: string\) => first\.toUpperCase\(\)\)/);
+});

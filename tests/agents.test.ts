@@ -85,6 +85,18 @@ test("a good response is returned with its latency and raw body", async (t) => {
   assert.ok(typeof result.latencyMs === "number");
 });
 
+test("NUL and unpaired surrogates in a JSON reply become U+FFFD, so the case can be stored (chaos audit 2026-10-17)", async (t) => {
+  // Valid JSON text that Postgres cannot hold once parsed: storing it aborted the whole run.
+  const body = '{"reply":"No refund for 55120\\u0000 \\ud800 here 😀.","calls":[{"tool":"lookup\\u0000order","arguments":{"order\\udfff":"55120\\u0000"}}]}';
+  t.mock.method(globalThis, "fetch", async () => new Response(body, { headers: { "content-type": "application/json" } }));
+  const result = await httpAgent({ ...config, toolActivityPath: "calls" }).send({ input: "hi", policy: "p" });
+  assert.equal(result.ok, true);
+  assert.equal(result.responseText, "No refund for 55120� � here 😀.", "marked, not dropped; a real pair (the emoji) is kept");
+  assert.deepEqual(result.toolActivity, [{ tool: "lookup�order", arguments: { "order�": "55120�" } }]);
+  // JSON.stringify escapes exactly what Postgres refuses: NUL as \u0000, a lone surrogate as \udXXX.
+  assert.doesNotMatch(JSON.stringify([result.toolActivity, result.responseText]), /\\u0000|\\ud[89a-f]/i);
+});
+
 test("the auth header is sent only when both a name and a value exist", async (t) => {
   let seen: Record<string, string> = {};
   t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {

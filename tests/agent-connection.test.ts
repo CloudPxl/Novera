@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  archiveConfirmed, changedConnectionFields, MAX_TIMEOUT_SECONDS, nextHttpConfig, parseBodyTemplate,
+  archiveConfirmed, changedConnectionFields, credentialProblem, MAX_TIMEOUT_SECONDS, nextHttpConfig, parseBodyTemplate,
   parseConnectionEdit, touchesConnection,
 } from "../src/lib/agents/connection.ts";
 import { AGENT_TIMEOUT_MAX_MS } from "../src/lib/agents/http.ts";
@@ -153,4 +153,29 @@ test("a stored credential does not follow the address to a new host: paste it ag
   assert.equal(parseConnectionEdit(form({ ...stored, url: "https://attacker.example/chat", credential: "Bearer new" }), true, "https://bot.example/chat").ok, true, "pasted again");
   assert.equal(parseConnectionEdit(form({ ...stored, url: "https://attacker.example/chat", removeCredential: "on" }), true, "https://bot.example/chat").ok, true, "removed");
   assert.equal(parseConnectionEdit(form({ url: "https://attacker.example/chat" }), false, "https://bot.example/chat").ok, true, "nothing stored");
+});
+
+// Audit 2026-10-17 (track 1): a credential with a NUL, an accent or a typographic dash was
+// accepted, then every request threw inside fetch and was reported as "could not reach the
+// endpoint" — and, in a run, as three transport failures that halt it.
+test("a credential that cannot travel in an HTTP header is refused when typed, not at every request", async () => {
+  for (const bad of ["tok\u0000en", "Nørthwind–Test", "Bearer abc\u2013def", "tab\u007fdel", "a\u00a0b"]) {
+    assert.match(credentialProblem(bad) ?? "", /plain ASCII/, JSON.stringify(bad));
+    const edit = parseConnectionEdit(form({ authHeaderName: "x-api-key", credential: bad }), false);
+    assert.equal(edit.ok, false, JSON.stringify(bad));
+  }
+  for (const good of ["Bearer sk-live_ABC.def/123+=", "Northwind-Test", "Basic dXNlcjpwYXNz", "a\tb"]) {
+    assert.equal(credentialProblem(good), null, good);
+  }
+  assert.match(credentialProblem("x\r\ny") ?? "", /one line/);
+  // What the refusal prevents: fetch itself cannot send such a value.
+  assert.throws(() => new Headers({ "x-api-key": "Nørthwind–Test" }));
+});
+
+test("an endpoint URL longer than 2,048 characters is refused when typed", async () => {
+  const { parseEndpointFields, MAX_ENDPOINT_URL } = await import("../src/lib/agents/connection.ts");
+  const long = `https://agent.example.com/chat?q=${"a".repeat(MAX_ENDPOINT_URL)}`;
+  const result = parseEndpointFields({ url: long, bodyTemplate: '{"message":"{{input}}"}', responsePath: "reply", toolActivityPath: "", timeoutSeconds: "30" } as never);
+  assert.equal(result.ok, false);
+  assert.match((result as { error: string }).error, /longer than 2048 characters/);
 });

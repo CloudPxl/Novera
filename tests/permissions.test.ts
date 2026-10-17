@@ -94,3 +94,14 @@ test("the agent edit and archive actions ask gate() for the right capability, fi
     assert.equal(text.slice(0, gateAt).includes("admin."), false, `${fn} touches nothing before the gate`);
   }
 });
+
+test("the sample-agent action asks gate() for agent.write before it reads or writes anything", () => {
+  const src = readFileSync("src/lib/workflow/connection-actions.ts", "utf8");
+  const start = src.indexOf("export async function createSampleAgent");
+  const text = src.slice(start, src.indexOf("\nexport async function", start + 1) === -1 ? undefined : src.indexOf("\nexport async function", start + 1));
+  const gateAt = text.indexOf('gate(user.id, workspace.id, "agent.write")');
+  assert.ok(gateAt > 0, "createSampleAgent gates on agent.write");
+  assert.equal(text.slice(0, gateAt).includes("admin."), false, "nothing is touched before the gate");
+  // Auditors and reviewers are refused: the matrix gives agent.write to owner, admin and operator only.
+  for (const role of ["auditor", "reviewer"] as const) assert.equal(can(role, "agent.write"), false, role);
+});

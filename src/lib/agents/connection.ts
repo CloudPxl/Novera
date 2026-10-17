@@ -103,6 +103,9 @@ const str = (v: unknown) => (typeof v === "string" ? v : "");
  * connecting, editing and testing a connection, so none of them can accept what another
  * refuses. Pure: the address's resolution is checked by the caller (`assertPublicUrl`).
  */
+/** The longest endpoint URL an agent or a connection test accepts. */
+export const MAX_ENDPOINT_URL = 2048;
+
 export function parseEndpointFields(fields: {
   url: unknown; bodyTemplate: unknown; responsePath: unknown; toolActivityPath: unknown;
   timeoutSeconds?: unknown; authHeaderName: unknown;
@@ -114,6 +117,9 @@ export function parseEndpointFields(fields: {
   const authHeaderName = str(fields.authHeaderName).trim();
 
   if (!url) return { ok: false, error: "Enter the agent's endpoint URL." };
+  // Far above any real endpoint; an address this long is a mistake or a probe, and it is stored,
+  // shown and sent on every request.
+  if (url.length > MAX_ENDPOINT_URL) return { ok: false, error: `The endpoint URL is longer than ${MAX_ENDPOINT_URL} characters.` };
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(url);
@@ -158,11 +164,18 @@ export function parseEndpointFields(fields: {
   };
 }
 
-/** A credential as pasted: one line, and not the length of a file. */
+/**
+ * A credential as pasted: one line, and not the length of a file. It travels in an HTTP header,
+ * so it is plain ASCII: a control character or a typographic dash cannot be sent at all, and
+ * was accepted here only to fail every request afterwards as "could not reach the endpoint"
+ * (audit 2026-10-17).
+ */
 export function credentialProblem(credential: string): string | null {
-  return credential.length > 4_000 || /[\r\n]/.test(credential)
-    ? "A credential is one line, and not this long — check what was pasted."
-    : null;
+  if (credential.length > 4_000 || /[\r\n]/.test(credential)) return "A credential is one line, and not this long — check what was pasted.";
+  if (/[^\t\x20-\x7e]/.test(credential)) {
+    return "A credential is sent in an HTTP header, so it can hold only plain ASCII characters — check for a pasted control character, accent or typographic dash.";
+  }
+  return null;
 }
 
 /** A new agent's configuration from checked fields. */

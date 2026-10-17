@@ -146,6 +146,19 @@ export function classifyPreflight(
     };
   }
 
+  if (status === 408 || status === 429) {
+    // Rate limiting is not a fault in the request: telling a person to check the address and the
+    // body sent them looking in the wrong place (audit 2026-10-17). A run treats it the same way,
+    // as an unreachable endpoint, never as a failed scenario (`isTransportFailure`).
+    return {
+      ...base, outcome: "http_error", ok: false,
+      headline: `The endpoint returned HTTP ${status}`,
+      detail: status === 429
+        ? "The endpoint is rate limiting requests. Allow Novera's traffic (one message every 250 ms during a run); in a run this is recorded as an error, never as a failed scenario."
+        : "The endpoint timed out waiting for the request. In a run this is recorded as an error, never as a failed scenario.",
+    };
+  }
+
   if (status < 200 || status >= 300) {
     return {
       ...base, outcome: "http_error", ok: false,

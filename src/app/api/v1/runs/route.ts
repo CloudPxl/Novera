@@ -1,3 +1,4 @@
+import { BodyTooLarge, bodyTooLarge, readJsonBody } from "@/lib/api/body.ts";
 import { authenticateApiKey } from "@/lib/api/auth.ts";
 import { listRuns } from "@/lib/api/read.ts";
 import { apiJson, reportUrl } from "@/lib/api/respond.ts";
@@ -41,8 +42,9 @@ export async function POST(request: Request) {
 
   let body: Record<string, unknown>;
   try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
+    body = (await readJsonBody(request)) as Record<string, unknown>;
+  } catch (e) {
+    if (e instanceof BodyTooLarge) return bodyTooLarge();
     return apiJson({ error: "Send a JSON body: { \"agent_id\": \"…\" }." }, 400);
   }
   const agentId = typeof body?.agent_id === "string" ? body.agent_id : "";

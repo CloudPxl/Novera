@@ -81,6 +81,6 @@ export function ciOutcome(payload: CiInput): CiOutcome {
   const sameVendor = payload.run?.corroboration?.single_vendor ?? 0;
   return {
     code: CI_EXIT.passed,
-    reason: `All ${plural(planned, "scenario")} ran and passed.` + (sameVendor > 0 ? ` ${sameVendor} of the verdicts were corroborated by two models from one vendor.` : ""),
+    reason: (planned === 1 ? "The one scenario ran and passed." : `All ${plural(planned, "scenario")} ran and passed.`) + (sameVendor > 0 ? ` ${sameVendor} of the verdicts were corroborated by two models from one vendor.` : ""),
   };
 }

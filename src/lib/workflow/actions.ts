@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireWorkspace, assertMembership, gate } from "@/lib/auth/session.ts";
+import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import { storeSecret } from "@/lib/store/secrets.ts";
 import { probeAgent, reissueReportWithReview } from "@/lib/workflow/run.ts";
 import { NothingToDisclose } from "@/lib/report/reissue.ts";
@@ -363,28 +363,41 @@ export async function decideDiagnosis(_prev: FormState, form: FormData): Promise
  * completed run" — so the comparison answers the question the operator actually
  * asked: did the change I just approved fix this?
  */
-export async function rerunFrom(formData: FormData): Promise<void> {
+export async function rerunFrom(_prev: FormState, formData: FormData): Promise<FormState> {
   const { user, workspace } = await requireWorkspace();
   const baselineRunId = String(formData.get("runId") ?? "");
-  const admin = await assertMembership(user.id, workspace.id, "run.start");
+  const gated = await gate(user.id, workspace.id, "run.start");
+  if ("error" in gated) return { error: gated.error };
+  const admin = gated.admin;
 
   const { data: baseline } = await admin
     .from("runs").select("agent_id, suite_id, locale:manifest->>locale").eq("id", baselineRunId).eq("workspace_id", workspace.id).maybeSingle();
-  if (!baseline) throw new Error("That run could not be found.");
+  if (!baseline) return { error: "That run could not be found in this workspace." };
 
   // Through the one implementation, like the run button and the API. It used to be a
   // third copy, which also carried the old run's attestation forward instead of the
-  // agent's current one.
-  const run = await startRun({
-    client: admin,
-    workspaceId: workspace.id,
-    userId: user.id,
-    agentId: baseline.agent_id as string,
-    suiteId: baseline.suite_id as string,
-    baselineRunId,
-    // In the baseline's language, or the comparison would set German replies against English ones.
-    locale: (baseline.locale as string | null) ?? null,
-  });
+  // agent's current one. A refusal — no plan or grant, fair use, an archived agent — is a
+  // sentence beside the button, as for `createRun`; it threw, and the person got the error
+  // page (audit 2026-10-17).
+  let run: Awaited<ReturnType<typeof startRun>>;
+  try {
+    run = await startRun({
+      client: admin,
+      workspaceId: workspace.id,
+      userId: user.id,
+      agentId: baseline.agent_id as string,
+      suiteId: baseline.suite_id as string,
+      baselineRunId,
+      // In the baseline's language, or the comparison would set German replies against English ones.
+      locale: (baseline.locale as string | null) ?? null,
+    });
+  } catch (e) {
+    if (e instanceof RunRefusal) {
+      const remedy = remedyFor(e.blocker);
+      return { error: e.message, ...(remedy ? { remedy } : {}) };
+    }
+    throw e;
+  }
 
   // A run counts against the trial from the moment it exists, and the top bar showing
   // the allowance lives in the shared layout, which a redirect alone does not re-render:
@@ -772,7 +785,7 @@ export async function importSuite(_prev: FormState, form: FormData): Promise<For
   if (error) return { error: `The suite could not be saved: ${error.message}` };
 
   revalidatePath("/dashboard");
-  return { notice: `Imported ${suite.name} v${suite.version} — ${suite.cases.length} scenarios.` };
+  return { notice: `Imported ${suite.name} v${suite.version} — ${suite.cases.length} scenario${suite.cases.length === 1 ? "" : "s"}.` };
 }
 
 /**

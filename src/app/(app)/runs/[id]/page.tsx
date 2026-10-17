@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth/session.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { rerunFrom } from "@/lib/workflow/actions.ts";
+import { RefusableForm } from "@/components/ui/refusable-form.tsx";
 import { noVerdictRow, repairFor } from "@/lib/evidence/repair.ts";
 import { readinessOf, READINESS_LABEL } from "@/lib/report/readiness.ts";
 import type { ReportPayload } from "@/lib/report/payload.ts";
@@ -518,13 +519,13 @@ export default async function RunPage({
                         {retestedSince.status === "pass" ? "it now passes." : retestedSince.status === "fail" ? "it still fails." : "no verdict."}
                       </p>
                     )}
-                    {!exploratory && <form action={rerunFrom} className="mt-3 flex flex-wrap items-center gap-3">
+                    {!exploratory && <RefusableForm action={rerunFrom} className="mt-3 flex flex-wrap items-center gap-3">
                       <input type="hidden" name="runId" value={run.id} />
                       <SubmitButton variant="secondary" size="sm" pendingLabel="Starting…">
                         Rerun the suite and compare with this run
                       </SubmitButton>
                       <span className="text-xs text-ink-faint">A new run of every scenario under the newest policy; it uses one run.</span>
-                    </form>}
+                    </RefusableForm>}
                   </>
                 ) : undefined}
               />
@@ -712,12 +713,12 @@ export default async function RunPage({
           {(mayRerun || compareHere) && (
             <div className="print-hide mt-4 flex flex-wrap items-center gap-3">
               {mayRerun && (
-                <form action={rerunFrom}>
+                <RefusableForm action={rerunFrom}>
                   <input type="hidden" name="runId" value={run.id} />
                   <SubmitButton variant="secondary" size="sm" pendingLabel="Starting…">
                     Rerun and compare against this
                   </SubmitButton>
-                </form>
+                </RefusableForm>
               )}
               {compareHere && (
                 <ButtonLink variant="secondary" size="sm" href={`/runs/compare?base=${previousRun!.id}&target=${run.id}`}>

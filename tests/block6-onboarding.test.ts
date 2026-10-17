@@ -73,6 +73,17 @@ test("other HTTP errors carry their status; a redirect is its own outcome", () =
   assert.equal(classifyPreflight(res({ statusCode: 302, error: "Agent returned HTTP 302" }), config).outcome, "redirect");
 });
 
+// Audit 2026-10-17 (track 1): a 429 told the person to check the address and the request body.
+test("a rate-limited or timed-out endpoint says so, and that a run records it as an error, never a failure", () => {
+  const r = classifyPreflight(res({ statusCode: 429, error: "Agent returned HTTP 429", raw: { message: "Rate_Limited_By_WAF" } }), config);
+  assert.equal(r.outcome, "http_error");
+  assert.equal(r.statusCode, 429);
+  assert.match(r.detail, /rate limiting/);
+  assert.match(r.detail, /never as a failed scenario/);
+  assert.doesNotMatch(r.detail, /request body/);
+  assert.match(classifyPreflight(res({ statusCode: 408, error: "Agent returned HTTP 408" }), config).detail, /never as a failed scenario/);
+});
+
 test("timeout and network failures: could not reach the endpoint within 10 s", () => {
   const t = classifyPreflight(res({ timedOut: true, error: "The agent did not answer within 10 s." }), config);
   assert.equal(t.outcome, "timeout");
@@ -339,4 +350,14 @@ test("the fixture refuses a body over 64 KB before reading it, and answers a nor
   const ok = await POST(new Request("http://localhost/api/test-agent", { method: "POST", body: JSON.stringify({ message: "Hello" }), headers: { "content-type": "application/json" } }));
   assert.equal(ok.status, 200);
   assert.equal(((await ok.json()) as { fixture?: boolean }).fixture, true);
+});
+
+test("one sample agent per workspace however many clicks race: the database refuses the second, the action opens the first", () => {
+  const sql = readFileSync("supabase/migrations/0073_one_sample_agent.sql", "utf8");
+  assert.match(sql, /create unique index if not exists agents_one_sample_per_workspace\s+on agents \(workspace_id\)/);
+  assert.ok(sql.includes(`name = '${SAMPLE_AGENT_NAME}'`), "the index names the sample exactly as the action does");
+  assert.match(sql, /\(config ->> 'url'\) like '%\/api\/test-agent'/, "only the fixture's address, never a customer's agent of the same name");
+  assert.match(sql, /set archived_at = now\(\), archived_by = a\.attested_by/, "existing duplicates are archived, never deleted");
+  const action = readFileSync("src/lib/workflow/connection-actions.ts", "utf8");
+  assert.match(action, /error\?\.code === "23505"[\s\S]{0,900}redirect\(`\/agents\/\$\{raced\.agentId\}`\)/);
 });

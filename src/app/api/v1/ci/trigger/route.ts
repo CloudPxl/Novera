@@ -1,3 +1,4 @@
+import { BodyTooLarge, bodyTooLarge, readJsonBody } from "@/lib/api/body.ts";
 import { authenticateApiKey } from "@/lib/api/auth.ts";
 import { apiJson } from "@/lib/api/respond.ts";
 import { executeInstruction, runRefusalResponse } from "@/lib/api/run-refusal.ts";
@@ -26,8 +27,9 @@ export async function POST(request: Request) {
 
   let raw: unknown;
   try {
-    raw = await request.json();
-  } catch {
+    raw = await readJsonBody(request);
+  } catch (e) {
+    if (e instanceof BodyTooLarge) return bodyTooLarge();
     return apiJson({ error: "Send a JSON body: { \"agent_id\": \"…\", \"git_commit_sha\": \"…\" }." }, 400);
   }
   const parsed = parseTriggerBody(raw);

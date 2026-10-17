@@ -88,6 +88,13 @@ export async function createSampleAgent(): Promise<FormState> {
     // Names a role and the user id, never the email, as every new attestation does (src/lib/legal/attestation.ts).
     attestation_text: sampleAttestation(attestationActor(user.id, role), now.slice(0, 10)),
   }).select("id").single();
+  if (error?.code === "23505") {
+    // Another click made it first (0073 allows one sample per workspace): open that one.
+    const { data: rows } = await admin.from("agents").select("id, name, config, archived_at")
+      .eq("workspace_id", workspace.id).eq("name", SAMPLE_AGENT_NAME);
+    const raced = sampleAgentDecision((rows ?? []) as Array<{ id: string; name: string; config: unknown; archived_at: string | null }>);
+    if (raced.action === "reuse") redirect(`/agents/${raced.agentId}`);
+  }
   if (error || !agent) return { error: `Could not add the sample agent: ${error?.message ?? "no row returned"}` };
   const agentId = agent.id as string;
 

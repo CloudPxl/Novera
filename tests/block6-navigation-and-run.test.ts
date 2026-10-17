@@ -262,3 +262,17 @@ test("the new sentences pass the customer language rule", () => {
   }
   for (const s of sentences) assert.deepEqual(scanCustomerLanguage(s), [], s.slice(0, 80));
 });
+
+// Audit 2026-10-17 (track 7): "Rerun and compare" was a plain form action that threw on any
+// refusal — a run id from another workspace, a used-up grant, an archived agent — and the person
+// got "This page could not be loaded". Every action that starts a run answers with a sentence.
+test("rerun and compare returns a refusal beside its button, never the error page", () => {
+  const actions = readFileSync("src/lib/workflow/actions.ts", "utf8");
+  const rerun = actions.slice(actions.indexOf("export async function rerunFrom"), actions.indexOf("const JUDGE_PROVIDERS"));
+  assert.match(rerun, /rerunFrom\(_prev: FormState, formData: FormData\): Promise<FormState>/);
+  assert.doesNotMatch(rerun, /throw new Error/, "a missing run is a sentence, not a throw");
+  assert.match(rerun, /e instanceof RunRefusal[\s\S]*return \{ error: e\.message/);
+  const page = readFileSync("src/app/(app)/runs/[id]/page.tsx", "utf8");
+  assert.doesNotMatch(page, /<form action=\{rerunFrom\}/);
+  assert.equal(page.match(/<RefusableForm action=\{rerunFrom\}/g)?.length, 2);
+});

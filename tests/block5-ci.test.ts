@@ -353,3 +353,51 @@ test("nothing generated here claims more than the evidence: the language rule", 
   ];
   for (const t of texts) assert.deepEqual(scanCustomerLanguage(t), [], t.slice(0, 80));
 });
+
+// ---- Audit 2026-10-17 (track 5): a suite id that is not this workspace's ------------------
+
+/** A chainable stand-in for the Supabase client: every query answers from `rows[table]`, inserts are recorded. */
+function fakeDb(rows: Record<string, unknown>) {
+  const inserts: string[] = [];
+  const query = (table: string): unknown => {
+    const answer = { data: rows[table] ?? null, error: null };
+    const chain: Record<string, unknown> = new Proxy({}, {
+      get(_t, prop) {
+        if (prop === "then") return (resolve: (v: unknown) => void) => resolve(answer);
+        if (prop === "maybeSingle" || prop === "single") return async () => answer;
+        if (prop === "insert") return () => { inserts.push(table); return chain; };
+        return () => chain;
+      },
+    });
+    return chain;
+  };
+  return { db: { from: query } as never, inserts };
+}
+
+test("a trigger naming another workspace's suite id is a 404 before any claim, never a 500", async () => {
+  const { triggerCiRun } = await import("../src/lib/ci/server.ts");
+  const request = parseTriggerBody({ agent_id: AGENT, suite_id: "11111111-2222-4333-8444-555555555555", git_commit_sha: SHA });
+  assert.ok(!("error" in request));
+  // The suites query is scoped to this workspace and built-ins, so a foreign id finds nothing.
+  const { db, inserts } = fakeDb({ suites: null, agents: { id: AGENT } });
+  const outcome = await triggerCiRun({ db, workspaceId: "w1", keyId: "k1", request });
+  assert.equal(outcome.kind, "not_found");
+  assert.match((outcome as { error: string }).error, /could not be found/);
+  assert.deepEqual(inserts, [], "no ci_triggers claim is written");
+});
+
+test("startRun refuses another workspace's suite in the words it uses for an unknown one", async () => {
+  const { startRun, RunRefusal } = await import("../src/lib/workflow/start-run.ts");
+  const run = (suite: unknown) => startRun({
+    client: fakeDb({ agents: { attestation_text: "x", archived_at: null }, policies: { id: "p1" }, suites: suite }).db,
+    workspaceId: "w1", userId: null, agentId: AGENT, suiteId: "11111111-2222-4333-8444-555555555555",
+  });
+  const refusal = async (suite: unknown) => {
+    try { await run(suite); } catch (e) { assert.ok(e instanceof RunRefusal); return (e as Error).message; }
+    assert.fail("not refused");
+  };
+  const unknown = await refusal(null);
+  const foreign = await refusal({ id: "s1", workspace_id: "w2", approval: "customer_supplied", cases: [] });
+  assert.equal(foreign, unknown);
+  assert.equal(unknown, "That suite could not be found.");
+});

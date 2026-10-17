@@ -420,6 +420,7 @@ export function buildOpenApi() {
             "404": errorResponse("No such agent, suite or scenario in this workspace (`code`: `not_found`)."),
             "409": errorResponse("The check cannot be sent: `production_guard`, `archived`, `no_policy`, `localisation_changed`, or `not_funded` (with `blocker`)."),
             "422": errorResponse("The scenario has no variant in the requested language (`code`: `no_locale_variant`)."),
+            "413": errorResponse("The body is larger than 16 KB, so it was not read (`code`: `payload_too_large`)."),
             "429": {
               description: "20 single-scenario checks in the last hour (`code`: `rate_limited`, with `rate_limit.resets_at`), or more than 120 requests a minute for this key.",
               headers: { "Retry-After": { $ref: "#/components/headers/RetryAfter" } },

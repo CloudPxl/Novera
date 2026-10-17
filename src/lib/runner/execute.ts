@@ -611,9 +611,14 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   let lostLease = false;
   // Pacing: the next moment a send may start, reserved synchronously so workers queue.
   let nextSendAt = 0;
-  // Consecutive agent transport failures, in completion order.
+  // Consecutive agent transport failures, in completion order. With several workers a
+  // success can complete after failures that were sent later; it says nothing about whether
+  // the endpoint recovered, so only a success sent after the latest failure ends the streak
+  // (chaos audit 2026-10-17: a WAF's late-answered successes let six refusals through).
   let consecutiveTransport = 0;
   let transportHalted = false;
+  let sendSeq = 0;
+  let lastTransportSeq = 0;
 
   async function worker(): Promise<void> {
     while (true) {
@@ -667,6 +672,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         return;
       }
       startedThisSlice++;
+      const seq = ++sendSeq;
 
       let outcome: CaseOutcome;
       records[index] = {
@@ -700,8 +706,9 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
 
       if (transportOutcomes.has(outcome)) {
         consecutiveTransport++;
+        lastTransportSeq = Math.max(lastTransportSeq, seq);
         if (consecutiveTransport >= TRANSPORT_HALT_AFTER) transportHalted = true;
-      } else {
+      } else if (seq > lastTransportSeq) {
         consecutiveTransport = 0;
       }
 

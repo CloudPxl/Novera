@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
 import { abortUnfinishedRun } from "@/lib/workflow/abort-run.ts";
+import { attestationActor } from "@/lib/legal/attestation.ts";
 
 /**
  * Stops a run that has not finished — one waiting for a grading slot, or one nobody
@@ -12,13 +13,15 @@ import { abortUnfinishedRun } from "@/lib/workflow/abort-run.ts";
  * and the run says who stopped it.
  */
 export async function stopRun(_prev: FormState, form: FormData): Promise<FormState> {
-  const { user, workspace } = await requireWorkspace();
+  const { user, workspace, role } = await requireWorkspace();
   const runId = String(form.get("runId") ?? "");
   const gated = await gate(user.id, workspace.id, "run.stop");
   if ("error" in gated) return { error: gated.error };
   const admin = gated.admin;
 
-  const who = user.email ?? "a member of this workspace";
+  // A role and a pseudonymous id, never the email: the reason is read by API and MCP keys,
+  // and reaches CI logs through them.
+  const who = attestationActor(user.id, role).replace(/^A /, "a ");
   const result = await abortUnfinishedRun({
     client: admin, workspaceId: workspace.id, runId, stoppedBy: user.id,
     reason: `Stopped by ${who} before it finished. Its graded scenarios are kept; no report was sealed.`,

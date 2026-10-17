@@ -115,9 +115,10 @@ export async function startRun(args: {
     ? await suiteQuery.eq("id", args.suiteId).maybeSingle()
     : await suiteQuery.is("workspace_id", null).eq("key", "eu-support")
         .order("version", { ascending: false }).limit(1).maybeSingle();
-  if (!suite) throw new RunRefusal("That suite could not be found.");
-  if (suite.workspace_id !== null && suite.workspace_id !== workspaceId) {
-    throw new RunRefusal("That suite does not belong to this workspace.");
+  // Another workspace's suite is refused in the same words as one that does not exist, so a
+  // caller cannot learn which ids are someone else's (audit 2026-10-17).
+  if (!suite || (suite.workspace_id !== null && suite.workspace_id !== workspaceId)) {
+    throw new RunRefusal("That suite could not be found.");
   }
   if ((suite.approval === "exploratory") !== Boolean(args.exploratory)) {
     throw new RunRefusal(suite.approval === "exploratory"

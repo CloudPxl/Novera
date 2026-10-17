@@ -54,6 +54,27 @@ export function agentTimeoutMs(config: { timeoutMs?: number }): number {
   return Math.min(own, AGENT_TIMEOUT_MAX_MS);
 }
 
+/**
+ * Text Postgres can store. JSON can carry `\u0000` and unpaired surrogate escapes, which
+ * `JSON.parse` turns into characters no `text` or `jsonb` column accepts: one such reply
+ * made the case's save throw and aborted the whole run (chaos audit 2026-10-17). They become
+ * U+FFFD, the same mark undecodable bytes already get when the body is read, so the reply is
+ * kept and graded with the unreadable character visibly marked — never dropped or invented.
+ */
+const UNSTORABLE = /[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]|\u0000/g;
+
+export function storableText<T>(value: T): T {
+  // A whole surrogate pair is matched first and kept; anything else matched is unstorable.
+  if (typeof value === "string") return value.replace(UNSTORABLE, (m) => (m.length === 2 ? m : "\uFFFD")) as T;
+  if (Array.isArray(value)) return value.map((v) => storableText(v)) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [storableText(k), storableText(v)]),
+    ) as T;
+  }
+  return value;
+}
+
 export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAdapter {
   async function call(
     input: string,
@@ -160,7 +181,7 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
 
     let parsed: unknown = null;
     try {
-      parsed = JSON.parse(text);
+      parsed = storableText(JSON.parse(text));
     } catch {
       parsed = null;
     }

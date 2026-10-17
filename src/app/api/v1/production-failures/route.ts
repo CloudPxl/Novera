@@ -1,3 +1,4 @@
+import { BodyTooLarge, bodyTooLarge, readJsonBody } from "@/lib/api/body.ts";
 import { authenticateApiKey } from "@/lib/api/auth.ts";
 import { apiJson } from "@/lib/api/respond.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
@@ -5,6 +6,10 @@ import { COUNT_UNAVAILABLE_MESSAGE, rateLimit } from "@/lib/support/rate-limit.t
 import { FAILURE_LIMITS, recordProductionFailure, type FailureProblem } from "@/lib/regressions/record.ts";
 
 export const dynamic = "force-dynamic";
+
+// A production failure carries the customer's message and the agent's reply, each bounded by
+// the redaction step; 256 KB is far above both together.
+const PRODUCTION_FAILURE_BODY_LIMIT = 256 * 1024;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -55,9 +60,10 @@ export async function POST(request: Request) {
 
   let body: Record<string, unknown>;
   try {
-    body = (await request.json()) as Record<string, unknown>;
+    body = (await readJsonBody(request, PRODUCTION_FAILURE_BODY_LIMIT)) as Record<string, unknown>;
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("not an object");
-  } catch {
+  } catch (e) {
+    if (e instanceof BodyTooLarge) return bodyTooLarge(PRODUCTION_FAILURE_BODY_LIMIT);
     return apiJson({ error: "Send a JSON object: { \"customer_message\": \"…\", \"expected_behavior\": \"…\", \"obligation\": \"…\", \"severity\": \"…\" }." }, 400);
   }
 

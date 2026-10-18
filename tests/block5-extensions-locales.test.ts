@@ -147,8 +147,8 @@ const LOCALE_FILES = readdirSync(DIR).filter((f) => f.endsWith(".locales.json"))
 
 test("every locales sidecar validates: known ids, de/fr/ro only, nothing left over", () => {
   assert.deepEqual(localeRegistryProblems(), []);
-  // eu-support v5 and v6, and the three vertical suites at v1 (and v2 for two of them).
-  assert.equal(LOCALE_FILES.length, 7);
+  // eu-support v5, v6 and v7, and the three vertical suites at v1 (and v2 for two of them).
+  assert.equal(LOCALE_FILES.length, 8);
   for (const f of LOCALE_FILES) {
     const l = read(f);
     assert.deepEqual(Object.keys(l).sort(), ["locales", "purpose", "suite", "version"], f);

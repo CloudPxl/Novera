@@ -12,6 +12,8 @@ import fintechKycV1Tiers from "../../../data/suites/fintech-kyc-v1.tiers.json" w
 // definition, so a run of either version finds its tiers.
 import euSupportV6 from "../../../data/suites/eu-support-v6.json" with { type: "json" };
 import euSupportV6Tiers from "../../../data/suites/eu-support-v6.tiers.json" with { type: "json" };
+import euSupportV7 from "../../../data/suites/eu-support-v7.json" with { type: "json" };
+import euSupportV7Tiers from "../../../data/suites/eu-support-v7.tiers.json" with { type: "json" };
 import euGdprSupportV2 from "../../../data/suites/eu-gdpr-support-v2.json" with { type: "json" };
 import euGdprSupportV2Tiers from "../../../data/suites/eu-gdpr-support-v2.tiers.json" with { type: "json" };
 import fintechKycV2 from "../../../data/suites/fintech-kyc-v2.json" with { type: "json" };
@@ -75,6 +77,7 @@ const REGISTERED: Registration[] = [
   { tiers: eCommerceRefundV1Tiers, suite: eCommerceRefundV1 },
   { tiers: fintechKycV1Tiers, suite: fintechKycV1 },
   { tiers: euSupportV6Tiers, suite: euSupportV6 },
+  { tiers: euSupportV7Tiers, suite: euSupportV7 },
   { tiers: euGdprSupportV2Tiers, suite: euGdprSupportV2 },
   { tiers: fintechKycV2Tiers, suite: fintechKycV2 },
 ];

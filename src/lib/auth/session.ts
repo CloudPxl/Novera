@@ -1,4 +1,5 @@
 import "server-only";
+import { pickActiveWorkspace } from "./active-workspace.ts";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { safeNext } from "./redirects.ts";
@@ -61,6 +62,7 @@ export interface UserContext {
 
 /** The workspace a person chose, remembered per browser. Always checked against membership. */
 export const ACTIVE_WORKSPACE_COOKIE = "nv_ws";
+export { pickActiveWorkspace } from "./active-workspace.ts";
 
 /** An invitation opened before signing in, held in the invitee's own browser until they are. */
 export const INVITE_COOKIE = "nv_invite";
@@ -130,11 +132,7 @@ const loadContext = cache(async (create: boolean): Promise<UserContext | null> =
   if (profileError || !profile) throw new Error(`Could not load your profile: ${profileError?.message ?? "no row returned"}`);
   const p = profile as UserProfile;
 
-  const chosen = (await cookies()).get(ACTIVE_WORKSPACE_COOKIE)?.value;
-  const active =
-    memberships.find((m) => m.workspace.id === chosen) ??
-    memberships.find((m) => m.workspace.id === p.default_workspace_id) ??
-    memberships[0];
+  const active = pickActiveWorkspace(memberships, (await cookies()).get(ACTIVE_WORKSPACE_COOKIE)?.value, p.default_workspace_id);
 
   return {
     user,

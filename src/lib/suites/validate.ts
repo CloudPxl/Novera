@@ -86,6 +86,9 @@ function validateChecks(
             case "no_card_number":
               parsed.push({ type: "no_card_number" });
               break;
+            case "refund_recorded":
+              parsed.push({ type: "refund_recorded" });
+              break;
             case "no_duplicate_call": {
               // Optional: scoped to one tool, or every tool when omitted.
               if (k.tool === undefined) { parsed.push({ type: "no_duplicate_call" }); break; }

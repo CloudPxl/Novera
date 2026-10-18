@@ -330,7 +330,7 @@ test("the workflow is generated once: triggers, secret, pinned suite, bounded lo
 test("the documentation shows exactly the generated workflow", () => {
   const doc = readFileSync("data/docs/integration-github-actions.md", "utf8");
   const block = /```yaml\n([\s\S]*?)```/.exec(doc)?.[1];
-  assert.equal(block, githubWorkflow({ agentId: "your-agent-id", suite: "eu-support-v6" }));
+  assert.equal(block, githubWorkflow({ agentId: "your-agent-id", suite: "eu-support-v7" }));
   assert.match(doc, /\.github\/workflows\/novera-gate\.yml/);
 });
 

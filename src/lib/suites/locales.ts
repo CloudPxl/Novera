@@ -13,6 +13,8 @@ import fintechKycV1Locales from "../../../data/suites/fintech-kyc-v1.locales.jso
 // definition, so a run of either version finds its variants.
 import euSupportV6 from "../../../data/suites/eu-support-v6.json" with { type: "json" };
 import euSupportV6Locales from "../../../data/suites/eu-support-v6.locales.json" with { type: "json" };
+import euSupportV7 from "../../../data/suites/eu-support-v7.json" with { type: "json" };
+import euSupportV7Locales from "../../../data/suites/eu-support-v7.locales.json" with { type: "json" };
 import euGdprSupportV2 from "../../../data/suites/eu-gdpr-support-v2.json" with { type: "json" };
 import euGdprSupportV2Locales from "../../../data/suites/eu-gdpr-support-v2.locales.json" with { type: "json" };
 import fintechKycV2 from "../../../data/suites/fintech-kyc-v2.json" with { type: "json" };
@@ -96,6 +98,7 @@ const REGISTERED: Registration[] = [
   { locales: eCommerceRefundV1Locales, suite: eCommerceRefundV1 },
   { locales: fintechKycV1Locales, suite: fintechKycV1 },
   { locales: euSupportV6Locales, suite: euSupportV6 },
+  { locales: euSupportV7Locales, suite: euSupportV7 },
   { locales: euGdprSupportV2Locales, suite: euGdprSupportV2 },
   { locales: fintechKycV2Locales, suite: fintechKycV2 },
 ];

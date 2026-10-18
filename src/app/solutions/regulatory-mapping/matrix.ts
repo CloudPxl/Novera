@@ -1,4 +1,4 @@
-import suiteFile from "../../../../data/suites/eu-support-v6.json" with { type: "json" };
+import suiteFile from "../../../../data/suites/eu-support-v7.json" with { type: "json" };
 import { OBLIGATION_LABELS } from "../../../lib/report/payload.ts";
 import { SUITE } from "../_components/content.ts";
 

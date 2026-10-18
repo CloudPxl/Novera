@@ -69,6 +69,9 @@ export async function sendEmail(args: {
 
   if (!response.ok) {
     const detail = (payload?.message as string | undefined) ?? response.statusText;
+    // An alert a log search finds: the status and Resend's error name, never the key, the
+    // recipient or the message.
+    console.error(`[novera:error] ${JSON.stringify({ kind: "mail_send_failed", status: response.status, name: typeof payload?.name === "string" ? payload.name : null })}`);
     return { ok: false, id: null, error: `${response.status}: ${detail}` };
   }
 

@@ -136,7 +136,8 @@ test("only a session GoTrue marked as recovered mints a recovery context; the co
   assert.equal(cameFromRecovery(undefined), false);
   const callback = readFileSync(new URL("../src/app/auth/callback/handle.ts", import.meta.url), "utf8");
   assert.match(callback, /const recovered = cameFromRecovery\(data\.session\?\.access_token\);/);
-  assert.match(callback, /if \(!recovered\) \{\n\s+await supabase\.auth\.signOut/, "flow=recovery without GoTrue's mark is refused");
+  assert.match(callback, /if \(!recovered\) return problem\("reset_expired"\);/, "flow=recovery without GoTrue's mark is refused");
+  assert.match(callback, /const problem = async[\s\S]{0,120}await endBrowserSession\(await sessionClient\(\)\);/, "and the refusal ends the session it would have made");
   assert.match(callback, /if \(flow === "recovery" \|\| \(recovered && flow !== "link"\)\)/, "a recovered session goes to the reset page from any flow but linking");
   const route = readFileSync(new URL("../src/app/auth/confirm/route.ts", import.meta.url), "utf8");
   assert.doesNotMatch(route, /sessionClient/, "no link verified here writes this browser's session cookies");

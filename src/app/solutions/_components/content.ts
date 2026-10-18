@@ -95,7 +95,7 @@ export function solutionsIndexMetadata(): Metadata {
 }
 
 /** The suite a new run uses, as the AI Act page names it. Checked against data/suites by the test. */
-export const SUITE = { name: "eu-support v6", version: 6, scenarios: 49 } as const;
+export const SUITE = { name: "eu-support v7", version: 7, scenarios: 49 } as const;
 
 /**
  * How many scenarios of {@link SUITE} carry each EU AI Act reference in `duty_refs`, and how many

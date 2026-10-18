@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { cameFromRecovery, RECOVERY_COOKIE, RECOVERY_COOKIE_OPTIONS, recoverySecret, sealRecovery } from "@/lib/auth/recovery.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
+import { endBrowserSession, forgetWorkspaceChoice } from "@/lib/auth/switch.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { track } from "@/lib/analytics/track.ts";
@@ -37,7 +38,14 @@ export function flowOf(value: string | null): Flow {
 
 export async function completeAuth(url: URL, flow: Flow): Promise<NextResponse> {
   const to = (path: string) => NextResponse.redirect(new URL(path, url.origin));
-  const problem = (code: ProblemCode, page = "/sign-in") => to(`${page}?problem=${code}`);
+  // A link that could not be spent ends whatever session this browser held, so the sign-in page
+  // that explains the failure is never skipped into an older account's dashboard (live test,
+  // 2026-10-18: a new account's confirmation left the browser in the previous account). Linking
+  // a provider is done from inside an account and keeps it.
+  const problem = async (code: ProblemCode, page = "/sign-in") => {
+    await endBrowserSession(await sessionClient());
+    return to(`${page}?problem=${code}`);
+  };
   const settings = (query: string) => to(`/settings/account?${query}`);
 
   // Supabase reports a refused link or a cancelled consent screen in the query string. The
@@ -61,6 +69,18 @@ export async function completeAuth(url: URL, flow: Flow): Promise<NextResponse> 
   }
 
   const code = url.searchParams.get("code");
+  const tokenHash = url.searchParams.get("token_hash");
+  if (!code && tokenHash && flow !== "link") {
+    // An emailed link in the token_hash form, opened anywhere: /auth/confirm verifies it and
+    // starts no session, so it works without this browser's PKCE verifier.
+    const target = new URL("/auth/confirm", url.origin);
+    for (const key of ["token_hash", "type", "next"]) {
+      const value = url.searchParams.get(key);
+      if (value) target.searchParams.set(key, value);
+    }
+    await forgetWorkspaceChoice();
+    return NextResponse.redirect(target);
+  }
   if (!code) {
     if (flow === "link") return settings("problem=link_failed");
     return problem(flow === "recovery" ? "reset_expired" : flow === "signup" || flow === "email" ? "link_invalid" : "oauth_failed");
@@ -91,14 +111,12 @@ export async function completeAuth(url: URL, flow: Flow): Promise<NextResponse> 
     // `flow` is only a query parameter: the code from a sign-in or a link flow could be sent
     // here with `flow=recovery` to set a password without the current one. Only a session
     // GoTrue marked as recovered counts (security audit, 2026-10-11).
-    if (!recovered) {
-      await supabase.auth.signOut({ scope: "local" });
-      return problem("reset_expired");
-    }
+    if (!recovered) return problem("reset_expired");
     // Spent with the PKCE verifier this browser holds: the link it asked for itself.
     (await cookies()).set(RECOVERY_COOKIE, sealRecovery({ userId: data.user.id, issuedAt: Date.now(), bound: true }, recoverySecret()), {
       ...RECOVERY_COOKIE_OPTIONS, secure: process.env.NODE_ENV === "production",
     });
+    await forgetWorkspaceChoice();
     return to("/reset-password");
   }
 
@@ -116,6 +134,8 @@ export async function completeAuth(url: URL, flow: Flow): Promise<NextResponse> 
     return settings(`linked=${provider}`);
   }
 
+  // Whoever this browser belonged to before, the new session starts on its own default workspace.
+  await forgetWorkspaceChoice();
   if (flow === "signup") await track("signup_confirmed", { userId: data.user.id, properties: { method: "email" } });
   return to(safeNext(url.searchParams.get("next")));
 }

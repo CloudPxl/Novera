@@ -11,7 +11,7 @@ export const metadata: Metadata = solutionMetadata("eu-ai-act");
  * never says a duty applies, or that one is met — that is the customer's and their counsel's
  * judgement (docs/COMPETITION.md: any public claim naming the Act needs a lawyer).
  *
- * The counts are eu-support v6's, the suite a new run uses; tests/solutions.test.ts re-counts
+ * The counts are eu-support v7's, the suite a new run uses; tests/solutions.test.ts re-counts
  * them from data/suites so a new suite version cannot leave this page stating old figures.
  */
 export default async function EuAiActPage() {

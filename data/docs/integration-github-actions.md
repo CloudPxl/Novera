@@ -40,7 +40,7 @@ jobs:
       NOVERA_API: https://www.nover.space/api/v1
       NOVERA_API_KEY: ${{ secrets.NOVERA_API_KEY }}
       NOVERA_AGENT_ID: your-agent-id
-      NOVERA_SUITE: eu-support-v6
+      NOVERA_SUITE: eu-support-v7
       GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       GIT_BRANCH: ${{ github.head_ref || github.ref_name }}
       PR_NUMBER: ${{ github.event.pull_request.number }}

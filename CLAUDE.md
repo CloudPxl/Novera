@@ -63,6 +63,7 @@ someone with the service role, not merely someone using the application.
 | An exploratory scan of unapproved drafts is never a conformity report: only the Suite Builder starts one, it cannot be scheduled, and the database refuses it a report | 0056 `reports_not_exploratory`, `src/lib/workflow/start-run.ts` |
 | A curated pack is eu-support v6 scenarios byte for byte (version 1 of each, from v5, stays resolvable for the builds made from it), its quality record computed from the labels; a pack without measured scenarios is not offered; observed agent behaviour is never written as policy | `src/lib/builder/packs.ts`, `tests/builder.test.ts`, `verify:builder` |
 | A sign-in never strands a person: a sign-up whose email could not be sent says no account was created, a reset never claims a link was sent over a mail failure, every emailed or provider link returns only to this deployment and to a fixed list of pages, Google and GitHub appear only when enabled, the last way in cannot be removed, and linking, unlinking, password changes and signing out everywhere are audited | `src/lib/auth/redirects.ts`, `src/lib/auth/errors.ts`, `src/app/auth/callback/`, `tests/auth.test.ts`; dashboard steps in `docs/setup/sign-in-and-email.md` |
+| One browser holds one person: a sign-up, a password sign-in or a provider sign-in first ends the session the browser holds (this browser only) and its workspace cookie; a callback that cannot spend its link signs the browser out before explaining, so it never falls through to an older account; a new session starts on its own default workspace, and a workspace cookie naming a workspace the person is not in is ignored; production answers only on www.nover.space (308 before any cookie) | `src/lib/auth/switch.ts`, `src/app/auth/callback/handle.ts`, `src/lib/auth/active-workspace.ts`, `src/lib/net/canonical-host.ts`, `tests/auth-session-isolation.test.ts` |
 | An emailed link signs in only the browser that asked for it: a `token_hash` confirmation confirms the address and starts no session, magic-link and invite links are refused, and a password reset needs a fifteen-minute, single-use recovery context set where a recovery link is spent — a bare `token_hash` reset is verified without cookies and never signs the browser in (its session travels sealed inside the context), and a PKCE code mints one only when GoTrue stamped the session `recovery` | `src/app/auth/confirm/route.ts`, `src/app/auth/callback/handle.ts`, `src/lib/auth/recovery.ts`, `tests/auth.test.ts` |
 | A workspace with its own model key has all of its model work — grading, diagnosis, drafting, Suite Builder extraction, Ask Novera — served on that key, never ours, and each operation is recorded with funding, provider and model, never content; Ask Novera shows no figure its inputs do not contain | `src/lib/providers/model-work.ts` (`resolveConnections`), 0059, `tests/model-work.test.ts` |
 | Billing truth comes from Stripe's signed webhook, each event handled once, never from the browser returning from Checkout; live keys are refused unless explicitly allowed; a plan sells only at its approved catalog price, checked against Stripe's before checkout; a deployment reads only its own Stripe mode's rows (preview and production share one database), so a sandbox subscription never shows, blocks erasure or blocks a live checkout; erasure is refused while Stripe could still charge; a subscription change never deletes evidence | 0060, 0065, 0066, `src/lib/billing/`, `tests/billing.test.ts`, `docs/BILLING-DECISIONS.md` |
@@ -158,7 +159,7 @@ no judge, no votes, no agreement.
 would count as proof (`tool_invoked` or `state_confirmed`). Three outcomes from the
 read-back: confirmed, contradicted (a failure settled without asking a model — the
 strongest finding this product makes), unavailable (withheld, and a different gap from
-having no read-back configured). A 404 is unavailable — a missing record and a wrong address look the same — unless the scenario (`verify.not_found_means`) or the agent's read-back settings declare that a 404 means the record does not exist; then a non-HTML 404 is contradicted. The setting in force is frozen into the run's manifest. GET only by construction, the path cannot escape the
+having no read-back configured). A refund is read from the record's own fields (`refund_recorded`, eu-support v7 T22/T35: status, `refunded`, amount refunded, never a word in a note or a nested history entry). A 404 is unavailable — a missing record and a wrong address look the same — unless the scenario (`verify.not_found_means`) or the agent's read-back settings declare that a 404 means the record does not exist; then a non-HTML 404 is contradicted. The setting in force is frozen into the run's manifest. GET only by construction, the path cannot escape the
 configured origin, the credential has its own revocable scope, and the response body is
 never stored.
 
@@ -225,7 +226,7 @@ src/lib/review/       failed scenarios as findings (new, recurring, resolved), d
 src/lib/builder/      the Suite Builder: curated packs, sources (parse, fetch one page), extraction, discovery, coverage
 data/packs/           curated baseline packs — selections of eu-support v6, byte for byte (v1 packs from v5, deprecated)
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
-data/suites/          versioned scenario suites (eu-support v1–v6; eu-gdpr-support v1–v2, e-commerce-refund v1, fintech-kyc v1–v2), calibration labels, and `.tiers.json` / `.locales.json` sidecars (triage tiers and language variants, not sealed)
+data/suites/          versioned scenario suites (eu-support v1–v7; eu-gdpr-support v1–v2, e-commerce-refund v1, fintech-kyc v1–v2), calibration labels, and `.tiers.json` / `.locales.json` sidecars (triage tiers and language variants, not sealed)
 src/lib/suites/       validation, the suite digest, tiers by scenario definition, computed changelogs, the catalog (/scenarios?tab=catalog)
 src/lib/ci/           CI gating: trigger parsing, commit dedupe and supersede decisions, the exit-code gate, the GitHub Actions workflow generator
 src/lib/checks/       the single-scenario check's label, verdict words and view state
@@ -270,7 +271,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 1310 unit tests | free |
+| `npm test` | 1319 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |

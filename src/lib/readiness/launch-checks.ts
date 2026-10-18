@@ -2,6 +2,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { billingConfig, keyMode } from "../billing/config.ts";
 import { mailDiagnostics } from "../mail/diagnostics.ts";
+import { resendHealth, type ResendHealth } from "../mail/resend-health.ts";
 import { LEGAL_ENTITY, REQUIRED_ENTITY_FIELDS, missingEntityFields, type LegalEntity } from "../../../data/legal/entity.ts";
 import { gradingVendorCount } from "../observability/health.ts";
 
@@ -54,11 +55,13 @@ export interface LaunchInput {
   files?: LaunchFiles;
   env?: Record<string, string | undefined>;
   entity?: LegalEntity;
+  /** The Resend answer, when the caller already has it (tests); otherwise asked live, cached. */
+  resend?: ResendHealth;
 }
 
 /** The built-in suites a deployment is expected to hold, at their current versions. tests/block6-ops.test.ts checks each file exists. */
 export const EXPECTED_SUITES: ReadonlyArray<{ key: string; version: number }> = [
-  { key: "eu-support", version: 6 },
+  { key: "eu-support", version: 7 },
   { key: "eu-gdpr-support", version: 2 },
   { key: "e-commerce-refund", version: 1 },
   { key: "fintech-kyc", version: 2 },
@@ -206,6 +209,20 @@ function emailCheckRow(env: Record<string, string | undefined>): LaunchCheck {
     : { ...base, status: "pending", detail: `Resend key ${d.resendKey.present ? "present" : "absent"}, sender ${d.from.present ? "present" : "absent"}${d.problems.length ? `; ${d.problems.length} setting${d.problems.length === 1 ? "" : "s"} to fix` : ""}.`, remediation: "docs/setup/sign-in-and-email.md" };
 }
 
+/** The live Resend answer: a revoked key or an unverified domain is a failure, never silent. */
+export function emailKeyRow(h: ResendHealth): LaunchCheck {
+  const base = { id: "email_key", title: "Email key works", group: "platform" as const };
+  switch (h.status) {
+    case "verified":
+    case "send_only":
+      return { ...base, status: "pass", detail: h.detail, remediation: null };
+    case "unconfigured":
+      return { ...base, status: "pending", detail: h.detail, remediation: "docs/setup/sign-in-and-email.md" };
+    default:
+      return { ...base, status: "fail", detail: h.detail, remediation: "Replace RESEND_API_KEY in Vercel, or verify nover.space at Resend (docs/setup/sign-in-and-email.md)" };
+  }
+}
+
 function entityCheckRow(entity: LegalEntity): LaunchCheck {
   const base = { id: "entity", title: "Company details complete", group: "founder" as const };
   const missing = missingEntityFields(entity);
@@ -241,6 +258,7 @@ export async function runLaunchChecks(input: LaunchInput): Promise<LaunchCheck[]
     gradingCheck(env),
     stripeCheck(env),
     emailCheckRow(env),
+    emailKeyRow(input.resend ?? (await resendHealth(env))),
     entityCheckRow(input.entity ?? LEGAL_ENTITY),
   ];
 }

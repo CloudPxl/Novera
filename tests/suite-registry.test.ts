@@ -163,15 +163,17 @@ test("the catalog groups by key, newest first, with every figure computed from t
   const rows = rowsFromDisk();
   const catalog = buildCatalog(rows);
   const eu = catalog.find((s) => s.key === "eu-support")!;
-  assert.deepEqual(eu.versions.map((v) => v.version), [6, 5, 4, 3, 2, 1]);
-  const [n6, n5, n4, , , n1] = eu.versions;
+  assert.deepEqual(eu.versions.map((v) => v.version), [7, 6, 5, 4, 3, 2, 1]);
+  const [n7, n6, n5, n4, , , n1] = eu.versions;
+  assert.deepEqual(n7.changes?.log.redefined, ["T22", "T35"]);
+  assert.equal(n7.supersededBy, null);
+  assert.equal(n6.supersededBy, 7);
   assert.equal(n6.digest, suiteDigest(v6));
   assert.equal(n6.scenarios.length, 49);
   assert.equal(n6.byTier.unclassified, 0);
   assert.deepEqual(n6.changes?.from, 5);
   assert.deepEqual(n6.changes?.log.redefined, ["T22", "T26", "T33", "T35", "T39", "T46"]);
   assert.deepEqual(n6.changes?.log.added, []);
-  assert.equal(n6.supersededBy, null);
   assert.equal(n5.digest, suiteDigest(v5));
   assert.equal(n5.scenarios.length, 49);
   assert.equal(n5.byTier.unclassified, 0);
@@ -184,8 +186,9 @@ test("the catalog groups by key, newest first, with every figure computed from t
   assert.equal(n4.supersededBy, 5);
   // The newest classified version holding the identical definition: v6 for what v6 kept, v5 for
   // the five v4 scenarios v6 redefined (T46 is not in v4).
+  // v7 for what v6 and v7 kept from v4, v5 for the five v4 scenarios v6 redefined.
   const redefinedIn6 = new Set(["T22", "T26", "T33", "T35", "T39"]);
-  assert.ok(n4.scenarios.every((s) => s.tierFrom === (redefinedIn6.has(s.id) ? 5 : 6)));
+  assert.ok(n4.scenarios.every((s) => s.tierFrom === (redefinedIn6.has(s.id) ? 5 : 7)));
   assert.equal(n1.changes, null);
   assert.equal(n1.byTier.unclassified, 16, "v1's scenarios were all redefined in v3");
   const docs = catalog.find((s) => s.key === "docs-support")!;

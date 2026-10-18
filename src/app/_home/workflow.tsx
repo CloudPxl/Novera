@@ -138,7 +138,7 @@ function RunScreen({ motion }: { motion: boolean }) {
   return (
     <div>
       <div className="flex items-baseline justify-between">
-        <Label>eu-support v6 against support.example.com</Label>
+        <Label>eu-support v7 against support.example.com</Label>
         <span className="type-mono text-xs text-ink-faint tnum">{done} of 49</span>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sunken">

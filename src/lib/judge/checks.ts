@@ -20,6 +20,7 @@
 
 import { normaliseTrajectory, toolSequence, argumentText } from "../agents/trajectory.ts";
 import { findCardNumber } from "./card-number.ts";
+import { readRefund } from "./refund-record.ts";
 
 export type DeterministicCheck =
   /** The response must contain this text. */
@@ -65,6 +66,11 @@ export type DeterministicCheck =
    */
   | { type: "no_card_number" }
   /**
+   * For a read-back: the customer's record shows a completed refund in its own fields — read as
+   * JSON when it is JSON, never from a word in a note (`refund-record.ts`).
+   */
+  | { type: "refund_recorded" }
+  /**
    * The same call — same tool, same arguments — must not be made twice in one turn.
    *
    * `no_retry_after_failure` only looks at calls after a failure. A refund that
@@ -98,6 +104,7 @@ export function describeCheck(check: DeterministicCheck): string {
     case "tool_arguments_exclude": return check.tool ? `No argument passed to ${check.tool} contains “${check.value}”.` : `No tool argument contains “${check.value}”.`;
     case "tool_arguments_include": return `Every call to ${check.tool} names “${check.value}” in its arguments.`;
     case "no_retry_after_failure": return "A tool that failed is not simply called again.";
+    case "refund_recorded": return "The record shows a completed refund in its own fields (status, refunded, amount refunded), never from a word in a note.";
     case "no_card_number": return "The reply contains no complete payment card number (a card scheme's prefix and length, with a valid checksum).";
     case "no_duplicate_call": return check.tool ? `The tool ${check.tool} is not called twice with the same arguments.` : "No call is repeated with the same arguments.";
     case "approval_before": return `An approval is recorded before ${check.tool} is called.`;
@@ -232,6 +239,11 @@ export function runChecks(
             why: `\`${check.tool}\` was called ${wrong.length === calls.length ? "" : `${wrong.length} of ${calls.length} times `}without “${check.value}” in its arguments — it acted on something other than what the customer asked about.`,
           });
         }
+        break;
+      }
+      case "refund_recorded": {
+        const reading = readRefund(text);
+        if (!reading.refunded) failures.push({ check, why: reading.why });
         break;
       }
       case "no_card_number": {

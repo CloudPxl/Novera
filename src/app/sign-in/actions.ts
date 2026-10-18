@@ -6,6 +6,7 @@ import { openRefreshToken, readRecovery, RECOVERY_COOKIE, recoverySecret } from 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { sessionClient } from "@/lib/supabase/server.ts";
+import { endBrowserSession } from "@/lib/auth/switch.ts";
 import { COUNT_UNAVAILABLE_MESSAGE, rateLimit } from "@/lib/support/rate-limit.ts";
 import { fingerprint, refusalMessage, type Limit } from "@/lib/support/throttle.ts";
 import { callerAddress } from "@/lib/support/rate-limit.ts";
@@ -101,7 +102,10 @@ async function signIn(_prev: AuthState, form: FormData): Promise<AuthState> {
   const limit = await rateLimit(who, SIGN_IN_LIMIT, { peek: true, onError: "allow" });
   if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
 
-  const { error } = await (await sessionClient()).auth.signInWithPassword(credentials);
+  const supabase = await sessionClient();
+  // Another person's session in this browser ends first; a failed attempt then leaves none.
+  await endBrowserSession(supabase);
+  const { error } = await supabase.auth.signInWithPassword(credentials);
 
   if (error) {
     // Counted only on failure: a person who mistypes once and then signs in has spent
@@ -145,7 +149,10 @@ async function signUp(_prev: AuthState, form: FormData): Promise<AuthState> {
   const refused = await emailAllowance("signup", credentials.email, SIGN_UP_LIMIT);
   if (refused) return { error: refused };
 
-  const { data, error } = await (await sessionClient()).auth.signUp({
+  const supabase = await sessionClient();
+  // A new account never waits for its email beside someone else's live session.
+  await endBrowserSession(supabase);
+  const { data, error } = await supabase.auth.signUp({
     ...credentials,
     // Without this the link went to Supabase's Site URL root, where nothing spent its code.
     options: { emailRedirectTo: `${await origin()}/auth/callback?flow=signup${carried(form)}` },
@@ -244,7 +251,9 @@ async function continueWithProvider(_prev: AuthState, form: FormData): Promise<A
     return { error: `${PROVIDER_LABEL[provider]} sign-in is not switched on yet. Use your email address and a password.` };
   }
   const next = safeNext(String(form.get("next") ?? ""));
-  const { data, error } = await (await sessionClient()).auth.signInWithOAuth({
+  const supabase = await sessionClient();
+  await endBrowserSession(supabase);
+  const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
       redirectTo: `${await origin()}/auth/callback?flow=oauth&next=${encodeURIComponent(next)}`,

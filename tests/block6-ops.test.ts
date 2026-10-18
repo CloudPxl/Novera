@@ -233,11 +233,12 @@ const FILES: LaunchFiles = {
   migrations: async () => ["0001_init.sql", "0072_scenario_checks.sql"],
   docs: async () => [...INTEGRATION_GUIDES, "what-novera-does"].map((s) => `${s}.md`),
 };
+const RESEND_OK = { status: "verified" as const, detail: "The key works and nover.space is verified at Resend.", checkedAt: 0 };
 const READY_ENV = { ...FAKE_ENV, RESEND_FROM_EMAIL: "no-reply@nover.space", GROQ_API_KEY: "x", MISTRAL_API_KEY: "y", STRIPE_SECRET_KEY: undefined, STRIPE_WEBHOOK_SECRET: undefined };
 
 test("with everything in place the platform checks pass and the exit code is 0", async () => {
-  const checks = await runLaunchChecks({ db: GOOD_DB, files: FILES, env: READY_ENV });
-  assert.deepEqual(checks.filter((c) => c.group === "platform").map((c) => c.status), ["pass", "pass", "pass", "pass", "pass", "pass"]);
+  const checks = await runLaunchChecks({ resend: RESEND_OK, db: GOOD_DB, files: FILES, env: READY_ENV });
+  assert.deepEqual(checks.filter((c) => c.group === "platform").map((c) => c.status), ["pass", "pass", "pass", "pass", "pass", "pass", "pass"]);
   assert.equal(launchExitCode(checks), 0);
   assert.equal(launchExitCode(checks, true), 1, "strict also counts what waits on the founder (company details are all null)");
   assert.ok(checks.every((c) => c.status !== "fail" || c.remediation));
@@ -250,7 +251,7 @@ test("each failing check names the command or page that fixes it", async () => {
     builtInSuites: async () => EXPECTED_SUITES.filter((s) => s.key !== "fintech-kyc"),
     docPages: async () => [{ slug: "what-novera-does", published: true }],
   };
-  const checks = await runLaunchChecks({ db: bad, files: FILES, env: { GROQ_API_KEY: "x" } });
+  const checks = await runLaunchChecks({ resend: RESEND_OK, db: bad, files: FILES, env: { GROQ_API_KEY: "x" } });
   const by = Object.fromEntries(checks.map((c) => [c.id, c]));
   assert.equal(by.migrations.status, "fail");
   assert.equal(by.migrations.remediation, "npm run migrate");
@@ -269,7 +270,7 @@ test("each failing check names the command or page that fixes it", async () => {
 });
 
 test("a migration newer than every probe is flagged rather than assumed applied", async () => {
-  const checks = await runLaunchChecks({
+  const checks = await runLaunchChecks({ resend: RESEND_OK,
     db: GOOD_DB, env: READY_ENV,
     files: { ...FILES, migrations: async () => ["0072_scenario_checks.sql", "0099_future.sql"] },
   });
@@ -281,11 +282,11 @@ test("a migration newer than every probe is flagged rather than assumed applied"
 
 test("a database that does not answer fails every dependent check and never throws", async () => {
   const down: LaunchDb = { ...GOOD_DB, reachable: async () => false };
-  const checks = await runLaunchChecks({ db: down, files: FILES, env: READY_ENV });
+  const checks = await runLaunchChecks({ resend: RESEND_OK, db: down, files: FILES, env: READY_ENV });
   assert.equal(checks.find((c) => c.id === "database")!.status, "fail");
   for (const id of ["migrations", "suites", "docs"]) assert.match(checks.find((c) => c.id === id)!.detail, /Not checked/);
   const throwing: LaunchDb = { ...GOOD_DB, builtInSuites: async () => { throw new Error(`boom ${SECRETS.stripe}`); } };
-  const again = await runLaunchChecks({ db: throwing, files: FILES, env: READY_ENV });
+  const again = await runLaunchChecks({ resend: RESEND_OK, db: throwing, files: FILES, env: READY_ENV });
   const suites = again.find((c) => c.id === "suites")!;
   assert.equal(suites.status, "fail");
   assert.ok(!JSON.stringify(again).includes(SECRETS.stripe));
@@ -293,7 +294,7 @@ test("a database that does not answer fails every dependent check and never thro
 
 test("Stripe isolation: off passes, a test key on production fails, test and live modes are named", async () => {
   const run = async (env: Record<string, string | undefined>) =>
-    (await runLaunchChecks({ db: GOOD_DB, files: FILES, env })).find((c) => c.id === "stripe")!;
+    (await runLaunchChecks({ resend: RESEND_OK, db: GOOD_DB, files: FILES, env })).find((c) => c.id === "stripe")!;
   assert.equal((await run({})).status, "pass");
   const testKey = ["sk", "test", "T".repeat(24)].join("_");
   assert.match((await run({ STRIPE_SECRET_KEY: testKey, STRIPE_WEBHOOK_SECRET: SECRETS.webhook })).detail, /Test mode/);
@@ -307,7 +308,7 @@ test("Stripe isolation: off passes, a test key on production fails, test and liv
 });
 
 test("no check carries a configuration value", async () => {
-  const checks = await runLaunchChecks({ db: GOOD_DB, files: FILES, env: FAKE_ENV });
+  const checks = await runLaunchChecks({ resend: RESEND_OK, db: GOOD_DB, files: FILES, env: FAKE_ENV });
   const text = JSON.stringify(checks);
   for (const [name, value] of Object.entries(FAKE_ENV)) assert.ok(!text.includes(value), `${name} appears in a launch check`);
 });
@@ -327,10 +328,39 @@ test("a missing repository file or directory is 'not available here', never a cr
   const none = diskLaunchFiles("/nonexistent-root");
   assert.equal(await none.migrations(), null);
   assert.equal(await none.docs(), null);
-  const checks = await runLaunchChecks({ db: GOOD_DB, files: none, env: READY_ENV });
+  const checks = await runLaunchChecks({ resend: RESEND_OK, db: GOOD_DB, files: none, env: READY_ENV });
   const migrations = checks.find((c) => c.id === "migrations")!;
   const docs = checks.find((c) => c.id === "docs")!;
   assert.equal(migrations.status, "pass");
   assert.match(migrations.detail, /migration files not available in this deployment/);
   assert.match(docs.detail, /data\/docs not available in this deployment/);
+});
+
+test("the Resend key check: verified, send-only, revoked, unverified domain, cached five minutes, never the key", async () => {
+  const { classifyResendDomains, resendHealth, resetResendHealthCache, RESEND_HEALTH_TTL_MS } = await import("../src/lib/mail/resend-health.ts");
+  const { emailKeyRow } = await import("../src/lib/readiness/launch-checks.ts");
+  assert.equal(classifyResendDomains(200, { data: [{ name: "nover.space", status: "verified" }] }).status, "verified");
+  assert.equal(classifyResendDomains(200, { data: [{ name: "nover.space", status: "pending" }] }).status, "domain_unverified");
+  assert.equal(classifyResendDomains(200, { data: [] }).status, "domain_missing");
+  assert.equal(classifyResendDomains(401, { name: "restricted_api_key" }).status, "send_only", "a sending-only key works");
+  assert.equal(classifyResendDomains(401, { name: "missing_api_key" }).status, "invalid_key");
+  assert.equal(classifyResendDomains(400, { name: "validation_error" }).status, "invalid_key");
+  assert.equal(emailKeyRow({ status: "invalid_key", detail: "x", checkedAt: 0 }).status, "fail");
+  assert.equal(emailKeyRow({ status: "send_only", detail: "x", checkedAt: 0 }).status, "pass");
+  assert.equal(emailKeyRow({ status: "unconfigured", detail: "x", checkedAt: 0 }).status, "pending");
+
+  resetResendHealthCache();
+  let calls = 0;
+  let t = 1_000;
+  const fake = (async () => { calls++; return new Response(JSON.stringify({ name: "restricted_api_key" }), { status: 401 }); }) as typeof fetch;
+  const env = { RESEND_API_KEY: "re_test_never_printed_1234" };
+  const first = await resendHealth(env, fake, () => t);
+  t += RESEND_HEALTH_TTL_MS - 1;
+  await resendHealth(env, fake, () => t);
+  assert.equal(calls, 1, "cached within five minutes");
+  t += 2;
+  await resendHealth(env, fake, () => t);
+  assert.equal(calls, 2);
+  assert.ok(!JSON.stringify(first).includes("re_test"), "the key never appears in the answer");
+  assert.equal((await resendHealth({}, fake)).status, "unconfigured");
 });

@@ -243,6 +243,7 @@ function describeExpectation(checks: DeterministicCheck[]): string {
         case "must_not_contain": return `does not contain "${c.value}"`;
         case "must_match": return c.describe ? `contains ${c.describe}` : `matches /${c.pattern}/`;
         case "must_not_match": return c.describe ? `does not contain ${c.describe}` : `does not match /${c.pattern}/`;
+        case "refund_recorded": return "shows a completed refund in its own fields";
         default: return c.type;
       }
     })

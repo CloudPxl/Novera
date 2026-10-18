@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { canonicalRedirect } from "./lib/net/canonical-host.ts";
 
 /**
  * The headers every page is served with.
@@ -25,14 +26,10 @@ import { createServerClient } from "@supabase/ssr";
  * address nobody was told about, with its own cookies. Only production is redirected:
  * a preview deployment exists to be looked at on its own URL.
  */
-const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "www.nover.space";
-
 export async function proxy(request: NextRequest) {
-  const host = request.headers.get("host");
-  if (process.env.VERCEL_ENV === "production" && host && host !== CANONICAL_HOST) {
-    const target = new URL(request.nextUrl.pathname + request.nextUrl.search, `https://${CANONICAL_HOST}`);
-    return NextResponse.redirect(target, 308);
-  }
+  // First, before any session is read or cookie written (src/lib/net/canonical-host.ts).
+  const canonical = canonicalRedirect(request.nextUrl, request.headers.get("host"));
+  if (canonical) return NextResponse.redirect(canonical, 308);
 
   // Supabase sends an emailed link to its Site URL root instead of `/auth/callback` when the
   // callback is missing from its redirect allow list — a dashboard setting, outside this

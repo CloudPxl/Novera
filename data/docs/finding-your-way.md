@@ -31,7 +31,7 @@ From left to right:
 - The **Novera logo** goes back to the home page.
 - The **workspace switcher**, when you belong to more than one workspace or use agency or enterprise mode.
 - The five places above.
-- A short label saying **who pays for grading** in this workspace: Novera's trial (with runs left), a plan, or your own model key. The owner and admins can open billing from it.
+- A short label saying **who pays for grading** in this workspace: Novera's trial (with runs left), a pilot (with runs left, shared across the workspaces its owner owns), a plan, or your own model key. The owner and admins can open billing from it.
 - Your **role**, if you are not the owner.
 - **Run evaluation** (shortened to **Run** on smaller screens): start a test from any page. Choose the agent, the suite and, where the suite offers it, the language.
 - The **menu**: your name and role, **Connect an agent**, **Members**, **Billing**, **Your profile**, the **Step-by-step guide**, **Novera in plain words**, the **Documentation**, and **Sign out**. What appears depends on your role.

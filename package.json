@@ -48,6 +48,8 @@
     "verify:free": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/verify-free.mts",
     "verify:builder": "node --conditions=react-server --env-file=.env.local scripts/verify-builder.mts",
     "verify:export": "node --conditions=react-server --env-file=.env.local scripts/verify-export.mts",
+    "pilot:code": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/pilot-code.mts",
+    "seed:pilot-codes": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/seed-pilot-codes.mts",
     "observability:test-event": "node --no-warnings --conditions=react-server --env-file-if-exists=.env.local scripts/observability-test-event.mts"
   },
   "dependencies": {

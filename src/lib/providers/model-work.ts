@@ -2,18 +2,21 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createRoutedChat, type RoutedChat, type RoutedAttempt } from "../router/execute.ts";
 import { connectionsForWorkspace } from "./workspace-connections.ts";
+import { workspaceEntitlement } from "../auth/entitlement.ts";
+import type { JudgeSource } from "../billing/entitlement.ts";
 
 /**
  * The model behind a workspace's own work — diagnosing a failure, drafting scenarios from its
  * policy, reading a Suite Builder source, answering in Ask Novera — and the record of each call.
  *
  * One resolution for all of it, the same one grading uses: a workspace with its own key is
- * served on that key alone; one without is served on the trial allowance. Diagnosis, drafting
+ * served on that key alone; one without is served on Novera's keys, funded as its runs are —
+ * under a grant or a plan, or on the trial allowance (`modelWorkFunding`, 0076). Diagnosis, drafting
  * and extraction used to reach for Novera's keys unconditionally, so a workspace that had chosen
  * its own provider had its policy and documents sent to ours (app-wide audit, 2026-10-08). There
  * is no fallback from a workspace key to ours: when the key fails, the operation fails and says so.
  */
-export type Funding = "trial_free" | "workspace_key";
+export type Funding = "trial_free" | "workspace_key" | "plan_managed";
 export type ModelOperation = "diagnose" | "draft" | "extract" | "assistant";
 
 export interface CallRecord {
@@ -61,14 +64,39 @@ export function observedChat(chat: RoutedChat, calls: CallRecord[]): RoutedChat 
   }) as RoutedChat;
 }
 
+/**
+ * Who pays for model work (0076): the workspace's own key when it has one; on Novera's keys,
+ * whatever a run started now would be stamped with — `plan_managed` while a grant (a pilot, for
+ * one) or a plan funds runs on Novera's keys, the trial allowance otherwise. Pure, so the rule is
+ * tested apart from the database.
+ */
+export function modelWorkFunding(connection: "trial_free" | "workspace_key", runJudgeSource: JudgeSource | null): Funding {
+  if (connection === "workspace_key") return "workspace_key";
+  return runJudgeSource === "plan_managed" ? "plan_managed" : "trial_free";
+}
+
 /** The chat a workspace's model work runs on, or the sentence saying why there is none. */
 export async function workspaceChat(args: { client: SupabaseClient; workspaceId: string }): Promise<WorkspaceChat | { error: string }> {
   try {
     const { connections, routes, source } = await connectionsForWorkspace(args);
     const calls: CallRecord[] = [];
-    return { chat: observedChat(createRoutedChat({ connections, routes }), calls), funding: source, calls };
+    return { chat: observedChat(createRoutedChat({ connections, routes }), calls), funding: await fundingOf(args, source), calls };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "No model is available for this workspace right now." };
+  }
+}
+
+/**
+ * On Novera's keys, the same decision a run start makes (`workspaceEntitlement`). If billing
+ * cannot be read, the operation still runs and is recorded as the trial allowance, as before 0076.
+ */
+async function fundingOf(args: { client: SupabaseClient; workspaceId: string }, connection: "trial_free" | "workspace_key"): Promise<Funding> {
+  if (connection === "workspace_key") return "workspace_key";
+  try {
+    const entitlement = await workspaceEntitlement(args);
+    return modelWorkFunding(connection, entitlement.billing.judgeSource);
+  } catch {
+    return "trial_free";
   }
 }
 
@@ -96,6 +124,11 @@ export async function recordModelOperation(admin: SupabaseClient, row: {
   if (error) console.error(`[model-work] could not record a ${row.operation} operation: ${error.code ?? ""}`);
 }
 
+/**
+ * Said beside an answer or a reading: whose key served it. A workspace without its own key is
+ * served on Novera's keys whether the trial, a plan or a grant funds its runs, so it is never
+ * called "the trial allowance" here — a pilot workspace's Builder readings were.
+ */
 export function fundingLabel(funding: Funding): string {
-  return funding === "workspace_key" ? "your own key" : "the Novera trial allowance";
+  return funding === "workspace_key" ? "your own key" : "Novera's keys";
 }

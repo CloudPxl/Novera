@@ -110,10 +110,12 @@ const T07 = (euSupportV5.cases as SuiteCase[]).find((c) => c.id === "T07")!;
 const T01 = (euSupportV5.cases as SuiteCase[]).find((c) => c.id === "T01")!;
 const DESTRUCTIVE: SuiteCase = { ...T01, id: "X01", destructive: true };
 const FIXTURE_ONLY: SuiteCase = { ...T01, id: "X02", fixture_only: true };
+// eu-support v5 is localised in full, so a scenario with no variant is one a workspace added.
+const NO_VARIANT: SuiteCase = { ...T01, id: "X03" };
 
 function world(agent: Partial<Record<string, unknown>> = {}) {
   return fakeDb({
-    suites: [{ id: SUITE, key: "eu-support", version: 5, workspace_id: null, approval: "approved", cases: [...(euSupportV5.cases as SuiteCase[]), DESTRUCTIVE, FIXTURE_ONLY] }],
+    suites: [{ id: SUITE, key: "eu-support", version: 5, workspace_id: null, approval: "approved", cases: [...(euSupportV5.cases as SuiteCase[]), DESTRUCTIVE, FIXTURE_ONLY, NO_VARIANT] }],
     agents: [{ id: AGENT, workspace_id: WS, config: { kind: "http" }, verification: null, is_production: true, archived_at: null, ...agent }],
     policies: [{ id: POLICY, agent_id: AGENT, workspace_id: WS, version: 3, body: "Refunds within 14 days." }],
     run_cases: [{ id: RUN_CASE, run_id: RUN, workspace_id: WS, case_id: "T07", category: "c", obligation: "o", severity: "high", input: "i", expected: "e", assertions: [] }],
@@ -243,8 +245,8 @@ test("refusals: unknown, archived, unfunded, over the limit, uncounted, and a mi
   await expect(run(suiteCase({ agentId: "00000000-0000-4000-8000-000000000000" }), deps().d), "not_found", 404);
   await expect(run({ kind: "run_case", runCaseId: "00000000-0000-4000-8000-000000000000" }, deps().d), "not_found", 404);
   await expect(run(suiteCase(), deps().d, { archived_at: "2026-10-01T00:00:00Z" }), "archived", 409);
-  // T01 has no German variant: refused, never sent in English under a German request.
-  const noVariant = await expect(run(suiteCase({ scenarioId: "T01", locale: "de" }), deps().d), "no_locale_variant", 422);
+  // A workspace scenario has no German variant: refused, never sent in English under a German request.
+  const noVariant = await expect(run(suiteCase({ scenarioId: "X03", locale: "de" }), deps().d), "no_locale_variant", 422);
   if (!noVariant.ok) assert.match(noVariant.message, /no German variant/);
 
   const unfunded = deps({ entitlement: async () => ({ canRun: false, blocker: "trial_used", blockedReason: "The trial covers 3 runs.", judgeSource: "trial_free" }) });

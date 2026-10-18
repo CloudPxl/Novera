@@ -90,10 +90,10 @@ try {
   report(Boolean(badWindow), "a zero-length window is refused", badWindow?.message.slice(0, 50) ?? "IT WAS ACCEPTED");
 
   // 7. What the person is told.
-  const message = refusalMessage(windowResetMinutes(SUPPORT_LIMIT.windowSeconds));
+  const message = refusalMessage(windowResetMinutes(SUPPORT_LIMIT.windowSeconds), "message");
   report(
-    /try again/.test(message) && /support@nover\.space/.test(message) && !/rate limit/i.test(message),
-    "the refusal says when, and offers a way that does not involve waiting",
+    /try again/.test(message) && /already sent has reached us/.test(message) && !/@/.test(message) && !/rate limit/i.test(message),
+    "the refusal says when and that what was sent arrived, and names no address that cannot receive mail",
   );
 
   // 8. A peek reads without spending.

@@ -10,6 +10,7 @@ const SUB_COLUMNS =
   "workspace_id, stripe_subscription_id, stripe_customer_id, status, plan_key, stripe_price_id, quantity, current_period_start, current_period_end, cancel_at_period_end, cancel_at, canceled_at, ended_at, delinquent_since, livemode, stripe_created_at, stripe_observed_at";
 
 type Row = Record<string, unknown>;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const s = (v: unknown) => (typeof v === "string" ? v : null);
 
 function fromRow(r: Row): StoredSubscription {
@@ -170,8 +171,19 @@ export function supabaseBillingStore(db: SupabaseClient): BillingStore {
     },
 
     async listGrants(workspaceId): Promise<GrantRow[]> {
-      const { data, error } = await db.from("billing_entitlement_grants")
-        .select("id, kind, plan_key, runs_allowed, starts_at, ends_at, revoked_at").eq("workspace_id", workspaceId);
+      // This workspace's grants, and every owner-wide grant of its owner, whichever of their
+      // workspaces holds it (0076): a pilot redeemed in one funds them all. The owner is read
+      // here, never taken from a caller.
+      const { data: ws, error: wsError } = await db.from("workspaces").select("owner_id").eq("id", workspaceId).maybeSingle();
+      if (wsError) throw new Error(`Could not read the workspace's owner: ${wsError.message}`);
+      const owner = s(ws?.owner_id);
+      // Both ids go into a filter string below: only ids, never anything a filter could parse.
+      if (!UUID.test(workspaceId) || (owner && !UUID.test(owner))) throw new Error("Could not read grants: not a workspace id.");
+      const query = db.from("billing_entitlement_grants")
+        .select("id, kind, plan_key, runs_allowed, starts_at, ends_at, revoked_at, owner_id");
+      const { data, error } = owner
+        ? await query.or(`workspace_id.eq.${workspaceId},owner_id.eq.${owner}`)
+        : await query.eq("workspace_id", workspaceId);
       if (error) throw new Error(`Could not read grants: ${error.message}`);
       return (data ?? []).map((g) => ({
         id: g.id as string,
@@ -181,6 +193,7 @@ export function supabaseBillingStore(db: SupabaseClient): BillingStore {
         startsAt: iso(g.starts_at) as string,
         endsAt: iso(g.ends_at),
         revokedAt: iso(g.revoked_at),
+        ownerId: s(g.owner_id),
       }));
     },
 

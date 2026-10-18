@@ -2,7 +2,7 @@
 title: The Novera API
 published: true
 ---
-A workspace API key lets a script, a CI pipeline or an AI assistant read your workspace's agents, suites, runs and verdicts without signing in. A key can also start runs only if you tick **Can also start runs** when you create it — each run it starts uses one of your trial runs, or grades on your own model key. No key can change a policy, approve anything, or publish or revoke a report.
+A workspace API key lets a script, a CI pipeline or an AI assistant read your workspace's agents, suites, runs and verdicts without signing in. A key can also start runs only if you tick **Can also start runs** when you create it — each run it starts is counted exactly like one started from the button: one of the trial's three runs, then one of your plan's or grant's runs, graded on your own model key if the workspace has one. No key can change a policy, approve anything, or publish or revoke a report.
 
 ## Keys
 
@@ -156,7 +156,7 @@ claude mcp add --transport http novera https://www.nover.space/api/mcp --header 
 
 Every key gets seven read-only tools: `list_agents`, `list_suites`, `list_runs`, `get_run`, `get_evidence_gaps` (scenarios with no verdict, missing evidence or uncorroborated graders), `compare_runs` (fixed, still failing, newly broken, lost or regained a verdict) and `verify_report` (recomputes a sealed report's hash). What else the assistant is offered follows what you ticked when you created the key:
 
-- **Can also start runs** adds `start_run` and `advance_run` — the same checks as the run button, and each run uses a trial run or grades on your own model key.
+- **Can also start runs** adds `start_run` and `advance_run` — the same checks as the run button, and each run is counted as one started from the button: the trial, then a plan or a grant.
 - **Can also read your agent's replies** lets `get_run` take `include_responses`; each such read is listed under **Settings → API keys, MCP and webhooks**. Without it, the assistant sees verdicts and reasons, with personal data as placeholders.
 - **Can also ask for drafts and diagnoses** adds `draft_scenarios` (scenarios drafted from the agent's latest policy, each quoting the passage it tests) and `request_diagnosis` (why one scenario failed, and the policy change that would have prevented it). What they produce lands as a draft or a proposal, marked as asked for by an assistant with that key. At most 20 an hour per workspace.
 

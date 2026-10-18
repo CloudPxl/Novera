@@ -34,6 +34,14 @@ State on 2026-10-06, read from public DNS via 1.1.1.1:
    aligns. DMARC still passes on DKIM, which Resend signs as `nover.space`.
 
    `p=none` only reports. Move to `p=quarantine` after a couple of weeks of clean reports.
+
+   **`nover.space` receives no mail yet** (no MX record on the domain itself; `send.nover.space`'s MX
+   is Resend's bounce handler). Until inbound mail is set up — a forwarding service such as Cloudflare
+   Email Routing or ImprovMX, free, pointing `dmarc@`, `support@` and `privacy@` at a mailbox you
+   read — the aggregate reports sent to `dmarc@nover.space` bounce, and so would any reply to Novera's
+   mail. The app never shows an `@nover.space` address for that reason (help goes through `/support`,
+   pilots through `/apply`), and the legal drafts' contact placeholders need a receiving address
+   before they are published.
 3. Resend → **API Keys** → create a key named `supabase-smtp`, permission **Sending access**,
    domain `nover.space`. Keep it on screen for step 2; it is shown once.
 

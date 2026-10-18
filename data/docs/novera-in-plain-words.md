@@ -141,7 +141,7 @@ The catalog also holds a short suite for a support agent that answers from docum
 
 ## Your own model key
 
-**What it is.** Grading uses AI models. On the trial, Novera pays for them. A workspace can instead connect its own model account (often called BYOK, "bring your own key"), and then all of its grading runs on that key, never on Novera's. Every report states who paid for its grading.
+**What it is.** Grading uses AI models. On the trial, Agency Pro's managed runs or a grant from Novera, Novera pays for them. A workspace can instead connect its own model account (often called BYOK, "bring your own key"), and then all of its grading runs on that key, never on Novera's. Every report states who paid for its grading.
 
 **Why you would use it.** To keep grading under your own model account and contract. See [The trial, plans, and using your own model key](/docs/the-trial-and-your-own-key).
 

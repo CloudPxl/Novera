@@ -7,6 +7,7 @@ import { EraseWorkspaceForm, LeaveWorkspaceForm, RenameWorkspaceForm } from "./i
 import { Disclosure } from "@/components/ui/page.tsx";
 import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
 import { FAIR_USE_RUNS, FAIR_USE_WINDOW_DAYS, MAX_RUNS_IN_FLIGHT } from "@/lib/billing/limits.ts";
+import { fundingDetail, grantInForce, grantName, ifKeyRemoved, type GrantRow } from "@/lib/billing/entitlement.ts";
 import { suggestedModelsFor } from "@/lib/router/routes.ts";
 import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/providers/anthropic.ts";
 import { INDEPENDENCE_LABEL } from "@/lib/judge/independence.ts";
@@ -46,6 +47,17 @@ function keyLastUsed(iso: string | null): string {
   return lastUsedLabel(iso, Date.now());
 }
 
+/**
+ * Read outside render, like the export status above: the grant in force that this workspace holds
+ * for every workspace its owner owns (0076), from unrevoked owner-wide rows.
+ */
+function sharedGrantHeld(rows: Array<Record<string, unknown>>): GrantRow | null {
+  const now = new Date();
+  return rows
+    .map((g): GrantRow => ({ id: g.id as string, kind: g.kind as GrantRow["kind"], planKey: null, runsAllowed: null, startsAt: g.starts_at as string, endsAt: (g.ends_at as string | null) ?? null, revokedAt: null }))
+    .find((g) => grantInForce(g, now)) ?? null;
+}
+
 /** The workspace's settings, one section at a time (general, grading, developer). */
 export async function WorkspaceSettings({ section }: { section: "general" | "grading" | "developer" }) {
   const { user, workspace, role, context } = await requireWorkspace();
@@ -56,6 +68,12 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
     admin.from("workspace_members").select("role").eq("workspace_id", workspace.id).eq("user_id", user.id).maybeSingle(),
   ]);
   const { count: memberCount } = await admin.from("workspace_members").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id);
+  // This workspace holds a pilot shared by every workspace its owner owns (0076): erasing it ends
+  // that pilot everywhere, which the erase form says before anyone types the name.
+  const heldShared = section === "general" && can(role, "workspace.erase")
+    ? sharedGrantHeld((await admin.from("billing_entitlement_grants").select("id, kind, starts_at, ends_at")
+        .eq("workspace_id", workspace.id).not("owner_id", "is", null).is("revoked_at", null)).data ?? [])
+    : null;
   // Shown in place of a control this role may not use, so a reviewer sees why there is no button.
   const onlyFor = (who: string) => <p className="mt-4 rounded-control bg-sunken px-3 py-2 text-xs text-ink-soft">Your role ({ROLE_LABEL[role].toLowerCase()}) can see this. {who} manage it.</p>;
   const [{ data: apiKeys }, { data: endpoints }, { data: deliveries }, { data: rawReads }] = await Promise.all([
@@ -88,7 +106,10 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
       })
     : null;
 
-  const trialLeft = TRIAL_RUN_LIMIT - entitlement.runsUsed;
+  // Runs graded on Novera's keys under a grant or a plan, not under the trial.
+  // Team BYOK grades only on the workspace's own key, so without one it funds nothing here.
+  const fundedOnNovera = !entitlement.ownKey && (entitlement.billing.source === "manual_grant"
+    || (entitlement.billing.source === "subscription" && (entitlement.billing.runsAllowed ?? 0) > 0));
 
   return (
     <main className="w-full pb-10 text-ink">
@@ -135,7 +156,7 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
           <div className="mt-6">
             <Disclosure tone="danger" summary={can(role, "workspace.erase") ? "Danger zone — erase this workspace" : "Leave this workspace"}>
               {can(role, "workspace.erase")
-                ? <EraseWorkspaceForm name={workspace.name} members={memberCount ?? 1} />
+                ? <EraseWorkspaceForm name={workspace.name} members={memberCount ?? 1} sharedGrant={heldShared ? grantName(heldShared.kind).toLowerCase() : null} />
                 : <LeaveWorkspaceForm name={workspace.name} />}
             </Disclosure>
           </div>
@@ -174,7 +195,7 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center"><h2 className="text-lg font-semibold tracking-tight">Grading</h2><Help label="Grading">Which AI models grade your runs: ours, or your own model key once you connect one. It is encrypted, used only to grade your runs, and never shown again. The trial covers three runs; after it, a plan keeps runs going.</Help></div>
             <Badge tone={entitlement.ownKey ? (entitlement.canRun ? "pass" : "fail") : "neutral"}>
-              {entitlement.ownKey ? `your ${entitlement.provider} key` : "trial allowance"}
+              {entitlement.ownKey ? `your ${entitlement.provider} key` : fundedOnNovera ? "Novera's keys" : "trial allowance"}
             </Badge>
           </div>
 
@@ -258,21 +279,34 @@ export async function WorkspaceSettings({ section }: { section: "general" | "gra
                 </details>
 
                 {can(role, "judgekey.manage") && <div className="mt-4 border-t border-line pt-4">
-                  <RemoveKeyButton
-                    consequence={
-                      trialLeft > 0
-                        ? `Runs would go back to the trial allowance, which has ${trialLeft} of ${TRIAL_RUN_LIMIT} left.`
-                        : `The trial's ${TRIAL_RUN_LIMIT} runs are used, so runs would then grade on Novera's keys only under Agency Pro, which includes 100 a period. Team BYOK includes none.`
-                    }
-                  />
+                  <RemoveKeyButton consequence={ifKeyRemoved(entitlement.billing, { used: entitlement.runsUsed, limit: TRIAL_RUN_LIMIT })} />
                 </div>}
+              </>
+            ) : fundedOnNovera ? (
+              <>
+                {/* A pilot grant or Agency Pro grading on Novera's keys: not the trial, and not
+                    to be shown as one (a pilot workspace read "3 of 3 trial runs used" here). */}
+                <p className="text-sm leading-relaxed text-ink-soft">
+                  Runs in this workspace are graded on Novera&apos;s keys, by two models from different
+                  vendors: <strong>{fundingDetail(entitlement.billing, role === "owner")}</strong>. Every report says who
+                  funded its grading.{" "}
+                  <Link href="/billing" className="font-medium text-ink underline underline-offset-2">Billing</Link>
+                </p>
+                <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+                  Connect your own model key and runs grade on it instead, inside your own provider
+                  account; they are still counted as they are now.
+                </p>
+                {can(role, "judgekey.manage") ? <JudgeKeyForm providers={PROVIDERS} /> : onlyFor("The owner and admins")}
               </>
             ) : (
               <>
                 <p className="text-sm leading-relaxed text-ink-soft">
-                  You have used <strong>{entitlement.runsUsed}</strong> of {TRIAL_RUN_LIMIT} trial
-                  runs. The trial is graded on our free-tier key, by two models from different
-                  vendors.
+                  {/* The trial counts every run of every workspace the owner owns, grant- and
+                      plan-funded ones included, so the count can pass the limit: "31 of 3". */}
+                  {entitlement.runsUsed >= TRIAL_RUN_LIMIT
+                    ? <>You have used all {TRIAL_RUN_LIMIT} trial runs, which are shared across every workspace the owner owns.</>
+                    : <>You have used <strong>{entitlement.runsUsed}</strong> of {TRIAL_RUN_LIMIT} trial runs, which are shared across every workspace the owner owns.</>}{" "}
+                  The trial is graded on our free-tier key, by two models from different vendors.
                 </p>
                 <p className="mt-3 text-sm leading-relaxed text-ink-soft">
                   Connect your own model key and runs grade on it instead, on your provider&apos;s

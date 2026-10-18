@@ -32,14 +32,19 @@ export class RunRefusal extends Error {
  * The database's own refusals (0049, 0055, 0067), raised when concurrent starts each passed the
  * check in `startRun`. The prefix is the database's; the sentence is ours.
  */
-function refusalFromInsert(message: string): RunRefusal | null {
+export function refusalFromInsert(message: string): RunRefusal | null {
   if (/trial_exhausted/.test(message)) return new RunRefusal(TRIAL_EXHAUSTED, "trial_used");
   if (/concurrent_runs_limit/.test(message)) return new RunRefusal(CONCURRENCY_REFUSAL, "concurrency");
   if (/fair_use_limit/.test(message)) return new RunRefusal(FAIR_USE_REFUSAL, "fair_use");
   if (/managed_allowance_exhausted/.test(message)) {
     return new RunRefusal("This billing period's runs graded on Novera's keys have been used. Runs on your own model key are not limited.", "allowance_used");
   }
-  if (/grant_exhausted/.test(message)) return new RunRefusal("The grant's runs have been used.", "grant_used");
+  if (/grant_exhausted/.test(message)) {
+    // An owner-wide pool (0076) can be spent by a start in another of the owner's workspaces.
+    return new RunRefusal(/across the owner's workspaces/.test(message)
+      ? "The grant's runs, shared across the owner's workspaces, have been used."
+      : "The grant's runs have been used.", "grant_used");
+  }
   if (/run_not_funded/.test(message)) {
     return new RunRefusal("Nothing funds a new run in this workspace right now: the plan or grant it relied on changed. Open Billing to see what is in force.", "needs_plan");
   }

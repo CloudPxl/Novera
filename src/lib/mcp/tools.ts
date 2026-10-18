@@ -42,7 +42,7 @@ export function instructionsFor(scopes: Scope[]): string {
   return [
     "Every verdict and count comes from stored runs; a scenario with no result is never a pass.",
     scopes.includes("run")
-      ? "This key can start a run (start_run), which spends a trial run or grading on the workspace's own model key, and then advance it (advance_run) until done — say so before you start one."
+      ? "This key can start a run (start_run), which is counted like a run from the button (one of the trial's runs, then a plan's or a grant's), and then advance it (advance_run) until done — say so before you start one."
       : null,
     scopes.includes("write")
       ? "This key can ask for scenario drafts and failure diagnoses. They are proposals: nothing you call can approve one, change a policy, publish or revoke a report, or send anything. Give the person the link each tool returns; they decide in Novera."
@@ -223,7 +223,7 @@ function runTools(db: SupabaseClient, caller: McpCaller, origin: string): Tool[]
     {
       name: "start_run",
       title: "Start a run",
-      description: "Starts a run of a suite against one of this workspace's agents, with the same checks as the run button: the trial allowance or the workspace's own model key, the production guard, a policy version. It spends a run — confirm with the person first. The run is queued; call advance_run until it says done.",
+      description: "Starts a run of a suite against one of this workspace's agents, with the same checks as the run button: what funds runs (the trial, a plan or a grant), the production guard, a policy version. It spends a run — confirm with the person first. The run is queued; call advance_run until it says done.",
       inputSchema: {
         type: "object",
         properties: {

@@ -55,7 +55,12 @@ export function NewWorkspaceForm({ agency }: { agency: boolean }) {
   );
 }
 
-export function EraseWorkspaceForm({ name, members }: { name: string; members: number }) {
+/**
+ * `sharedGrant`: this workspace holds a grant shared by every workspace its owner owns (0076), as
+ * a pilot redeemed here is — "pilot" or "grant". Erasing the workspace deletes it, so it is said
+ * before the name is typed.
+ */
+export function EraseWorkspaceForm({ name, members, sharedGrant = null }: { name: string; members: number; sharedGrant?: string | null }) {
   const { state, submit, keepValues } = useForm(eraseWorkspace);
   return (
     <form onSubmitCapture={keepValues} action={submit} className="space-y-3">
@@ -64,6 +69,12 @@ export function EraseWorkspaceForm({ name, members }: { name: string; members: n
         {members > 1 ? `, for all ${members} members` : ""}. Links you sent stop working. This cannot be undone; a record
         that an erasure happened, with no content, is all that remains. If you need a copy, use Export this workspace above first.
       </p>
+      {sharedGrant && (
+        <p className="rounded-control border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-text">
+          This workspace holds your {sharedGrant}, which covers every workspace you own. Erasing it ends the {sharedGrant} for all
+          of them; runs and reports already in the other workspaces stay.
+        </p>
+      )}
       <Field label={`Type ${name} to confirm`} htmlFor="erase-confirm">
         <input id="erase-confirm" name="confirmName" required autoComplete="off" className={inputClass} />
       </Field>

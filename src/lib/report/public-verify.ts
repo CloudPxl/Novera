@@ -115,9 +115,11 @@ export function utcMinute(value: string | null | undefined): string | null {
   return `${at.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
-const FUNDED_BY: ReadonlySet<string> = new Set(
-  (["trial_free", "workspace_key", "plan_managed"] as const).map((source) => gradingFundedBy(source)),
-);
+const FUNDED_BY: ReadonlySet<string> = new Set([
+  ...(["trial_free", "workspace_key", "plan_managed"] as const).map((source) => gradingFundedBy(source)),
+  gradingFundedBy("plan_managed", "grant"),
+  gradingFundedBy("plan_managed", "owner_grant"),
+]);
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;

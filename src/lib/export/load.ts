@@ -24,7 +24,7 @@ async function all(db: SupabaseClient, table: string, columns: string, workspace
     if (error) throw new Error(`Could not read ${table}: ${error.message}`);
     rows.push(...((data ?? []) as unknown as Row[]));
     if (!data || data.length < PAGE) return rows;
-    if (rows.length >= MAX_ROWS_PER_TABLE) throw new Error(`${table} has more than ${MAX_ROWS_PER_TABLE} rows; write to support for a bulk export.`);
+    if (rows.length >= MAX_ROWS_PER_TABLE) throw new Error(`${table} has more than ${MAX_ROWS_PER_TABLE} rows; ask us from the support page (/support) for a bulk export.`);
   }
 }
 

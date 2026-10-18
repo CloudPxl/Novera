@@ -6,13 +6,15 @@ import { formatWhen } from "@/lib/format/when.ts";
 import { loadBillingView } from "@/lib/billing/load.ts";
 import { PLAN_CATALOG, PLAN_KEYS, formatPlanPrice, isPlanKey, type Plan } from "@/lib/billing/plans.ts";
 import { planAction, type PlanAction } from "@/lib/billing/plan-action.ts";
-import type { BillingEntitlement, EntitlementSource, Standing } from "@/lib/billing/entitlement.ts";
+import { sharedAcross, type BillingEntitlement, type EntitlementSource, type Standing } from "@/lib/billing/entitlement.ts";
 import { SettingsNav } from "../nav.tsx";
 import Link from "next/link";
 import { BILLING_PATH, remedyFor } from "@/lib/billing/remedy.ts";
 import { FAIR_USE_RUNS, FAIR_USE_WINDOW_DAYS, MAX_RUNS_IN_FLIGHT } from "@/lib/billing/limits.ts";
 import { CancellationButton, CheckoutButton, PortalButton } from "./forms.tsx";
 import { TermsAcceptanceForm } from "./terms-form.tsx";
+import { PilotCodeForm } from "./pilot-form.tsx";
+import { PILOT_CODE_INPUT_MAX, longDate, pilotGrantLine } from "@/lib/billing/pilot-codes.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { storedLivemode } from "@/lib/billing/config.ts";
 import { acceptanceIsCurrent, contractSet, UNUSUAL_CLAUSES } from "@/lib/legal/contract.ts";
@@ -44,17 +46,20 @@ const STANDING: Record<Standing, { label: string; tone: BadgeTone }> = {
 };
 
 /** The current allowance in words, from the computed entitlement only. */
-function runsLine(e: BillingEntitlement): string {
+function runsLine(e: BillingEntitlement, owner: boolean): string {
   if (e.source === "trial" && e.trial) return `${Math.min(e.trial.used, e.trial.limit)} of ${e.trial.limit} trial runs used`;
   if (e.runsAllowed === null) {
     const started = e.source === "subscription" ? `${e.runsUsed} this period` : `${e.runsUsed} used`;
     return `${started} · unlimited on your own key`;
   }
-  return e.runsOn === "novera" ? `${e.runsUsed} of ${e.runsAllowed} on Novera's keys` : `${e.runsUsed} of ${e.runsAllowed} runs`;
+  // An owner-wide pilot (0076) counts every workspace of its owner, not this one alone.
+  const shared = e.source === "manual_grant" && e.grant?.shared ? `, ${sharedAcross(owner)}` : "";
+  return e.runsOn === "novera" ? `${e.runsUsed} of ${e.runsAllowed} on Novera's keys${shared}` : `${e.runsUsed} of ${e.runsAllowed} runs${shared}`;
 }
 
 function tierName(e: BillingEntitlement): string {
   if ((e.source === "subscription" || e.source === "manual_grant") && e.planKey) return PLAN_CATALOG[e.planKey].name;
+  if (e.source === "manual_grant" && e.grant?.kind === "pilot") return "Pilot";
   return SOURCE_LABEL[e.source];
 }
 
@@ -109,6 +114,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
     searchParams,
   ]);
   const manage = can(ctx.role, "billing.manage");
+  // A pilot redeemed from a code is the owner's, for every workspace they own (0076).
+  const owner = ctx.role === "owner";
   // The business details and terms (0068): what this workspace accepted, and whether it is the
   // current text. Read with the service role — the page already resolved the person's membership.
   const set = contractSet();
@@ -132,7 +139,9 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           {!view.config.active && (
             <p role="status" className="rounded-control border border-line bg-sunken px-4 py-3 text-sm text-ink-soft">
               {view.config.reason ?? "Billing is not active yet."} Nothing can be bought or charged yet. After the trial, runs need a plan;
-              until billing opens, <Link href="/support" className="font-medium text-ink underline underline-offset-2">contact support</Link> for a pilot grant.
+              until billing opens, <Link href="/apply" className="font-medium text-ink underline underline-offset-2">request a pilot</Link> or{" "}
+              <a href="#pilot-heading" className="font-medium text-ink underline underline-offset-2">enter a pilot code</a> below.
+              For anything else, ask <Link href="/support" className="font-medium text-ink underline underline-offset-2">Support</Link>.
             </p>
           )}
           {view.config.active && view.config.mode === "test" && (
@@ -167,10 +176,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                 </div>
                 <div>
                   <dt className="text-xs text-ink-faint">Runs</dt>
-                  <dd className="tnum mt-1 text-sm font-medium">{runsLine(e)}</dd>
+                  <dd className="tnum mt-1 text-sm font-medium">{runsLine(e, owner)}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-ink-faint">{e.source === "subscription" ? "Allowance renews" : e.source === "manual_grant" ? "Grant ends" : "Window"}</dt>
+                  <dt className="text-xs text-ink-faint">{e.source === "subscription" ? "Allowance renews" : e.source === "manual_grant" ? (e.grant?.kind === "pilot" ? "Pilot ends" : "Grant ends") : "Window"}</dt>
                   <dd className="mt-1 text-sm font-medium">{when(e.windowEndsAt) ?? (e.source === "trial" ? "Across your workspaces" : "—")}</dd>
                 </div>
               </dl>
@@ -209,6 +218,41 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                   Every run, case and report stays readable and exportable whatever happens to a subscription.
                 </p>
               </div>
+            </Card>
+          </section>
+
+          <section aria-labelledby="pilot-heading">
+            <h2 id="pilot-heading" className="text-lg font-semibold tracking-tight">Have a pilot code?</h2>
+            <p className="mt-1 text-sm text-ink-soft">
+              A pilot code from Novera unlocks runs without a plan for every workspace {owner ? "you own" : "this workspace's owner owns"}, client
+              workspaces added later included: usually 50 runs over 30 days, shared between them. One pilot per account owner;
+              the code is checked and counted on the server.
+            </p>
+            <Card className="mt-3 space-y-4 p-5">
+              {view.pilots.length > 0 && (
+                <ul className="space-y-1 text-sm">
+                  {view.pilots.map((p) => (
+                    <li key={p.grantId} className="tnum font-medium">{pilotGrantLine(p, ctx.profile.timezone, owner)}</li>
+                  ))}
+                </ul>
+              )}
+              {view.pilotRedeemedAt && (
+                <p className="text-sm text-ink-soft">
+                  {owner ? "You" : "This workspace's owner"} redeemed a pilot code on {longDate(view.pilotRedeemedAt, ctx.profile.timezone)}.
+                  An account owner redeems one, and it covers every workspace {owner ? "you own" : "they own"}; for more runs, ask{" "}
+                  <Link href="/support" className="font-medium text-ink underline underline-offset-2">Support</Link>.
+                </p>
+              )}
+              {/* The form keeps its place once a code is redeemed, so the answer stays on screen while the field goes:
+                  an owner redeems one code (0076), and a field that could only be refused is a dead end. */}
+              {manage
+                ? <PilotCodeForm maxLength={PILOT_CODE_INPUT_MAX} redeemed={Boolean(view.pilotRedeemedAt)} />
+                : !view.pilotRedeemedAt && <p className="text-sm text-ink-soft">An owner or admin of this workspace can enter a pilot code here.</p>}
+              {!view.pilotRedeemedAt && (
+                <p className="text-sm text-ink-soft">
+                  No code yet? <Link href="/apply" className="font-medium text-ink underline underline-offset-2">Request a pilot</Link>
+                </p>
+              )}
             </Card>
           </section>
 

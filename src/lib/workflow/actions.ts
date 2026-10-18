@@ -10,7 +10,8 @@ import { NothingToDisclose } from "@/lib/report/reissue.ts";
 import { LeakError } from "@/lib/report/redact.ts";
 import { validateSuite, suiteFromCsv } from "@/lib/suites/validate.ts";
 import { applyPolicyChange } from "@/lib/diagnose/parse.ts";
-import { workspaceEntitlement, TRIAL_RUN_LIMIT } from "@/lib/auth/entitlement.ts";
+import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
+import { keyRemovedNotice } from "@/lib/billing/entitlement.ts";
 import { explainKeyFailure } from "@/lib/providers/key-failure.ts";
 import { REVIEW_NOTE_MIN, REVIEW_NOTE_MAX } from "@/lib/evidence/reviews.ts";
 import { RunRefusal, startRun } from "./start-run.ts";
@@ -418,7 +419,8 @@ const MAX_KEY_LENGTH = 500;
 const MAX_MODEL_LENGTH = 120;
 
 /**
- * Stores the workspace's own model key, which is what ends the trial.
+ * Stores the workspace's own model key. Grading moves to it; what funds runs does not (D3: the
+ * trial, then a plan or a grant, own key or not).
  *
  * Three rules, each of which was a defect first:
  *
@@ -516,12 +518,15 @@ export async function saveJudgeKey(_prev: FormState, form: FormData): Promise<Fo
     ? `Verdicts will be corroborated across ${models.length} of your models — recorded as within one vendor, since both are ${provider}.`
     : `One model means one opinion: verdicts will be reported as not corroborated. Naming a second ${provider} model changes that.`;
 
+  // What funds runs is unchanged by a key (D3, 2026-10-12): the trial, then a plan or a grant.
+  // Said from the stored decision; the notice used to claim a key lifted the trial's cap.
+  const after = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
   return {
-    notice: `Saved${superseded?.length ? " and the previous key removed" : ""}. Runs are graded on your ${provider} key from now on, and the trial cap no longer applies. ${corroboration}`,
+    notice: `Saved${superseded?.length ? " and the previous key removed" : ""}. Runs are graded on your ${provider} key from now on; they are counted as before (${after.fundingLine}). ${corroboration}`,
   };
 }
 
-/** Removes the workspace's key, which puts it back on the trial allowance. */
+/** Removes the workspace's key: grading goes back to Novera's keys, under whatever funds runs here. */
 export async function removeJudgeKey(_prev: FormState, form: FormData): Promise<FormState> {
   const { user, workspace } = await requireWorkspace();
   if (String(form.get("confirm")) !== "remove") return { error: "Not removed." };
@@ -534,20 +539,14 @@ export async function removeJudgeKey(_prev: FormState, form: FormData): Promise<
 
   if (error) return { error: `Could not remove the key: ${error.message}` };
 
-  // What actually happens next, from the stored count rather than a general statement.
-  // Every run this workspace has ever made counts against the trial, including the ones
-  // its own key paid for — so removing a key after four runs does not restore an
-  // allowance, it ends the ability to run at all until another key is connected.
+  // What actually happens next, from the stored decision rather than a general statement:
+  // the trial's runs left, a grant or Agency Pro grading on Novera's keys, or why nothing can.
   const after = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
 
   await recordAudit(admin, { workspaceId: workspace.id, actorId: user.id, action: "judgekey.removed", detail: {} });
   revalidatePath("/settings");
   revalidatePath("/dashboard");
-  return {
-    notice: after.canRun
-      ? `Removed. ${TRIAL_RUN_LIMIT - after.runsUsed} of the ${TRIAL_RUN_LIMIT} trial runs are left.`
-      : `Removed. This workspace has run ${after.runsUsed} suites and the trial covers ${TRIAL_RUN_LIMIT}, so no further run can start until a key is connected.`,
-  };
+  return { notice: keyRemovedNotice(after) };
 }
 
 /**

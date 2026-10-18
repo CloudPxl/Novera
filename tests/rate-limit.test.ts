@@ -49,12 +49,16 @@ test("the wait is reported in whole minutes, and never as zero", () => {
   assert.equal(windowResetMinutes(3600, 0), 60);
 });
 
-test("the refusal says when, and offers a way that does not involve waiting", () => {
-  const message = refusalMessage(42);
+test("the refusal says when, never offers an address that receives no mail, and says a message arrived", () => {
+  const message = refusalMessage(42, "message");
   assert.match(message, /about 42 minutes/);
-  assert.match(message, /support@nover\.space/);
+  // nover.space has no inbound mail: support@nover.space was the way through, and it bounced.
+  assert.doesNotMatch(message, /@|email/i);
+  assert.match(message, /already sent has reached us/);
+  // A sign-in is an attempt, not a message.
+  assert.match(refusalMessage(42), /more attempts than this form takes/);
   // Our vocabulary for our problem. A person reading this did nothing wrong.
-  assert.equal(/rate limit|throttled|blocked|denied/i.test(message), false);
+  for (const m of [message, refusalMessage(42)]) assert.equal(/rate limit|throttled|blocked|denied/i.test(m), false);
 });
 
 test("the limits are generous enough for a person and too small for a script", () => {

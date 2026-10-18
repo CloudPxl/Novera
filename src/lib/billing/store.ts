@@ -55,6 +55,7 @@ export interface BillingStore {
   listSubscriptions(workspaceId: string, livemode: boolean): Promise<StoredSubscription[]>;
   /** Writes the state and its history line, unless it is older than, or contradicts, what is stored. */
   writeSubscription(row: StoredSubscription, eventId: string | null): Promise<WriteResult>;
+  /** The workspace's own grants and its owner's owner-wide grants (0076). */
   listGrants(workspaceId: string): Promise<GrantRow[]>;
   recordEvent(line: BillingEventLine): Promise<void>;
 }

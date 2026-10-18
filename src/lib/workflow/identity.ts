@@ -67,7 +67,7 @@ export async function createWorkspace(_prev: IdentityState, form: FormData): Pro
   const name = text(form, "name", 120);
   if (name.length < 2) return { error: "Give the workspace a name — usually the client's." };
   if (ctx.memberships.filter((m) => m.role === "owner").length >= 25) {
-    return { error: "You own 25 workspaces, the most one account can own for now. Write to support if you need more." };
+    return { error: "You own 25 workspaces, the most one account can own for now. Ask us from the support page (/support) if you need more." };
   }
   const db = await sessionClient();
   // Through the person's own session: ws_insert allows exactly "owner is me", and the
@@ -413,7 +413,7 @@ export async function deleteAccount(_prev: IdentityState, form: FormData): Promi
     user_metadata: {},
     ban_duration: "876000h",
   });
-  if (authError) return { error: `Your data was erased, but the sign-in could not be closed: ${authError.message}. Write to support.` };
+  if (authError) return { error: `Your data was erased, but the sign-in could not be closed: ${authError.message}. Write to us from the support page (/support).` };
   await (await sessionClient()).auth.signOut();
   (await cookies()).delete(ACTIVE_WORKSPACE_COOKIE);
   redirect("/?account=deleted");

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
+import { fundingDetail } from "@/lib/billing/entitlement.ts";
 import { needsBillingAction, remedyFor } from "@/lib/billing/remedy.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { Badge } from "@/components/ui/primitives.tsx";
@@ -229,8 +230,10 @@ export default async function DashboardPage() {
   const trialBilling = entitlement.billing.source === "trial" ? entitlement.billing : null;
   const trialLeft = trialBilling ? Math.max(0, (trialBilling.trial?.limit ?? trialBilling.runsAllowed ?? 0) - (trialBilling.trial?.used ?? trialBilling.runsUsed ?? 0)) : 0;
   const trialLimit = trialBilling ? trialBilling.trial?.limit ?? trialBilling.runsAllowed ?? 0 : 0;
+  // A pilot or other grant is named as one, with what is left of it — never called a plan.
+  const detail = fundingDetail(entitlement.billing, role === "owner");
   const funding = {
-    text: `${entitlement.ownKey ? `Graded on your ${entitlement.provider} key` : trialBilling ? "Graded on Novera's keys" : "Graded on Novera's keys, under your plan"}${trialBilling ? ` · trial: ${trialLeft} of ${trialLimit} runs left` : ""}`,
+    text: `${entitlement.ownKey ? `Graded on your ${entitlement.provider} key` : "Graded on Novera's keys"}${trialBilling ? ` · trial: ${trialLeft} of ${trialLimit} runs left` : detail ? ` · ${detail}` : ""}`,
     explain: entitlement.ownKey ? "own_key" as const : trialBilling ? "trial_allowance" as const : "run_funding" as const,
   };
   const action = nextAction({
@@ -256,7 +259,11 @@ export default async function DashboardPage() {
         : noVerdictNow > 0 || latestOutcomes.some((o) => o.state === "incomplete")
           ? { tone: "warning", title: "Evidence incomplete", detail: `${noVerdictNow} ${noVerdictNow === 1 ? "scenario has" : "scenarios have"} no verdict. None is counted as a pass, so no grade is given until they are settled.` }
           : newestPerAgent.length === 0
-            ? { tone: "info", title: "A run is in progress", detail: "Its result appears when every scenario is recorded — never before." }
+            // No completed run yet: in progress only if one is queued or running. A stopped or
+            // failed run is not "in progress" (a workspace whose only run was stopped read so).
+            ? runList.some((r) => r.status === "queued" || r.status === "running")
+              ? { tone: "info", title: "A run is in progress", detail: "Its result appears when every scenario is recorded — never before." }
+              : { tone: "neutral", title: "No completed run yet", detail: "The runs here stopped before they finished, so there are no verdicts yet. Run the suite again to get them." }
             : readyCount > 0
               ? { tone: "pass", title: "All comparable checks passed", detail: `${readyCount === 1 ? "The newest report is" : `${readyCount} newest reports are`} ready to share.` }
               : { tone: "pass", title: "All comparable checks passed", detail: "The newest report is ready for internal review before it is shared." };
@@ -348,7 +355,7 @@ export default async function DashboardPage() {
           events={(auditRows ?? []).map((e) => ({ id: e.id as string, action: e.action as string, created_at: e.created_at as string, who: e.actor_id ? actorNames.get(e.actor_id as string) ?? "A member" : "Novera" }))}
           retentionDays={retentionDays}
           rawReads={rawReads ?? 0}
-          funding={entitlement.ownKey ? `The workspace's own ${entitlement.provider} key` : entitlement.billing.source === "trial" ? "Novera's trial allowance" : "Novera's keys, under the workspace's plan"}
+          funding={entitlement.ownKey ? `The workspace's own ${entitlement.provider} key` : entitlement.billing.source === "trial" ? "Novera's trial allowance" : entitlement.billing.source === "manual_grant" ? (entitlement.billing.grant?.shared ? "Novera's keys, under a grant to the workspace's owner" : "Novera's keys, under a grant to the workspace") : "Novera's keys, under the workspace's plan"}
           canAudit={can(role, "audit.view")}
         />
       )}

@@ -19,4 +19,4 @@ It cannot change settings, keys, policies or verdicts, and it cannot declare tha
 
 Each question goes to the same model providers used for grading, with a short summary of your workspace (agent names and web addresses, run dates and counts) and the documentation pages most relevant to the question. Your API keys and your policy text are never sent. If a question looks like it contains an API key, it is refused before anything leaves your browser, and refused again on our server.
 
-On the trial, answers use Novera's trial allowance. If your workspace has its own model key, answers use that key, exactly as grading does. Each person can ask up to 40 questions an hour.
+Without a model key of your own — on the trial, a plan or a grant — answers use Novera's keys. If your workspace has its own model key, answers use that key, exactly as grading does. Each person can ask up to 40 questions an hour.

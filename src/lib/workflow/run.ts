@@ -82,6 +82,8 @@ export async function publishReport(args: {
   attestation: string | null;
   suite: { key: string; version: number; name: string };
   judgeSource: "trial_free" | "workspace_key" | "plan_managed";
+  /** What the run names as funding it (0067), and a grant's scope (0076): stated in the report beside the source. */
+  fundedBy?: "grant" | "owner_grant" | "subscription" | null;
   /** The pass mark this run was measured against, read from the run row. */
   passThreshold: number;
   /** Wall time the customer actually waited, across every execution slice. */
@@ -136,7 +138,7 @@ export async function publishReport(args: {
     byCategory: summary.byCategory,
     suite: args.suite,
     attestation: args.attestation,
-    judge: { source: args.judgeSource },
+    judge: { source: args.judgeSource, fundedBy: args.fundedBy ?? null },
     cases: summary.cases,
     coverage: summary.coverage,
     byObligation: summary.byObligation,

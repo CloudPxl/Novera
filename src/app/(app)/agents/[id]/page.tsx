@@ -10,6 +10,7 @@ import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
 import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
 import { needsBillingAction, remedyFor } from "@/lib/billing/remedy.ts";
 import { MAX_RUNS_IN_FLIGHT } from "@/lib/billing/limits.ts";
+import { grantName } from "@/lib/billing/entitlement.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { createRun } from "@/lib/workflow/actions.ts";
 import { Card, Badge, EmptyState, inputClass } from "@/components/ui/primitives.tsx";
@@ -109,10 +110,12 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
   const plan = entitlement.billing;
   const grading = entitlement.ownKey ? "grades on your own model key" : "grades on Novera's keys";
   const costNote = plan.source === "trial"
-    ? `Each run ${grading} and uses one of the trial's runs (${plan.trial?.used ?? entitlement.runsUsed} of ${plan.trial?.limit ?? 3} used). When none are left, the schedule pauses and says why.`
+    ? `Each run ${grading} and uses one of the trial's runs (${Math.min(plan.trial?.used ?? entitlement.runsUsed, plan.trial?.limit ?? 3)} of ${plan.trial?.limit ?? 3} used). When none are left, the schedule pauses and says why.`
     : plan.source === "subscription" && plan.runsAllowed !== null
       ? `Each run ${grading} and uses one of this period's ${plan.runsAllowed} runs (${plan.runsUsed} used). When none are left, the schedule pauses and says why.`
-      : plan.source === "subscription" || plan.source === "manual_grant"
+      : plan.source === "manual_grant"
+        ? `Each run ${grading}${plan.runsAllowed !== null ? `, counted against the ${grantName(plan.grant?.kind).toLowerCase()}'s ${plan.runsAllowed} runs (${plan.runsUsed} used)` : ""}${plan.grant?.endsAt ? ` until ${plan.grant.endsAt.slice(0, 10)}` : ""}. When none are left or it ends, the schedule pauses and says why.`
+      : plan.source === "subscription"
         ? `Each run ${grading}${plan.runsAllowed !== null ? `, counted against ${plan.runsAllowed} runs (${plan.runsUsed} used)` : ""}. Fair use applies: at most ${MAX_RUNS_IN_FLIGHT} runs at once.`
         : "Runs need a plan in force. When none is, the schedule pauses and says why.";
   // A block about paying is for an owner or admin to resolve; anyone else is told who can.

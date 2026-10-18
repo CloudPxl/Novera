@@ -21,6 +21,7 @@ export type AuditAction =
   | "suite.bulk_approved" | "suite.published" | "suite.gaps_accepted" | "suite.source_fetched"
   | "identity.linked" | "identity.unlinked" | "agent.environment_changed" | "account.password_set" | "account.password_changed" | "account.signed_out_everywhere"
   | "billing.checkout_started" | "billing.portal_opened" | "billing.cancellation_scheduled" | "billing.cancellation_withdrawn"
+  | "billing.pilot_code_redeemed"
   | "contract.accepted"
   | "workspace.export_requested" | "workspace.exported"
   | "agent.updated" | "agent.archived" | "agent.restored" | "agent.read_back_changed";
@@ -87,6 +88,8 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   "billing.portal_opened": "opened the billing portal",
   "billing.cancellation_scheduled": "asked to cancel the subscription at the end of the period",
   "billing.cancellation_withdrawn": "withdrew a scheduled cancellation",
+  // Written by redeem_pilot_code (0075) in the same transaction as the grant, not by recordAudit.
+  "billing.pilot_code_redeemed": "redeemed a pilot code",
   "contract.accepted": "accepted the terms for the organisation",
   "workspace.export_requested": "asked for a copy of the workspace's data",
   "workspace.exported": "downloaded a copy of the workspace's data",

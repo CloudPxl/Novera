@@ -72,6 +72,14 @@ No angle brackets. `aspf=r` is required because Resend sends from `send.nover.sp
 on DKIM, which Resend signs as `nover.space`. Move to `p=quarantine` after a couple of weeks of
 clean reports. Check with `dig +short TXT _dmarc.nover.space`.
 
+**`nover.space` receives no mail yet** (no MX record on the domain itself; `send.nover.space`'s MX
+is Resend's bounce handler). Until inbound mail is set up — a forwarding service such as Cloudflare
+Email Routing or ImprovMX, free, pointing `dmarc@`, `support@` and `privacy@` at a mailbox you
+read — the aggregate reports sent to `dmarc@nover.space` bounce, and so would any reply to Novera's
+mail. The app never shows an `@nover.space` address for that reason (help goes through `/support`,
+pilots through `/apply`), and the legal drafts' contact placeholders need a receiving address
+before they are published.
+
 ## 5. Supabase: the auth templates (optional but recommended)
 
 Supabase → **Authentication → Emails → Templates**. For each template, set the subject and paste

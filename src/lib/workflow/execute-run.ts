@@ -14,6 +14,23 @@ import { publishReport } from "./run.ts";
 import { reportEnvironment } from "../agents/environment.ts";
 import { declaredLocalisation } from "./localised-run.ts";
 import { readBackNotFoundMeans } from "../report/manifest.ts";
+import { serviceClient } from "../supabase/service.ts";
+
+/**
+ * What the run names as its funding, as its report states it (0067): a grant to the workspace, a
+ * grant to the workspace's owner shared by every workspace they own (0076), or a subscription.
+ * Read with the service role: an owner-wide grant is usually held by another of the owner's
+ * workspaces. A grant that no longer exists was held elsewhere — one held by the run's own
+ * workspace is erased only with the run — so it was the owner's.
+ */
+async function runFunding(grantId: string | null, subscriptionId: string | null): Promise<"grant" | "owner_grant" | "subscription" | null> {
+  if (grantId) {
+    const { data, error } = await serviceClient().from("billing_entitlement_grants").select("owner_id").eq("id", grantId).maybeSingle();
+    if (error) return "grant";
+    return data && !data.owner_id ? "grant" : "owner_grant";
+  }
+  return subscriptionId ? "subscription" : null;
+}
 
 /**
  * Loads everything a queued run refers to and executes it, then publishes a report.
@@ -38,7 +55,7 @@ export async function startRunExecution(args: {
   // types the embedded form is untyped, and this is easier to follow anyway.
   const { data: run, error } = await client
     .from("runs")
-    .select("id, agent_id, policy_id, suite_id, baseline_run_id, judge_source, attestation_text, pass_threshold, started_at, manifest")
+    .select("id, agent_id, policy_id, suite_id, baseline_run_id, judge_source, funded_by_grant, funded_by_subscription, attestation_text, pass_threshold, started_at, manifest")
     .eq("id", runId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -163,6 +180,7 @@ export async function startRunExecution(args: {
     attestation: run.attestation_text ?? null,
     suite: { key: suite.key, version: suite.version, name: suite.name },
     judgeSource: (run.judge_source as "trial_free" | "workspace_key" | "plan_managed" | null) ?? "trial_free",
+    fundedBy: await runFunding(run.funded_by_grant as string | null, run.funded_by_subscription as string | null),
     baseline,
   });
 

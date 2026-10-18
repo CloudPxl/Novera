@@ -131,7 +131,8 @@ runs, every run/case/report stays readable and exportable.
   - Measured locally: of 12 concurrent starts, exactly 3 were accepted. The 101st managed run of a
     period and the 1,001st run in 30 days were refused.
 - **Before billing opens**, a workspace past its trial runs only under a manual grant (below). The
-  billing page says to contact support for a pilot.
+  billing page offers a pilot: request one on `/apply`, or redeem a pilot code on the page itself
+  (0075, "Pilot codes" below).
 
 ### A run aborted before any scenario is free (0074, 2026-10-17)
 
@@ -164,6 +165,116 @@ runs, every run/case/report stays readable and exportable.
   counting changed. The run page says "This run recorded no scenario, so it does not count against
   your runs." on an aborted run with no recorded scenario.
 
+### Pilot codes (0075, 2026-10-17)
+
+**Decision (David, 2026-10-17):** an agency gets a single-use code from the founder, and an owner or
+admin redeems it on Settings → Billing. The redemption immediately creates the same `kind = 'pilot'`
+grant an operator would have inserted by hand (default 50 runs over 30 days), with every rule a grant
+already has: terms frozen, revoked once with a reason, reason and `granted_by` required, readable by
+every member, never written by a client.
+
+**Design.**
+
+| Piece | Where | What it does |
+|---|---|---|
+| Codes | `billing_pilot_codes` (0075) | `code_hash` = HMAC-SHA256 of the normalised code under `NOVERA_ENCRYPTION_KEY` with the label `pilot-codes:v1` (the API-key family, a different label). No plaintext column. Terms (`runs_allowed` 1–500, `duration_days` 1–365, `max_redemptions` ≥ 1, `expires_at` redeem-by, `label`, `granted_by`) frozen by trigger; only `redemptions_count` moves, +1 at a time, never past the maximum, never on a revoked or expired code; revoked once with a reason; never deleted. RLS on, no policy, nothing granted to `anon`/`authenticated`. |
+| Redemptions | `billing_pilot_code_redemptions` | code ↔ workspace ↔ grant ↔ person. `unique (workspace_id)`, and since 0076 **one per owner** across their workspaces (trigger under a per-owner lock; see "Owner-wide pilots" below; an operator's manual grant stays the override). Append-only (`refuse_mutation`), same-workspace grant (`refuse_cross_workspace`). Owner/admin read it, as `billing_events`; the hash column is not granted. |
+| Redeeming | `redeem_pilot_code(hash, workspace, user)` | Service role only, security definer, one transaction: the role checked again (owner/admin), the code row locked `for update`, then the grant, the count, the redemption, a `billing_events` line (`pilot_code.redeemed`) and the workspace audit line (`billing.pilot_code_redeemed`, detail: grant id, runs, end — never the code). The audit line is written here rather than by `recordAudit` afterwards, so a grant never exists without it. |
+| Outcomes | same | `redeemed`; `workspace_has_pilot` (0075; since 0076 `owner_has_pilot`, per owner), checked *before* the code is looked at, so a workspace that has a pilot learns nothing about other codes; `invalid` for unknown, revoked **and** expired alike, so the answer is not an oracle for which codes exist; `used_up`. A race of two workspaces for one single-use code queues on the row lock: one wins, the other reads `used_up`. Two codes racing for one workspace: the unique index decides, the loser's block is undone and reads `workspace_has_pilot`. |
+| Action | `redeemPilotCode` (`src/lib/billing/pilot-actions.ts`) | `billing.manage` (owner/admin). The only field read is the code. An empty press is not an attempt. Then five attempts per 15 minutes **per person, per workspace and per network address** (salted hash, 0024's Postgres counter), each counted, any one refusing, a count that cannot be read refusing — before the code is normalised, hashed or looked up. The refusal says when to try again. |
+| Shared rules | `src/lib/billing/pilot-codes.ts` | Normalising (trim, remove every space, typographic dashes read as `-`, letters checked as ASCII before capitals, `[A-Z0-9-]`, 8–64), hashing, the hint, the generator, the sentences. Used by the action and the CLI, so they hash alike. |
+| Page | Settings → Billing, *Have a pilot code?* | The field (no autocomplete, no spellcheck, hint linked by `aria-describedby`, values kept on error), *Unlock pilot runs*, the answer inline (`role=status`, errors `role=alert`), "No code yet? Request a pilot" → `/apply`. Pilot grants in force read "Pilot · 47 of 50 runs left · ends 16 November 2026", counted by the entitlement's own `grantRunsUsed`. Members without `billing.manage` read that an owner or admin enters it. The "contact support for a pilot grant" sentence now points to `/apply` and `/support`, in-app. |
+| Runs | 0067, 0074, 0076 | A pilot grant funds runs exactly as a manual grant: `funded_by_grant` on the run, an empty aborted run free. Since 0076 a redeemed pilot is owner-wide: it funds every workspace its owner owns, counted by grant id under the per-owner pool lock. |
+
+**The hint and the reason.** The hint shows at most a third of the code's start and a sixth of its end
+(`PILOT-EXAMPLE-30` → `PILOT…30`; a generated `PILOT-<NAME>-<4>-30` → `PILOT-…30`): at most half the
+code, and for the documented formats only the prefix and the days. The grant's reason, which every
+member reads, is `Pilot code <hint> redeemed`. The code's **label** is internal (it may name the
+agency) and never reaches a grant, an event or the audit trail, so no workspace reads another
+company's name.
+
+**Confidentiality.** The repository is public. No real company name or real code is written into
+it — code, tests, docs, migrations or fixtures; examples use `PILOT-EXAMPLE-30`, and a test fails on
+any other `PILOT-<NAME>-` string in the tracked files. Codes live only as hashes in the database. A
+codes file for `seed:pilot-codes` must sit outside the working tree (the script refuses a path inside
+it, through symbolic links too), and `.gitignore` ignores `*.pilot-codes.csv` and `pilot-codes*.csv`.
+
+**Guessability.** A hand-written `PILOT-<COMPANY>-30` can be guessed by anyone who knows the format
+(this file is public) and the company's name; the attempt limits slow that, they do not prevent it.
+`--generate` adds four random base32 characters (20 bits from the operating system), which a guess
+cannot know. Prefer generated codes for anything sent by email.
+
+**No erasure path for codes.** A code is Novera's own record of an offer — a hash, a hint, an internal
+label and terms — not workspace data. Its `granted_by` is a plain id exactly like the grant's, and
+`erase_account()` pseudonymises the sign-in and leaves both as ids that carry no name or email. A
+redemption *is* workspace data: it cascades from the grant `erase_workspace()` already deletes (and
+from the workspace), so `erase_workspace()`'s body is unchanged. After an erasure the code keeps its
+count: a used code stays used.
+
+**Commands (the operator, against the database in `.env.local`).** Every write prints the database
+host and needs `--yes` unless it is local. Before writing, the CLI checks that `NOVERA_ENCRYPTION_KEY`
+opens a credential the deployment sealed, because a code hashed under another key would never match.
+
+```sh
+npm run migrate                                   # applies 0075
+npm run pilot:code -- create --code PILOT-EXAMPLE-30 --label "Example agency, 30-day pilot" \
+  --granted-by you@example.com [--runs 50] [--days 30] [--max 1] [--redeem-by 2026-12-31] --yes
+npm run pilot:code -- create --generate --name EXAMPLE --label "…" --granted-by you@example.com --yes
+                                                  # prints the generated code once; store it
+npm run pilot:code -- list                        # ref, hint, runs, days, used/max, redeem-by, status, label
+npm run pilot:code -- revoke --code PILOT-EXAMPLE-30 --reason "Offer withdrawn" --yes
+npm run pilot:code -- revoke --ref 1a2b3c4d --reason "…" --yes      # by the reference list prints
+npm run seed:pilot-codes -- --file ~/novera/outreach.pilot-codes.csv --granted-by you@example.com --yes
+                                                  # CSV: code,runs,days,label — outside the repository
+```
+
+Creating a code that exists with identical terms prints "already exists, unchanged"; with other terms
+it is refused (revoke it and create another). `create --code` never prints the code back; only
+`--generate` prints the code it made, once. Revoking a code stops new redemptions; a grant already
+redeemed from it stays in force until it is revoked itself.
+
+### Owner-wide pilots (0076, 2026-10-17)
+
+**Decision (lead, 2026-10-17):** a pilot redeemed from a code is an **owner-wide pool**, like the trial.
+The agency journey broke at its second step: an agency redeems a code in its own workspace, then adds a
+workspace per client (`/workspaces`, *Add a client*) and connects each client's agent there — and 0067
+refused every run in those client workspaces, because a grant belonged to one workspace.
+
+**The rule.** `billing_entitlement_grants.owner_id` is the grant's scope: null — the workspace that holds
+it (every existing grant, and any manual grant unless the operator names the owner); set — every workspace
+that person owns, one pool of `runs_allowed` over one window. `redeem_pilot_code` sets it to the redeeming
+workspace's owner. Only that owner may be named (checked at insert), and it is frozen with the other terms.
+
+| Piece | What it does |
+|---|---|
+| Funding check | `runs_fair_use_and_funding` (0074's body, redefined) accepts a grant held by another workspace when the grant names the run's workspace's owner. This is the one cross-workspace reference the tenancy rule (0034) allows, checked in the database for the service role too. |
+| Counting | An owner-wide grant's units are the runs that name it (`funded_by_grant` = its id) in every workspace, except a run aborted before any scenario (0074). A one-workspace grant keeps its window count over its own workspace's runs, so no existing number changes. The application counts the same way (`withPoolCounts`, `src/lib/billing/rows.ts`; `grantRunsUsed` reads the pool count, and without one assumes the pool is spent). |
+| Lock order | One global order: per-workspace `novera:run-start` (first, as since 0067) → per-owner `novera:owner-pool` (only for an owner-wide grant, before its count) → per-owner `novera:trial-cap` (`runs_trial_cap`, fired after in name order, only for a `trial_free` run). Racing starts across one owner's workspaces queue on the pool lock; a start holds at most one workspace lock while it waits for the owner's, so none can deadlock. Measured locally: a pool of 3, 12 concurrent starts spread over 3 workspaces → exactly 3 accepted (`verify:billing`). |
+| One pilot per owner | `redeem_pilot_code` takes a per-owner lock (`novera:pilot-redeem`) and answers `owner_has_pilot` — before the code is looked at — when the owner redeemed a code in any workspace they own; a trigger on `billing_pilot_code_redemptions` refuses a second one per owner under the same lock, so a direct insert cannot add one. 0075's `unique (workspace_id)` is kept: implied by one per owner, and still what the race handler catches. The sentence: "You already have a pilot; it covers every workspace you own." (an admin reads "This workspace's owner already has a pilot; it covers every workspace they own."). |
+| Surfaces | Every workspace of the owner shows "Pilot · 47 of 50 runs left (shared across your workspaces) · until 2026-11-16" in the top bar's funding line, on the dashboard, in Settings → Grading and on Billing (members who are not the owner read "the owner's workspaces"); `/workspaces` says the pilot covers a new client workspace, with what is left; the run in a client workspace names the pilot grant, and its report says "Novera, under a grant to the workspace's owner". |
+| Model work | `model_operations.funded_by` gains `plan_managed`: diagnosis, drafting, extraction and Ask Novera on Novera's keys while a grant or plan funds runs on them (`modelWorkFunding`). Rows written before stay as they are. |
+
+**Ownership.** Transfer is not built (0054). 0076 makes it a database rule — `workspaces.owner_id` cannot
+change — so a pool's scope cannot move under it. Building transfer later has to decide what a transferred
+workspace does with its owner's pool (proposed: it leaves the pool; the pool stays with the person).
+
+**Erasure (chosen: keep 0060's behaviour, and say it).** No new table; `owner_id` leaves with its grant in
+`erase_workspace()`, whose body is unchanged. Erasing the workspace that holds the pilot deletes the grant,
+and the pilot ends for every workspace the owner owns: it is a deliberate act on the workspace that holds the
+billing record, and the erase form says so before the name is typed. Runs in the other workspaces keep the
+grant's id (frozen, not a foreign key, as since 0067). Erasing another of the owner's workspaces removes its
+runs, and the pool counts only runs that exist — the same as the trial (0055); erasing a client's evidence
+is not a practical way to refill a 30-day pilot, and it is recorded here as a known limit. `erase_account()`
+refuses while the person owns workspaces (0058), so an account's pool leaves with its workspaces.
+
+**A manual owner-wide grant** (an operator, service role):
+
+```sql
+insert into billing_entitlement_grants (workspace_id, owner_id, kind, runs_allowed, ends_at, reason, granted_by)
+select id, owner_id, 'pilot', 50, now() + interval '30 days', 'Pilot before billing opens, all workspaces', '<your user id>'
+  from workspaces where id = '<workspace id>';
+```
+
 ### Deliberately not done yet
 
 - **Erasing a workspace while Stripe could still charge** (active, trialing, past due — in
@@ -177,9 +288,9 @@ runs, every run/case/report stays readable and exportable.
   rows themselves stay (the tables are frozen) until the workspace is erased: run sandbox tests
   in a throwaway workspace.
 - **No UI for manual grants.** The table, its rules and RLS exist; grants are inserted by
-  an operator with the service role (reason and `granted_by` required by the database). Since
-  D3 this is how a workspace keeps running before billing opens, for example a 30-day pilot of 50
-  runs:
+  an operator with the service role (reason and `granted_by` required by the database), or created
+  by redeeming a pilot code (0075, above). Since D3 this is how a workspace keeps running before
+  billing opens, for example a 30-day pilot of 50 runs:
 
   ```sql
   insert into billing_entitlement_grants (workspace_id, kind, runs_allowed, ends_at, reason, granted_by)

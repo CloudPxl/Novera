@@ -34,8 +34,9 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
               </>
             }
           >
-            Novera could not load. Trying again usually works; if it does not, email{" "}
-            <a href="mailto:support@nover.space" className="font-medium underline underline-offset-2">support@nover.space</a>{" "}
+            Novera could not load. Trying again usually works; if it does not, write to us from the{" "}
+            {/* Not an email address: nover.space receives no mail, so a mailto bounced. */}
+            <Link href="/support" className="font-medium underline underline-offset-2">support page</Link>{" "}
             and quote the reference below.
           </ErrorState>
         </main>

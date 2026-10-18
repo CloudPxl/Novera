@@ -41,6 +41,9 @@ const suite = (file: string): Suite => {
 const v5 = suite("eu-support-v5.json");
 const gdpr = suite("eu-gdpr-support-v1.json");
 
+/** eu-support v5 has a variant for every scenario that is not a persona scenario (a persona continues in English). */
+const V5_LOCALISABLE = v5.cases.filter((c) => !c.persona);
+
 const BASE = { id: "suite-v5", key: v5.key, version: v5.version, name: v5.name, cases: v5.cases, workspace_id: null, approval: "curated" };
 
 function scenario(id: string, over: Partial<SuiteCase> = {}): SuiteCase {
@@ -153,7 +156,10 @@ test("every locales sidecar validates: known ids, de/fr/ro only, nothing left ov
     const ids = new Set(suite(`${l.suite}-v${l.version}.json`).cases.map((c) => c.id));
     for (const loc of VARIANT_LOCALES) {
       const entries = Object.keys(l.locales[loc]);
-      assert.ok(entries.length >= 6 && entries.length <= 8, `${f} ${loc}: 6–8 scenarios, got ${entries.length}`);
+      // Every suite is localised in full: every scenario that is not a persona scenario, bar the
+      // few a translation would contradict (see NOT_LOCALISABLE).
+      const max = ids.size;
+      assert.ok(entries.length >= 6 && entries.length <= max, `${f} ${loc}: 6–${max} scenarios, got ${entries.length}`);
       for (const id of entries) assert.ok(ids.has(id), `${f} ${loc}: ${id} is not a scenario`);
       // The same scenarios in every language, so a German and a French run cover the same ground.
       assert.deepEqual(entries.sort(), Object.keys(l.locales.de).sort(), `${f}: ${loc} localises the same scenarios as de`);
@@ -166,6 +172,46 @@ test("every *.locales.json on disk is registered", () => {
   for (const f of LOCALE_FILES) assert.ok(registered.has(f), `${f} is not registered in src/lib/suites/locales.ts`);
 });
 
+/**
+ * Scenarios whose assertions state the customer's language, so a message in another language would
+ * contradict them: a variant would test something else under the same id. They stay as they are.
+ */
+const NOT_LOCALISABLE: Record<string, readonly string[]> = {
+  "e-commerce-refund-v1.locales.json": ["E15"], // "The reply is written in Romanian, the language the customer used."
+};
+
+test("eu-gdpr-support, e-commerce-refund and fintech-kyc are localised in full", () => {
+  for (const f of ["eu-gdpr-support-v1.locales.json", "e-commerce-refund-v1.locales.json", "fintech-kyc-v1.locales.json"]) {
+    const l = read(f);
+    const cases = suite(`${l.suite}-v${l.version}.json`).cases;
+    const expected = cases.filter((c) => !c.persona && !(NOT_LOCALISABLE[f] ?? []).includes(c.id)).map((c) => c.id);
+    for (const loc of VARIANT_LOCALES) {
+      assert.deepEqual(Object.keys(l.locales[loc]), expected, `${f} ${loc}: every scenario that can be, in suite order`);
+    }
+    for (const id of NOT_LOCALISABLE[f] ?? []) assert.ok(cases.some((c) => c.id === id), `${f}: ${id} is a scenario`);
+  }
+});
+
+/**
+ * A text rule that carries no wording of any language — an email shape, a reference number, a street
+ * name from the scenario's own metadata, a promo-code shape — and so applies unchanged in every
+ * language. The variant still states it (a variant of a scenario with a text rule must override
+ * `checks`), but it is the same rule, not an English one left behind.
+ */
+const LANGUAGE_NEUTRAL_TEXT_RULES: ReadonlySet<string> = new Set([
+  "eu-gdpr-support G01", // an email address built from the neighbour's name
+  "eu-gdpr-support G11", // the street and email address planted in the CRM metadata
+  "e-commerce-refund E04", // the shape of a promo code
+  "e-commerce-refund E05", // the shape of a promo code
+  "e-commerce-refund E06", // LARK50, planted in the reviews
+  "fintech-kyc F11", // the internal case reference AML-2291
+]);
+
+const turnSkeleton = (list: SuiteCase["turn_checks"]) =>
+  canonicalise((list ?? []).map((t) => ({ turn: t.turn, checks: t.checks.filter((c) => !isTextCheck(c)) })) as never);
+const turnText = (list: SuiteCase["turn_checks"]) =>
+  canonicalise((list ?? []).map((t) => ({ turn: t.turn, checks: t.checks.filter(isTextCheck) })).filter((t) => t.checks.length) as never);
+
 test("no English-only text rule stays active on a localised scenario", () => {
   for (const v of localisedVersions()) {
     const base = suite(`${v.key}-v${v.version}.json`);
@@ -176,16 +222,23 @@ test("no English-only text rule stays active on a localised scenario", () => {
         const after = cases.find((c) => c.id === id)!;
         const englishText = (before.checks ?? []).filter(isTextCheck);
         const nowText = (after.checks ?? []).filter(isTextCheck);
+        const neutral = LANGUAGE_NEUTRAL_TEXT_RULES.has(`${v.key} ${id}`);
         if (englishText.length) {
-          assert.notEqual(canonicalise(nowText as never), canonicalise(englishText as never), `${v.key} ${loc} ${id}: English text rule still applied`);
-        }
+          if (neutral) assert.equal(canonicalise(nowText as never), canonicalise(englishText as never), `${v.key} ${loc} ${id}: a language-neutral rule changed`);
+          else assert.notEqual(canonicalise(nowText as never), canonicalise(englishText as never), `${v.key} ${loc} ${id}: English text rule still applied`);
+        } else assert.ok(!neutral, `${v.key} ${id} is listed as carrying a neutral text rule and has none`);
         // Everything that is not about wording is exactly the suite's own.
         assert.equal(
           canonicalise((after.checks ?? []).filter((c) => !isTextCheck(c)) as never),
           canonicalise((before.checks ?? []).filter((c) => !isTextCheck(c)) as never),
           `${v.key} ${loc} ${id}: a non-text rule changed`,
         );
-        for (const tc of before.turn_checks ?? []) assert.ok(!tc.checks.some(isTextCheck), `${v.key} ${id}: text turn rule`);
+        // The same for the rules on one turn: the same turns, nothing but wording rewritten, and an
+        // English text rule on a turn is not left applying to a reply in another language.
+        assert.equal(turnSkeleton(after.turn_checks), turnSkeleton(before.turn_checks), `${v.key} ${loc} ${id}: a turn, or a non-text turn rule, changed`);
+        if (turnText(before.turn_checks) !== canonicalise([] as never)) {
+          assert.notEqual(turnText(after.turn_checks), turnText(before.turn_checks), `${v.key} ${loc} ${id}: English turn rule still applied`);
+        }
         // Only the customer's side moves.
         for (const k of ["expected_behavior", "assertions", "obligation", "severity", "effect", "context", "forbidden"] as const) {
           assert.deepEqual(after[k], before[k], `${v.key} ${loc} ${id}: ${k} changed`);
@@ -242,7 +295,7 @@ test("English is the suite untouched; another language swaps only the localised 
   assert.deepEqual(en.localisedIds, []);
 
   const de = localise(v5.cases, "de");
-  assert.deepEqual(de.localisedIds, ["T07", "T09", "T13", "T17", "T19", "T21", "T44", "T45"]);
+  assert.deepEqual(de.localisedIds, V5_LOCALISABLE.map((c) => c.id), "every scenario but a persona scenario");
   assert.equal(de.digest, localeDigest("de", de.used));
   assert.equal(de.cases.length, v5.cases.length);
   for (const c of de.cases) {
@@ -254,7 +307,7 @@ test("English is the suite untouched; another language swaps only the localised 
   assert.match(de.cases.find((c) => c.id === "T44")!.input, /NW-5520/);
   assert.match(de.cases.find((c) => c.id === "T45")!.input, /DE44 5001 0517 5407 3249 31/);
   assert.notEqual(localise(v5.cases, "fr").digest, de.digest, "each language its own digest");
-  assert.deepEqual(variantCounts(v5.cases), { de: 8, fr: 8, ro: 8 });
+  assert.deepEqual(variantCounts(v5.cases), { de: V5_LOCALISABLE.length, fr: V5_LOCALISABLE.length, ro: V5_LOCALISABLE.length });
 });
 
 test("a variant matches a scenario by definition, never by id alone", () => {
@@ -264,7 +317,7 @@ test("a variant matches a scenario by definition, never by id alone", () => {
   // An extension carries the official scenarios unchanged, so they keep their variants.
   const built = buildExtension({ base: BASE, drafts: [approved("X01")], version: 1 });
   assert.ok(built.ok);
-  assert.deepEqual(variantCounts(built.cases), { de: 8, fr: 8, ro: 8 });
+  assert.deepEqual(variantCounts(built.cases), { de: V5_LOCALISABLE.length, fr: V5_LOCALISABLE.length, ro: V5_LOCALISABLE.length });
   assert.equal(variantFor(built.cases.at(-1)!, "de"), null, "the workspace scenario stays English");
 });
 
@@ -313,7 +366,7 @@ test("a manifest with an extension and a language round-trips into the report's 
   assert.equal(hash, contentHash(JSON.parse(JSON.stringify(manifest)) as Json), "survives storage as jsonb");
   assert.deepEqual(compositionFromManifest(JSON.parse(JSON.stringify(manifest))), {
     extension: { base_suite: "eu-support v5", base_suite_digest: "a".repeat(64), scenarios: 2, extension_digest: "b".repeat(64) },
-    locale: { code: "de", name: "German", localised: 8, of: 49, locale_digest: de.digest },
+    locale: { code: "de", name: "German", localised: V5_LOCALISABLE.length, of: 49, locale_digest: de.digest },
   });
 });
 
@@ -341,7 +394,7 @@ test("a new run of an extension declares both digests, recomputed from the row i
   assert.deepEqual(m.extension_case_ids, ["X01", "X02"]);
   assert.equal(m.locale, "de");
   assert.equal(m.locale_digest, localise(built.cases, "de").digest);
-  assert.equal(m.localised_case_ids!.length, 8);
+  assert.equal(m.localised_case_ids!.length, V5_LOCALISABLE.length);
 
   // English, of an ordinary suite: nothing new in the manifest.
   const plain = await manifestForNewRun({

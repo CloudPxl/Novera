@@ -104,7 +104,7 @@ export function InboundForm({
         >
           {remaining > 0
             ? `${remaining.toLocaleString("en-GB")} characters left.`
-            : "That is the limit for this form — email us if there is more to say."}
+            : "That is the limit for this form — send the rest in a second message."}
         </p>
       )}
 

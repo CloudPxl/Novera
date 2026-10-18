@@ -133,6 +133,11 @@ export function buildGates(input: Partial<GateContext> = {}): Gate[] {
       source: ["startRun (src/lib/workflow/start-run.ts)", "0057 agents_attestation_frozen"],
     },
     {
+      id: "pilot-access", stage: "pilot", title: "Pilot access before billing opens", basis: "built", owner: "Code", state: "ready",
+      detail: "After the trial a workspace runs under a pilot grant: an owner or admin redeems a single-use pilot code on Settings → Billing, or an operator inserts the grant. Codes are created with npm run pilot:code and stored only as hashes.",
+      source: ["0075 redeem_pilot_code", "src/lib/billing/pilot-actions.ts", "tests/pilot-codes.test.ts", "docs/BILLING-DECISIONS.md \"Pilot codes\""],
+    },
+    {
       id: "no-certification", stage: "pilot", title: "No certification or compliance claims", basis: "built", owner: "Code", state: "ready",
       detail: "The report language rule and the legal tests refuse certified, compliant and approved-by-a-regulator wording about an agent or report.",
       source: ["src/lib/report/language.ts", "tests/language.test.ts", "tests/legal.test.ts"],

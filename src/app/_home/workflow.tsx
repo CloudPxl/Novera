@@ -6,6 +6,11 @@ import { useSystemMotion } from "@/components/ui/motion.ts";
 /**
  * The four steps, each with the screen it lands on.
  *
+ * Step 3's time is measured, not hoped: the 49-scenario suite against Novera's own instant
+ * sample agent took 35–66 s from start to sealed report (2026-10-16/17, local runs); a real
+ * agent answering in a few seconds per message takes longer. "About a minute" promised the
+ * fixture's best case.
+ *
  * The step text is always on the page — all four, in an ordered list — so nothing is
  * hidden behind a selection and nothing waits for an animation. Choosing a step only
  * changes the picture beside it. The run in step 3 counts up once when chosen; without
@@ -14,7 +19,7 @@ import { useSystemMotion } from "@/components/ui/motion.ts";
 const STEPS = [
   { title: "Connect the agent", body: "Point Novera at an HTTP endpoint you operate and confirm you are authorised to test it. One harmless request goes first, and its reply is saved as a receipt.", time: "2 minutes" },
   { title: "Write the policy", body: "The rules the agent should keep, in plain sentences. Saving creates a version that is never edited, so a report always names what it was measured against.", time: "5 minutes" },
-  { title: "Run the suite", body: "Every scenario goes to your agent and comes back with a verdict, its evidence and who decided it — or with the reason there is none.", time: "about a minute" },
+  { title: "Run the suite", body: "Every scenario goes to your agent and comes back with a verdict, its evidence and who decided it — or with the reason there is none.", time: "a few minutes" },
   { title: "Prepare and share the report", body: "Novera says whether the report is ready to send, and what stands in the way if not. Then one private link — expiring and revocable — or an export.", time: "when it is ready" },
 ];
 

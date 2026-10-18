@@ -238,5 +238,134 @@ try {
   await db.auth.admin.deleteUser(userId).catch(() => {});
 }
 
+// ---------------------------------------------------------------- an owner-wide pilot (0076)
+// One pool for every workspace an owner owns: funded and counted by grant id under the per-owner
+// lock, scoped to that owner, frozen, one redemption per owner, and ended by erasing the
+// workspace that holds it.
+console.log("\nOwner-wide pilot: one pool across an owner's workspaces (0076)");
+{
+  const people: string[] = [];
+  const spaces: string[] = [];
+  const person = async (name: string) => {
+    const { data, error } = await db.auth.admin.createUser({ email: `pool-${name}+${tag}@novera.invalid`, password: crypto.randomUUID(), email_confirm: true });
+    if (error || !data?.user) throw new Error(`Could not create a verification user: ${error?.message}`);
+    people.push(data.user.id);
+    return data.user.id;
+  };
+  const { data: suite } = await db.from("suites").select("id").is("workspace_id", null).limit(1).single();
+  const space = async (owner: string, name: string) => {
+    const { data: ws, error } = await db.from("workspaces").insert({ name: `__novera_pool_${name}__`, owner_id: owner }).select("id").single();
+    if (error || !ws) throw new Error(`Could not create a workspace: ${error?.message}`);
+    spaces.push(ws.id as string);
+    const { data: agent } = await db.from("agents").insert({ workspace_id: ws.id, name: "pool", kind: "http", config: {} }).select("id").single();
+    const { data: policy } = await db.from("policies").insert({ workspace_id: ws.id, agent_id: agent!.id, version: 1, body: "p" }).select("id").single();
+    return { id: ws.id as string, run: (extra: Record<string, unknown>) => ({ workspace_id: ws.id, agent_id: agent!.id, policy_id: policy!.id, suite_id: suite!.id, ...extra }) };
+  };
+  try {
+    const owner = await person("owner");
+    const other = await person("other");
+    const [a, b, c] = [await space(owner, "a"), await space(owner, "b"), await space(owner, "c")];
+    const elsewhere = await space(other, "d");
+
+    const { error: wrongOwner } = await db.from("billing_entitlement_grants").insert({
+      workspace_id: a.id, owner_id: other, kind: "pilot", runs_allowed: 3, reason: "verify:billing pool", granted_by: owner,
+    });
+    report(/names the owner of the workspace that holds it/.test(wrongOwner?.message ?? ""), "an owner-wide grant can name only the holding workspace's owner", wrongOwner?.message.slice(0, 70) ?? "it was accepted");
+
+    const { data: pool } = await db.from("billing_entitlement_grants").insert({
+      workspace_id: a.id, owner_id: owner, kind: "pilot", runs_allowed: 3, ends_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+      reason: "verify:billing pool", granted_by: owner,
+    }).select("id").single();
+    const { data: local } = await db.from("billing_entitlement_grants").insert({
+      workspace_id: a.id, kind: "support", runs_allowed: 5, reason: "verify:billing one workspace", granted_by: owner,
+    }).select("id").single();
+
+    const { error: unscoped } = await db.from("billing_entitlement_grants").update({ owner_id: null }).eq("id", pool!.id);
+    report(/terms are frozen/.test(unscoped?.message ?? ""), "the scope is frozen with the grant's terms", unscoped?.message.slice(0, 60) ?? "it was changed");
+    const { error: moved } = await db.from("workspaces").update({ owner_id: other }).eq("id", b.id);
+    report(/owner does not change/.test(moved?.message ?? ""), "a workspace's owner cannot change, so the pool's scope cannot move", moved?.message.slice(0, 60) ?? "it was changed");
+
+    const { error: localElsewhere } = await db.from("runs").insert(b.run({ status: "aborted", judge_source: "plan_managed", funded_by_grant: local!.id }));
+    report(/run_not_funded/.test(localElsewhere?.message ?? ""), "a one-workspace grant still funds only its own workspace", localElsewhere?.message.slice(0, 60) ?? "it was accepted");
+    const { error: otherOwner } = await db.from("runs").insert(elsewhere.run({ status: "aborted", judge_source: "plan_managed", funded_by_grant: pool!.id }));
+    report(/run_not_funded/.test(otherOwner?.message ?? ""), "the pool funds no workspace of another owner", otherOwner?.message.slice(0, 60) ?? "it was accepted");
+
+    // The application names the pool in every owned workspace, and resolves it for a run.
+    const inB = await workspaceEntitlement({ client: db, workspaceId: b.id, viewerIsOwner: true });
+    report(inB.canRun && inB.funding.grantId === pool!.id && inB.judgeSource === "plan_managed",
+      "a client workspace with no grant of its own runs under the owner's pool", `${inB.funding.grantId === pool!.id ? "pool" : inB.funding.grantId}, ${inB.judgeSource}`);
+    report(/^Pilot · 3 of 3 runs left \(shared across your workspaces\) · until \d{4}-\d{2}-\d{2}$/.test(inB.fundingLine), "its funding line names the shared pool", inB.fundingLine);
+
+    // Twelve starts at once, four in each of the three workspaces: the pool lets exactly three in.
+    const race = await Promise.all([a, b, c].flatMap((w) => Array.from({ length: 4 }, () =>
+      db.from("runs").insert(w.run({ status: "queued", judge_source: "plan_managed", funded_by_grant: pool!.id })).select("id, workspace_id").single())));
+    const accepted = race.filter((r) => !r.error);
+    const exhausted = race.filter((r) => /grant_exhausted: .* across the owner's workspaces/.test(r.error?.message ?? "")).length;
+    const deadlocks = race.filter((r) => /deadlock/i.test(r.error?.message ?? "")).length;
+    report(accepted.length === 3 && exhausted === 9 && deadlocks === 0,
+      "twelve concurrent starts across three workspaces: three accepted, nine refused grant_exhausted, no deadlock",
+      `${accepted.length} accepted (${[...new Set(accepted.map((r) => r.data!.workspace_id))].length} workspaces), ${exhausted} exhausted, ${deadlocks} deadlocks`);
+    const inC = await workspaceEntitlement({ client: db, workspaceId: c.id });
+    report(!inC.canRun && inC.blocker === "grant_used" && inC.billing.runsUsed === 3,
+      "every owned workspace then reads the pool as used", `${inC.billing.runsUsed} used, ${inC.blocker}`);
+    report(/shared across the owner's workspaces, have been used/.test(inC.blockedReason ?? ""), "and says the runs were shared", inC.blockedReason ?? "");
+
+    // Stopped before any scenario, the three give their units back (0074), in every workspace.
+    await db.from("runs").update({ status: "aborted", finished_at: new Date().toISOString() }).in("id", accepted.map((r) => r.data!.id));
+    const freed = await workspaceEntitlement({ client: db, workspaceId: c.id });
+    report(freed.canRun && freed.billing.runsUsed === 0, "runs stopped before any scenario return to the pool", `${freed.billing.runsUsed} used`);
+    const { error: afterFree } = await db.from("runs").insert(c.run({ status: "completed", judge_source: "plan_managed", funded_by_grant: pool!.id }));
+    report(!afterFree, "and a new start is accepted", afterFree?.message.slice(0, 60) ?? "");
+
+    // One pilot code per owner, whichever workspace it is typed in.
+    const hex = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), (x) => x.toString(16).padStart(2, "0")).join("");
+    const codes = [hex(), hex(), hex(), hex()];
+    const { error: codeErr } = await db.from("billing_pilot_codes").insert(codes.map((code_hash) => ({
+      code_hash, hint: "PILOT…30", label: "verify:billing owner pool", granted_by: owner,
+    })));
+    report(!codeErr, "four single-use codes", codeErr?.message.slice(0, 60) ?? "");
+    const first = await db.rpc("redeem_pilot_code", { p_code_hash: codes[0], p_workspace: b.id, p_user: owner });
+    const { data: redeemedGrant } = await db.from("billing_entitlement_grants").select("owner_id, workspace_id").eq("id", first.data?.grant_id ?? crypto.randomUUID()).maybeSingle();
+    report(first.data?.outcome === "redeemed" && redeemedGrant?.owner_id === owner && redeemedGrant?.workspace_id === b.id,
+      "a redeemed code makes an owner-wide grant held by the workspace it was typed in", JSON.stringify(first.data ?? first.error?.message));
+    const second = await db.rpc("redeem_pilot_code", { p_code_hash: codes[1], p_workspace: c.id, p_user: owner });
+    report(second.data?.outcome === "owner_has_pilot", "a second code in another of the owner's workspaces → owner_has_pilot", JSON.stringify(second.data ?? second.error?.message));
+    const { count: untouched } = await db.from("billing_pilot_codes").select("*", { count: "exact", head: true }).eq("code_hash", codes[1]).eq("redemptions_count", 0);
+    report(untouched === 1, "and that code was not spent");
+    const { data: cGrant } = await db.from("billing_entitlement_grants").insert({
+      workspace_id: c.id, kind: "pilot", runs_allowed: 1, reason: "verify:billing direct redemption", granted_by: owner,
+    }).select("id").single();
+    const { error: direct } = await db.from("billing_pilot_code_redemptions").insert({ code_hash: codes[1], workspace_id: c.id, grant_id: cGrant!.id, redeemed_by: owner });
+    report(/owner_has_pilot/.test(direct?.message ?? ""), "a direct second redemption for the owner is refused by the table", direct?.message.slice(0, 70) ?? "it was accepted");
+
+    const racer = await person("racer");
+    const [e, f] = [await space(racer, "e"), await space(racer, "f")];
+    const duel = await Promise.all([
+      db.rpc("redeem_pilot_code", { p_code_hash: codes[2], p_workspace: e.id, p_user: racer }),
+      db.rpc("redeem_pilot_code", { p_code_hash: codes[3], p_workspace: f.id, p_user: racer }),
+    ]);
+    const outcomes = duel.map((d) => d.data?.outcome ?? `error:${d.error?.message}`).sort();
+    report(JSON.stringify(outcomes) === JSON.stringify(["owner_has_pilot", "redeemed"]), "one owner, two codes, two workspaces at once: one pilot", JSON.stringify(outcomes));
+
+    // Model work under a grant is recorded as such; the existing values still hold.
+    const { error: managedOp } = await db.from("model_operations").insert({ workspace_id: b.id, operation: "draft", funded_by: "plan_managed", outcome: "ok" });
+    const { error: unknownOp } = await db.from("model_operations").insert({ workspace_id: b.id, operation: "draft", funded_by: "pilot", outcome: "ok" });
+    report(!managedOp && /check/.test(unknownOp?.message ?? ""), "model_operations takes plan_managed, and nothing else new", managedOp?.message.slice(0, 60) ?? unknownOp?.message.slice(0, 60) ?? "");
+
+    // Erasing the workspace that holds the pool ends it everywhere; runs elsewhere keep its id.
+    const { error: eraseA } = await db.rpc("erase_workspace", { target: a.id });
+    spaces.splice(spaces.indexOf(a.id), 1);
+    const { error: afterErase } = await db.from("runs").insert(c.run({ status: "aborted", judge_source: "plan_managed", funded_by_grant: pool!.id }));
+    const { count: kept } = await db.from("runs").select("*", { count: "exact", head: true }).eq("workspace_id", c.id).eq("funded_by_grant", pool!.id);
+    report(!eraseA && /run_not_funded/.test(afterErase?.message ?? "") && (kept ?? 0) >= 1,
+      "erasing the holding workspace ends the pool for the others; their runs keep the grant's id", eraseA?.message ?? `${kept} runs in C still name it`);
+  } catch (error) {
+    report(false, "the owner-wide pilot checks threw", (error as Error).message);
+  } finally {
+    for (const id of spaces) await db.rpc("erase_workspace", { target: id });
+    for (const id of people) await db.auth.admin.deleteUser(id).catch(() => {});
+  }
+}
+
 console.log(failures ? `\n${failures} check(s) failed.` : "\nAll billing checks passed.");
 process.exit(failures ? 1 : 0);

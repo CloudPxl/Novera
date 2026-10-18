@@ -42,7 +42,7 @@ function readContact(form: FormData): { email: string; message: string; organisa
 
   if (!email || !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) return "Enter an email address we can reply to.";
   if (message.length < MESSAGE_MIN) return "Tell us a little more than that.";
-  if (message.length > MESSAGE_MAX) return "That is longer than this form can take — email us instead.";
+  if (message.length > MESSAGE_MAX) return "That is longer than this form takes. Send the first part now and the rest in a second message.";
   if (email.length > EMAIL_MAX) return "That email address is too long to be one.";
   // Bounded before it is stored rather than after. Every other field had a limit and
   // this one was free, which is all an abusive payload needs.
@@ -74,11 +74,11 @@ export async function submitSupportRequest(_prev: InboundState, form: FormData):
   // When the count cannot be read the question is still taken — a person reads every one —
   // but no model is asked to draft an answer, since nothing would bound how many it drafts.
   const limit = await rateLimit(who, SUPPORT_LIMIT, { onError: "allow" });
-  if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
+  if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes, "message") };
   // Per address as well: a new email address each time was a new allowance, and each
   // message is drafted by a model on Novera's keys (audit, 2026-10-08).
   const fromAddress = address ? await rateLimit(fingerprint(["support-address", address]), SUPPORT_ADDRESS_LIMIT, { onError: "allow" }) : null;
-  if (fromAddress && !fromAddress.allowed) return { error: refusalMessage(fromAddress.retryAfterMinutes) };
+  if (fromAddress && !fromAddress.allowed) return { error: refusalMessage(fromAddress.retryAfterMinutes, "message") };
 
   // The same question sent twice is one question. Accepted, acknowledged, and not
   // drafted again — silently dropping it would teach someone to press the button
@@ -162,9 +162,9 @@ export async function submitTrialApplication(_prev: InboundState, form: FormData
   // Allowed when the count cannot be read: an application is stored for a person to read
   // and calls no model.
   const limit = await rateLimit(who, APPLY_LIMIT, { onError: "allow" });
-  if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
+  if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes, "message") };
   const fromAddress = address ? await rateLimit(fingerprint(["apply-address", address]), APPLY_ADDRESS_LIMIT, { onError: "allow" }) : null;
-  if (fromAddress && !fromAddress.allowed) return { error: refusalMessage(fromAddress.retryAfterMinutes) };
+  if (fromAddress && !fromAddress.allowed) return { error: refusalMessage(fromAddress.retryAfterMinutes, "message") };
 
   const db = serviceClient();
 

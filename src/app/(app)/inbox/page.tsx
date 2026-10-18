@@ -88,7 +88,7 @@ export default async function InboxPage() {
       {(requests ?? []).length === 0 ? (
         <div className="mt-8">
           <EmptyState title="Nothing waiting">
-            Questions from the support form and trial applications arrive here.
+            Questions from the support form, and trial and pilot requests from /apply, arrive here.
           </EmptyState>
         </div>
       ) : (
@@ -106,7 +106,7 @@ export default async function InboxPage() {
                       {r.status as string}
                     </Badge>
                     <Badge tone="neutral">
-                      {r.kind === "support" ? "support" : "trial application"}
+                      {r.kind === "support" ? "support" : "trial or pilot request"}
                     </Badge>
                     <span className="text-sm font-medium">{r.email as string}</span>
                     {r.organisation && (

@@ -34,12 +34,35 @@ test("only an absolute http(s) address becomes a link", () => {
   assert.ok(!invite.html.includes("href="));
 });
 
-test("the support reply's text part is the wording sendDraft sent before templates", () => {
+test("the support reply's text part is the wording sendDraft sent before templates, plus where a reply goes (v2)", () => {
   const body = "Three runs, then bring your own key.";
-  const legacy = `${withSources(body, ["trial"], "https://www.nover.space")}\n\n— Novera\n\n\nYou asked:\n${"x".repeat(600)}`;
+  const followUp = "Replies to this email are not received. To follow up, write again at https://www.nover.space/support — a person reads every message.";
+  const legacy = `${withSources(body, ["trial"], "https://www.nover.space")}\n\n— Novera\n\n${followUp}\n\n\nYou asked:\n${"x".repeat(600)}`;
   const m = supportReplyEmail({ reply: body, sources: ["https://www.nover.space/docs/trial"], question: "x".repeat(900) });
   assert.equal(m.text, legacy);
   assert.equal(m.subject, "Re: your question about Novera");
+  assert.equal(m.version, 2);
+  assert.ok(m.html.includes('href="https://www.nover.space/support"'));
+});
+
+test("nothing Novera sends invites a reply to an address that receives no mail", () => {
+  // nover.space has no inbound MX: the From address (no-reply@) and every other @nover.space
+  // address bounce. The two messages that invite an answer say where it goes instead.
+  const invite = invitationEmail({ inviterName: "Ana", workspaceName: "W", roleLabel: "Reviewer", link: "https://www.nover.space/invite/x", email: "a@b.co" });
+  assert.match(invite.text, /Replies to this email are not received\. Questions about the workspace go to Ana; questions about Novera to https:\/\/www\.nover\.space\/support\./);
+  assert.equal(invite.version, 2);
+  for (const id of TEMPLATE_IDS) {
+    const m = PREVIEWS[id]();
+    assert.doesNotMatch(`${m.text}\n${m.html}`, /[A-Za-z0-9._%+-]+@nover\.space|mailto:/, `${id} names an address at nover.space`);
+    assert.doesNotMatch(m.text, /reply to (this|us)/i, id);
+  }
+  // D3: a model key alone does not restore runs after the trial; the trial emails say so.
+  for (const id of ["lifecycle.trial_ending", "lifecycle.trial_used"] as const) {
+    const m = PREVIEWS[id]();
+    assert.doesNotMatch(m.text, /once a model key is connected|To keep running suites, connect your own model key/, id);
+    assert.match(m.text, /plan or a grant/, id);
+    assert.equal(m.version, 2, id);
+  }
 });
 
 test("every template renders from its sample data, with its version", () => {

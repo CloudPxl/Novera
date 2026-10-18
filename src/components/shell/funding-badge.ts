@@ -1,5 +1,6 @@
 import type { Entitlement } from "@/lib/auth/entitlement.ts";
-import { PLAN_CATALOG } from "@/lib/billing/plans.ts";
+import { PLAN_CATALOG } from "../../lib/billing/plans.ts";
+import { grantName } from "../../lib/billing/entitlement.ts";
 
 /**
  * The top bar's compact funding badge: a few words, derived from the stored entitlement.
@@ -23,8 +24,10 @@ export function fundingBadge(e: Entitlement): { text: string; tone: "fail" | "pa
     }
     case "subscription":
       return { text: b.planKey ? `Plan: ${PLAN_CATALOG[b.planKey].name}` : "Plan", tone: "pass" };
-    case "manual_grant":
-      return { text: b.runsAllowed == null ? "Grant" : `Grant · ${Math.max(0, b.runsAllowed - b.runsUsed)} left`, tone: "pass" };
+    case "manual_grant": {
+      const name = grantName(b.grant?.kind);
+      return { text: b.runsAllowed == null ? name : `${name} · ${Math.max(0, b.runsAllowed - b.runsUsed)} left`, tone: "pass" };
+    }
     case "byok":
       return { text: "Own key", tone: "neutral" };
     default:

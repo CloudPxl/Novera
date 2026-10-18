@@ -6,7 +6,7 @@ import { DEFAULT_ROUTES, routesForConnection, type RouteTable } from "../router/
 import { serviceClient } from "../supabase/service.ts";
 import { loadBillingRows } from "../billing/rows.ts";
 import { ALLOWANCE_COLUMN } from "../billing/allowance.ts";
-import { fundingLine, resolveEntitlement, type BillingEntitlement, type Blocker, type JudgeSource } from "../billing/entitlement.ts";
+import { fundingLine, PILOT_CODE_HINT, resolveEntitlement, type BillingEntitlement, type Blocker, type JudgeSource } from "../billing/entitlement.ts";
 
 /**
  * What a workspace is allowed to do, in one place.
@@ -23,7 +23,7 @@ import { fundingLine, resolveEntitlement, type BillingEntitlement, type Blocker,
  */
 export const TRIAL_RUN_LIMIT = 3; // also in 0049's runs_trial_cap, which enforces it under concurrency
 
-export const TRIAL_EXHAUSTED = `The trial covers ${TRIAL_RUN_LIMIT} runs and you have used all of them. Recurring testing needs a plan: Team BYOK grades on your own model key; Agency Pro adds 100 runs a month graded on Novera's keys.`;
+export const TRIAL_EXHAUSTED = `The trial covers ${TRIAL_RUN_LIMIT} runs and you have used all of them. Recurring testing needs a plan: Team BYOK grades on your own model key; Agency Pro adds 100 runs a month graded on Novera's keys. ${PILOT_CODE_HINT}`;
 
 export interface Entitlement {
   /** True once the workspace has supplied its own model key. */
@@ -54,6 +54,11 @@ export async function workspaceEntitlement(args: {
   client: SupabaseClient;
   workspaceId: string;
   now?: Date;
+  /**
+   * The person reading owns this workspace (role "owner"): `fundingLine` then calls an
+   * owner-wide pilot's pool "your workspaces" (0076). Absent: "the owner's workspaces".
+   */
+  viewerIsOwner?: boolean;
 }): Promise<Entitlement> {
   const { client, workspaceId } = args;
   const now = args.now ?? new Date();
@@ -82,7 +87,8 @@ export async function workspaceEntitlement(args: {
   const routable = Boolean(key?.provider && connectionFor(key.provider, key.value)) && models.length > 0;
 
   // Billing tables have no client policy (0060): read with the service role, scoped to this
-  // workspace, which every caller has already resolved from the person's live membership.
+  // workspace — and to its owner's owner-wide grants (0076) — which every caller has already
+  // resolved from the person's live membership.
   const rows = await loadBillingRows(serviceClient(), workspaceId, now);
   const billing = resolveEntitlement({
     now,
@@ -113,7 +119,7 @@ export async function workspaceEntitlement(args: {
     judgeModels: models,
     keyStoredAt: key?.createdAt ?? null,
     billing,
-    fundingLine: fundingLine(billing, Boolean(key)),
+    fundingLine: fundingLine(billing, Boolean(key), args.viewerIsOwner ?? false),
   };
 }
 

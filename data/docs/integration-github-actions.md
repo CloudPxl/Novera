@@ -9,7 +9,7 @@ A pass here is evidence from one dated run of your suite, not a certification of
 ## Before you start
 
 1. Connect the agent in Novera and make sure it has a policy version ([Connecting an agent](/docs/connecting-an-agent)). The agent must already be serving the build you want to test: this workflow tests what is deployed at the agent's URL, it does not deploy anything. For a pull request, that usually means a preview deployment the agent's URL points at.
-2. Create an API key under **Settings → API keys, MCP and webhooks** and tick **Can also start runs**. A key that can only read cannot start a run. Starting a run uses a trial run, or grades on your workspace's own model key, exactly as the run button does.
+2. Create an API key under **Settings → API keys, MCP and webhooks** and tick **Can also start runs**. A key that can only read cannot start a run. Starting a run is counted exactly as the run button counts it — one of the trial's three runs, then one of your plan's or grant's runs — and grades on your workspace's own model key if it has one.
 3. In your repository, add the key as a secret named `NOVERA_API_KEY`. Repository secrets are not available to a workflow triggered by a pull request from a fork; there the job stops with exit code `3` and says why, rather than passing without evidence.
 
 ## The workflow

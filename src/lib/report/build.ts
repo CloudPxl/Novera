@@ -49,7 +49,12 @@ export interface ReportInput {
   environment: string;
   suite: { key: string; version: number; name: string };
   attestation: string | null;
-  judge: { source: "trial_free" | "workspace_key" | "plan_managed" };
+  /**
+   * `fundedBy`: what the run names as funding it (0067) — a grant to the workspace, a grant to
+   * its owner shared by every workspace they own (0076), or a subscription. Absent or null reads
+   * as before: a plan-managed run is stated as under the workspace's plan.
+   */
+  judge: { source: "trial_free" | "workspace_key" | "plan_managed"; fundedBy?: "grant" | "owner_grant" | "subscription" | null };
   cases: RunCaseRecord[];
   coverage: Coverage;
   byObligation: ObligationCoverage[];
@@ -295,7 +300,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       corroboration,
       pass_threshold: input.passThreshold,
       duration_ms: input.durationMs,
-      grading_funded_by: gradingFundedBy(input.judge.source),
+      grading_funded_by: gradingFundedBy(input.judge.source, input.judge.fundedBy ?? null),
       manifest_hash: input.manifestHash ?? null,
       previous_report_hash: input.previousReportHash ?? null,
       ...(input.fingerprint ? { fingerprint: input.fingerprint } : {}),
@@ -405,10 +410,17 @@ function severityRank(severity: string): number {
 /**
  * Who paid for a run's grading, as the report states it. A plan-funded run (0067) graded on
  * Novera's keys is not the trial: a paying workspace's report saying "trial allowance" would be
- * false, and so would "customer-supplied model key".
+ * false, and so would "customer-supplied model key". A run funded by a grant (a pilot, for one)
+ * is not under a plan either, and its sealed report says so.
  */
-export function gradingFundedBy(source: "trial_free" | "workspace_key" | "plan_managed"): string {
+export function gradingFundedBy(source: "trial_free" | "workspace_key" | "plan_managed", fundedBy: "grant" | "owner_grant" | "subscription" | null = null): string {
   if (source === "workspace_key") return "customer-supplied model key";
-  if (source === "plan_managed") return "Novera, under the workspace's plan";
+  if (source === "plan_managed") {
+    return fundedBy === "grant" ? GRANT_FUNDED : fundedBy === "owner_grant" ? OWNER_GRANT_FUNDED : "Novera, under the workspace's plan";
+  }
   return "Novera trial allowance";
 }
+
+export const GRANT_FUNDED = "Novera, under a grant to the workspace";
+/** A pilot redeemed from a code is the owner's, shared by every workspace they own (0076): a client workspace's report says whose. */
+export const OWNER_GRANT_FUNDED = "Novera, under a grant to the workspace's owner";

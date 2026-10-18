@@ -109,8 +109,8 @@ export default async function AgencyPage() {
       <ClosingCta
         signedIn={signedIn}
         title="Run it against a client's agent"
-        lede="Three free runs for your account, across every client workspace you own. Several clients already? Talk to us first and a person replies."
-        secondary={{ href: "/apply", label: "Talk to us first" }}
+        lede="Three free runs for your account, shared across every client workspace you own. Several clients already? Ask for a pilot and a person replies."
+        secondary={{ href: "/apply", label: "Ask for a pilot" }}
       />
     </SolutionFrame>
   );

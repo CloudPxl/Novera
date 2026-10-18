@@ -346,11 +346,11 @@ export const GLOSSARY: Record<ExplainKey, ExplainEntry> = {
     id: "run_funding",
     title: "Who funded the grading",
     whatItMeans:
-      "Every report states who paid for the model work behind its verdicts: Novera's trial allowance, a plan's managed runs on Novera's keys, or the workspace's own model key.",
+      "Every report states who paid for the model work behind its verdicts: Novera's trial allowance, a plan's managed runs on Novera's keys, a grant from Novera such as a pilot, or the workspace's own model key.",
     whyItMatters:
-      "A reader can judge the evidence knowing which models graded it. A plan's managed runs are never called the trial.",
+      "A reader can judge the evidence knowing which models graded it. A plan's managed runs and a pilot's runs are never called the trial, and a pilot is never called a plan.",
     nextAction:
-      "Change what funds a workspace's runs under Settings, Grading for your own key, or under Settings, Billing for a plan.",
+      "Change what funds a workspace's runs under Settings, Grading for your own key, or under Settings, Billing for a plan or a pilot code.",
     docsHref: "/docs/the-trial-and-your-own-key",
   },
 

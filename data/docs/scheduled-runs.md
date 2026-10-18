@@ -21,7 +21,7 @@ The form shows the first run's date and time before you save.
 
 ## What each run costs
 
-Each scheduled run uses one of your trial runs, or grades on your own model key if you have connected one — exactly as if you had pressed the button. The form says which before you save.
+Each scheduled run is counted exactly as if you had pressed the button: one of the trial's three runs, then one of your plan's or grant's runs. It grades on your own model key if you have connected one. The form says which before you save.
 
 ## When a run cannot start
 

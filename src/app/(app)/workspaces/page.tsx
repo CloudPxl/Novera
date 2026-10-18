@@ -9,6 +9,9 @@ import { portfolio } from "@/lib/workspaces/portfolio.ts";
 import { formatWhen } from "@/lib/format/when.ts";
 import { PageHeader } from "@/components/ui/page.tsx";
 import { NewWorkspaceForm } from "../settings/identity-forms.tsx";
+import { ownerPoolsInForce } from "@/lib/billing/rows.ts";
+import { grantName, grantRunsUsed } from "@/lib/billing/entitlement.ts";
+import { longDate } from "@/lib/billing/pilot-codes.ts";
 
 export const metadata: Metadata = { title: "Workspaces · Novera" };
 export const dynamic = "force-dynamic";
@@ -20,8 +23,13 @@ export const dynamic = "force-dynamic";
  */
 export default async function WorkspacesPage() {
   const ctx = await requireContext();
-  const rows = await portfolio(serviceClient(), ctx.memberships);
+  const [rows, pools] = await Promise.all([
+    portfolio(serviceClient(), ctx.memberships),
+    // The person's own pilot, shared by every workspace they own (0076): a new one is covered too.
+    ownerPoolsInForce(serviceClient(), ctx.user.id),
+  ]);
   const agency = ctx.accountMode !== "personal";
+  const pool = pools.find((g) => g.runsAllowed !== null) ?? null;
 
   return (
     <main className="w-full pb-10 text-ink">
@@ -79,7 +87,14 @@ export default async function WorkspacesPage() {
       <section aria-labelledby="new-ws-heading" className="mt-10 max-w-xl">
         <h2 id="new-ws-heading" className="type-h2">{agency ? "Add a client" : "New workspace"}</h2>
         <Card className="mt-3 p-5"><NewWorkspaceForm agency={agency} /></Card>
-        <p className="mt-2 text-xs text-ink-faint">The trial&apos;s three runs are yours across every workspace you own. A model key is connected per workspace, so each client can grade on its own key.</p>
+        {pool && (
+          <p role="status" className="tnum mt-3 rounded-control border border-line bg-sunken px-3 py-2 text-sm text-ink-soft">
+            Your {grantName(pool.kind).toLowerCase()} covers {agency ? "every client workspace you add" : "every workspace you create"} here too:{" "}
+            {Math.max(0, pool.runsAllowed! - grantRunsUsed(pool, []))} of {pool.runsAllowed} runs left, shared across every workspace you own
+            {pool.endsAt ? `, until ${longDate(pool.endsAt, ctx.profile.timezone)}` : ""}.
+          </p>
+        )}
+        <p className="mt-2 text-xs text-ink-faint">The trial&apos;s three runs are shared across every workspace you own, not three per workspace. A pilot redeemed from a code is shared the same way, and covers {agency ? "client " : ""}workspaces you add later. A plan, or a grant Novera adds to one workspace, covers that workspace only; a model key is connected per workspace, so each client can grade on its own key.</p>
       </section>
     </main>
   );

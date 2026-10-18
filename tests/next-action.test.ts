@@ -26,7 +26,11 @@ test("a person is never offered a step their role cannot take", () => {
 });
 
 test("a blocked trial says so instead of offering a run that would be refused", () => {
-  assert.equal(nextAction({ ...base, hasRun: false, blockedReason: "The trial covers 3 runs…" }).href, "/settings");
+  // No remedy offered: the person is not owner or admin. Under D3 a model key would not help,
+  // so they are told who can resolve it, never sent to connect a key.
+  const blocked = nextAction({ ...base, hasRun: false, blockedReason: "The trial covers 3 runs…" });
+  assert.deepEqual([blocked.href, blocked.label], ["/settings/members", "See who can"]);
+  assert.match(blocked.body, /An owner or admin of this workspace can resolve it\.$/);
 });
 
 test("someone delivering to clients starts with a client workspace", () => {

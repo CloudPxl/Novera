@@ -29,12 +29,12 @@ export type TemplateId = AppTemplateId | AuthTemplateId;
 
 /** Bumped when a template's wording or structure changes, so a sent message can be traced to it. */
 export const TEMPLATE_VERSION: Record<TemplateId, number> = {
-  invitation: 1,
-  support_reply: 1,
+  invitation: 2,
+  support_reply: 2,
   "lifecycle.run_finished": 1,
   "lifecycle.report_ready": 1,
-  "lifecycle.trial_ending": 1,
-  "lifecycle.trial_used": 1,
+  "lifecycle.trial_ending": 2,
+  "lifecycle.trial_used": 2,
   "lifecycle.schedule_paused": 1,
   "auth.confirm_signup": 1,
   "auth.reset_password": 1,
@@ -81,6 +81,14 @@ function paragraphs(text: string): string {
 }
 
 const FOOTER_TEXT = "Novera · evidence of testing for AI support agents · https://www.nover.space";
+
+/**
+ * Novera sends from an address that receives nothing (nover.space has no inbound mail), so a
+ * message that invites an answer says where an answer goes. Version 2 of the invitation and the
+ * support reply added it: a reply to "Re: your question about Novera" bounced.
+ */
+export const NO_REPLY_TEXT = "Replies to this email are not received.";
+export const SUPPORT_PAGE = "https://www.nover.space/support";
 
 /**
  * The one HTML shell. Inline styles only (mail clients drop <style> and external sheets), no
@@ -134,10 +142,11 @@ export function invitationEmail(d: InvitationData): RenderedEmail {
   const role = d.roleLabel.toLowerCase();
   const lead = `${d.inviterName} invited you to the workspace "${d.workspaceName}" on Novera, as ${role}.`;
   const terms = `The link works once, for ${d.email}, and expires in ${days === 7 ? "seven" : days} days. If you did not expect this, ignore it: nothing happens unless you accept.`;
-  const text = [lead, "", `Accept: ${d.link}`, "", terms, "", "—", FOOTER_TEXT].join("\n");
+  const noReply = `${NO_REPLY_TEXT} Questions about the workspace go to ${d.inviterName}; questions about Novera to ${SUPPORT_PAGE}.`;
+  const text = [lead, "", `Accept: ${d.link}`, "", terms, "", noReply, "", "—", FOOTER_TEXT].join("\n");
   const html = shell({
     title: "Your Novera invitation",
-    bodyHtml: `${paragraphs(lead)}\n${paragraphs(terms)}`,
+    bodyHtml: `${paragraphs(lead)}\n${paragraphs(terms)}\n${paragraphs(noReply)}`,
     action: linkAction("Accept the invitation", d.link),
   });
   return render("invitation", `You are invited to ${oneLine(d.workspaceName, 120)} on Novera`, text, html);
@@ -156,7 +165,8 @@ export interface SupportReplyData {
 export function supportReplyEmail(d: SupportReplyData): RenderedEmail {
   const question = d.question.slice(0, 600);
   const sourcesText = d.sources.length ? `\n\nThis answer is based on:\n${d.sources.join("\n")}` : "";
-  const text = `${d.reply}${sourcesText}\n\n— Novera\n\n\nYou asked:\n${question}`;
+  const followUp = `${NO_REPLY_TEXT} To follow up, write again at ${SUPPORT_PAGE} — a person reads every message.`;
+  const text = `${d.reply}${sourcesText}\n\n— Novera\n\n${followUp}\n\n\nYou asked:\n${question}`;
   const sourcesHtml = d.sources.length
     ? `<p style="margin:0 0 8px">This answer is based on:</p>\n<ul style="margin:0 0 16px;padding-left:20px">${d.sources
         .map((s) => {
@@ -167,7 +177,7 @@ export function supportReplyEmail(d: SupportReplyData): RenderedEmail {
     : "";
   const html = shell({
     title: "Your question about Novera",
-    bodyHtml: `${paragraphs(d.reply)}\n${sourcesHtml}\n<p style="margin:0 0 16px">— Novera</p>
+    bodyHtml: `${paragraphs(d.reply)}\n${sourcesHtml}\n<p style="margin:0 0 16px">— Novera</p>\n<p style="margin:0 0 16px;font-size:13px;color:#4b5563">${escapeHtml(NO_REPLY_TEXT)} To follow up, write again at <a href="${SUPPORT_PAGE}" style="color:#1d4ed8">${SUPPORT_PAGE}</a> — a person reads every message.</p>
 <div style="margin-top:24px;padding:12px 14px;border-left:3px solid #e5e7eb;color:#4b5563;font-size:14px"><p style="margin:0 0 6px;font-weight:600">You asked:</p>${paragraphs(question)}</div>`,
   });
   return render("support_reply", "Re: your question about Novera", text, html);
@@ -270,7 +280,8 @@ export function reportReadyEmail(d: ReportReadyData): RenderedEmail {
 export interface TrialData {
   runsUsed: number;
   runsLimit: number;
-  settingsUrl: string;
+  /** Settings → Billing. Decision D3: a model key alone no longer restores runs after the trial. */
+  billingUrl: string;
   manageUrl: string;
 }
 
@@ -279,10 +290,10 @@ export function trialEndingEmail(d: TrialData): RenderedEmail {
   return lifecycle("lifecycle.trial_ending", "consent", {
     subject: `${left} trial run${left === 1 ? "" : "s"} left on Novera`,
     lines: [
-      `You have used ${d.runsUsed} of ${d.runsLimit} trial runs.`,
-      "To keep running suites, connect your own model key. Grading then runs on your key, and every report says so.",
+      `You have used ${d.runsUsed} of ${d.runsLimit} trial runs. The trial covers your account across every workspace you own.`,
+      "After the trial, every run needs a plan or a grant from Novera, on your own model key or ours. Billing shows what is in force.",
     ],
-    action: { label: "Connect a model key", url: d.settingsUrl },
+    action: { label: "Open billing", url: d.billingUrl },
     manageUrl: d.manageUrl,
   });
 }
@@ -292,9 +303,9 @@ export function trialUsedEmail(d: TrialData): RenderedEmail {
     subject: "Your Novera trial runs are used",
     lines: [
       `You have used all ${d.runsLimit} trial runs. Your runs, verdicts and sealed reports stay as they are.`,
-      "A new run starts once a model key is connected.",
+      "A new run needs a plan or a grant from Novera, on your own model key or ours. Billing shows what is in force.",
     ],
-    action: { label: "Connect a model key", url: d.settingsUrl },
+    action: { label: "Open billing", url: d.billingUrl },
     manageUrl: d.manageUrl,
   });
 }
@@ -395,8 +406,8 @@ export const PREVIEWS: Record<TemplateId, () => RenderedEmail> = {
     agentName: "Sample agent", contentHash: "0".repeat(64),
     runUrl: `${SAMPLE_ORIGIN}/runs/00000000-0000-0000-0000-000000000000`, manageUrl: `${SAMPLE_ORIGIN}/settings/profile`,
   }),
-  "lifecycle.trial_ending": () => trialEndingEmail({ runsUsed: 2, runsLimit: 3, settingsUrl: `${SAMPLE_ORIGIN}/settings/grading`, manageUrl: `${SAMPLE_ORIGIN}/settings/profile` }),
-  "lifecycle.trial_used": () => trialUsedEmail({ runsUsed: 3, runsLimit: 3, settingsUrl: `${SAMPLE_ORIGIN}/settings/grading`, manageUrl: `${SAMPLE_ORIGIN}/settings/profile` }),
+  "lifecycle.trial_ending": () => trialEndingEmail({ runsUsed: 2, runsLimit: 3, billingUrl: `${SAMPLE_ORIGIN}/billing`, manageUrl: `${SAMPLE_ORIGIN}/settings/profile` }),
+  "lifecycle.trial_used": () => trialUsedEmail({ runsUsed: 3, runsLimit: 3, billingUrl: `${SAMPLE_ORIGIN}/billing`, manageUrl: `${SAMPLE_ORIGIN}/settings/profile` }),
   "lifecycle.schedule_paused": () => schedulePausedEmail({
     agentName: "Sample agent", reason: "Sample reason: the workspace's model key could not be reached.",
     schedulesUrl: `${SAMPLE_ORIGIN}/agents`, manageUrl: `${SAMPLE_ORIGIN}/settings/profile`,

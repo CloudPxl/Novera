@@ -8,7 +8,7 @@ The database runs in Frankfurt, in the EU. Where the data is *stored* and where 
 
 Running a suite sends each scenario's prompt to the agent endpoint you configured — wherever that is, since it is yours. The agent's reply then goes to the models that grade it.
 
-On the trial allowance, grading uses our own keys: Groq, which is operated from the United States, and Mistral, which is operated from France. So a trial run sends your agent's replies outside the EU.
+Without a model key of your own — on the trial, Agency Pro's managed runs or a grant from Novera — grading uses our own keys: Groq, which is operated from the United States, and Mistral, which is operated from France. So such a run sends your agent's replies outside the EU.
 
 On your own key, everything Novera asks a model for your workspace uses only that key — grading, "Why did this fail?", drafting scenarios from a policy, reading a Suite Builder source and Ask Novera — and where it is processed is a question about the provider you chose. If your key fails or is rate-limited, the operation fails and says so; it never switches to our keys. Each of these operations is recorded with the provider, the model and who funded it, never its content. Novera supports keys from Groq, Google AI Studio, OpenRouter and Anthropic; of those, all currently process outside the EU.
 

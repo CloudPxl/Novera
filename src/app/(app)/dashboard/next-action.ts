@@ -20,7 +20,10 @@ export interface NextInput {
   noVerdict: number;
   readyRunId: string | null;
   blockedReason: string | null;
-  /** Where the block is resolved (src/lib/billing/remedy.ts). Absent: Settings, for a key. */
+  /**
+   * Where the block is resolved (src/lib/billing/remedy.ts). Absent: this person cannot resolve
+   * it (a payment block, for someone who is not owner or admin), so they are told who can.
+   */
   blockedRemedy?: { href: string; label: string } | null;
   may: { connect: boolean; run: boolean; review: boolean };
 }
@@ -50,7 +53,10 @@ export function nextAction(s: NextInput): NextAction {
   if (!s.hasRun) {
     if (s.blockedReason) {
       const remedy = s.blockedRemedy;
-      if (!remedy || remedy.href === "/settings") return { title: "Connect a model key to run", body: s.blockedReason, href: "/settings", label: "Open settings" };
+      // Not "connect a model key": since D3 a key does not fund a run after the trial, and an
+      // operator cannot connect one anyway. Whoever can resolve a payment block is named instead.
+      if (!remedy) return { title: "Runs cannot start yet", body: `${s.blockedReason} An owner or admin of this workspace can resolve it.`, href: "/settings/members", label: "See who can" };
+      if (remedy.href === "/settings") return { title: "Connect a model key to run", body: s.blockedReason, href: "/settings", label: "Open settings" };
       return { title: remedy.href === "/billing" ? "Choose a plan to keep testing" : "Runs cannot start yet", body: s.blockedReason, href: remedy.href, label: remedy.label };
     }
     return s.may.run

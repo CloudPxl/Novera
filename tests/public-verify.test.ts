@@ -136,11 +136,14 @@ test("a first report says it starts the chain; a withheld grade shows no score",
 });
 
 test("every funding sentence gradingFundedBy writes is shown; anything else is not repeated", () => {
-  for (const source of ["trial_free", "workspace_key", "plan_managed"] as const) {
-    const payload: ReportPayload = { ...FORMAT_14, run: { ...FORMAT_14.run, grading_funded_by: gradingFundedBy(source) } };
+  // A grant-funded run (a pilot, 0067 `funded_by_grant`) has its own sentence, never "the plan".
+  const sentences = [...(["trial_free", "workspace_key", "plan_managed"] as const).map((source) => gradingFundedBy(source)), gradingFundedBy("plan_managed", "grant")];
+  assert.equal(new Set(sentences).size, 4);
+  for (const sentence of sentences) {
+    const payload: ReportPayload = { ...FORMAT_14, run: { ...FORMAT_14.run, grading_funded_by: sentence } };
     const row = rowOf(payload);
     const r = buildReceipt(row.content_hash, row);
-    assert.equal(r.state === "verified" && r.details.fundedBy, gradingFundedBy(source));
+    assert.equal(r.state === "verified" && r.details.fundedBy, sentence);
   }
   const odd: ReportPayload = { ...FORMAT_14, run: { ...FORMAT_14.run, grading_funded_by: "Novera Managed Consensus" } };
   const row = rowOf(odd);

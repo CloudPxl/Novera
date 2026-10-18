@@ -59,6 +59,17 @@ export interface GrantRow {
   startsAt: string;
   endsAt: string | null;
   revokedAt: string | null;
+  /**
+   * The grant's scope (0076). Null or absent: the workspace that holds it. A user id: every
+   * workspace that person owns, one pool — a pilot redeemed from a code is one.
+   */
+  ownerId?: string | null;
+  /**
+   * For an owner-wide grant: the runs that name it (`funded_by_grant`), in every workspace of its
+   * owner, except one aborted before it recorded a scenario — counted by the database, as 0076
+   * counts under the pool lock. A window over one workspace's runs would undercount the pool.
+   */
+  poolRunsUsed?: number;
 }
 
 export interface EntitlementInput {
@@ -146,6 +157,13 @@ export interface BillingEntitlement {
   subscription: SubscriptionView | null;
   /** The grant in force, if one decided. */
   grantId: string | null;
+  /**
+   * What that grant is, when it ends and whether its runs are one pool for every workspace the
+   * owner owns (0076), so every surface can name it ("Pilot · 47 of 50 runs left (shared across
+   * your workspaces) · until 2026-11-16") instead of calling a pilot a plan. Null when no grant
+   * decided.
+   */
+  grant: { kind: GrantRow["kind"]; endsAt: string | null; shared: boolean } | null;
   /** Trial numbers, only when the trial is what applies or what ran out. */
   trial: { used: number; limit: number } | null;
 }
@@ -166,6 +184,28 @@ function countBetween(runTimes: string[], from: number | null, to: number | null
     n++;
   }
   return n;
+}
+
+/** A grant is in force between its start and its end, until it is revoked. */
+export function grantInForce(g: GrantRow, now: Date): boolean {
+  const at = now.getTime();
+  return !g.revokedAt && (ts(g.startsAt) ?? Infinity) <= at && (g.endsAt === null || at < (ts(g.endsAt) ?? -Infinity));
+}
+
+/**
+ * The runs a grant has counted. A one-workspace grant: every run in `runTimes` (this workspace's)
+ * between its start and its end (0067, 0074). An owner-wide grant (0076): the runs that name it in
+ * every workspace of its owner, as the database counted them; without that count, the cautious
+ * reading — all of it used — so the application never offers a run the pool cannot fund.
+ */
+export function grantRunsUsed(g: GrantRow, runTimes: string[]): number {
+  if (g.ownerId) return g.poolRunsUsed ?? g.runsAllowed ?? 0;
+  return countBetween(runTimes, ts(g.startsAt), ts(g.endsAt));
+}
+
+/** Where an owner-wide grant's runs go, said to the person reading it (0076). */
+export function sharedAcross(ownerViewing: boolean): string {
+  return ownerViewing ? "shared across your workspaces" : "shared across the owner's workspaces";
 }
 
 /** The newest subscription by Stripe's creation time; a later one replaces an earlier one. */
@@ -252,6 +292,7 @@ interface Candidate {
   windowEndsAt: string | null;
   features: Feature[];
   grantId: string | null;
+  grant: { kind: GrantRow["kind"]; endsAt: string | null; shared: boolean } | null;
   subscriptionId: string | null;
   /** Why this source has no room. Null when it has room. */
   exhausted: { reason: string; blocker: Blocker } | null;
@@ -262,11 +303,24 @@ const unroutable = (provider: string | null) => ({
   blocker: "key_unroutable" as const,
 });
 
+/**
+ * Said after the trial runs out: Billing is also where a pilot code from Novera is entered
+ * (Settings → Billing, "Have a pilot code?"), and every surface showing this refusal links there.
+ */
+export const PILOT_CODE_HINT = "A pilot code from Novera is entered on Billing too.";
+
 /** The judge_source a run started under this decision is stamped with (0067). */
 export function judgeSourceFor(source: EntitlementSource, runsOn: "own_key" | "novera" | null): JudgeSource | null {
   if (runsOn === "own_key") return "workspace_key";
   if (runsOn === "novera") return source === "trial" ? "trial_free" : "plan_managed";
   return null;
+}
+
+/** The grant that most recently ran out of time (not revoked), if any has. */
+function endedGrant(grants: GrantRow[], at: number): GrantRow | null {
+  return grants
+    .filter((g) => !g.revokedAt && g.endsAt !== null && (ts(g.endsAt) ?? Infinity) <= at)
+    .sort((a, b) => (ts(b.endsAt) ?? 0) - (ts(a.endsAt) ?? 0))[0] ?? null;
 }
 
 export function resolveEntitlement(input: EntitlementInput): BillingEntitlement {
@@ -276,10 +330,10 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
 
   // 1. Manual grants in force, newest first.
   const grants = input.grants
-    .filter((g) => !g.revokedAt && (ts(g.startsAt) ?? Infinity) <= at && (g.endsAt === null || at < (ts(g.endsAt) ?? -Infinity)))
+    .filter((g) => grantInForce(g, now))
     .sort((a, b) => (ts(b.startsAt) ?? 0) - (ts(a.startsAt) ?? 0));
   for (const g of grants) {
-    const used = countBetween(runTimes, ts(g.startsAt), ts(g.endsAt));
+    const used = grantRunsUsed(g, runTimes);
     const plan = isPlanKey(g.planKey) ? PLAN_CATALOG[g.planKey] : null;
     candidates.push({
       source: "manual_grant",
@@ -290,9 +344,15 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
       windowEndsAt: g.endsAt,
       features: [...(plan?.features ?? FEATURES)],
       grantId: g.id,
+      grant: { kind: g.kind, endsAt: g.endsAt, shared: Boolean(g.ownerId) },
       subscriptionId: null,
       exhausted: g.runsAllowed !== null && used >= g.runsAllowed
-        ? { reason: `The ${g.kind} grant's ${g.runsAllowed} runs have been used.`, blocker: "grant_used" }
+        ? {
+            reason: g.ownerId
+              ? `The ${g.kind} grant's ${g.runsAllowed} runs, shared across the owner's workspaces, have been used.`
+              : `The ${g.kind} grant's ${g.runsAllowed} runs have been used.`,
+            blocker: "grant_used",
+          }
         : input.byok.connected && !input.byok.routable ? unroutable(input.byok.provider) : null,
     });
   }
@@ -314,6 +374,7 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
         windowEndsAt: sub.periodEnd,
         features: [...plan.features],
         grantId: null,
+        grant: null,
         subscriptionId: sub.stripeSubscriptionId,
         exhausted: input.byok.routable ? null : unroutable(input.byok.provider),
       });
@@ -329,6 +390,7 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
         windowEndsAt: sub.periodEnd,
         features: [...plan.features],
         grantId: null,
+        grant: null,
         subscriptionId: sub.stripeSubscriptionId,
         exhausted: allowed === 0
           ? { reason: `${plan.name} grades on your own model key, and this workspace has none. Connect one under Settings → Grading; runs graded on Novera's keys come with Agency Pro.`, blocker: "needs_key" }
@@ -351,6 +413,7 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
       windowEndsAt: null,
       features: [...FEATURES],
       grantId: null,
+      grant: null,
       subscriptionId: null,
       exhausted: input.byok.routable ? null : unroutable(input.byok.provider),
     });
@@ -369,12 +432,13 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
       windowEndsAt: null,
       features: [...FEATURES],
       grantId: null,
+      grant: null,
       subscriptionId: null,
       exhausted: input.trialRunsUsed >= input.trialLimit
         ? {
             reason: onKey
-              ? `The trial covers ${input.trialLimit} runs and they have been used. From here, runs on your own model key need a plan: Team BYOK, or Agency Pro, which adds runs graded on Novera's keys.`
-              : `The trial covers ${input.trialLimit} runs and they have been used. Recurring testing needs a plan: Team BYOK grades on your own model key; Agency Pro adds 100 runs a month graded on Novera's keys.`,
+              ? `The trial covers ${input.trialLimit} runs and they have been used. From here, runs on your own model key need a plan: Team BYOK, or Agency Pro, which adds runs graded on Novera's keys. ${PILOT_CODE_HINT}`
+              : `The trial covers ${input.trialLimit} runs and they have been used. Recurring testing needs a plan: Team BYOK grades on your own model key; Agency Pro adds 100 runs a month graded on Novera's keys. ${PILOT_CODE_HINT}`,
             blocker: "trial_used",
           }
         : onKey && !input.byok.routable ? unroutable(input.byok.provider) : null,
@@ -405,6 +469,7 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
       features: chosen.features,
       subscription: sub,
       grantId: chosen.grantId,
+      grant: chosen.grant,
       trial: trialOf(chosen),
     };
   }
@@ -413,6 +478,9 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
   // used": it is what the person was paying for.
   const first = candidates[0];
   const lapsed = sub && !sub.inForce && first?.source === "trial";
+  // Likewise a grant that ran out of time: a pilot that ended yesterday is why runs stopped,
+  // and "the trial covers 3 runs" alone would not say so.
+  const ended = first?.source === "trial" ? endedGrant(input.grants, at) : null;
   if (first && !lapsed) {
     return {
       source: first.source,
@@ -422,7 +490,9 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
       runsOn: first.runsOn,
       windowEndsAt: first.windowEndsAt,
       canRun: false,
-      blockedReason: first.exhausted!.reason,
+      blockedReason: ended
+        ? `The ${ended.kind} grant ended on ${ended.endsAt!.slice(0, 10)}. ${first.exhausted!.reason}`
+        : first.exhausted!.reason,
       blocker: first.exhausted!.blocker,
       judgeSource: null,
       funding: { subscriptionId: null, grantId: null },
@@ -430,6 +500,7 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
       features: first.features.filter((f) => f !== "runs.start"),
       subscription: sub,
       grantId: first.grantId,
+      grant: first.grant,
       trial: trialOf(first),
     };
   }
@@ -451,12 +522,17 @@ export function resolveEntitlement(input: EntitlementInput): BillingEntitlement 
     features: [...READ_ONLY_FEATURES],
     subscription: sub,
     grantId: null,
+    grant: null,
     trial: lapsed ? { used: input.trialRunsUsed, limit: input.trialLimit } : null,
   };
 }
 
-/** One line naming what funds runs in this workspace, from the decision above. */
-export function fundingLine(e: BillingEntitlement, ownKey: boolean): string {
+/**
+ * One line naming what funds runs in this workspace, from the decision above. `ownerViewing`:
+ * the person reading owns the workspace, so an owner-wide pilot's pool is "your workspaces";
+ * anyone else reads "the owner's workspaces", which is true for everyone.
+ */
+export function fundingLine(e: BillingEntitlement, ownKey: boolean, ownerViewing = false): string {
   const plan = e.planKey ? PLAN_CATALOG[e.planKey].name : null;
   const left = (allowed: number, used: number) => `${Math.max(0, allowed - used)} of ${allowed}`;
   switch (e.source) {
@@ -466,11 +542,70 @@ export function fundingLine(e: BillingEntitlement, ownKey: boolean): string {
       return e.runsOn === "own_key" || e.runsAllowed === null
         ? `${plan} · own key`
         : `${plan} · ${left(e.runsAllowed, e.runsUsed)} managed runs left`;
-    case "manual_grant":
-      return e.runsAllowed === null ? "Grant from Novera" : `Grant · ${left(e.runsAllowed, e.runsUsed)} runs left`;
+    case "manual_grant": {
+      const name = grantName(e.grant?.kind);
+      const until = e.grant?.endsAt ? ` · until ${e.grant.endsAt.slice(0, 10)}` : "";
+      const shared = e.grant?.shared ? ` (${sharedAcross(ownerViewing)})` : "";
+      return e.runsAllowed === null
+        ? `${name} from Novera${shared}${until}`
+        : `${name} · ${left(e.runsAllowed, e.runsUsed)} runs left${shared}${until}`;
+    }
     case "byok":
       return "Own key";
     case "none":
       return "No plan";
   }
+}
+
+/** What a grant is called on screen: a pilot is a pilot, never a plan; every other kind a grant. */
+export function grantName(kind: GrantRow["kind"] | null | undefined): string {
+  return kind === "pilot" ? "Pilot" : "Grant";
+}
+
+/**
+ * The short phrase after "Graded on …" on the dashboard and in Settings → Grading: which source
+ * funds runs here and what is left of it, from the same decision. Null on the trial and when
+ * nothing is in force (those surfaces say so in their own words).
+ */
+export function fundingDetail(e: BillingEntitlement, ownerViewing = false): string | null {
+  const plan = e.planKey ? PLAN_CATALOG[e.planKey].name : null;
+  switch (e.source) {
+    case "manual_grant":
+      return fundingLine(e, e.runsOn === "own_key", ownerViewing);
+    case "subscription":
+      return e.runsOn === "novera" && e.runsAllowed !== null
+        ? `${plan}: ${Math.max(0, e.runsAllowed - e.runsUsed)} of ${e.runsAllowed} managed runs left this period`
+        : plan;
+    default:
+      return null;
+  }
+}
+
+/**
+ * What removing the workspace's own model key would leave, said before the button is pressed
+ * (Settings → Grading). From the source deciding now: a grant or Agency Pro carries on grading
+ * on Novera's keys, Team BYOK cannot, and the trial goes back to whatever it has left.
+ */
+export function ifKeyRemoved(e: BillingEntitlement, trial: { used: number; limit: number }): string {
+  if (e.source === "manual_grant") {
+    const left = e.runsAllowed !== null ? ` (${Math.max(0, e.runsAllowed - e.runsUsed)} of ${e.runsAllowed} left${e.grant?.shared ? `, ${sharedAcross(false)}` : ""})` : "";
+    return `Runs would then grade on Novera's keys, still counted against the ${grantName(e.grant?.kind).toLowerCase()}'s runs${left}.`;
+  }
+  if (e.source === "subscription" && e.planKey) {
+    const plan = PLAN_CATALOG[e.planKey];
+    return plan.managedRunsPerPeriod > 0
+      ? `Runs would then grade on Novera's keys, counted against ${plan.name}'s ${plan.managedRunsPerPeriod} runs a period.`
+      : `${plan.name} grades only on your own key, so no run could start until a key is connected again.`;
+  }
+  const trialLeft = Math.max(0, trial.limit - trial.used);
+  return trialLeft > 0
+    ? `Runs would go back to the trial allowance, which has ${trialLeft} of ${trial.limit} left.`
+    : `The trial's ${trial.limit} runs are used, so runs would then grade on Novera's keys only under Agency Pro, which includes ${PLAN_CATALOG.agency_pro.managedRunsPerPeriod} a period, or a grant from Novera. Team BYOK includes none.`;
+}
+
+/** What Settings says once the key is removed, from the decision made after removing it. */
+export function keyRemovedNotice(after: { canRun: boolean; blockedReason: string | null; fundingLine: string }): string {
+  return after.canRun
+    ? `Removed. Runs now grade on Novera's keys: ${after.fundingLine}.`
+    : `Removed. ${after.blockedReason ?? "No run can start in this workspace now."}`;
 }

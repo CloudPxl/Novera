@@ -50,18 +50,20 @@ export function windowResetMinutes(windowSeconds: number, now = Date.now()): num
 /**
  * What a refused person is told.
  *
- * Never "rate limited", which is our vocabulary for our problem. It says when they can
- * try again and gives them a way through that does not involve waiting — a support form
- * that turns someone away with no route forward is worse than one that is slow.
+ * Never "rate limited", which is our vocabulary for our problem. It says when they can try
+ * again. It used to offer an address at nover.space as the way through, but nover.space receives no
+ * mail: the one route it named bounced. A message form also says that what was already sent
+ * arrived, so nobody sends it again to be sure.
  */
-export function refusalMessage(retryAfterMinutes: number): string {
+export function refusalMessage(retryAfterMinutes: number, kind: "attempt" | "message" = "attempt"): string {
   const when = retryAfterMinutes <= 1
     ? "in a minute"
     : retryAfterMinutes < 60
       ? `in about ${retryAfterMinutes} minutes`
       : "in about an hour";
-  return `That is more messages than this form takes at once — try again ${when}, `
-    + "or email support@nover.space and it will reach the same person.";
+  return kind === "message"
+    ? `That is more messages than this form takes at once — try again ${when}. Every message you already sent has reached us, so there is no need to send it again.`
+    : `That is more attempts than this form takes at once — try again ${when}.`;
 }
 
 /**

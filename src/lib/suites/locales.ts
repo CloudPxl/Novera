@@ -27,12 +27,14 @@ import { LOCALES, LOCALE_NAMES, VARIANT_LOCALES, isLocale, isVariantLocale, type
  * were localised.
  *
  * What a variant may change is the customer's side only: `input`, `earlier_turns` (the same
- * number of turns, so a turn rule still names the same turn) and `checks`. The expectation, the
- * assertions and every rule that is not about wording stay the suite's own. An English text
- * rule (`must_contain`, `must_match`…) applied to a German reply would fail it for being German,
- * so a variant of a scenario with one must override `checks` with rules written for that
- * language — and an override keeps every rule that is not about wording exactly as the suite
- * has it, so a localised scenario is never a weaker test under the same id.
+ * number of turns, so a turn rule still names the same turn), `checks` and `turn_checks`. The
+ * expectation, the assertions and every rule that is not about wording stay the suite's own. An
+ * English text rule (`must_contain`, `must_match`…) applied to a German reply would fail it for
+ * being German, so a variant of a scenario with one — on the conversation or on one turn — must
+ * override `checks` (or `turn_checks`) with rules written for that language. An override keeps
+ * every rule that is not about wording exactly as the suite has it, and `turn_checks` keeps
+ * exactly the turns the suite rules, so a localised scenario is never a weaker test under the
+ * same id.
  *
  * Server-only in practice: it hashes scenarios with `node:crypto` and imports suite files.
  */
@@ -54,6 +56,8 @@ export interface LocaleVariant {
   input: string;
   earlier_turns?: string[];
   checks?: DeterministicCheck[];
+  /** The scenario's per-turn rules for this language: the same turns, only the text rules rewritten. */
+  turn_checks?: Array<{ turn: number; checks: DeterministicCheck[] }>;
 }
 
 /** The sidecar contract: `{ suite, version, purpose, locales: { de: { <id>: variant }, fr, ro } }`. */
@@ -71,7 +75,7 @@ export function isTextCheck(check: { type: string }): boolean {
   return TEXT_CHECK_TYPES.has(check.type);
 }
 
-const VARIANT_KEYS: ReadonlySet<string> = new Set(["input", "earlier_turns", "checks"]);
+const VARIANT_KEYS: ReadonlySet<string> = new Set(["input", "earlier_turns", "checks", "turn_checks"]);
 
 interface Registration {
   locales: unknown;
@@ -94,6 +98,12 @@ export interface LocalisedVersion {
 
 const canon = (value: unknown) => canonicalise(value as Json);
 
+/** A `turn_checks` list whose entries carry nothing but `turn` and `checks`. */
+function isTurnRuleList(list: unknown): list is unknown[] {
+  if (!Array.isArray(list)) return false;
+  return list.every((t) => !!t && typeof t === "object" && !Array.isArray(t) && Object.keys(t).every((k) => k === "turn" || k === "checks"));
+}
+
 /**
  * Checks one variant against the scenario it localises. Every problem, never the first; an
  * empty list means it can be sent.
@@ -103,7 +113,7 @@ export function variantProblems(base: SuiteCase, raw: unknown, where: string): s
   const v = (raw ?? null) as Record<string, unknown> | null;
   if (!v || typeof v !== "object" || Array.isArray(v)) return [`${where}: a variant is an object with \`input\`.`];
   for (const k of Object.keys(v)) {
-    if (!VARIANT_KEYS.has(k)) problems.push(`${where}: \`${k}\` cannot vary by language; only input, earlier_turns and checks can.`);
+    if (!VARIANT_KEYS.has(k)) problems.push(`${where}: \`${k}\` cannot vary by language; only input, earlier_turns, checks and turn_checks can.`);
   }
   if (typeof v.input !== "string" || !v.input.trim()) problems.push(`${where}: \`input\` must be the customer's message in that language.`);
   else if (v.input.trim() === base.input.trim()) problems.push(`${where}: \`input\` is the English text unchanged.`);
@@ -118,24 +128,38 @@ export function variantProblems(base: SuiteCase, raw: unknown, where: string): s
     problems.push(`${where}: \`earlier_turns\` has ${v.earlier_turns.length} message(s) where the scenario has ${baseTurns.length}; a turn rule must still name the same turn.`);
   }
 
-  // A rule about wording in another turn cannot be overridden here.
-  if ((base.turn_checks ?? []).some((t) => t.checks.some(isTextCheck))) {
-    problems.push(`${where}: the scenario has a text rule on one turn, which a variant cannot override; choose another scenario.`);
-  }
-
   const baseText = (base.checks ?? []).some(isTextCheck);
   if (v.checks === undefined) {
     if (baseText) problems.push(`${where}: the scenario has an English text rule; the variant must override \`checks\` with rules for its own language.`);
   } else if (!Array.isArray(v.checks)) {
     problems.push(`${where}: \`checks\` must be a list of rules.`);
-  } else {
+  }
+
+  // A rule about wording on one turn is overridden the same way, turn for turn.
+  const baseTurnText = (base.turn_checks ?? []).some((t) => t.checks.some(isTextCheck));
+  if (v.turn_checks === undefined) {
+    if (baseTurnText) problems.push(`${where}: the scenario has an English text rule on one turn; the variant must override \`turn_checks\` with rules for its own language.`);
+  } else if (!isTurnRuleList(v.turn_checks)) {
+    problems.push(`${where}: \`turn_checks\` must be a list of { turn, checks }.`);
+  }
+
+  const overridesChecks = Array.isArray(v.checks);
+  const overridesTurns = isTurnRuleList(v.turn_checks);
+  if (overridesChecks || overridesTurns) {
     // The same validator a suite file passes, on the scenario as it would be sent.
-    const parsed = validateSuite({ key: "variant", name: "variant", version: 1, cases: [{ ...base, checks: v.checks }] });
+    const sent = { ...base, ...(overridesChecks ? { checks: v.checks } : {}), ...(overridesTurns ? { turn_checks: v.turn_checks } : {}) };
+    const parsed = validateSuite({ key: "variant", name: "variant", version: 1, cases: [sent] });
     if (!parsed.ok) problems.push(...parsed.errors.map((e) => `${where}: ${e}`));
     else {
       const kept = (list: readonly { type: string }[]) => canon(list.filter((c) => !isTextCheck(c)));
-      if (kept(v.checks as { type: string }[]) !== kept(base.checks ?? [])) {
+      if (overridesChecks && kept(v.checks as { type: string }[]) !== kept(base.checks ?? [])) {
         problems.push(`${where}: an override may only rewrite text rules; every other rule must stay exactly as the scenario has it.`);
+      }
+      // Which turns are ruled, in what order, and every rule on them that is not about wording.
+      const turnRules = (list: readonly { turn: number; checks: readonly { type: string }[] }[]) =>
+        canon(list.map((t) => ({ turn: t.turn, checks: t.checks.filter((c) => !isTextCheck(c)) })));
+      if (overridesTurns && turnRules(v.turn_checks as NonNullable<LocaleVariant["turn_checks"]>) !== turnRules(base.turn_checks ?? [])) {
+        problems.push(`${where}: \`turn_checks\` may only rewrite text rules; the turns it rules and every other rule must stay exactly as the scenario has them.`);
       }
     }
   }
@@ -179,7 +203,12 @@ export function parseLocaleRegistration(reg: Registration): { localised: Localis
       const r = raw as LocaleVariant;
       own.set(id, {
         digest: scenarioDigest(base),
-        variant: { input: r.input, ...(r.earlier_turns ? { earlier_turns: r.earlier_turns } : {}), ...(r.checks ? { checks: r.checks } : {}) },
+        variant: {
+          input: r.input,
+          ...(r.earlier_turns ? { earlier_turns: r.earlier_turns } : {}),
+          ...(r.checks ? { checks: r.checks } : {}),
+          ...(r.turn_checks ? { turn_checks: r.turn_checks } : {}),
+        },
       });
     }
     variants.set(locale, own);
@@ -247,7 +276,13 @@ export function localise(cases: readonly SuiteCase[], locale: Locale, registry: 
     if (!v) return c;
     used[c.id] = v;
     localisedIds.push(c.id);
-    return { ...c, input: v.input, ...(v.earlier_turns ? { earlier_turns: v.earlier_turns } : {}), ...(v.checks ? { checks: v.checks } : {}) };
+    return {
+      ...c,
+      input: v.input,
+      ...(v.earlier_turns ? { earlier_turns: v.earlier_turns } : {}),
+      ...(v.checks ? { checks: v.checks } : {}),
+      ...(v.turn_checks ? { turn_checks: v.turn_checks } : {}),
+    };
   });
   return { locale, cases: out, used, localisedIds, digest: localisedIds.length ? localeDigest(locale, used) : null };
 }

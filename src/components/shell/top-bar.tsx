@@ -55,7 +55,7 @@ export async function TopBar() {
   ]);
 
   const admin = await assertMembership(user.id, workspace.id);
-  const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id });
+  const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id, viewerIsOwner: role === "owner" });
 
   const agents: LaunchAgent[] = (agentRows ?? []).map((a) => ({ id: a.id as string, name: a.name as string, host: hostOf(a.config) }));
   const suites: LaunchSuite[] = (suiteRows ?? []).map((s) => ({

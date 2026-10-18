@@ -73,7 +73,7 @@ Instead of scripting every turn, a scenario can describe a customer and let a mo
 - `language` — optional; the opening message sets it otherwise.
 - `facts` — optional; things they know and may reveal if asked, such as an order number.
 
-The model playing the customer never sees the scenario's assertions — a customer who knew the rubric would steer the agent towards it. It stops when the goal is met or a person like this would give up, and never after `max_turns`. It is funded like grading: the trial allowance, or your own key.
+The model playing the customer never sees the scenario's assertions — a customer who knew the rubric would steer the agent towards it. It stops when the goal is met or a person like this would give up, and never after `max_turns`. It is funded like grading: Novera's keys, or your own key.
 
 Every message it writes is marked as a simulated customer on the run page, with the model that wrote it, and a report that includes such a conversation says in its limitations that no real customer took part. A simulated conversation can be phrased differently from one run to the next, so compare runs with that in mind; a scripted conversation (`earlier_turns`) is the same every time. A scenario has one or the other, not both.
 

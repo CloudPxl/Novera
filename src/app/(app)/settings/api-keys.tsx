@@ -27,8 +27,8 @@ export function CreateApiKey() {
         <label className="flex w-full items-start gap-2 text-sm text-ink-soft">
           <input type="checkbox" name="canRun" className="mt-0.5 size-4 accent-ink" />
           <span>
-            Can also start runs. Each run it starts uses one of your trial runs, or grades on your own
-            model key. Leave this off for a key that only reads.
+            Can also start runs. Each run it starts is counted like one from the run button — the
+            trial, then a plan or a grant. Leave this off for a key that only reads.
           </span>
         </label>
         <label className="flex w-full items-start gap-2 text-sm text-ink-soft">

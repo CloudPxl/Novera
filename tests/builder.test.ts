@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
 import v5 from "../data/suites/eu-support-v5.json" with { type: "json" };
-import { allPacks, labelOf, packCases, publishedPacks, qualityRecord, reviewMinutes, suggestedPack } from "../src/lib/builder/packs.ts";
+import v6 from "../data/suites/eu-support-v6.json" with { type: "json" };
+import { allPacks, labelOf, packByKey, packCases, publishedPacks, qualityRecord, reviewMinutes, suggestedPack } from "../src/lib/builder/packs.ts";
 import { docxToText, htmlToText, parseSource, partsOf, toolSchemaToText, MAX_SOURCE_CHARS } from "../src/lib/builder/sources.ts";
 import { robotsAllows } from "../src/lib/builder/fetch-page.ts";
 import { idAllocator, INJECTION_SHAPED, parseExtraction } from "../src/lib/builder/extract.ts";
@@ -13,24 +14,38 @@ import { POST as fixture } from "../src/app/api/test-agent/route.ts";
 import type { SuiteCase } from "../src/lib/runner/types.ts";
 
 const V5 = new Map((v5 as { cases: SuiteCase[] }).cases.map((c) => [c.id, c]));
+const V6 = new Map((v6 as { cases: SuiteCase[] }).cases.map((c) => [c.id, c]));
 
-test("every published pack is eu-support v5, byte for byte, with its quick start inside it", () => {
+test("every published pack is eu-support v6, byte for byte, with its quick start inside it", () => {
   const published = publishedPacks();
   assert.ok(published.length >= 8);
   for (const pack of published) {
     assert.equal(pack.source.suite, "eu-support");
-    assert.equal(pack.source.version, 5);
+    assert.equal(pack.source.version, 6);
     assert.ok(pack.cases.length > 0 && pack.quick.length > 0, pack.key);
     assert.equal(new Set(pack.cases).size, pack.cases.length, `${pack.key}: no scenario twice`);
     for (const id of pack.quick) assert.ok(pack.cases.includes(id), `${pack.key}: quick ${id} is in the pack`);
     for (const id of Object.keys(pack.needs_customer_policy ?? {})) assert.ok(pack.cases.includes(id), `${pack.key}: caveat ${id} is in the pack`);
-    for (const c of packCases(pack)) assert.deepEqual(c, V5.get(c.id), `${pack.key} ${c.id} is the measured scenario unchanged`);
+    for (const c of packCases(pack)) assert.deepEqual(c, V6.get(c.id), `${pack.key} ${c.id} is the measured scenario unchanged`);
     assert.ok(pack.limitations.length > 0 && pack.scope && pack.published && pack.maintainer, `${pack.key} states scope and limits`);
   }
 });
 
+test("a build made from a version 1 pack still reads its v5 scenarios; a new build gets version 2", () => {
+  for (const pack of publishedPacks()) {
+    const v1 = packByKey(pack.key, 1)!;
+    assert.equal(v1.status, "deprecated", pack.key);
+    assert.equal(v1.source.version, 5);
+    assert.deepEqual(v1.cases, pack.cases, `${pack.key}: the same selection`);
+    for (const c of packCases(v1)) assert.deepEqual(c, V5.get(c.id), `${pack.key} v1 ${c.id}`);
+    assert.equal(packByKey(pack.key), pack, `${pack.key}: the newest published version is the one offered`);
+  }
+  assert.equal(labelOf("T33", 5)?.expected, "fail");
+  assert.match(labelOf("T33")!.why, /contoso in a lookup_account argument/);
+});
+
 test("a pack without measured scenarios is a draft and is never offered", () => {
-  const drafts = allPacks().filter((p) => p.status !== "published");
+  const drafts = allPacks().filter((p) => p.status === "draft");
   assert.deepEqual(drafts.map((p) => p.key).sort(), ["ecommerce-support", "multilingual-support", "saas-b2b-support"]);
   for (const d of drafts) {
     assert.equal(d.cases.length, 0);
@@ -67,7 +82,7 @@ test("no pack rule fails a scenario the fixture is labelled to pass; the planted
   const ids = new Set(publishedPacks().flatMap((p) => p.cases));
   const caught: string[] = [];
   for (const id of [...ids].sort()) {
-    const c = V5.get(id)!;
+    const c = V6.get(id)!;
     if (!c.checks?.length || c.earlier_turns?.length || c.persona) continue;
     const body: Record<string, unknown> = { message: c.input };
     if (c.context) body.context = JSON.stringify(c.context);

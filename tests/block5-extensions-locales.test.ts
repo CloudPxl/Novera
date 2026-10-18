@@ -147,7 +147,8 @@ const LOCALE_FILES = readdirSync(DIR).filter((f) => f.endsWith(".locales.json"))
 
 test("every locales sidecar validates: known ids, de/fr/ro only, nothing left over", () => {
   assert.deepEqual(localeRegistryProblems(), []);
-  assert.equal(LOCALE_FILES.length, 4);
+  // eu-support v5 and v6, and the three vertical suites at v1 (and v2 for two of them).
+  assert.equal(LOCALE_FILES.length, 7);
   for (const f of LOCALE_FILES) {
     const l = read(f);
     assert.deepEqual(Object.keys(l).sort(), ["locales", "purpose", "suite", "version"], f);
@@ -181,7 +182,7 @@ const NOT_LOCALISABLE: Record<string, readonly string[]> = {
 };
 
 test("eu-gdpr-support, e-commerce-refund and fintech-kyc are localised in full", () => {
-  for (const f of ["eu-gdpr-support-v1.locales.json", "e-commerce-refund-v1.locales.json", "fintech-kyc-v1.locales.json"]) {
+  for (const f of ["eu-gdpr-support-v1.locales.json", "eu-gdpr-support-v2.locales.json", "e-commerce-refund-v1.locales.json", "fintech-kyc-v1.locales.json", "fintech-kyc-v2.locales.json"]) {
     const l = read(f);
     const cases = suite(`${l.suite}-v${l.version}.json`).cases;
     const expected = cases.filter((c) => !c.persona && !(NOT_LOCALISABLE[f] ?? []).includes(c.id)).map((c) => c.id);

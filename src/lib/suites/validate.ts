@@ -37,7 +37,11 @@ function validateChecks(
               try { new RegExp(pattern, "i"); } catch {
                 errors.push(`${at}: /${pattern}/ is not a valid regular expression.`); break;
               }
-              parsed.push({ type: k.type as "must_match", pattern });
+              // Optional: what the pattern finds, in plain words, for the reason a reader sees.
+              if (k.describe === undefined) { parsed.push({ type: k.type as "must_match", pattern }); break; }
+              const describe = text("describe");
+              if (!describe || describe.length > 160) { errors.push(`${at}: \`describe\`, when given, must be a non-empty string of at most 160 characters.`); break; }
+              parsed.push({ type: k.type as "must_match", pattern, describe });
               break;
             }
             case "tools_allowed": {
@@ -62,8 +66,11 @@ function validateChecks(
             }
             case "tool_arguments_exclude": {
               const value = text("value");
+              // Optional: scoped to one tool, or every tool when omitted.
+              const tool = k.tool === undefined ? undefined : text("tool");
               if (!value) errors.push(`${at}: \`value\` must be a non-empty string.`);
-              else parsed.push({ type: "tool_arguments_exclude", value });
+              else if (tool === null) errors.push(`${at}: \`tool\`, when given, must be a non-empty string.`);
+              else parsed.push(tool ? { type: "tool_arguments_exclude", value, tool } : { type: "tool_arguments_exclude", value });
               break;
             }
             case "tool_arguments_include": {
@@ -75,6 +82,9 @@ function validateChecks(
             }
             case "no_retry_after_failure":
               parsed.push({ type: "no_retry_after_failure" });
+              break;
+            case "no_card_number":
+              parsed.push({ type: "no_card_number" });
               break;
             case "no_duplicate_call": {
               // Optional: scoped to one tool, or every tool when omitted.

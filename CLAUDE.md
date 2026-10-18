@@ -61,7 +61,7 @@ someone with the service role, not merely someone using the application.
 | A drafted or imported scenario cannot enter a suite without a named approval, and cannot be withdrawn once it has; an import carries its file and item hashes, a policy draft its quoted passage, each frozen | 0022 + 0030 |
 | A suite version cannot be changed or deleted once it exists, by anyone; a draft arrives undecided, whoever inserts it; a builder draft quotes its source word for word, and one resting on an open question cannot be approved until a person answers it | 0056, `verify:builder` |
 | An exploratory scan of unapproved drafts is never a conformity report: only the Suite Builder starts one, it cannot be scheduled, and the database refuses it a report | 0056 `reports_not_exploratory`, `src/lib/workflow/start-run.ts` |
-| A curated pack is eu-support v5 scenarios byte for byte, its quality record computed from the labels; a pack without measured scenarios is not offered; observed agent behaviour is never written as policy | `src/lib/builder/packs.ts`, `tests/builder.test.ts`, `verify:builder` |
+| A curated pack is eu-support v6 scenarios byte for byte (version 1 of each, from v5, stays resolvable for the builds made from it), its quality record computed from the labels; a pack without measured scenarios is not offered; observed agent behaviour is never written as policy | `src/lib/builder/packs.ts`, `tests/builder.test.ts`, `verify:builder` |
 | A sign-in never strands a person: a sign-up whose email could not be sent says no account was created, a reset never claims a link was sent over a mail failure, every emailed or provider link returns only to this deployment and to a fixed list of pages, Google and GitHub appear only when enabled, the last way in cannot be removed, and linking, unlinking, password changes and signing out everywhere are audited | `src/lib/auth/redirects.ts`, `src/lib/auth/errors.ts`, `src/app/auth/callback/`, `tests/auth.test.ts`; dashboard steps in `docs/setup/sign-in-and-email.md` |
 | An emailed link signs in only the browser that asked for it: a `token_hash` confirmation confirms the address and starts no session, magic-link and invite links are refused, and a password reset needs a fifteen-minute, single-use recovery context set where a recovery link is spent — a bare `token_hash` reset is verified without cookies and never signs the browser in (its session travels sealed inside the context), and a PKCE code mints one only when GoTrue stamped the session `recovery` | `src/app/auth/confirm/route.ts`, `src/app/auth/callback/handle.ts`, `src/lib/auth/recovery.ts`, `tests/auth.test.ts` |
 | A workspace with its own model key has all of its model work — grading, diagnosis, drafting, Suite Builder extraction, Ask Novera — served on that key, never ours, and each operation is recorded with funding, provider and model, never content; Ask Novera shows no figure its inputs do not contain | `src/lib/providers/model-work.ts` (`resolveConnections`), 0059, `tests/model-work.test.ts` |
@@ -146,9 +146,11 @@ can know whether the agent acted on the first. `started_at` is written once.
 
 **Evaluation order is cheapest-sufficient: rules → read-back → models.**
 A scenario's checks (contains, matches, tools allowed/forbidden/required/ordered,
-arguments excluded, no retry after failure, approval before an action, latency) can
-**fail a case and can never pass one** — passing "must not contain X" says nothing about
-whether the expectation was met. Then the read-back, if the agent has one. Only what is
+arguments excluded for one tool or any, a payment card number by scheme and checksum, no
+retry after failure, approval before an action, latency) can **fail a case and can never
+pass one** — passing "must not contain X" says nothing about whether the expectation was
+met, and a rule that fires on a correct reply is a false finding, so a rule is written for
+precision and the graders catch the rest (eu-support v6, 2026-10-18). Then the read-back, if the agent has one. Only what is
 left goes to models. A rule-settled case records `settled_by = deterministic` and carries
 no judge, no votes, no agreement.
 
@@ -221,9 +223,9 @@ src/lib/auth/         the request's context (user, profile, active workspace, ro
 src/lib/audit/        the audit trail of access changes
 src/lib/review/       failed scenarios as findings (new, recurring, resolved), derived from stored rows
 src/lib/builder/      the Suite Builder: curated packs, sources (parse, fetch one page), extraction, discovery, coverage
-data/packs/           curated baseline packs — selections of eu-support v5, byte for byte
+data/packs/           curated baseline packs — selections of eu-support v6, byte for byte (v1 packs from v5, deprecated)
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
-data/suites/          versioned scenario suites (eu-support v1–v5; eu-gdpr-support, e-commerce-refund, fintech-kyc v1), calibration labels, and `.tiers.json` sidecars (triage tiers, not sealed)
+data/suites/          versioned scenario suites (eu-support v1–v6; eu-gdpr-support v1–v2, e-commerce-refund v1, fintech-kyc v1–v2), calibration labels, and `.tiers.json` / `.locales.json` sidecars (triage tiers and language variants, not sealed)
 src/lib/suites/       validation, the suite digest, tiers by scenario definition, computed changelogs, the catalog (/scenarios?tab=catalog)
 src/lib/ci/           CI gating: trigger parsing, commit dedupe and supersede decisions, the exit-code gate, the GitHub Actions workflow generator
 src/lib/checks/       the single-scenario check's label, verdict words and view state
@@ -268,7 +270,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 1296 unit tests | free |
+| `npm test` | 1310 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |

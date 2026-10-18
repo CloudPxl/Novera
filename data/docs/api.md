@@ -48,10 +48,10 @@ When the run is done, `GET /api/v1/runs/<id>` gives its report's link; the JSON 
 With a key that can start runs, `POST /api/v1/ci/trigger` starts a run for one commit:
 
 ```json
-{"agent_id": "…", "suite": "eu-support-v5", "git_commit_sha": "…", "git_branch": "feature/refunds", "pr_number": 42}
+{"agent_id": "…", "suite": "eu-support-v6", "git_commit_sha": "…", "git_branch": "feature/refunds", "pr_number": 42}
 ```
 
-`suite` is a suite key, pinned to a version (`eu-support-v5`) or not (`eu-support`, the newest); your workspace's own suite of that key is used before a built-in one, and `suite_id` works too. The names are also accepted in camelCase (`agentId`, `suiteSlug`, `gitCommitSha`, `gitBranch`, `prNumber`, `cancelSuperseded`); answers are always snake_case. The run starts exactly as `POST /api/v1/runs` starts one, with the same checks, and a refusal answers with the same status and `code`.
+`suite` is a suite key, pinned to a version (`eu-support-v6`) or not (`eu-support`, the newest); your workspace's own suite of that key is used before a built-in one, and `suite_id` works too. The names are also accepted in camelCase (`agentId`, `suiteSlug`, `gitCommitSha`, `gitBranch`, `prNumber`, `cancelSuperseded`); answers are always snake_case. The run starts exactly as `POST /api/v1/runs` starts one, with the same checks, and a refusal answers with the same status and `code`.
 
 - It answers `202` with `run`, `next` (the execute call), `poll_url` and `superseded`. The commit is stated on the report as the release you declared, unless you send `release_id`.
 - The same commit, agent and suite again answers `200` with the run it already started and `"deduplicated": true`, whatever that run's state — so a retried or re-run job never spends a second run on one commit. If that run was aborted (stopped, superseded, or halted because your agent could not be reached), it sealed nothing, so the commit gets a new run.
@@ -70,10 +70,10 @@ Drive the run with `POST /api/v1/runs/<id>/execute` until `done` is true, then `
 With a key that can run single-scenario checks (`probe`), `POST /api/v1/probes/single` sends one scenario of a suite to one agent and grades it the way a run does — the scenario's rules, then the read-back of your system if the agent has one, then two models — against the agent's newest policy version:
 
 ```json
-{"agent_id": "…", "suite": "eu-support-v5", "scenario_id": "T07", "locale": "de"}
+{"agent_id": "…", "suite": "eu-support-v6", "scenario_id": "T07", "locale": "de"}
 ```
 
-`suite` is a suite key (`eu-support-v5`, or `eu-support` for the newest), or send `suite_id`. `locale` is `en` (the default), `de`, `fr` or `ro`; a scenario without a variant in that language answers `422` rather than being sent in English under a German request. The names are also accepted in camelCase (`agentId`, `suiteSlug`, `scenarioId`).
+`suite` is a suite key (`eu-support-v6`, or `eu-support` for the newest), or send `suite_id`. `locale` is `en` (the default), `de`, `fr` or `ro`; a scenario without a variant in that language answers `422` rather than being sent in English under a German request. The names are also accepted in camelCase (`agentId`, `suiteSlug`, `scenarioId`).
 
 It answers `200` with `check` — `verdict` (`pass`, `fail`, `error` when the scenario could not be run or read, or `no_verdict` when it ran and the evidence does not support one, with `no_verdict_reason`), how it was settled, the reasons, the failed expectations, what the read-back showed, which models graded it and what funded them — `rate_limit` (`remaining`, `resets_at`) and always `"label": "Single-scenario check — not a sealed run."`
 

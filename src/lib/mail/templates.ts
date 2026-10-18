@@ -399,7 +399,7 @@ export const PREVIEWS: Record<TemplateId, () => RenderedEmail> = {
     question: "Sample question: how do I connect my agent?",
   }),
   "lifecycle.run_finished": () => runFinishedEmail({
-    agentName: "Sample agent", suiteLabel: "eu-support v5", status: "completed", outcome: "fail",
+    agentName: "Sample agent", suiteLabel: "eu-support v6", status: "completed", outcome: "fail",
     passed: 40, failed: 6, noResult: 3, runUrl: `${SAMPLE_ORIGIN}/runs/00000000-0000-0000-0000-000000000000`, manageUrl: `${SAMPLE_ORIGIN}/settings/profile`,
   }),
   "lifecycle.report_ready": () => reportReadyEmail({

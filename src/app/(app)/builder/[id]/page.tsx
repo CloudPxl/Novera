@@ -313,7 +313,8 @@ export default async function BuildPage({ params, searchParams }: {
                   const ob = c.obligation_id ? obById.get(c.obligation_id) : undefined;
                   const blocked = ob?.status === "open" ? "Answer the question this rests on before approving it." : null;
                   const conflicts = (c.conflicts ?? []) as Array<{ kind?: string; observed?: string; declared?: { source?: string; passage?: string }; action?: string; note?: string }>;
-                  const label = c.origin === "pack" ? labelOf((c.source_ref as { case_id?: string } | null)?.case_id ?? "") : null;
+                  const ref = c.source_ref as { case_id?: string; suite_version?: number } | null;
+                  const label = c.origin === "pack" ? labelOf(ref?.case_id ?? "", ref?.suite_version) : null;
                   const editing = sp.edit === c.id && canDraft && (c.status === "draft" || c.status === "needs_review");
                   return (
                     <div key={c.id} id={`c-${c.id}`} className="scroll-mt-20">

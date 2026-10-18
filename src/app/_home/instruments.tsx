@@ -158,7 +158,7 @@ function ReadBack() {
   );
 }
 
-const SEALED = { passed: 41, failed: 5, no_verdict: 3, suite: "eu-support v5", policy: "v4" };
+const SEALED = { passed: 41, failed: 5, no_verdict: 3, suite: "eu-support v6", policy: "v4" };
 
 async function sha256(text: string): Promise<string | null> {
   try {

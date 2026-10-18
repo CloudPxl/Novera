@@ -9,6 +9,14 @@ import eCommerceRefundV1 from "../../../data/suites/e-commerce-refund-v1.json" w
 import eCommerceRefundV1Locales from "../../../data/suites/e-commerce-refund-v1.locales.json" with { type: "json" };
 import fintechKycV1 from "../../../data/suites/fintech-kyc-v1.json" with { type: "json" };
 import fintechKycV1Locales from "../../../data/suites/fintech-kyc-v1.locales.json" with { type: "json" };
+// Later versions: each redefines a few scenarios and registers its own complete sidecar, matched by
+// definition, so a run of either version finds its variants.
+import euSupportV6 from "../../../data/suites/eu-support-v6.json" with { type: "json" };
+import euSupportV6Locales from "../../../data/suites/eu-support-v6.locales.json" with { type: "json" };
+import euGdprSupportV2 from "../../../data/suites/eu-gdpr-support-v2.json" with { type: "json" };
+import euGdprSupportV2Locales from "../../../data/suites/eu-gdpr-support-v2.locales.json" with { type: "json" };
+import fintechKycV2 from "../../../data/suites/fintech-kyc-v2.json" with { type: "json" };
+import fintechKycV2Locales from "../../../data/suites/fintech-kyc-v2.locales.json" with { type: "json" };
 import type { SuiteCase } from "../runner/types.ts";
 import type { DeterministicCheck } from "../judge/checks.ts";
 import { canonicalise, type Json } from "../report/canonical.ts";
@@ -87,6 +95,9 @@ const REGISTERED: Registration[] = [
   { locales: euGdprSupportV1Locales, suite: euGdprSupportV1 },
   { locales: eCommerceRefundV1Locales, suite: eCommerceRefundV1 },
   { locales: fintechKycV1Locales, suite: fintechKycV1 },
+  { locales: euSupportV6Locales, suite: euSupportV6 },
+  { locales: euGdprSupportV2Locales, suite: euGdprSupportV2 },
+  { locales: fintechKycV2Locales, suite: fintechKycV2 },
 ];
 
 export interface LocalisedVersion {

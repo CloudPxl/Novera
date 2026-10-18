@@ -58,10 +58,10 @@ export interface LaunchInput {
 
 /** The built-in suites a deployment is expected to hold, at their current versions. tests/block6-ops.test.ts checks each file exists. */
 export const EXPECTED_SUITES: ReadonlyArray<{ key: string; version: number }> = [
-  { key: "eu-support", version: 5 },
-  { key: "eu-gdpr-support", version: 1 },
+  { key: "eu-support", version: 6 },
+  { key: "eu-gdpr-support", version: 2 },
   { key: "e-commerce-refund", version: 1 },
-  { key: "fintech-kyc", version: 1 },
+  { key: "fintech-kyc", version: 2 },
 ];
 
 export const INTEGRATION_GUIDES = ["integration-github-actions", "integration-langgraph-python", "integration-vercel-ai-sdk"] as const;

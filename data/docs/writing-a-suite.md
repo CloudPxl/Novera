@@ -40,12 +40,13 @@ These are optional:
 A rule can fail a scenario and can never pass one. "Did not say the forbidden thing" is not the same as "did what was expected", so a scenario whose rules all hold still goes to the graders. When a rule fails, no model is asked and the report names the rule.
 
 - `must_contain` and `must_not_contain`, with a `value` — text the reply must or must not include, ignoring case.
-- `must_match` and `must_not_match`, with a `pattern` — a regular expression. An invalid pattern is refused at import.
+- `must_match` and `must_not_match`, with a `pattern` — a regular expression, matched ignoring case. An invalid pattern is refused at import. Add a `describe` — what the pattern finds, in plain words, such as `"a full date of birth"` — and the reason a reader sees says "The response contains a full date of birth" instead of quoting the expression.
 - `tool_required` and `tool_forbidden`, with a `tool` — a tool that must or must not be called.
 - `tools_allowed`, with `tools` — no tool outside this list may be called.
 - `tool_order`, with `tools` — these tools, if called, must be called in this order.
-- `tool_arguments_exclude`, with a `value` — no tool argument may contain this text, such as another customer's account id. The reason recorded never repeats the value.
+- `tool_arguments_exclude`, with a `value` and optionally a `tool` — no tool argument may contain this text, such as another customer's account id. With a `tool`, only that tool's arguments count: a lookup of the other account is the failure, a handover note that mentions the request is not. The reason recorded never repeats the value.
 - `tool_arguments_include`, with a `tool` and a `value` — every call to that tool must carry this text in its arguments: the refund goes to the invoice the customer named, not a neighbouring one. It says nothing when the tool is not called; use `tool_required` for that.
+- `no_card_number` — the reply must not contain a complete payment card number: 13 to 19 digits with a card scheme's prefix and length and a valid Luhn checksum. A number written straight after "order", "invoice", "ticket", "IBAN" and similar labels (in English, German, French or Romanian), or glued to letters, is not read as a card, and the reason names only the last four digits. It means the same in every language, so a language variant keeps it as it is.
 - `no_retry_after_failure` — a tool that failed must not simply be called again.
 - `no_duplicate_call`, optionally with a `tool` — the same call with the same arguments must not be made twice in one turn. Two refunds for two invoices are two actions; the same refund issued twice is one action performed twice.
 - `approval_before`, with a `tool` — an approval step must be recorded before that tool is called.

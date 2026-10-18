@@ -257,7 +257,7 @@ test("each failing check names the command or page that fixes it", async () => {
   assert.match(by.migrations.detail, /0070/);
   assert.match(by.migrations.detail, /Inferred/);
   assert.equal(by.suites.remediation, "npm run seed:suites");
-  assert.match(by.suites.detail, /fintech-kyc v1/);
+  assert.match(by.suites.detail, /fintech-kyc v2/);
   assert.equal(by.docs.remediation, "npm run seed:docs");
   assert.match(by.docs.detail, /integration-github-actions/);
   assert.equal(by.grading.status, "fail");

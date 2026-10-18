@@ -260,7 +260,7 @@ function SampleReportBody() {
           <span className="text-ink-soft">Not a real agent — what a client receives</span>
         </p>
         <div className="flex items-center gap-3">
-          <span className="type-mono text-[11px] text-ink-faint">eu-support v5 · 49 scenarios</span>
+          <span className="type-mono text-[11px] text-ink-faint">eu-support v6 · 49 scenarios</span>
           <button
             type="button"
             onClick={() => setMotion(!motion)}

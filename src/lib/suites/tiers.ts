@@ -8,6 +8,14 @@ import eCommerceRefundV1 from "../../../data/suites/e-commerce-refund-v1.json" w
 import eCommerceRefundV1Tiers from "../../../data/suites/e-commerce-refund-v1.tiers.json" with { type: "json" };
 import fintechKycV1 from "../../../data/suites/fintech-kyc-v1.json" with { type: "json" };
 import fintechKycV1Tiers from "../../../data/suites/fintech-kyc-v1.tiers.json" with { type: "json" };
+// Later versions: each redefines a few scenarios and registers its own complete sidecar, matched by
+// definition, so a run of either version finds its tiers.
+import euSupportV6 from "../../../data/suites/eu-support-v6.json" with { type: "json" };
+import euSupportV6Tiers from "../../../data/suites/eu-support-v6.tiers.json" with { type: "json" };
+import euGdprSupportV2 from "../../../data/suites/eu-gdpr-support-v2.json" with { type: "json" };
+import euGdprSupportV2Tiers from "../../../data/suites/eu-gdpr-support-v2.tiers.json" with { type: "json" };
+import fintechKycV2 from "../../../data/suites/fintech-kyc-v2.json" with { type: "json" };
+import fintechKycV2Tiers from "../../../data/suites/fintech-kyc-v2.tiers.json" with { type: "json" };
 import type { SuiteCase } from "../runner/types.ts";
 import { scenarioDigest } from "./digest.ts";
 
@@ -66,6 +74,9 @@ const REGISTERED: Registration[] = [
   { tiers: euGdprSupportV1Tiers, suite: euGdprSupportV1 },
   { tiers: eCommerceRefundV1Tiers, suite: eCommerceRefundV1 },
   { tiers: fintechKycV1Tiers, suite: fintechKycV1 },
+  { tiers: euSupportV6Tiers, suite: euSupportV6 },
+  { tiers: euGdprSupportV2Tiers, suite: euGdprSupportV2 },
+  { tiers: fintechKycV2Tiers, suite: fintechKycV2 },
 ];
 
 export interface ClassifiedVersion {

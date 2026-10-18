@@ -100,7 +100,7 @@ export default async function BuilderPage() {
 
       <Section title="What each pack is, and is not">
         <p className="max-w-3xl text-sm text-ink-soft">
-          Every pack is a selection of eu-support v5 scenarios, unchanged, so each one carries a ground-truth label and the calibration
+          Every pack is a selection of eu-support v6 scenarios, unchanged, so each one carries a ground-truth label and the calibration
           recorded for it. A pack is a starting point you decide on scenario by scenario. It is not legal advice, and it does not establish
           that any duty applies to you.
         </p>

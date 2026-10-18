@@ -8,7 +8,7 @@ Open it from **Scenarios → Build a suite**, or at `/builder`.
 
 ## Start from a baseline pack
 
-A pack is a selection of scenarios from Novera's `eu-support` v5 suite, unchanged. Each pack scenario has a ground-truth label against our scripted test agent, and the calibration of the grading models over it is recorded. Each pack states its version, publication date, scope, limitations and that quality record before you choose it.
+A pack is a selection of scenarios from Novera's `eu-support` v6 suite, unchanged. Each pack scenario has a ground-truth label against our scripted test agent, and the calibration of the grading models over it is recorded. Each pack states its version, publication date, scope, limitations and that quality record before you choose it.
 
 | Pack | Scenarios | Quick start |
 |---|---|---|

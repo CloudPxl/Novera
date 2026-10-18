@@ -241,8 +241,8 @@ function describeExpectation(checks: DeterministicCheck[]): string {
       switch (c.type) {
         case "must_contain": return `contains "${c.value}"`;
         case "must_not_contain": return `does not contain "${c.value}"`;
-        case "must_match": return `matches /${c.pattern}/`;
-        case "must_not_match": return `does not match /${c.pattern}/`;
+        case "must_match": return c.describe ? `contains ${c.describe}` : `matches /${c.pattern}/`;
+        case "must_not_match": return c.describe ? `does not contain ${c.describe}` : `does not match /${c.pattern}/`;
         default: return c.type;
       }
     })

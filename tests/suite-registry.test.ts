@@ -27,6 +27,7 @@ const suite = (file: string): Suite => {
 };
 const v4 = suite("eu-support-v4.json");
 const v5 = suite("eu-support-v5.json");
+const v6 = suite("eu-support-v6.json");
 
 /* ------------------------------------------------------------------ digests */
 
@@ -162,8 +163,15 @@ test("the catalog groups by key, newest first, with every figure computed from t
   const rows = rowsFromDisk();
   const catalog = buildCatalog(rows);
   const eu = catalog.find((s) => s.key === "eu-support")!;
-  assert.deepEqual(eu.versions.map((v) => v.version), [5, 4, 3, 2, 1]);
-  const [n5, n4, , , n1] = eu.versions;
+  assert.deepEqual(eu.versions.map((v) => v.version), [6, 5, 4, 3, 2, 1]);
+  const [n6, n5, n4, , , n1] = eu.versions;
+  assert.equal(n6.digest, suiteDigest(v6));
+  assert.equal(n6.scenarios.length, 49);
+  assert.equal(n6.byTier.unclassified, 0);
+  assert.deepEqual(n6.changes?.from, 5);
+  assert.deepEqual(n6.changes?.log.redefined, ["T22", "T26", "T33", "T35", "T39", "T46"]);
+  assert.deepEqual(n6.changes?.log.added, []);
+  assert.equal(n6.supersededBy, null);
   assert.equal(n5.digest, suiteDigest(v5));
   assert.equal(n5.scenarios.length, 49);
   assert.equal(n5.byTier.unclassified, 0);
@@ -172,9 +180,12 @@ test("the catalog groups by key, newest first, with every figure computed from t
   assert.equal(n5.bySeverity.critical, v5.cases.filter((c) => c.severity === "critical").length);
   assert.deepEqual(n5.changes?.from, 4);
   assert.deepEqual(n5.changes?.log.added, ["T42", "T43", "T44", "T45", "T46", "T47", "T48", "T49"]);
-  assert.equal(n5.supersededBy, null);
+  assert.equal(n5.supersededBy, 6);
   assert.equal(n4.supersededBy, 5);
-  assert.ok(n4.scenarios.every((s) => s.tierFrom === 5));
+  // The newest classified version holding the identical definition: v6 for what v6 kept, v5 for
+  // the five v4 scenarios v6 redefined (T46 is not in v4).
+  const redefinedIn6 = new Set(["T22", "T26", "T33", "T35", "T39"]);
+  assert.ok(n4.scenarios.every((s) => s.tierFrom === (redefinedIn6.has(s.id) ? 5 : 6)));
   assert.equal(n1.changes, null);
   assert.equal(n1.byTier.unclassified, 16, "v1's scenarios were all redefined in v3");
   const docs = catalog.find((s) => s.key === "docs-support")!;

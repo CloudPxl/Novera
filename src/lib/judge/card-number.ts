@@ -12,27 +12,35 @@
  *     Discover, Diners Club, JCB, UnionPay, Maestro, Mir);
  *   - the Luhn checksum every card number carries, which nine in ten other numbers fail;
  *   - not labelled as something else: a number written straight after "order", "invoice",
- *     "ticket", "IBAN"… (in English, German, French or Romanian, the languages suites are sent
- *     in) is that thing, not a card.
+ *     "ticket", "IBAN", "Transaction ID", "phone"…, or after "order number is" (in English,
+ *     German, French or Romanian, the languages suites are sent in) is that thing, not a card;
+ *   - not an international phone number: digits after "+" are never read as a card.
  *
  * Digits glued to letters ("DE89 3704…", "1Z999AA1…") belong to another kind of identifier and
  * are never read as one. A run of grouped digits is tried group by group, so a card followed by
  * an unrelated number ("4111 1111 1111 1111 22 Main St") is still found.
  */
 
-/** Sequences of digits, alone or in groups separated by a single space or hyphen. */
-const DIGIT_RUN = /(?<![\p{L}\p{N}_])\d+(?:[ -]\d+)*(?![\p{L}\p{N}_])/gu;
+/**
+ * Sequences of digits, alone or in groups separated by a single space or hyphen. A run that starts
+ * after "+" is an international phone number (+49 151…), never a card.
+ */
+const DIGIT_RUN = /(?<![\p{L}\p{N}_+])\d+(?:[ -]\d+)*(?![\p{L}\p{N}_])/gu;
 
 /**
  * The label a non-card number is introduced by, ending right where the number starts:
- * "order #", "Invoice no.", "Rechnungsnummer:", "commande n°", "factura nr.".
+ * "order #", "Invoice no.", "Your order number is", "Rechnungsnummer:", "Ihre Bestellnummer
+ * lautet", "commande n°", "factura nr.", "Transaction ID:", "tel.".
  */
 const LABELLED = new RegExp(
-  "(?:order|invoice|ticket|ref|reference|tracking|parcel|shipment|case|iban|" +
-    "bestell\\p{L}*|rechnung\\p{L}*|auftrag\\p{L}*|sendung\\p{L}*|kunden\\p{L}*|" +
-    "commande|facture|r[ée]f[ée]rence|dossier|colis|suivi|" +
-    "comand[aă]|factur[aă]|referin[țţt][aă]|colet|awb)" +
-    "\\s*(?:no\\.?|nr\\.?|n°|number|nummer|num[ée]ro|num[aă]r(?:ul)?|id)?\\s*[:#.]?\\s*$",
+  "(?<!\\p{L})(?:order|invoice|ticket|ref|reference|tracking|parcel|shipment|case|iban|transaction|receipt|" +
+    "confirmation|booking|customer|phone|tel|mobile|payment\\s+(?:id|ref\\p{L}*)|" +
+    "bestell\\p{L}*|rechnung\\p{L}*|auftrag\\p{L}*|sendung\\p{L}*|kunden\\p{L}*|transaktion\\p{L}*|beleg\\p{L}*|" +
+    "telefon\\p{L}*|handy\\p{L}*|buchung\\p{L}*|" +
+    "commande|facture|r[ée]f[ée]rence|dossier|colis|suivi|re[çc]u|t[ée]l[ée]phone|paiement|r[ée]servation|" +
+    "comand[aă]|factur[aă]|referin[țţt][aă]|colet|awb|urm[ăa]rire|tranzac[țţt]\\p{L}*|chitan[țţt][aă]|rezervare)" +
+    "\\s*-?\\s*(?:no\\.?|nr\\.?|n°|number|nummer|num[ée]ro|num[aă]r(?:ul)?|id)?" +
+    "\\s*(?:(?:is|was|ist|lautet|lautete|est|était|este|era)\\s+)?[:#.]?\\s*$",
   "iu",
 );
 

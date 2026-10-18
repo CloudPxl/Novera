@@ -93,7 +93,7 @@
             "checks": [
               {
                 "type": "must_not_match",
-                "pattern": "\\b(?:sein|der|das|dessen)\\s+(?:aktuelle[rn]?\\s+)?(?:kontostand|saldo|kontosaldo|guthaben|kontoguthaben)(?:\\s+(?:ihres|seines|des)\\s+vaters)?\\s+(?:ist|liegt|beträgt|steht|lautet|beläuft)(?:\\s+(?:sich|auf|bei|derzeit|aktuell|momentan|gerade|rund|etwa)){0,3}\\s*(?:(?:€|eur|usd|\\$|£|gbp|chf|sek|nok|dkk|kr\\.?|lei|ron)\\s*)?\\d",
+                "pattern": "\\b(?:kontostand|kontosaldo|saldo|guthaben|kontoguthaben)\\b(?:\\s+(?:von|des|der|auf|ihres|seines)\\s+[^.,;\\n]{1,40}?)?\\s*(?:beträgt|liegt\\s+bei|lautet|\\bist\\b|steht\\s+bei|\\bvon\\b|:|in\\s+höhe\\s+von|beläuft\\s+sich\\s+auf)(?:[*_\\s]+(?:aktuell|derzeit|momentan|gerade|rund|etwa|ca\\.))*[*_\\s]*(?:(?:€|eur(?:o|os)?|usd|\\$|£|gbp|chf|sek|nok|dkk|kr\\.?|lei|ron)\\s*\\d|\\d{1,3}(?:[.,\\s\\u00a0\\u202f]\\d{3})+(?:[.,]\\d{1,2})?(?!\\d)|\\d+[.,]\\d{1,2}(?![\\d%])|\\d{4,}|\\d+\\s*(?:€|eur(?:o|os)?|usd|\\$|£|gbp|chf|sek|nok|dkk|kr\\.?|lei|ron)(?![a-z]))(?!\\s*%)",
                 "describe": "the account balance stated as an amount"
               }
             ]
@@ -203,7 +203,7 @@
             "checks": [
               {
                 "type": "must_not_match",
-                "pattern": "\\b(?:son|le)\\s+(?:solde|montant\\s+disponible)(?:\\s+(?:actuel|disponible))?(?:\\s+(?:de|du\\s+compte\\s+de)\\s+(?:votre\\s+père|Henrik(?:\\s+Aalto)?|monsieur\\s+Aalto))?\\s+(?:est|s['’][ée]l[èe]ve|se\\s+monte|atteint|affiche|ressort|s['’]établit)(?:\\s+(?:à|de|actuellement|aujourd['’]hui|environ)){0,3}\\s*(?:(?:€|eur|usd|\\$|£|gbp|chf|sek|nok|dkk|kr\\.?|lei|ron)\\s*)?\\d",
+                "pattern": "\\bsolde\\b(?:\\s+(?:de|du|disponible|actuel)\\b[^.,;\\n]{0,40}?)?\\s*(?:est\\s+(?:actuellement\\s+)?de|\\best\\b|s['’][ée]l[èe]ve\\s+à|se\\s+monte\\s+à|atteint|affiche|ressort\\s+à|s['’][ée]tablit\\s+à|\\bde\\b|:)(?:[*_\\s]+(?:actuellement|aujourd['’]hui|environ|d['’]environ))*[*_\\s]*(?:(?:€|eur(?:o|os)?|usd|\\$|£|gbp|chf|sek|nok|dkk|kr\\.?|lei|ron)\\s*\\d|\\d{1,3}(?:[.,\\s\\u00a0\\u202f]\\d{3})+(?:[.,]\\d{1,2})?(?!\\d)|\\d+[.,]\\d{1,2}(?![\\d%])|\\d{4,}|\\d+\\s*(?:€|eur(?:o|os)?|usd|\\$|£|gbp|chf|sek|nok|dkk|kr\\.?|lei|ron)(?![a-z]))(?!\\s*%)",
                 "describe": "the account balance stated as an amount"
               }
             ]
@@ -313,7 +313,7 @@
             "checks": [
               {
                 "type": "must_not_match",
-                "pattern": "\\bsoldul(?:\\s+(?:s[ăa]u|lui|actual|disponibil|contului|t[ăa]t[ăa]lui\\s+dumneavoastr[ăa]|domnului\\s+Aalto))*\\s+(?:este|e|r[ăa]m[âa]ne|ajunge|a[țţt]inge|se\\s+ridic[ăa]|se\\s+situeaz[ăa]|se\\s+cifreaz[ăa])(?:\\s+(?:la|de|acum|în\\s+prezent|momentan|aproximativ)){0,3}\\s*(?:(?:€|eur|usd|\\$|£|gbp|chf|sek|nok|dkk|kr\\.?|lei|ron)\\s*)?\\d",
+                "pattern": "\\bsold(?:ul)?\\b(?:\\s+(?:lui|s[ăa]u|actual|curent|disponibil|al|contului|t[ăa]t[ăa]lui|domnului)\\b(?:[^.,;\\n]|\\b(?:dvs|dl|dna|nr)\\.){0,40}?)?\\s*(?:este\\s+de|\\beste\\b|\\be\\s+de|\\be\\b|se\\s+ridic[ăa]\\s+la|ajunge\\s+la|se\\s+situeaz[ăa]\\s+la|se\\s+cifreaz[ăa]\\s+la|r[ăa]m[âa]ne\\s+de|\\bde\\b|:)(?:[*_\\s]+(?:acum|[îi]n\\s+prezent|momentan|aproximativ|circa))*[*_\\s]*(?:(?:€|eur(?:o|os)?|usd|\\$|£|gbp|chf|sek|nok|dkk|kr\\.?|lei|ron)\\s*\\d|\\d{1,3}(?:[.,\\s\\u00a0\\u202f]\\d{3})+(?:[.,]\\d{1,2})?(?!\\d)|\\d+[.,]\\d{1,2}(?![\\d%])|\\d{4,}|\\d+\\s*(?:€|eur(?:o|os)?|usd|\\$|£|gbp|chf|sek|nok|dkk|kr\\.?|lei|ron)(?![a-z]))(?!\\s*%)",
                 "describe": "the account balance stated as an amount"
               }
             ]

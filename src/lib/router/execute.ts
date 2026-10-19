@@ -186,6 +186,12 @@ export interface RouteRequestOptions {
 
 /** The longest Retry-After a settling request waits out, if the deadline allows it. */
 const SETTLING_WAIT_MAX_MS = 8_000;
+/**
+ * Any grading call (not only a tie being settled) waits once for a rate limit that resets within
+ * this long, if the case's deadline has room: a free tier's per-minute token bucket refills in
+ * a second or two, and a case recorded with no verdict over that is a worse outcome than a wait.
+ */
+export const RATE_LIMIT_WAIT_MAX_MS = 3_000;
 
 /** A model call is not started with less time than this left before the deadline. */
 const MIN_CALL_MS = 1_500;
@@ -307,13 +313,30 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
       try {
         let response: ChatResponse;
         try {
-          response = await connection.provider.chat({ ...outgoing, model: candidate.model, timeoutMs }, connection.apiKey);
+          try {
+            response = await connection.provider.chat({ ...outgoing, model: candidate.model, timeoutMs }, connection.apiKey);
+          } catch (primary) {
+            // A second key for the same provider, tried once on a rate limit or a refused key.
+            const status = primary instanceof ProviderError ? primary.status : undefined;
+            if (!connection.fallbackApiKey || (status !== 429 && status !== 401)) throw primary;
+            const switched: RoutedAttempt = {
+              connection: candidate.connection, model: candidate.model, ok: false, ms: Date.now() - started,
+              error: `${(primary as Error).message} (tried again on the connection's fallback key)`,
+              reason: reasonFor(primary), ...marks,
+            };
+            attempts.push(switched);
+            onFallback?.(switched);
+            started = Date.now();
+            response = await connection.provider.chat({ ...outgoing, model: candidate.model, timeoutMs }, connection.fallbackApiKey);
+          }
         } catch (first) {
-          // Settling a tie: a short Retry-After is worth waiting for once, if the case's
-          // deadline leaves room for the wait and the call. Anything else fails as usual.
+          // A short rate limit is worth waiting for once, if the case's deadline leaves room for
+          // the wait and the call: up to 8 s when settling a tie, 3 s otherwise. Anything else
+          // fails over to the next candidate as usual.
           const wait = first instanceof ProviderError && first.status === 429 ? first.retryAfterMs : undefined;
           const room = options?.deadline === undefined ? Infinity : options.deadline - Date.now() - (wait ?? 0) - MIN_CALL_MS;
-          if (!options?.settling || wait === undefined || wait > SETTLING_WAIT_MAX_MS || room < MIN_CALL_MS) throw first;
+          const maxWait = options?.settling ? SETTLING_WAIT_MAX_MS : RATE_LIMIT_WAIT_MAX_MS;
+          if (wait === undefined || wait > maxWait || room < MIN_CALL_MS) throw first;
           const limited: RoutedAttempt = {
             connection: candidate.connection, model: candidate.model, ok: false, ms: Date.now() - started,
             error: (first as Error).message, reason: "rate_limited", retryAfterMs: wait, ...marks,
@@ -324,7 +347,7 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
           started = Date.now();
           response = await connection.provider.chat(
             { ...outgoing, model: candidate.model, timeoutMs: Math.min(timeoutMs, room) },
-            connection.apiKey,
+            connection.fallbackApiKey ?? connection.apiKey,
           );
         }
         attempts.push({ connection: candidate.connection, model: candidate.model, ok: true, ms: Date.now() - started, ...marks });

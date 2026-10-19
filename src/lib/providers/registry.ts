@@ -15,6 +15,11 @@ export interface Connection {
   provider: Provider;
   apiKey: string;
   /**
+   * A second key for the same provider (`<NAME>_API_KEY_FALLBACK`), tried once when the first is
+   * rate limited (429) or refused (401). Same provider, same terms, same data-class ceiling.
+   */
+  fallbackApiKey?: string;
+  /**
    * Whose credential this is. Ours are held to the data ceilings in
    * `src/lib/privacy/data-class.ts`; a customer's own key is their choice of processor.
    * Absent means ours — the stricter reading.
@@ -59,7 +64,8 @@ export function connectionsFromEnv(env: NodeJS.ProcessEnv = process.env): Map<st
   for (const [name, baseUrl] of Object.entries(OPENAI_COMPATIBLE_HOSTS)) {
     const key = env[`${name.toUpperCase()}_API_KEY`];
     if (key) {
-      connections.set(name, { name, provider: openAiCompatibleProvider(baseUrl), apiKey: key });
+      const fallback = env[`${name.toUpperCase()}_API_KEY_FALLBACK`];
+      connections.set(name, { name, provider: openAiCompatibleProvider(baseUrl), apiKey: key, ...(fallback ? { fallbackApiKey: fallback } : {}) });
     }
   }
 

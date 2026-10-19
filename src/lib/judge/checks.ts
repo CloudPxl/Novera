@@ -121,6 +121,8 @@ export interface CheckInput {
   responseText: string;
   toolActivity: unknown;
   latencyMs: number | null;
+  /** For a read-back: the path asked for, so `refund_recorded` can tell the record is the one requested. */
+  readBackPath?: string;
 }
 
 /**
@@ -242,7 +244,7 @@ export function runChecks(
         break;
       }
       case "refund_recorded": {
-        const reading = readRefund(text);
+        const reading = readRefund(text, input.readBackPath);
         if (!reading.refunded) failures.push({ check, why: reading.why });
         break;
       }

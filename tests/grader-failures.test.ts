@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  CircuitBreaker, createRoutedChat, describeAttempt, describeFailures, reasonFor, type RoutedAttempt,
+  CircuitBreaker, createRoutedChat, describeAttempt, describeFailures, reasonFor, type RoutedAttempt, RATE_LIMIT_WAIT_MAX_MS,
 } from "../src/lib/router/execute.ts";
 import { ProviderError, type Provider } from "../src/lib/providers/types.ts";
 import { judgeCase } from "../src/lib/judge/index.ts";
@@ -140,4 +140,64 @@ test("a settling request does not wait longer than its deadline allows", async (
   });
   await assert.rejects(() => chat("judge", { messages: [{ role: "user", content: "x" }] }, { data: "public", settling: true, deadline: Date.now() + 3_000 }));
   assert.equal(calls, 1);
+});
+
+test("any grading call waits once for a rate limit that resets within 3 s; a longer one fails over at once", async () => {
+  let calls = 0;
+  const provider = (wait: number) => ({
+    id: "openai-compatible", label: "stub",
+    async chat() {
+      calls++;
+      if (calls === 1) throw new ProviderError("groq", "limit", 429, { retryAfterMs: wait });
+      return { text: "ok", model: "g", usage: {}, raw: null };
+    },
+  }) as Provider;
+  const make = (wait: number) => createRoutedChat({
+    connections: new Map([["groq", { name: "groq", provider: provider(wait), apiKey: "k" }]]),
+    routes: { judge: [{ connection: "groq", model: "g" }] } as never,
+  });
+  const short = await make(40)("judge", { messages: [{ role: "user", content: "x" }] }, { data: "public", deadline: Date.now() + 10_000 });
+  assert.equal(calls, 2);
+  assert.deepEqual(short.attempts.map((a) => a.reason ?? "ok"), ["rate_limited", "ok"]);
+  calls = 0;
+  await assert.rejects(() => make(RATE_LIMIT_WAIT_MAX_MS + 1)("judge", { messages: [{ role: "user", content: "x" }] }, { data: "public", deadline: Date.now() + 10_000 }));
+  assert.equal(calls, 1, "a reset longer than 3 s is not waited for outside a tie-break");
+});
+
+test("a fallback key for the same connection is tried once on 429 or 401, never on other errors, and never shown", async () => {
+  const keys: string[] = [];
+  const stub = (failWith: number) => ({
+    id: "openai-compatible", label: "stub",
+    async chat(_r: unknown, key: string) {
+      keys.push(key);
+      if (key === "primary-secret") throw new ProviderError("groq", "refused", failWith);
+      return { text: "ok", model: "g", usage: {}, raw: null };
+    },
+  }) as unknown as Provider;
+  for (const status of [429, 401]) {
+    keys.length = 0;
+    const chat = createRoutedChat({
+      connections: new Map([["groq", { name: "groq", provider: stub(status), apiKey: "primary-secret", fallbackApiKey: "fallback-secret" }]]),
+      routes: { judge: [{ connection: "groq", model: "g" }] } as never,
+    });
+    const out = await chat("judge", { messages: [{ role: "user", content: "x" }] }, { data: "public" });
+    assert.deepEqual(keys, ["primary-secret", "fallback-secret"], String(status));
+    assert.match(out.attempts[0].error ?? "", /fallback key/);
+    assert.ok(!JSON.stringify(out.attempts).includes("secret"), "no key in the attempts");
+  }
+  keys.length = 0;
+  const chat = createRoutedChat({
+    connections: new Map([["groq", { name: "groq", provider: stub(500), apiKey: "primary-secret", fallbackApiKey: "fallback-secret" }]]),
+    routes: { judge: [{ connection: "groq", model: "g" }] } as never,
+  });
+  await assert.rejects(() => chat("judge", { messages: [{ role: "user", content: "x" }] }, { data: "public" }));
+  assert.deepEqual(keys, ["primary-secret"], "a server error is not a key problem");
+  const { connectionsFromEnv } = await import("../src/lib/providers/registry.ts");
+  const fromEnv = connectionsFromEnv({ GROQ_API_KEY: "a", GROQ_API_KEY_FALLBACK: "b" } as never).get("groq");
+  assert.equal(fromEnv?.fallbackApiKey, "b");
+  const { resetHeaderMs } = await import("../src/lib/providers/types.ts");
+  assert.equal(resetHeaderMs("1.5s"), 1500);
+  assert.equal(resetHeaderMs("650ms"), 650);
+  assert.equal(resetHeaderMs("2m59.56s"), 179_560);
+  assert.equal(resetHeaderMs("soon"), undefined);
 });

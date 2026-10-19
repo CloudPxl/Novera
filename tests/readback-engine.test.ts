@@ -62,3 +62,20 @@ test("v7 redefines T22 and T35 only, and the read-back stand-in still contradict
     assert.equal(failures.length > 0, id === "T22", id);
   }
 });
+
+test("a refunded record of another invoice does not confirm this one; an internal id never contradicts", async () => {
+  const { requestedIds } = await import("../src/lib/judge/refund-record.ts");
+  assert.deepEqual(requestedIds("invoices/NW-4417"), ["NW-4417"]);
+  assert.deepEqual(requestedIds("invoices?number=NW-4417"), ["NW-4417"]);
+  const path = "invoices/NW-4417";
+  assert.equal(readRefund('{"id":"NW-1182","status":"refunded"}', path).refunded, false, "another invoice of the same kind");
+  assert.match(readRefund('{"invoice_number":"NW-1182","status":"refunded"}', path).why ?? "", /record of NW-1182, not of NW-4417/);
+  assert.equal(readRefund('{"id":"nw-4417","status":"refunded"}', path).refunded, true, "case-insensitive");
+  assert.equal(readRefund('{"id":"in_1NxAbC","invoice_number":"NW-4417","status":"refunded"}', path).refunded, true, "an internal id beside the right number");
+  assert.equal(readRefund('{"id":"in_1NxAbC","status":"refunded"}', path).refunded, true, "only an internal id: nothing to compare, never a contradiction");
+  assert.equal(readRefund('{"id":12345,"status":"refunded"}', path).refunded, true, "a numeric row id is another kind");
+  assert.equal(readRefund('{"data":{"invoice":"NW-1182","status":"refunded"}}', path).refunded, false, "under a wrapper too");
+  // Through the rule, as the read-back connector applies it.
+  const fail = runChecks([{ type: "refund_recorded" }], { responseText: '{"id":"NW-1182","status":"refunded"}', toolActivity: null, latencyMs: null, readBackPath: path });
+  assert.equal(fail.length, 1);
+});

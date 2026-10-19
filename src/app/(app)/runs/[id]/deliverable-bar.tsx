@@ -3,6 +3,7 @@ import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { Badge } from "@/components/ui/primitives.tsx";
 import { REPORT_NOTICE_SHORT } from "@/lib/legal/notices.ts";
 import { READINESS_LABEL, type Readiness } from "@/lib/report/readiness.ts";
+import { CopySummary } from "./copy-summary.tsx";
 import { CopyLink } from "./copy-link.tsx";
 import type { Deliverable } from "./deliverable.ts";
 
@@ -24,8 +25,10 @@ const utc = (at: string) => `${at.slice(0, 16).replace("T", " ")} UTC`;
  * print it there. The operator page still prints (its sections and seal line) from the
  * browser's own menu, for an internal file.
  */
-export function DeliverableBar({ deliverable, extra }: {
+export function DeliverableBar({ deliverable, extra, summary }: {
   deliverable: Deliverable;
+  /** The plain-text client summary, from the sealed report. */
+  summary?: string | null;
   /** Exports and the badge: secondary, after the four actions. */
   extra?: ReactNode;
 }) {
@@ -56,6 +59,7 @@ export function DeliverableBar({ deliverable, extra }: {
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <ButtonLink href={d.reportHref}>View client report</ButtonLink>
         <CopyLink path={d.reportHref} />
+        {summary && <CopySummary text={summary} />}
         <ButtonLink href={d.printHref} target="_blank" rel="noreferrer" variant="secondary" size="sm" aria-describedby="deliverable-print-hint">
           Print / save PDF
         </ButtonLink>

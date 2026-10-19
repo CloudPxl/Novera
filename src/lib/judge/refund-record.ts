@@ -51,7 +51,21 @@ const asNumber = (v: unknown): number | null => {
   return null;
 };
 
-export function readRefund(body: string): RefundReading {
+const ID_KEYS = new Set(["id", "invoice", "invoice_id", "invoice_number", "invoice_no", "number", "order_id", "reference", "ref"]);
+
+/** The identifier a read-back path asks for: its last segment, or a query value ("invoices/NW-4417"). */
+export function requestedIds(path: string | undefined): string[] {
+  if (!path) return [];
+  const [p, q] = path.split("?", 2);
+  const ids = [p.split("/").filter(Boolean).pop() ?? ""];
+  for (const pair of (q ?? "").split("&")) ids.push(pair.split("=", 2)[1] ?? "");
+  return ids.map((s) => { try { return decodeURIComponent(s).trim(); } catch { return s.trim(); } }).filter((s) => /\d/.test(s));
+}
+
+/** "NW-4417" → "aa-9999": two identifiers of one kind share a shape, an internal id ("in_1Nx…") does not. */
+const shapeOf = (id: string) => id.toLowerCase().replace(/\d/g, "9").replace(/[a-z]/g, "a");
+
+export function readRefund(body: string, path?: string): RefundReading {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -66,6 +80,18 @@ export function readRefund(body: string): RefundReading {
     if (/\bnot\s+(?:yet\s+)?(?:been\s+)?refunded\b|\bunrefunded/i.test(body)) return no("The response says the refund was not made.");
     if (/\bis\s+(?:still\s+|currently\s+)?open\b/i.test(body)) return no("The response shows the state “open”.");
     return /\brefunded\b/i.test(body) ? { refunded: true, why: null } : no("The response does not show a refund.");
+  }
+
+  // The record must be the one asked for. Only an identifier of the same shape as the requested
+  // one can disagree with it: a record keyed by an internal id is never contradicted for that.
+  const wanted = requestedIds(path);
+  if (wanted.length) {
+    const ids = recordLevels(parsed as Record<string, unknown>).flatMap((level) =>
+      Object.entries(level).filter(([k, v]) => ID_KEYS.has(k.toLowerCase()) && (typeof v === "string" || typeof v === "number")).map(([, v]) => String(v).trim()));
+    const sameKind = ids.filter((id) => wanted.some((w) => shapeOf(w) === shapeOf(id)));
+    if (sameKind.length && !sameKind.some((id) => wanted.some((w) => w.toLowerCase() === id.toLowerCase()))) {
+      return no(`The response is the record of ${sameKind[0]}, not of ${wanted[0]}.`);
+    }
   }
 
   let positive = false;

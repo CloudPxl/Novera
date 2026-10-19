@@ -212,6 +212,7 @@ export function httpVerificationConnector(
         responseText: result.text,
         toolActivity: null,
         latencyMs: null,
+        readBackPath: input.path,
       });
 
       return failures.length === 0

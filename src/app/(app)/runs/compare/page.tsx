@@ -6,6 +6,9 @@ import { loadComparison, type LoadedRun } from "@/lib/evidence/comparison-loader
 import { loadStability } from "@/lib/evidence/stability-history.ts";
 import { DELTA_CAUSE_SHORT, DELTA_LABEL, DELTA_VIEWS, deltaSummary, deltasInView, viewCounts } from "@/lib/evidence/compare.ts";
 import { REPORT_NOTICE_SHORT, REPORT_NOTICE_TITLE } from "@/lib/legal/notices.ts";
+import { comparisonClientSummary } from "@/lib/report/client-summary.ts";
+import { CANONICAL_HOST } from "@/lib/net/canonical-host.ts";
+import { CopySummary } from "../[id]/copy-summary.tsx";
 import { NOVERA_ATTRIBUTION } from "@/lib/report/seal.ts";
 import { Badge } from "@/components/ui/primitives.tsx";
 import { HealthLine, PageHeader, Panel, TabNav } from "@/components/ui/page.tsx";
@@ -105,6 +108,12 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
         description={`${target.suite.name} — every scenario of two runs side by side: what regressed, what was fixed, and what moved only because the graders did.`}
         action={
           <div className="print-hide flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm font-medium text-ink-soft">
+            <CopySummary text={comparisonClientSummary({
+              agent: agentName, suite: `${target.suite.name} (${target.suite.key} v${target.suite.version})`,
+              base: { date: base.startedAt ?? base.createdAt, seal: base.seal && !base.seal.revokedAt ? base.seal.contentHash : null },
+              target: { date: target.startedAt ?? target.createdAt, seal: target.seal && !target.seal.revokedAt ? target.seal.contentHash : null },
+              regressed: deltas.counts.regressed, fixed: deltas.counts.fixed, origin: `https://${CANONICAL_HOST}`,
+            })} />
             <Link href={href(view, target.id, base.id)} className="underline-offset-2 hover:text-ink hover:underline">
               Swap base and target
             </Link>

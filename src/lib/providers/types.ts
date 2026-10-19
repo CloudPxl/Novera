@@ -100,6 +100,17 @@ export class ProviderError extends Error {
 }
 
 /** Retry-After as milliseconds: seconds or an HTTP date. Undefined when absent or unreadable. */
+/**
+ * Groq's `x-ratelimit-reset-tokens` / `-requests`: "1.5s", "650ms", "2m59.56s". Used when a 429
+ * carries no Retry-After, so a per-minute token bucket that refills in a second is waited for.
+ */
+export function resetHeaderMs(header: string | null | undefined): number | undefined {
+  if (!header) return undefined;
+  const m = /^\s*(?:(\d+(?:\.\d+)?)m(?!s))?\s*(?:(\d+(?:\.\d+)?)s)?\s*(?:(\d+(?:\.\d+)?)ms)?\s*$/.exec(header);
+  if (!m || (!m[1] && !m[2] && !m[3])) return undefined;
+  return Math.round(Number(m[1] ?? 0) * 60_000 + Number(m[2] ?? 0) * 1000 + Number(m[3] ?? 0));
+}
+
 export function retryAfterMs(header: string | null | undefined, now = Date.now()): number | undefined {
   if (!header) return undefined;
   const seconds = Number(header);

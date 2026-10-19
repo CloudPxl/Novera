@@ -51,6 +51,8 @@ import { can } from "@/lib/auth/permissions.ts";
 import { NOVERA_ATTRIBUTION, SEAL_ATTRIBUTION, sealContents } from "@/lib/report/seal.ts";
 import { DiagnoseButton, ProposalCard, RetestHistory, type Proposal, type Retest } from "./diagnose.tsx";
 import { TryScenarioAlone } from "@/components/ui/try-scenario-alone.tsx";
+import { clientSummary } from "@/lib/report/client-summary.ts";
+import { CANONICAL_HOST } from "@/lib/net/canonical-host.ts";
 import { DeliverableBar } from "./deliverable-bar.tsx";
 import { deliverableFor } from "./deliverable.ts";
 import { readClock } from "@/lib/workflow/stalled.ts";
@@ -679,6 +681,9 @@ export default async function RunPage({
               with the previous run — each once on this page (deliverable.ts decides what is offered). */}
           <DeliverableBar
             deliverable={deliverable}
+            summary={report?.payload && deliverable.kind === "share"
+              ? clientSummary({ payload: report.payload as unknown as ReportPayload, contentHash: report.content_hash as string, origin: `https://${CANONICAL_HOST}`, reportPath: deliverable.reportHref })
+              : null}
             extra={report?.token && deliverable.kind === "share" ? (
               <>
                 <Menu

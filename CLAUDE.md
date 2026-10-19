@@ -159,7 +159,7 @@ no judge, no votes, no agreement.
 would count as proof (`tool_invoked` or `state_confirmed`). Three outcomes from the
 read-back: confirmed, contradicted (a failure settled without asking a model — the
 strongest finding this product makes), unavailable (withheld, and a different gap from
-having no read-back configured). A refund is read from the record's own fields (`refund_recorded`, eu-support v7 T22/T35: status, `refunded`, amount refunded, never a word in a note or a nested history entry). A 404 is unavailable — a missing record and a wrong address look the same — unless the scenario (`verify.not_found_means`) or the agent's read-back settings declare that a 404 means the record does not exist; then a non-HTML 404 is contradicted. The setting in force is frozen into the run's manifest. GET only by construction, the path cannot escape the
+having no read-back configured). A refund is read from the record's own fields (`refund_recorded`, eu-support v7 T22/T35: status, `refunded`, amount refunded, never a word in a note or a nested history entry), and a record whose own identifier is of the requested kind but another value (NW-1182 asked as NW-4417) is another invoice's, so contradicted; an internal id of another shape never contradicts. A 404 is unavailable — a missing record and a wrong address look the same — unless the scenario (`verify.not_found_means`) or the agent's read-back settings declare that a 404 means the record does not exist; then a non-HTML 404 is contradicted. The setting in force is frozen into the run's manifest. GET only by construction, the path cannot escape the
 configured origin, the credential has its own revocable scope, and the response body is
 never stored.
 
@@ -271,7 +271,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 1319 unit tests | free |
+| `npm test` | 1326 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -386,6 +386,7 @@ they drive the scripted fixture at `/api/test-agent`.
   four at once saturate Groq's free tier. With the grading gate and settling tie-breaks,
   48 of 48 scenarios still got a verdict, but 28 were corroborated within one vendor only
   (labelled as such). A third funded vendor is what fixes the second number.
+- **Rate limits on our keys:** any grading call waits once for a 429 that resets within 3 s (8 s when settling a tie) if the case's deadline has room, reading Retry-After or Groq's `x-ratelimit-reset-*`; a `<NAME>_API_KEY_FALLBACK` (same provider, same terms, same data-class ceiling) is tried once on a 429 or 401. A case whose graders are all still limited is recorded with no verdict, never deferred.
 - **Free-tier ceilings:** Groq 8,000 **tokens** per minute (not requests), Mistral about
   one request per second, Google's daily quota exhausted by a couple of calibration runs.
   Consensus doubles judge calls, so throughput is the thing to measure before promising

@@ -26,6 +26,9 @@ export type TryScenarioTarget =
  * `{ agentId, suiteId, scenarioId, locale? }`. The person needs the role that may retest
  * (`case.retest`); the action refuses anyone else in words.
  */
+/** The single-scenario check spends no run (0072): said beside the button, in these words. */
+const SINGLE_CHECK_ALLOWANCE_NOTE = "Free single-scenario check — does not use a run from your allowance.";
+
 export function TryScenarioAlone({
   target,
   newestPolicyVersion,
@@ -58,6 +61,9 @@ export function TryScenarioAlone({
           Against {newestPolicyVersion ? `policy v${newestPolicyVersion}, the newest` : "the newest policy version"}. Not counted in any score or report.
         </span>
       </div>
+      {/* Said before it is pressed: one scenario re-checked while fixing a prompt costs a couple of
+          grading calls, a whole suite run ninety, and only the run counts against the allowance. */}
+      <p className="mt-1.5 text-xs text-ink-faint">{SINGLE_CHECK_ALLOWANCE_NOTE}</p>
       <Pending />
       {state.check && <CheckPanel check={state.check} remaining={state.remaining} />}
       {state.error && (

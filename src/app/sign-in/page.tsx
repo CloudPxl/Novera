@@ -1,10 +1,10 @@
+import { heldInvitationToken } from "@/lib/auth/held-invitation.ts";
 import { LogoMark } from "@/components/ui/logo.tsx";
 import { pageMetadata } from "@/lib/seo/site.ts";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
-import { currentUser, INVITE_COOKIE } from "@/lib/auth/session.ts";
+import { currentUser } from "@/lib/auth/session.ts";
 import { SignInForm, type Mode } from "./form.tsx";
 import { problemMessage } from "../auth/confirm/problems.ts";
 import { enabledProviders } from "@/lib/auth/providers.ts";
@@ -26,7 +26,7 @@ export default async function SignInPage({
   // An invitation held in this browser (src/lib/workflow/identity.ts) is where a person goes
   // after signing in when nothing else was asked for — also after a confirmation opened in
   // another browser or a password reset, which lose the query string on the way.
-  const held = (await cookies()).get(INVITE_COOKIE)?.value;
+  const held = await heldInvitationToken();
   const next = safeNext(query.next ?? (held ? `/invite/${held}` : undefined));
   if (await currentUser()) redirect(next);
   // Mapped from a code this application defined, never rendered from the query string:

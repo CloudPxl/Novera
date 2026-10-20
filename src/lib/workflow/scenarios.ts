@@ -229,6 +229,9 @@ export async function promoteApprovedScenarios(_prev: FormState, form: FormData)
   const { data: approved } = await admin
     .from("scenario_drafts").select("id, scenario, origin, import_provenance, production_failure_id")
     .eq("workspace_id", workspace.id).eq("status", "approved")
+    // A draft that belongs to a Suite Builder build is published with its build, never from here:
+    // promoting it here stranded the build with nothing left to publish (Round 2 audit, 2026-10-19).
+    .is("build_id", null)
     .order("created_at");
 
   if (!approved?.length) {

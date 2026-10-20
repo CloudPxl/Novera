@@ -1,3 +1,5 @@
+import { can } from "@/lib/auth/permissions.ts";
+import { KeptOpenDetails } from "@/components/ui/kept-open-details.tsx";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireWorkspace, assertMembership } from "@/lib/auth/session.ts";
@@ -47,7 +49,7 @@ const STAGE: Record<RegressionStage["stage"], { label: string; tone: BadgeTone }
 };
 
 export default async function RegressionsPage() {
-  const { user, workspace } = await requireWorkspace();
+  const { user, workspace, role } = await requireWorkspace();
   const admin = await assertMembership(user.id, workspace.id);
 
   const [{ data: failures }, { data: drafts }, { data: suites }, { data: agents }] = await Promise.all([
@@ -120,7 +122,8 @@ export default async function RegressionsPage() {
       <div className="grid gap-8 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] xl:items-start">
       {/* The form is the second thing on the page once something is recorded: the list is
           what a returning operator came for. Open by default only on an empty page. */}
-      <details open={rows.length === 0} className="group order-first rounded-shell border border-line bg-surface shadow-card xl:order-last xl:sticky xl:top-20">
+      {can(role, "regression.record") && (
+      <KeptOpenDetails initiallyOpen={rows.length === 0} className="group order-first rounded-shell border border-line bg-surface shadow-card xl:order-last xl:sticky xl:top-20">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-shell px-5 py-4 [&::-webkit-details-marker]:hidden">
           <span>
             <span className="block type-h2">Record a failure</span>
@@ -131,7 +134,8 @@ export default async function RegressionsPage() {
         <div className="border-t border-line px-5 pb-5">
           <FailureForm agents={(agents ?? []) as Array<{ id: string; name: string }>} />
         </div>
-      </details>
+      </KeptOpenDetails>
+      )}
 
       <Reveal>
         <h2 className="type-h2">Recorded failures</h2>

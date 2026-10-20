@@ -41,7 +41,7 @@ function describe(p: FailureProblem): string {
   if (p.problem === "too_long") return `${name} must be at most ${p.limit} characters.`;
   if (p.field === "obligation") return `${name} must be an obligation key such as \`data_minimisation\` (lowercase letters, digits and underscores).`;
   if (p.field === "severity") return `${name} must be one of low, medium, high, critical.`;
-  return `${name} must be a date: 2026-09-26.`;
+  return `${name} must be a real calendar date, not in the future, written like 2026-09-26.`;
 }
 
 /**

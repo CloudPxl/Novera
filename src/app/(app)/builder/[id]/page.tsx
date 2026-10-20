@@ -92,6 +92,12 @@ export default async function BuildPage({ params, searchParams }: {
     .eq("id", id).eq("workspace_id", workspace.id).maybeSingle();
   if (!build) notFound();
 
+  // The count is read from the approvals themselves, never from the address: `?grouped=999` said
+  // "999 approved together, recorded in the audit trail" (Round 2 audit, 2026-10-19).
+  const groupedCount = /^[0-9a-f-]{36}$/.test(sp.grouped ?? "")
+    ? (await admin.from("scenario_drafts").select("id", { count: "exact", head: true })
+        .eq("build_id", id).eq("approval_group", sp.grouped as string).eq("approved_by", user.id)).count ?? 0
+    : 0;
   const [{ data: candidates }, { data: obligations }, { data: sources }, { data: agents }, { count: waitingProduction }, { data: scans }] = await Promise.all([
     admin.from("scenario_drafts")
       .select("id, origin, status, scenario, conflicts, obligation_id, source_ref, edited_from, destructive, review_note, source_quote, source_id, model, rejection_reason, not_applicable_reason, approval_group, approved_by, approved_at, rejected_by, rejected_at, not_applicable_by, not_applicable_at, suite_sources(title, kind)")
@@ -239,7 +245,7 @@ export default async function BuildPage({ params, searchParams }: {
                       {ownKey
                         ? <> — on this workspace&rsquo;s own key, under your agreement with that provider; Novera&rsquo;s keys are not used.</>
                         : <>{" "}— providers whose terms allow customer content — and never to{" "}
-                          {[...new Set(route.excluded.map((c) => providerName(c.connection)))].join(" or ") || "a free tier that may train on it"}.</>}
+                          {[...new Set(route.excluded.map((c) => providerName(c.connection)))].join(" or ") || "a free tier that may train on it"}.</>}{" "}
                       A model only proposes; nothing is tested until you approve it.
                     </p>
                   </div>
@@ -282,9 +288,9 @@ export default async function BuildPage({ params, searchParams }: {
             </Section>
           )}
 
-          {/^\d{1,3}$/.test(sp.grouped ?? "") && (
+          {groupedCount > 0 && (
             <p role="status" className="rounded-control border border-pass-border bg-pass-surface px-3 py-2 text-sm text-pass-text">
-              {sp.grouped} approved together, recorded in the audit trail under your name.
+              {groupedCount} approved together, recorded in the audit trail under your name.
             </p>
           )}
 

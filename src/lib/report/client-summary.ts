@@ -24,6 +24,8 @@ export function clientSummary(input: {
   const c = p.coverage;
   const lines: string[] = [];
   lines.push(`Novera evaluation — ${p.subject.agent}`);
+  // The report says it at the same weight as its grade; so does anything copied from it.
+  if (/fixture/i.test(p.subject.environment)) lines.push("TEST DATA: run against Novera's scripted test fixture, not a real agent.");
   lines.push(`Suite: ${p.run.suite}${p.run.locale ? ` · language: ${p.run.locale.name} (${p.run.locale.localised} of ${p.run.locale.of} scenarios)` : " · language: English"}`);
   lines.push(`Run: ${p.run.date.slice(0, 16).replace("T", " ")} UTC`);
   if (p.grade) lines.push(`Grade: ${p.grade.band}${p.grade.score !== null ? ` (${p.grade.score}%, pass mark ${p.grade.threshold}%)` : ""}`);
@@ -49,6 +51,8 @@ export function clientSummary(input: {
 /** The same summary for a comparison of two runs, from the comparison's own counts and each run's seal. */
 export function comparisonClientSummary(input: {
   agent: string;
+  /** Runs against Novera's scripted test fixture: said on the second line, as on the run summary. */
+  testData?: boolean;
   suite: string;
   base: { date: string; seal: string | null };
   target: { date: string; seal: string | null };
@@ -59,6 +63,7 @@ export function comparisonClientSummary(input: {
   const at = (iso: string) => `${iso.slice(0, 16).replace("T", " ")} UTC`;
   const lines = [
     `Novera comparison — ${input.agent}`,
+    ...(input.testData ? ["TEST DATA: runs against Novera's scripted test fixture, not a real agent."] : []),
     `Suite: ${input.suite}`,
     `Runs: ${at(input.base.date)} → ${at(input.target.date)}`,
     `Result: ${input.regressed === 0 ? "no previously passing scenario failed" : `${plural(input.regressed, "previously passing scenario")} now ${input.regressed === 1 ? "fails" : "fail"}`} · ${input.fixed} resolved`,

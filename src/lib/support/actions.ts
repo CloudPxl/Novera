@@ -37,7 +37,9 @@ async function requestFingerprint(): Promise<string | null> {
 
 function readContact(form: FormData): { email: string; message: string; organisation: string | null } | string {
   const email = String(form.get("email") ?? "").trim();
-  const message = String(form.get("message") ?? "").trim();
+  // A browser submits a textarea's line breaks as CRLF, so a message the counter showed as 4,000
+  // characters arrived as 4,000 plus one per line and was refused (Round 2 audit, 2026-10-19).
+  const message = String(form.get("message") ?? "").replace(/\r\n?/g, "\n").trim();
   const organisation = String(form.get("organisation") ?? "").trim();
 
   if (!email || !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) return "Enter an email address we can reply to.";
@@ -92,7 +94,10 @@ export async function submitSupportRequest(_prev: InboundState, form: FormData):
     .gte("created_at", new Date(Date.now() - SUPPORT_LIMIT.windowSeconds * 1000).toISOString())
     .maybeSingle();
 
-  if (already) {
+  // Two identical submissions at the same moment both read "not seen yet" above; the first to
+  // claim this message in Postgres is the one stored and drafted (Round 2 audit, 2026-10-19).
+  const firstOfItsKind = await rateLimit(fingerprint(["support-once", contact.email, contact.message]), { max: 1, windowSeconds: SUPPORT_LIMIT.windowSeconds }, { onError: "allow" });
+  if (already || !firstOfItsKind.allowed) {
     return {
       notice:
         "Thank you — that has reached us. A person reads every message here, so you will get a reply from a human rather than an automatic one.",
@@ -180,7 +185,8 @@ export async function submitTrialApplication(_prev: InboundState, form: FormData
     .gte("created_at", new Date(Date.now() - APPLY_LIMIT.windowSeconds * 1000).toISOString())
     .maybeSingle();
 
-  if (already) {
+  const firstOfItsKind = await rateLimit(fingerprint(["apply-once", contact.email, contact.message]), { max: 1, windowSeconds: APPLY_LIMIT.windowSeconds }, { onError: "allow" });
+  if (already || !firstOfItsKind.allowed) {
     return { notice: "Thank you — we read these ourselves and will come back to you." };
   }
 
@@ -221,6 +227,20 @@ export async function writeDraft(_prev: InboundState, form: FormData): Promise<I
   return { notice: "Saved as a new draft. The previous wording is kept." };
 }
 
+
+/** A send claim lasts two minutes: long enough to outlast a send, short enough to retry a failed one. */
+const SEND_CLAIM = { max: 1, windowSeconds: 120 };
+
+/**
+ * Only a request's newest draft can be approved or sent. An older one — a stale tab, a draft
+ * replaced by a hand-written one — would otherwise reach the customer with wording staff had
+ * already moved past (Round 2 audit, 2026-10-19).
+ */
+async function supersededBy(db: ReturnType<typeof serviceClient>, requestId: string, draftId: string): Promise<string | null> {
+  const { data: newest } = await db.from("reply_drafts").select("id").eq("request_id", requestId)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  return newest && newest.id !== draftId ? "A newer draft exists for this request. Reload the inbox and review that one instead." : null;
+}
 export async function approveDraft(_prev: InboundState, form: FormData): Promise<InboundState> {
   const user = await requireStaff();
   const draftId = String(form.get("draftId") ?? "");
@@ -230,6 +250,8 @@ export async function approveDraft(_prev: InboundState, form: FormData): Promise
     .from("reply_drafts").select("id, request_id, status").eq("id", draftId).single();
   if (!draft) return { error: "That draft could not be found." };
   if (draft.status !== "draft") return { error: `This draft is already ${draft.status}.` };
+  const superseded = await supersededBy(db, draft.request_id as string, draftId);
+  if (superseded) return { error: superseded };
 
   const { error } = await db
     .from("reply_drafts")
@@ -259,6 +281,12 @@ export async function sendDraft(_prev: InboundState, form: FormData): Promise<In
   if (!draft) return { error: "That draft could not be found." };
   if (draft.status === "sent") return { error: "This reply has already been sent." };
   if (draft.status !== "approved") return { error: "Approve it before sending it." };
+  const superseded = await supersededBy(db, draft.request_id as string, draftId);
+  if (superseded) return { error: superseded };
+  // One send at a time per draft, claimed in Postgres: two tabs pressing Send together would
+  // otherwise both reach the mail service (Round 2 audit, 2026-10-19).
+  const claim = await rateLimit(`inbox-send:${draftId}`, SEND_CLAIM, { onError: "refuse" });
+  if (!claim.allowed) return { error: "This reply is being sent from another tab, or was tried less than two minutes ago. Reload in a minute to see whether it went." };
 
   const { data: request } = await db
     .from("inbound_requests").select("email, message").eq("id", draft.request_id).single();

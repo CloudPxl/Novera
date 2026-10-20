@@ -43,21 +43,44 @@ export function isMemoryKey(value: unknown): value is MemoryKey {
  * injection takes when it tries to become memory. Refused outright, whoever typed it: a
  * preference never needs to tell a model what to ignore.
  */
-export const INSTRUCTION_SHAPED = /\b(ignore|disregard|override|bypass)\b[^.]{0,40}\b(instruction|instructions|prompt|rules?|policy|previous|above|system)\b|\bsystem prompt\b|\byou are now\b|\bact as\b|\bapprove (all|every)\b|\b(change|raise|set) (the )?(grade|score|verdict)\b|<\/?(system|assistant|instructions?)>/i;
+export const INSTRUCTION_SHAPED = /\b(ignore|disregard|override|bypass|forget)\b[^.]{0,40}\b(instruction|instructions|prompt|rules?|policy|previous|above|system|everything)\b|\bsystem prompt\b|\byou are now\b|\bact as\b|\bapprove (all|every)\b|\b(change|raise|set) (the )?(grade|score|verdict)\b|<\/?(system|assistant|instructions?)>|\bfrom now on\b|\b(always|never)\s+(say|answer|reply|respond)\s+(that|with|yes|no|pass|fail|it)\b|\b(always|never)\s+(mark|grade|report|treat)\b[^.]{0,30}\bas\s+(a\s+)?(pass|passed|fail|failed|compliant)\b|\bverdicts?\s+(always\s+)?(pass|passes|fail|fails)\b/i;
 
-const URL_SHAPED = /\bhttps?:\/\/|\bwww\./i;
+/** A link in any dress: a scheme, `www.`, a markdown link, or a bare `host.tld/path`. */
+const URL_SHAPED = /\bhttps?:\/\/|\bwww\.|\b(?:javascript|data|vbscript|file):|\]\(|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,24}\/\S/i;
+const PASSWORD_SHAPED = /\b(?:pass(?:word|wort|phrase)?|pwd|parola|mot de passe|kennwort)\s*[:=]/i;
+const EMAIL_SHAPED = /[^\s@]+@[^\s@]+\.[a-z]{2,}/i;
+
+/** Characters that look like Latin letters and are read as them here, so "іgnоre" is "ignore". */
+const CONFUSABLES: Record<string, string> = {
+  "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "у": "y", "х": "x", "і": "i", "ј": "j", "ѕ": "s", "ԁ": "d", "һ": "h", "ӏ": "l", "ԛ": "q", "ԝ": "w",
+  "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O", "Р": "P", "С": "C", "Т": "T", "Х": "X", "І": "I",
+  "α": "a", "ο": "o", "ρ": "p", "ε": "e", "ι": "i", "κ": "k", "ν": "v", "τ": "t", "υ": "u",
+};
+
+/**
+ * The text the filters read: compatibility forms folded (NFKC: full-width and styled letters),
+ * invisible characters removed, look-alike letters read as Latin. A zero-width space or a Cyrillic
+ * "о" got "ignore previous instructions" past every pattern (Round 2 audit, 2026-10-19).
+ */
+export function memorySkeleton(value: string): string {
+  return value.normalize("NFKC").replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "")
+    .replace(/[\u0370-\u03FF\u0400-\u04FF\u0500-\u052F]/g, (ch) => CONFUSABLES[ch] ?? ch);
+}
 
 export type MemoryCheck = { ok: true; value: string } | { ok: false; reason: string };
 
 /** Every memory value, from any source, passes this before it is stored. */
 export function checkMemoryValue(key: unknown, raw: unknown): MemoryCheck {
   if (!isMemoryKey(key)) return { ok: false, reason: "That is not something Ask Novera can remember." };
-  const value = String(raw ?? "").replace(/\s+/g, " ").trim();
+  // Stored without invisible characters; checked as the skeleton a reader would see.
+  const value = String(raw ?? "").replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "").replace(/\s+/g, " ").trim();
   if (!value) return { ok: false, reason: "There is nothing to remember." };
   if (value.length > MEMORY_VALUE_MAX) return { ok: false, reason: `Keep it under ${MEMORY_VALUE_MAX} characters.` };
-  if (looksLikeSecret(value)) return { ok: false, reason: "That looks like a key or a password. Ask Novera never stores those." };
-  if (INSTRUCTION_SHAPED.test(value)) return { ok: false, reason: "That reads as an instruction rather than a preference, so it is not stored." };
-  if (URL_SHAPED.test(value)) return { ok: false, reason: "Memory does not store links." };
+  const seen = memorySkeleton(value);
+  if (looksLikeSecret(value) || looksLikeSecret(seen) || PASSWORD_SHAPED.test(seen)) return { ok: false, reason: "That looks like a key or a password. Ask Novera never stores those." };
+  if (INSTRUCTION_SHAPED.test(seen)) return { ok: false, reason: "That reads as an instruction rather than a preference, so it is not stored." };
+  if (URL_SHAPED.test(seen)) return { ok: false, reason: "Memory does not store links." };
+  if (EMAIL_SHAPED.test(seen)) return { ok: false, reason: "Memory does not store email addresses: a preference never needs one." };
   return { ok: true, value };
 }
 

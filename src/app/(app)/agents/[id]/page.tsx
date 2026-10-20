@@ -315,10 +315,12 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
               </p>
               {scheduleViews.length > 0 && (
                 <ul className="mt-3 space-y-2">
-                  {scheduleViews.map((s) => <li key={s.id}><ScheduleCard schedule={s} /></li>)}
+                  {scheduleViews.map((s) => <li key={s.id}><ScheduleCard schedule={s} canChange={can(role, "schedule.write")} /></li>)}
                 </ul>
               )}
-              {archivedAt ? (
+              {!can(role, "schedule.write") ? (
+                <p className="mt-3 text-sm text-ink-soft">Your role can see this agent&rsquo;s schedules but not create or change them.</p>
+              ) : archivedAt ? (
                 <p className="mt-3 text-sm text-ink-soft">This agent is archived, so no schedule can be created or resumed. Restore it on the Connection tab.</p>
               ) : latestPolicy ? (
                 <ScheduleForm

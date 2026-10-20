@@ -5,6 +5,7 @@ import { currentSubscription, DAY_MS, grantInForce, subscriptionStanding, type G
 import { ALLOWANCE_COLUMN } from "./allowance.ts";
 import { FAIR_USE_WINDOW_DAYS } from "./limits.ts";
 import { supabaseBillingStore } from "./supabase-store.ts";
+import { serviceClient } from "../supabase/service.ts";
 
 const PAGE = 1000;
 
@@ -56,7 +57,9 @@ export async function withPoolCounts(db: SupabaseClient, grants: GrantRow[]): Pr
     const { count, error } = await db.from("runs").select("id", { count: "exact", head: true })
       .eq("funded_by_grant", g.id).eq(ALLOWANCE_COLUMN, true);
     if (error) throw new Error(`Could not count the pilot's runs: ${error.message}`);
-    return { ...g, poolRunsUsed: count ?? 0 };
+    // And the units spent by runs in workspaces since erased (0078).
+    const { count: erased } = await serviceClient().from("allowance_spent_by_erased_runs").select("run_id", { count: "exact", head: true }).eq("funded_by_grant", g.id);
+    return { ...g, poolRunsUsed: (count ?? 0) + (erased ?? 0) };
   }));
 }
 

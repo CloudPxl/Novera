@@ -35,16 +35,28 @@ function Stamp({ at, className = "" }: { at: string; className?: string }) {
   );
 }
 
-export default async function InboxPage() {
+const PAGE_SIZE = 50;
+
+export default async function InboxPage({ searchParams }: { searchParams: Promise<{ before?: string }> }) {
   await requireStaff();
   const db = serviceClient();
+  // Older requests a page at a time: with only the newest 50, a burst of spam buried real ones
+  // with no way to reach them (Round 2 audit, 2026-10-19).
+  const { before: rawBefore } = await searchParams;
+  const before = rawBefore && !Number.isNaN(Date.parse(rawBefore)) ? new Date(rawBefore).toISOString() : null;
 
-  const { data: requests } = await db
+  let query = db
     .from("inbound_requests")
     .select("id, kind, email, organisation, message, status, escalation_reason, created_at")
     .not("status", "eq", "closed")
     .order("created_at", { ascending: false })
-    .limit(50);
+    .limit(PAGE_SIZE);
+  if (before) query = query.lt("created_at", before);
+  const [{ data: requests }, { count: waitingAll }, { count: sentAll }] = await Promise.all([
+    query,
+    db.from("inbound_requests").select("id", { count: "exact", head: true }).not("status", "in", "(closed,sent)"),
+    db.from("inbound_requests").select("id", { count: "exact", head: true }).eq("status", "sent"),
+  ]);
 
   const ids = (requests ?? []).map((r) => r.id as string);
   const { data: drafts } = ids.length
@@ -62,12 +74,13 @@ export default async function InboxPage() {
     draftsByRequest.set(d.request_id as string, list);
   }
 
-  // Counted from the rows on screen, and described by what they are. The line used to
-  // read "Nothing here has been sent to anyone", which stopped being true the moment a
-  // sent reply appeared in the list underneath it.
+  // Counted in the database across every open request, not only the page on screen, and
+  // described by what they are. The line used to read "Nothing here has been sent to anyone",
+  // which stopped being true the moment a sent reply appeared in the list underneath it.
   const rows = requests ?? [];
-  const waiting = rows.filter((r) => r.status !== "sent").length;
-  const sent = rows.length - waiting;
+  const waiting = waitingAll ?? 0;
+  const sent = sentAll ?? 0;
+  const older = rows.length === PAGE_SIZE ? rows[rows.length - 1].created_at as string : null;
 
   return (
     <main className="mx-auto w-full max-w-3xl py-8 text-ink">
@@ -121,7 +134,7 @@ export default async function InboxPage() {
 
                   {r.escalation_reason && (
                     <p className="mt-3 rounded-lg border border-warning-border bg-warning-surface px-3 py-2 text-sm leading-relaxed text-warning-text">
-                      <strong>No draft was written.</strong> {r.escalation_reason as string}
+                      <strong>{current ? "The model wrote no draft; the one below was written by staff." : "No draft was written."}</strong> {r.escalation_reason as string}
                     </p>
                   )}
 
@@ -160,7 +173,7 @@ export default async function InboxPage() {
 
                       {current.send_error && (
                         <p role="alert" className="mt-3 rounded-lg border border-fail-border bg-fail-surface px-3 py-2 text-sm text-fail-text">
-                          Last send failed: {current.send_error as string}. It is still approved and has not been
+                          Last send failed: {(current.send_error as string).replace(/[.\s]+$/, "")}. It is still approved and has not been
                           sent{current.status === "approved" ? "; send it again below once the cause is fixed" : ""}.
                         </p>
                       )}
@@ -212,6 +225,12 @@ export default async function InboxPage() {
             );
           })}
         </ul>
+      )}
+      {(older || before) && (
+        <p className="mt-6 flex gap-4 text-sm">
+          {before && <Link href="/inbox" className="text-ink-soft underline underline-offset-2 hover:text-ink">← Newest</Link>}
+          {older && <Link href={`/inbox?before=${encodeURIComponent(older)}`} className="text-ink-soft underline underline-offset-2 hover:text-ink">Older requests →</Link>}
+        </p>
       )}
     </main>
   );

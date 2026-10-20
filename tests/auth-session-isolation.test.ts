@@ -57,3 +57,10 @@ test("production answers only on www.nover.space: the apex and any other host ge
   assert.ok(body.indexOf("canonicalRedirect(") < body.indexOf("updateSession") || !body.includes("updateSession"), "the host is decided first");
   assert.match(body, /if \(canonical\) return NextResponse\.redirect\(canonical, 308\);/);
 });
+
+test("/auth/confirm ends this browser's session before every explanation, and never starts one", () => {
+  const route = source("src/app/auth/confirm/route.ts");
+  assert.match(route, /const failed = async \(code: ProblemCode\) => \{\n\s+await endThisBrowserSession\(\);/);
+  assert.doesNotMatch(route, /setSession|exchangeCodeForSession|sessionClient/, "no session is started here");
+  assert.match(route, /await endThisBrowserSession\(\);\n\s+const issuedAt/, "a reset for someone else signs the browser out first");
+});

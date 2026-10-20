@@ -105,3 +105,16 @@ test("Ask Novera: the fallback states only computed facts", () => {
   assert.match(text, /7 passed, 3 failed, 0 with no result/);
   assert.deepEqual(unsupportedClaims(text, { snapshot, docs: [], question: "" }), [], "the fallback itself passes the guard");
 });
+
+test("model work on Novera's keys outside runs is metered per workspace; a workspace's own key is not", async () => {
+  const { MODEL_WORK_LIMIT, modelWorkRefusal } = await import("../src/lib/providers/model-work.ts");
+  const { scanCustomerLanguage } = await import("../src/lib/report/language.ts");
+  assert.deepEqual(MODEL_WORK_LIMIT, { max: 60, windowSeconds: 3600 });
+  const said = modelWorkRefusal(12);
+  assert.match(said, /60 pieces of model work/);
+  assert.match(said, /in about 12 minutes/);
+  assert.match(said, /own model key/);
+  assert.deepEqual(scanCustomerLanguage(said), []);
+  const src = (await import("node:fs")).readFileSync("src/lib/providers/model-work.ts", "utf8");
+  assert.match(src, /if \(source === "trial_free"\) \{\n\s+const \{ rateLimit \}[\s\S]{0,200}`model-work:\$\{args\.workspaceId\}`/, "only on Novera's keys, per workspace");
+});

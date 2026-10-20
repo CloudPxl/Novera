@@ -140,7 +140,7 @@ export async function bulkApproveAction(_prev: FormState, form: FormData): Promi
   revalidatePath(`/builder/${buildId}`);
   // The page says so, not this form: the section holding the form is gone once nothing is left to
   // approve together, and its message went with it (found by the production audit, 2026-10-08).
-  redirect(`/builder/${buildId}?step=review&grouped=${result.approved}`);
+  redirect(`/builder/${buildId}?step=review&grouped=${result.group}`);
 }
 
 export async function attachProductionAction(_prev: FormState, form: FormData): Promise<FormState> {
@@ -190,5 +190,5 @@ export async function sourceAsPolicyAction(_prev: FormState, form: FormData): Pr
   if ("error" in c) return { error: c.error };
   const result = await builder.useSourceAsPolicy(c.ctx, { sourceId: text(form, "sourceId"), agentId: text(form, "agentId") });
   revalidatePath(`/builder/${text(form, "buildId")}`);
-  return result.ok ? { notice: `Saved as policy v${result.version} — your own text, word for word.` } : { error: result.error };
+  return result.ok ? { notice: `Saved as policy v${result.version}: your text as Novera stores it, with email addresses, phone numbers and card numbers replaced by placeholders.` } : { error: result.error };
 }

@@ -372,7 +372,10 @@ export async function editCandidate(ctx: Ctx, input: {
 
   const before = old.scenario as SuiteCase;
   const severity = ["low", "medium", "high", "critical"].includes(input.severity) ? input.severity : before.severity;
-  const assertions = input.assertions.map((a) => a.trim()).filter(Boolean).slice(0, 12);
+  // Refused, never cut: a scenario saved with fewer assertions than the person wrote is a
+  // different test from the one they approved (Round 2 audit, 2026-10-19).
+  const assertions = input.assertions.map((a) => a.trim()).filter(Boolean);
+  if (assertions.length > 12) return { ok: false, error: `A scenario holds at most 12 assertions; this one has ${assertions.length}. Merge or remove some.` };
   const edited = { ...before, input: input.input.trim(), expected_behavior: input.expected.trim(), assertions, severity };
   const validated = validateSuite({ key: "builder", name: "Builder draft", version: 1, cases: [edited] });
   if (!validated.ok) return { ok: false, error: validated.errors.join(" ") };
@@ -404,8 +407,10 @@ export async function decideObligation(ctx: Ctx, input: {
     .eq("id", input.obligationId).eq("workspace_id", ctx.workspaceId).maybeSingle();
   if (!ob) return { ok: false, error: "That question is not in this workspace." };
   const now = new Date().toISOString();
-  const answer = (input.answer ?? "").trim().slice(0, 2000);
-  const reason = (input.notApplicableReason ?? "").trim().slice(0, 1000);
+  const answer = (input.answer ?? "").trim();
+  const reason = (input.notApplicableReason ?? "").trim();
+  if (answer.length > 2000) return { ok: false, error: `An answer can be up to 2,000 characters; this one is ${answer.length.toLocaleString("en")}.` };
+  if (reason.length > 1000) return { ok: false, error: `A reason can be up to 1,000 characters; this one is ${reason.length.toLocaleString("en")}.` };
 
   if (answer) {
     if (ob.status !== "open") return { ok: false, error: "That question has already been decided." };
@@ -517,7 +522,8 @@ export async function publishBuild(ctx: Ctx, input: {
   const { build, coverage } = state;
   if (build.status !== "draft" && build.status !== "approved") return { ok: false, error: `This build is ${build.status}.` };
   const name = input.name.trim().slice(0, 120);
-  const scope = input.scope.trim().slice(0, 2000);
+  const scope = input.scope.trim();
+  if (scope.length > 2000) return { ok: false, error: `The scope can be up to 2,000 characters; this one is ${scope.length.toLocaleString("en")}.` };
   if (!name) return { ok: false, error: "The suite needs a name." };
   if (!scope) return { ok: false, error: "Say what the suite covers — which agent, which channel, what it is for. It is printed with the suite." };
   if (!input.acknowledged) return { ok: false, error: "Confirm that this suite is testing evidence and not a certification." };
@@ -566,7 +572,14 @@ export async function publishBuild(ctx: Ctx, input: {
       approved_by: ctx.userId, promoted_by: ctx.userId, promoted_at: now,
     },
   }).select("id").single();
-  if (error || !suite) return { ok: false, error: `The suite version could not be created: ${error?.message ?? "no row"}` };
+  if (error || !suite) {
+    // Published from another tab at the same moment: one build, one suite (0077). Said plainly.
+    if (error?.code === "23505") {
+      const { data: won } = await ctx.db.from("suites").select("key, version").eq("workspace_id", ctx.workspaceId).eq("provenance->>build_id", build.id).maybeSingle();
+      return { ok: false, error: won ? `This build was just published as ${won.key as string} v${won.version as number}, from another tab or by someone else.` : "Another publication of this suite happened at the same moment. Reload the page to see it." };
+    }
+    return { ok: false, error: `The suite version could not be created: ${error?.message ?? "no row"}` };
+  }
 
   const { error: markError } = await ctx.db.from("scenario_drafts").update({ status: "included", included_in_suite_id: suite.id }).in("id", assembled.draftIds);
   if (markError) return { ok: false, error: `${key} v${version} was created, but its drafts could not be marked included: ${markError.message}` };

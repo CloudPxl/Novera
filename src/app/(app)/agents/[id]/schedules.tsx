@@ -120,7 +120,7 @@ export function ScheduleForm({
 // "error" is the warning colour: a paused schedule needs attention, it has not failed.
 const STATE_TONE = { active: "pass", paused: "error", cancelled: "neutral" } as const;
 
-export function ScheduleCard({ schedule: s }: { schedule: ScheduleView }) {
+export function ScheduleCard({ schedule: s, canChange = true }: { schedule: ScheduleView; canChange?: boolean }) {
   return (
     <Card className="px-4 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -162,7 +162,8 @@ export function ScheduleCard({ schedule: s }: { schedule: ScheduleView }) {
         )}
       </dl>
 
-      {s.state !== "cancelled" && <ScheduleControls scheduleId={s.id} paused={s.state === "paused"} />}
+      {/* Offered only to a role that may use them; the action still checks (Round 2 audit, 2026-10-19). */}
+      {s.state !== "cancelled" && canChange && <ScheduleControls scheduleId={s.id} paused={s.state === "paused"} />}
     </Card>
   );
 }

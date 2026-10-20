@@ -79,7 +79,13 @@ export async function workspaceEntitlement(args: {
     .select("id", { count: "exact", head: true })
     .in("workspace_id", (owned ?? []).map((w) => w.id as string))
     .eq(ALLOWANCE_COLUMN, true);
-  const runsUsed = count ?? 0;
+  // And the runs of this owner's workspaces since erased (0078): the trial is the owner's, and
+  // erasing a workspace never gives it back. Read with the service role: the ledger has no
+  // policy for a signed-in reader.
+  const { count: erased } = ws
+    ? await serviceClient().from("allowance_spent_by_erased_runs").select("run_id", { count: "exact", head: true }).eq("owner_id", ws.owner_id as string)
+    : { count: 0 };
+  const runsUsed = (count ?? 0) + (erased ?? 0);
 
   // A key that cannot be routed is worse than no key: every case of every run would come back
   // errored. The decision below refuses the run and says what to fix.

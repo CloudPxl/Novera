@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createClient, type EmailOtpType } from "@supabase/supabase-js";
 import { RECOVERY_COOKIE, RECOVERY_COOKIE_OPTIONS, recoverySecret, sealRecovery, sealRefreshToken } from "@/lib/auth/recovery.ts";
+import { endThisBrowserSession } from "@/lib/auth/switch.ts";
 import type { ProblemCode } from "./problems.ts";
 import { completeAuth } from "../callback/handle.ts";
 
@@ -38,8 +39,15 @@ export async function GET(request: NextRequest) {
   const tokenHash = url.searchParams.get("token_hash");
   const type = url.searchParams.get("type") as EmailOtpType | null;
 
-  // A code, never a message: `/sign-in` owns the words (./problems.ts).
-  const failed = (code: ProblemCode) => NextResponse.redirect(new URL(`/sign-in?problem=${code}`, url.origin));
+  // A code, never a message: `/sign-in` owns the words (./problems.ts). Whatever the outcome, the
+  // page that says it is never skipped: /sign-in sends a signed-in browser on to its dashboard,
+  // so a confirmation opened in a browser signed in as someone else landed in that account with
+  // the confirmation unsaid (Round 2 audit, 2026-10-19). The browser's session ends first; this
+  // route still never starts one.
+  const failed = async (code: ProblemCode) => {
+    await endThisBrowserSession();
+    return NextResponse.redirect(new URL(`/sign-in?problem=${code}`, url.origin));
+  };
 
   if (!tokenHash || !type || !/^[A-Za-z0-9_-]{8,256}$/.test(tokenHash)) return failed("link_invalid");
 
@@ -61,6 +69,8 @@ export async function GET(request: NextRequest) {
   if (type === "recovery") {
     const { data, error } = await isolated.auth.verifyOtp({ type, token_hash: tokenHash });
     if (error || !data.user || !data.session?.refresh_token) return failed("reset_expired");
+    // The reset belongs to the person in the link: whoever this browser held before is signed out.
+    await endThisBrowserSession();
     const issuedAt = Date.now();
     const sealedRefresh = sealRefreshToken(data.session.refresh_token, data.user.id, issuedAt);
     (await cookies()).set(RECOVERY_COOKIE, sealRecovery({ userId: data.user.id, issuedAt, bound: false, sealedRefresh }, recoverySecret()), {

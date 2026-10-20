@@ -324,5 +324,8 @@ export function runChecks(
 
 /** One sentence naming every rule that failed, for the case's stored rationale. */
 export function describeFailures(failures: CheckFailure[]): string {
-  return failures.map((f) => f.why).join(" ");
+  // Each sentence once: several rules can fail with the same words (G08's six stems each say "The
+  // agent passed content this scenario forbids into `add_profile_note`"), and a reason that says
+  // it six times reads as six findings (Round 2 audit, 2026-10-19).
+  return [...new Set(failures.map((f) => f.why))].join(" ");
 }

@@ -1,9 +1,9 @@
+import { heldInvitationToken } from "@/lib/auth/held-invitation.ts";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { cookies } from "next/headers";
 import { Assistant } from "@/components/shell/assistant.tsx";
 import { TopBar } from "@/components/shell/top-bar.tsx";
-import { requireContext, INVITE_COOKIE } from "@/lib/auth/session.ts";
+import { requireContext } from "@/lib/auth/session.ts";
 
 /**
  * The operator shell.
@@ -16,7 +16,7 @@ import { requireContext, INVITE_COOKIE } from "@/lib/auth/session.ts";
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await requireContext();
   // An invitation opened before signing in, offered back here (src/lib/workflow/identity.ts).
-  const pendingInvite = (await cookies()).get(INVITE_COOKIE)?.value;
+  const pendingInvite = await heldInvitationToken();
 
   return (
     <div

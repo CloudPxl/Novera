@@ -57,3 +57,10 @@ test("the single-scenario check says, before it is pressed, that it spends no ru
   assert.match(src, /Free single-scenario check — does not use a run from your allowance\./);
   assert.match(src, /\{SINGLE_CHECK_ALLOWANCE_NOTE\}/);
 });
+
+test("a summary of a run against Novera's scripted fixture says it is test data", () => {
+  const fixture = payload({ subject: { client: "x", agent: "Sample support agent (Novera test fixture)", policy_version: 1, environment: "Novera scripted test fixture — not a customer system", authorisation: "x" } } as never);
+  const text = clientSummary({ payload: fixture, contentHash: HASH, origin: "https://www.nover.space" });
+  assert.equal(text.split("\n")[1], "TEST DATA: run against Novera's scripted test fixture, not a real agent.");
+  assert.doesNotMatch(clientSummary({ payload: payload(), contentHash: HASH, origin: "https://www.nover.space" }), /TEST DATA/);
+});

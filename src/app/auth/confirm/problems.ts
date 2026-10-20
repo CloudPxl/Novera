@@ -33,6 +33,8 @@ export const PROBLEMS = {
   email_confirmed: "Your email address is confirmed. Sign in to continue.",
   // After a reset from a link that was not tied to this browser: signed out, by design.
   password_changed: "Your password was changed. Sign in with the new one.",
+  // After deleting an account: said where it lands, which `/?account=deleted` never did (Round 2 audit).
+  account_deleted: "Your account was deleted: its workspaces, profile and conversations are erased, and this email address can no longer sign in to it.",
   oauth_cancelled: "Sign-in was cancelled, so nothing changed. Choose a way to sign in.",
   oauth_failed: "That sign-in did not complete. Try again, or use another method.",
   oauth_verify_email: "That provider has not verified your email address, so we sent a confirmation link to it. Open the link, then continue with the provider again.",

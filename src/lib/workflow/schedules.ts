@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireWorkspace, gate } from "@/lib/auth/session.ts";
+import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
 import {
   MAX_ACTIVE_SCHEDULES, describeTiming, formatUtc, nextOccurrence, validTiming,
 } from "@/lib/schedules/cadence.ts";
@@ -98,6 +99,12 @@ async function changeSchedule(
     const next = nextOccurrence({ cadence: s.cadence, hourUtc: s.hour_utc, weekday: s.weekday }, now);
     update = { paused_at: null, paused_reason: null, next_run_at: next.toISOString() };
     notice = `Resumed. The next run starts ${formatUtc(next)}.`;
+    // Said now, not discovered at the next tick: a workspace with nothing to fund a run pauses
+    // the schedule again with that reason (Round 2 audit, 2026-10-19).
+    const entitlement = await workspaceEntitlement({ client: admin, workspaceId: workspace.id }).catch(() => null);
+    if (entitlement && !entitlement.canRun && entitlement.blockedReason) {
+      notice += ` Nothing can fund a run in this workspace right now, so unless that changes before then it will pause again: ${entitlement.blockedReason}`;
+    }
   } else {
     update = { cancelled_at: now.toISOString(), cancelled_by: user.id };
     notice = "Cancelled. Runs it already started keep naming it.";

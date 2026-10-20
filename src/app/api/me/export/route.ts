@@ -8,7 +8,7 @@ import { recordAudit } from "@/lib/audit/record.ts";
  * Answers in JSON with a status, never a redirect (CLAUDE.md, "a refusal has to be in the shape
  * its caller reads").
  */
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   const session = await currentWorkspace();
   if (!session) return Response.json({ error: "Sign in to export your data." }, { status: 401, headers: { "cache-control": "no-store" } });
   const { user } = session;
@@ -20,7 +20,9 @@ export async function GET(): Promise<Response> {
     db.from("assistant_threads").select("id, workspace_id, title, created_at, last_message_at, assistant_messages(role, content, citations, funded_by, created_at)").eq("user_id", user.id),
     db.from("audit_events").select("action, detail, created_at").is("workspace_id", null).eq("actor_id", user.id).order("created_at"),
   ]);
-  await recordAudit(db, { workspaceId: null, actorId: user.id, action: "account.exported", detail: {} });
+  // A HEAD request (a link preview, a prefetch) carries no data away, so it is not an export
+  // and leaves no audit line (Round 2 audit, 2026-10-19).
+  if (request.method !== "HEAD") await recordAudit(db, { workspaceId: null, actorId: user.id, action: "account.exported", detail: {} });
   const body = {
     exported_at: new Date().toISOString(),
     account: { id: user.id, email: user.email, created_at: user.created_at },

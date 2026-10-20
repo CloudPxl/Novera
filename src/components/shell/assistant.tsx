@@ -74,6 +74,9 @@ export function Assistant() {
     }
     setEntries((prev) => [...prev, { role: "user", content: text }]);
     setDraft("");
+    // A question asked while History is open is answered in the conversation, which is where the
+    // answer appears; it was added out of sight (Round 2 audit, 2026-10-19).
+    setView("chat");
     startTransition(async () => {
       let result: AssistantResult;
       try {

@@ -75,10 +75,29 @@ export function modelWorkFunding(connection: "trial_free" | "workspace_key", run
   return runJudgeSource === "plan_managed" ? "plan_managed" : "trial_free";
 }
 
+/**
+ * Model work on Novera's shared keys outside runs — diagnosis, drafting, Suite Builder extraction,
+ * Ask Novera — per workspace per hour. Runs are counted by their own allowance; this work was
+ * recorded but unmetered, so one eager workspace could spend the free-tier quota every pilot shares
+ * (Round 2 audit, 2026-10-19). A workspace on its own key is not limited here. Counted in Postgres,
+ * like the public forms; when the count cannot be read the work goes ahead.
+ */
+export const MODEL_WORK_LIMIT = { max: 60, windowSeconds: 60 * 60 };
+
+export function modelWorkRefusal(retryAfterMinutes: number): string {
+  const when = retryAfterMinutes <= 1 ? "in a minute" : `in about ${retryAfterMinutes} minutes`;
+  return `This workspace has used its ${MODEL_WORK_LIMIT.max} pieces of model work for this hour on Novera's shared models (diagnoses, drafts, extraction and Ask Novera together). It frees up ${when}. A workspace with its own model key (Settings → Grading) is not limited by this.`;
+}
+
 /** The chat a workspace's model work runs on, or the sentence saying why there is none. */
 export async function workspaceChat(args: { client: SupabaseClient; workspaceId: string }): Promise<WorkspaceChat | { error: string }> {
   try {
     const { connections, routes, source } = await connectionsForWorkspace(args);
+    if (source === "trial_free") {
+      const { rateLimit } = await import("../support/rate-limit.ts");
+      const limit = await rateLimit(`model-work:${args.workspaceId}`, MODEL_WORK_LIMIT, { onError: "allow" });
+      if (!limit.allowed) return { error: modelWorkRefusal(limit.retryAfterMinutes) };
+    }
     const calls: CallRecord[] = [];
     return { chat: observedChat(createRoutedChat({ connections, routes }), calls), funding: await fundingOf(args, source), calls };
   } catch (error) {

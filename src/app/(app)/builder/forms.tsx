@@ -6,6 +6,10 @@ import { Field, inputClass } from "@/components/ui/primitives.tsx";
 import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
 import { AUTHORISE_FETCH, AUTHORISE_MATERIAL } from "@/lib/builder/constants.ts";
+
+/** The limits `src/lib/builder/sources.ts` enforces, checked here before anything is sent. */
+const SOURCE_TEXT_LIMIT = 300_000;
+const SOURCE_FILE_LIMIT_BYTES = 2 * 1024 * 1024;
 import {
   startBuildAction, addSourceAction, extractAction, observeAction, decideAction, editAction, answerAction,
   bulkApproveAction, attachProductionAction, scanAction, publishAction, abandonAction, sourceAsPolicyAction,
@@ -112,20 +116,45 @@ export function SourceForm({ buildId }: { buildId: string }) {
   const [state, submit] = useActionState<FormState, FormData>(addSourceAction, {});
   const keepValues = useKeepValuesOnError(state);
   const [kind, setKind] = useState<keyof typeof KIND_LABEL>("pasted");
+  const [tooBig, setTooBig] = useState<string | null>(null);
+  // Checked before sending: past the server's 3 MB body limit the request never reached the action
+  // and the person saw an error page with their text gone (Round 2 audit, 2026-10-19). A
+  // `maxLength` would instead cut a paste silently.
+  const checkSize = (e: React.FormEvent<HTMLFormElement>) => {
+    const form = e.currentTarget;
+    const text = (form.elements.namedItem("text") as HTMLTextAreaElement | null)?.value ?? "";
+    const file = (form.elements.namedItem("file") as HTMLInputElement | null)?.files?.[0];
+    const problem = (kind === "pasted" || kind === "tool_schema") && text.length > SOURCE_TEXT_LIMIT
+      ? `This text is ${text.length.toLocaleString("en")} characters; a source can hold ${SOURCE_TEXT_LIMIT.toLocaleString("en")}. Split it into parts and add each one.`
+      : kind === "upload" && file && file.size > SOURCE_FILE_LIMIT_BYTES
+        ? `This file is ${(file.size / 1024 / 1024).toFixed(1)} MB; a file can be up to 2 MB. Split it, or paste the part you need.`
+        : null;
+    setTooBig(problem);
+    if (problem) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    keepValues(e);
+  };
   return (
-    <form onSubmitCapture={keepValues} action={submit} className="grid gap-4">
+    <form onSubmitCapture={checkSize} action={submit} className="grid gap-4">
       <input type="hidden" name="buildId" value={buildId} />
       <fieldset>
         <legend className="sr-only">What you are adding</legend>
         <div className="flex flex-wrap gap-1.5">
           {(Object.keys(KIND_LABEL) as Array<keyof typeof KIND_LABEL>).map((k) => (
             <label key={k} className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-medium has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink ${kind === k ? "border-ink bg-ink text-on-ink" : "border-line-strong bg-surface text-ink-soft"}`}>
-              <input type="radio" name="kind" value={k} checked={kind === k} onChange={() => setKind(k)} className="sr-only" />
+              <input type="radio" name="kind_choice" value={k} checked={kind === k} onChange={() => setKind(k)} className="sr-only" />
               {KIND_LABEL[k]}
             </label>
           ))}
         </div>
       </fieldset>
+      {/* What the server reads. A form reset after a successful add (React 19) puts radio buttons
+          back to their first value while this component still shows the chosen kind; the next
+          upload then arrived as "pasted" and was refused (Round 2 audit, 2026-10-19). */}
+      <input type="hidden" name="kind" value={kind} />
       {kind !== "url" && kind !== "upload" && (
         <Field label="Title" htmlFor="title" hint="What this is, e.g. “Refund policy”.">
           <input id="title" name="title" maxLength={200} className={inputClass} />
@@ -157,7 +186,7 @@ export function SourceForm({ buildId }: { buildId: string }) {
       </label>
       <div>
         <SubmitButton pendingLabel={kind === "url" ? "Fetching…" : "Reading…"}>Add source</SubmitButton>
-        <Message state={state} />
+        {tooBig ? <p role="alert" className="mt-2 text-sm font-medium text-fail-text">{tooBig}</p> : <Message state={state} />}
       </div>
     </form>
   );

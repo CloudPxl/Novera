@@ -247,6 +247,8 @@ export async function revokeInvitation(_prev: IdentityState, form: FormData): Pr
   const gated = await gate(user.id, workspace.id, "member.invite");
   if ("error" in gated) return { error: gated.error };
   const id = String(form.get("invitationId") ?? "");
+  // A malformed id reached Postgres and came back as its own words (Round 2 audit, 2026-10-19).
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return { error: "That invitation is not open any more." };
   const { data, error } = await gated.admin.from("workspace_invitations")
     .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
     .eq("id", id).eq("workspace_id", workspace.id).is("accepted_at", null).is("revoked_at", null).select("id");
@@ -316,7 +318,10 @@ export async function changeRole(_prev: IdentityState, form: FormData): Promise<
   const { data: member } = await gated.admin.from("workspace_members").select("role").eq("workspace_id", workspace.id).eq("user_id", target).maybeSingle();
   if (!member || !isRole(member.role)) return { error: "That person is not in this workspace." };
   if (member.role === next) return { notice: "Nothing changed." };
-  if (!canManageMember(actorRole, member.role, next)) return { error: "Your role cannot make that change. Only the owner manages admins, and nobody changes the owner here." };
+  // Said for what was asked: an owner asking to make someone else owner was told their role could
+  // not do it, which is not the reason (Round 2 audit, 2026-10-19).
+  if (next === "owner" || member.role === "owner") return { error: "A workspace keeps the owner who created it: nobody else can be made owner, and the owner's role does not change." };
+  if (!canManageMember(actorRole, member.role, next)) return { error: "Your role cannot make that change. Only the owner manages admins." };
   const { error } = await gated.admin.from("workspace_members").update({ role: next }).eq("workspace_id", workspace.id).eq("user_id", target);
   if (error) return { error: `Could not change the role: ${error.message}` };
   await recordAudit(gated.admin, { workspaceId: workspace.id, actorId: user.id, subjectUserId: target, action: "member.role_changed", detail: { from: member.role, to: next } });
@@ -416,7 +421,7 @@ export async function deleteAccount(_prev: IdentityState, form: FormData): Promi
   if (authError) return { error: `Your data was erased, but the sign-in could not be closed: ${authError.message}. Write to us from the support page (/support).` };
   await (await sessionClient()).auth.signOut();
   (await cookies()).delete(ACTIVE_WORKSPACE_COOKIE);
-  redirect("/?account=deleted");
+  redirect("/sign-in?problem=account_deleted");
 }
 
 // ===================================================================== memory

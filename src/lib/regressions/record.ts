@@ -1,3 +1,4 @@
+import { storableText } from "../agents/http.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { redactForStorage } from "../redact/store.ts";
 import { SEVERITIES } from "../suites/validate.ts";
@@ -48,8 +49,22 @@ export function checkFailure(input: ProductionFailureInput): FailureProblem | nu
   }
   if (!/^[a-z][a-z0-9_]{2,60}$/.test(input.obligation)) return { field: "obligation", problem: "invalid" };
   if (!SEVERITIES.includes(input.severity as (typeof SEVERITIES)[number])) return { field: "severity", problem: "invalid" };
-  if (input.occurredOn && !/^\d{4}-\d{2}-\d{2}$/.test(input.occurredOn)) return { field: "occurredOn", problem: "invalid" };
+  if (input.occurredOn && !isPlausibleDay(input.occurredOn)) return { field: "occurredOn", problem: "invalid" };
   return null;
+}
+
+/**
+ * A real calendar day from 2000 to tomorrow (a failure cannot have happened later; a day's slack
+ * covers time zones). "2026-02-31" or "0000-00-00" reached Postgres and came back as a 500
+ * (Round 2 audit, 2026-10-19).
+ */
+export function isPlausibleDay(value: string, now = new Date()): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return false;
+  return y >= 2000 && date.getTime() <= now.getTime() + 24 * 60 * 60 * 1000;
 }
 
 export type RecordedFailure =
@@ -75,7 +90,10 @@ export async function recordProductionFailure(args: {
   apiKeyId?: string | null;
   input: ProductionFailureInput;
 }): Promise<RecordedFailure> {
-  const { db, workspaceId, input } = args;
+  const { db, workspaceId } = args;
+  // A NUL or an unpaired surrogate cannot be stored and made Postgres answer 500 with its own
+  // words; it becomes U+FFFD, as in an agent's reply (Round 2 audit, 2026-10-19).
+  const input = storableText(args.input);
   const clean = {
     ...input,
     customerMessage: input.customerMessage.trim(),
@@ -114,15 +132,20 @@ export async function recordProductionFailure(args: {
   const already = await existing();
   if (already) return already;
 
-  const { data: drafts } = await db.from("scenario_drafts").select("scenario").eq("workspace_id", workspaceId);
-  const usedIds = (drafts ?? []).map((row) => (row.scenario as SuiteCase)?.id).filter(Boolean) as string[];
-  const built = regressionScenario({
-    customerMessage: fields.customer_message,
-    expectedBehavior: fields.expected_behavior,
-    whatWentWrong: fields.what_went_wrong || null,
-    obligation: clean.obligation,
-    severity: clean.severity,
-  }, usedIds);
+  // The draft's id is the next free R-number. Read now to validate the scenario before anything is
+  // stored, and read again if a simultaneous failure took it first (0077 refuses the duplicate).
+  const draftFor = async () => {
+    const { data: drafts } = await db.from("scenario_drafts").select("scenario").eq("workspace_id", workspaceId);
+    const usedIds = (drafts ?? []).map((row) => (row.scenario as SuiteCase)?.id).filter(Boolean) as string[];
+    return regressionScenario({
+      customerMessage: fields.customer_message,
+      expectedBehavior: fields.expected_behavior,
+      whatWentWrong: fields.what_went_wrong || null,
+      obligation: clean.obligation,
+      severity: clean.severity,
+    }, usedIds);
+  };
+  let built = await draftFor();
   if (!built.ok) return { ok: false, kind: "draft_invalid", error: built.errors.join(" ") };
 
   const { data: failure, error: failureError } = await db.from("production_failures").insert({
@@ -146,17 +169,25 @@ export async function recordProductionFailure(args: {
     return { ok: false, kind: "storage", error: `The failure could not be recorded: ${failureError?.message ?? "no row returned"}` };
   }
 
-  const { data: draft, error: draftError } = await db.from("scenario_drafts").insert({
+  const insertDraft = (scenario: SuiteCase) => db.from("scenario_drafts").insert({
     workspace_id: workspaceId,
     agent_id: clean.agentId || null,
     origin: "production",
     production_failure_id: failure.id,
-    scenario: built.scenario,
+    scenario,
     duty_refs: [],
     risk_level: clean.severity === "critical" || clean.severity === "high" ? "high" : clean.severity === "low" ? "low" : "medium",
     created_by: args.userId,
     api_key_id: args.apiKeyId ?? null,
   }).select("id").single();
+  let { data: draft, error: draftError } = await insertDraft(built.scenario);
+  for (let attempt = 0; attempt < 8 && draftError?.code === "23505"; attempt++) {
+    // Another failure recorded at the same moment took this id: the next free one.
+    await new Promise((r) => setTimeout(r, 20 + Math.floor(Math.random() * 60)));
+    built = await draftFor();
+    if (!built.ok) return { ok: false, kind: "draft_invalid", error: built.errors.join(" ") };
+    ({ data: draft, error: draftError } = await insertDraft(built.scenario));
+  }
   if (draftError || !draft) {
     return { ok: false, kind: "storage", error: `The failure was recorded, but its draft could not be saved: ${draftError?.message ?? "no row returned"}` };
   }

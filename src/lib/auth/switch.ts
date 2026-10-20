@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ACTIVE_WORKSPACE_COOKIE } from "./session.ts";
+import { sessionClient } from "../supabase/server.ts";
 
 /**
  * Ends whatever session this browser already holds before another one starts (2026-10-18).
@@ -24,4 +25,12 @@ export async function endBrowserSession(supabase: SupabaseClient): Promise<void>
 /** Forgets the workspace choice without touching the session: a new person's first page. */
 export async function forgetWorkspaceChoice(): Promise<void> {
   (await cookies()).delete(ACTIVE_WORKSPACE_COOKIE);
+}
+
+/**
+ * `endBrowserSession` for a route that otherwise never touches this browser's session
+ * (`/auth/confirm`): it only ever ends one, never starts one.
+ */
+export async function endThisBrowserSession(): Promise<void> {
+  await endBrowserSession(await sessionClient());
 }

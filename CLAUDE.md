@@ -66,6 +66,7 @@ someone with the service role, not merely someone using the application.
 | One browser holds one person: a sign-up, a password sign-in or a provider sign-in first ends the session the browser holds (this browser only) and its workspace cookie; a callback or `/auth/confirm` outcome that ends on the sign-in page signs the browser out first (including a valid confirmation of someone else's address), so it never falls through to an older account; a new session starts on its own default workspace, and a workspace cookie naming a workspace the person is not in is ignored; production answers only on www.nover.space (308 before any cookie) | `src/lib/auth/switch.ts`, `src/app/auth/callback/handle.ts`, `src/lib/auth/active-workspace.ts`, `src/lib/net/canonical-host.ts`, `tests/auth-session-isolation.test.ts`, proven in a browser (Round 2 audit, 2026-10-19) |
 | An emailed link signs in only the browser that asked for it: a `token_hash` confirmation confirms the address and starts no session, magic-link and invite links are refused, and a password reset needs a fifteen-minute, single-use recovery context set where a recovery link is spent — a bare `token_hash` reset is verified without cookies and never signs the browser in (its session travels sealed inside the context), and a PKCE code mints one only when GoTrue stamped the session `recovery` | `src/app/auth/confirm/route.ts`, `src/app/auth/callback/handle.ts`, `src/lib/auth/recovery.ts`, `tests/auth.test.ts` |
 | A workspace with its own model key has all of its model work — grading, diagnosis, drafting, Suite Builder extraction, Ask Novera — served on that key, never ours, and each operation is recorded with funding, provider and model, never content; Ask Novera shows no figure its inputs do not contain; on Novera's keys that work is limited to 60 operations per workspace per hour, counted in Postgres, and a workspace's own key is not limited | `src/lib/providers/model-work.ts` (`resolveConnections`), 0059, `tests/model-work.test.ts` |
+| Novera's own paid model key never spends past its monthly budget: every call on it is priced from the published table and recorded (connection, model, purpose, tokens, cost — no content, workspace or person), the month's total is read before each call, and once it reaches the budget the paid connection is passed over and grading continues on the free vendors, so no run is refused for it; a workspace's own key is never counted | 0079, `src/lib/billing/spend.ts`, `src/lib/billing/model-prices.ts`, the router, `tests/model-spend.test.ts` |
 | Billing truth comes from Stripe's signed webhook, each event handled once, never from the browser returning from Checkout; live keys are refused unless explicitly allowed; a plan sells only at its approved catalog price, checked against Stripe's before checkout; a deployment reads only its own Stripe mode's rows (preview and production share one database), so a sandbox subscription never shows, blocks erasure or blocks a live checkout; erasure is refused while Stripe could still charge; a subscription change never deletes evidence | 0060, 0065, 0066, `src/lib/billing/`, `tests/billing.test.ts`, `docs/BILLING-DECISIONS.md` |
 | After the trial, a run starts only when a subscription or grant in force funds it, own key or not (D3), and the run names which, frozen; a plan's managed runs on Novera's keys are `plan_managed` (never called the trial) and counted against its period allowance; fair use on every plan — 3 runs in progress, 1,000 per 30 days — counted under a per-workspace lock however many starts race; every refusal names its kind and the place it is resolved | 0067, `resolveEntitlement` via `workspaceEntitlement` in `startRun`, `src/lib/billing/limits.ts`, `remedy.ts`, `tests/entitlement.test.ts`, `verify:byok` |
 | A workspace export is owner/admin, one-time and short-lived, carries no token, secret or key hash, and leaves a receipt with its SHA-256 — never the file | 0061, `src/lib/export/`, `verify:export` |
@@ -177,8 +178,11 @@ the attack in its message instead: that would be a different test under the same
 
 Next.js 16 (App Router, `src/`, TypeScript) · Tailwind 4 · Supabase (Postgres + auth +
 RLS, **Frankfurt / eu-central-1**) · Vercel Hobby, functions pinned to `fra1` · Resend.
-Judge funding is hybrid: our free-tier key for trials and for Agency Pro's managed runs
-(`plan_managed`), the customer's own key otherwise —
+Judge funding is hybrid: our keys for trials, pilots and Agency Pro's managed runs
+(`plan_managed`) — the free Groq and Mistral tiers first, then a paid Gemini key
+(`GEMINI_API_KEY`, connection `gemini`) as the third vendor, priced call by call and stopped at a
+monthly budget (`NOVERA_MODEL_BUDGET_USD`, default $50; 0079) after which grading continues on
+the free vendors — the customer's own key otherwise —
 and **a workspace with its own key is graded on that key alone**, because the report
 states who funded the grading. That key's route is built from the models the customer
 named and we proved, not from `DEFAULT_ROUTES`, which names *our* connections: pairing
@@ -271,7 +275,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 1343 unit tests | free |
+| `npm test` | 1351 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -378,10 +382,12 @@ they drive the scripted fixture at `/api/test-agent`.
   D3 decided 2026-10-12: after the trial every run needs a plan or grant (0067). Before live: VAT
   display, a funded grading budget for Agency Pro's managed runs, and publishing prices on the
   home page (it names the plans only) (`docs/BILLING-DECISIONS.md`).
-- **Two grading vendors, not three.** No OpenAI or Anthropic key is configured (the
-  2026-09-22 OpenAI key had no credits). Independence currently means groq + mistral. A
-  funded key is one env line; `verify:models` then prints the calibration command, and the
-  model enters a route only where its measured false passes place it.
+- **Three grading vendors, the third paid (2026-10-22).** Groq and Mistral (free tiers) grade
+  first; `gemini/gemini-3.8-flash` (paid AI Studio key, calibrated 41/44 on eu-support v7, no false
+  pass) is the tie-breaker, the critical scenario's third opinion, the overflow when the free
+  tiers rate-limit, and first for diagnosis. `gemini-3.5-flash-lite` (a false pass again) and
+  `gemini-4-argon` (14 timeouts at judge size) are in no route. Gemini's paid prices rise on
+  2027-01-01: `verify:launch` fails until `src/lib/billing/model-prices.ts` is re-checked.
 - **Measured capacity on the trial keys (2026-09-29):** one run at a time is clean;
   four at once saturate Groq's free tier. With the grading gate and settling tie-breaks,
   48 of 48 scenarios still got a verdict, but 28 were corroborated within one vendor only

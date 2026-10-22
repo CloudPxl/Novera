@@ -47,7 +47,8 @@ export function isTimeout(error: unknown): boolean {
 export interface ChatResponse {
   text: string;
   model: string;
-  usage: { inputTokens?: number; outputTokens?: number };
+  /** Token counts as the provider reports them; `cachedTokens` and `thoughtTokens` are Gemini's. */
+  usage: { inputTokens?: number; outputTokens?: number; cachedTokens?: number; thoughtTokens?: number };
   /** Kept verbatim as evidence; never shown in a client report. */
   raw: unknown;
 }

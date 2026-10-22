@@ -1,6 +1,12 @@
 # A third, independent grading vendor
 
-**Status:** blocked on a funded key. Reviewed 2026-10-10. The code path exists and is off: no
+**Status (2026-10-22): in place.** A paid Gemini key from Google AI Studio (`GEMINI_API_KEY`,
+connection `gemini`, vendor `google`) is the third vendor: calibrated before it was routed, priced
+and capped by Novera's monthly model budget (0079, `NOVERA_MODEL_BUDGET_USD`). What follows is
+the earlier analysis, kept for the record; the calibration figures are in `src/lib/router/routes.ts`
+and docs/DECISIONS.md.
+
+**Earlier status:** blocked on a funded key. Reviewed 2026-10-10. The code path exists and is off: no
 `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` is configured, and `DEFAULT_ROUTES` names neither.
 
 ## What counts as independent

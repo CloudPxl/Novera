@@ -20,7 +20,8 @@ Each of our model providers is approved for a kind of data, based on its publish
 
 - **Groq** processes API data as a data processor and does not retain it by default. It may receive personal data.
 - **Mistral**'s plan lets an account switch off the use of requests to improve its models; ours has it switched off. It may receive personal data.
-- **Google** and **OpenRouter** free models receive only material we wrote ourselves, never your data.
+- **Google**, through the Gemini API on our paid key, does not use requests to improve its products under its paid terms. It may receive personal data. It settles disagreements between the first two graders, gives the third opinion on critical scenarios and steps in when the others are rate-limited; no EU processing location is promised for it.
+- **OpenRouter** free models and **Google**'s free tier receive only material we wrote ourselves, never your data.
 
 A request is treated as containing personal data if anything in it looks like personal data — an email address, a phone number, an IBAN, a card number, an IP address, a credential — whatever it was meant to contain. A provider approved only for redacted data would receive such a request with those replaced by placeholders such as `[EMAIL_1]`, and the run page and the report would say so; none of the providers we use today is limited that way. Names and street addresses are not detected automatically.
 

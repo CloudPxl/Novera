@@ -1,3 +1,4 @@
+import { recordSpend, spendAllows } from "../billing/spend.ts";
 import { PROVIDER_TIMEOUT_MS, ProviderError, type ChatRequest, type ChatResponse } from "../providers/types.ts";
 import type { Connection } from "../providers/registry.ts";
 import type { Candidate, RouteTable, Task } from "./routes.ts";
@@ -24,7 +25,9 @@ export type AttemptReason =
   | "refused_data_class"
   | "no_credential"
   | "out_of_time"
-  | "skipped_open_circuit";
+  | "skipped_open_circuit"
+  /** Novera's paid connection, passed over because this month's model budget is spent (0079). */
+  | "budget_spent";
 
 export interface RoutedAttempt {
   connection: string;
@@ -63,6 +66,7 @@ const REASON_WORDS: Record<AttemptReason, string> = {
   unauthorized: "refused the key",
   invalid_output: "answered without a readable verdict",
   refused_data_class: "was not sent the reply, which its terms do not cover",
+  budget_spent: "was not asked: Novera's model budget for this month is spent",
   no_credential: "has no credential configured",
   out_of_time: "was not asked: the run's time slice was ending",
   skipped_open_circuit: "was skipped after failing repeatedly in this slice",
@@ -273,6 +277,24 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
       const outgoing = redacted ? classified.redacted!.request : request;
       const marks = redacted ? { redacted: true as const } : {};
 
+      // Novera's own paid connection, once this month's budget is spent: passed over like a
+      // refused one, so grading continues on the free vendors (src/lib/billing/spend.ts). A
+      // workspace's own key bills the workspace and is never counted.
+      const ours = connection.owner !== "customer";
+      if (ours && !(await spendAllows(candidate.connection, candidate.model))) {
+        const attempt: RoutedAttempt = {
+          connection: candidate.connection,
+          model: candidate.model,
+          ok: false,
+          reason: "budget_spent",
+          error: "not asked: Novera's model budget for this month is spent",
+          ms: 0,
+        };
+        attempts.push(attempt);
+        onFallback?.(attempt);
+        continue;
+      }
+
       const openFor = options?.settling ? null : breaker?.isOpen(candidate.connection);
       if (openFor) {
         const attempt: RoutedAttempt = {
@@ -352,6 +374,7 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
         }
         attempts.push({ connection: candidate.connection, model: candidate.model, ok: true, ms: Date.now() - started, ...marks });
         breaker?.record(candidate.connection, { ok: true });
+        if (ours) await recordSpend({ connection: candidate.connection, model: candidate.model, purpose: task, usage: response.usage });
         return { ...response, servedBy: candidate, attempts };
       } catch (error) {
         const retryAfter = error instanceof ProviderError ? error.retryAfterMs : undefined;

@@ -89,6 +89,9 @@ export const googleProvider: Provider = {
       usage: {
         inputTokens: usage.promptTokenCount,
         outputTokens: usage.candidatesTokenCount,
+        // Billed too: cached input at the cached rate, thoughts as output (model-prices.ts).
+        ...(usage.cachedContentTokenCount ? { cachedTokens: usage.cachedContentTokenCount } : {}),
+        ...(usage.thoughtsTokenCount ? { thoughtTokens: usage.thoughtsTokenCount } : {}),
       },
       raw: payload,
     };

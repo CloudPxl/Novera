@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { billingConfig, keyMode } from "../billing/config.ts";
 import { mailDiagnostics } from "../mail/diagnostics.ts";
 import { resendHealth, type ResendHealth } from "../mail/resend-health.ts";
+import { monthlyBudgetUsd, monthSpendMicroUsd } from "../billing/spend.ts";
+import { PRICES_REVIEW_BY } from "../billing/model-prices.ts";
 import { LEGAL_ENTITY, REQUIRED_ENTITY_FIELDS, missingEntityFields, type LegalEntity } from "../../../data/legal/entity.ts";
 import { gradingVendorCount } from "../observability/health.ts";
 
@@ -57,6 +59,8 @@ export interface LaunchInput {
   entity?: LegalEntity;
   /** The Resend answer, when the caller already has it (tests); otherwise asked live, cached. */
   resend?: ResendHealth;
+  /** This month's paid model spend, when the caller already has it (tests); otherwise read. */
+  spentMicroUsd?: number | null;
 }
 
 /** The built-in suites a deployment is expected to hold, at their current versions. tests/block6-ops.test.ts checks each file exists. */
@@ -223,6 +227,26 @@ export function emailKeyRow(h: ResendHealth): LaunchCheck {
   }
 }
 
+/**
+ * Novera's paid model key this month (0079): what it has cost against the budget, and whether the
+ * price table it is counted with is still the published one.
+ */
+export function modelSpendRow(args: { spentMicroUsd: number | null; env: Record<string, string | undefined>; now?: Date }): LaunchCheck {
+  const base = { id: "model_spend", title: "Model spend this month", group: "founder" as const };
+  const now = args.now ?? new Date();
+  if (!args.env.GEMINI_API_KEY) return { ...base, status: "pass", detail: "No paid model key is configured, so Novera's grading costs nothing: it runs on the free vendors.", remediation: null };
+  if (now.toISOString().slice(0, 10) >= PRICES_REVIEW_BY) {
+    return { ...base, status: "fail", detail: `Gemini's published prices changed on ${PRICES_REVIEW_BY}; the spend is counted with the old ones until the table is updated.`, remediation: "Update src/lib/billing/model-prices.ts from https://ai.google.dev/gemini-api/docs/pricing" };
+  }
+  if (args.spentMicroUsd === null) return { ...base, status: "pending", detail: "This month's spend could not be read.", remediation: "npm run migrate (0079)" };
+  const budget = monthlyBudgetUsd(args.env);
+  const spent = args.spentMicroUsd / 1_000_000;
+  const said = `$${spent.toFixed(2)} of the $${budget.toFixed(0)} monthly budget spent`;
+  return spent >= budget
+    ? { ...base, status: "pending", detail: `${said}: the paid model is passed over and grading runs on the free vendors until the month ends.`, remediation: "Raise NOVERA_MODEL_BUDGET_USD in Vercel, or wait for the month to turn" }
+    : { ...base, status: "pass", detail: `${said}.`, remediation: null };
+}
+
 function entityCheckRow(entity: LegalEntity): LaunchCheck {
   const base = { id: "entity", title: "Company details complete", group: "founder" as const };
   const missing = missingEntityFields(entity);
@@ -259,6 +283,7 @@ export async function runLaunchChecks(input: LaunchInput): Promise<LaunchCheck[]
     stripeCheck(env),
     emailCheckRow(env),
     emailKeyRow(input.resend ?? (await resendHealth(env))),
+    modelSpendRow({ spentMicroUsd: input.spentMicroUsd !== undefined ? input.spentMicroUsd : await monthSpendMicroUsd(), env }),
     entityCheckRow(input.entity ?? LEGAL_ENTITY),
   ];
 }

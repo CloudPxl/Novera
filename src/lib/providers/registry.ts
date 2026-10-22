@@ -58,6 +58,12 @@ export function connectionsFromEnv(env: NodeJS.ProcessEnv = process.env): Map<st
   if (env.JUDGE_FREE_API_KEY && (env.JUDGE_FREE_PROVIDER ?? "google") === "google") {
     connections.set("google", { name: "google", provider: googleProvider, apiKey: env.JUDGE_FREE_API_KEY });
   }
+  // The paid Gemini key (AI Studio, billed): its own connection with its own ceiling
+  // (src/lib/privacy/data-class.ts), never confused with the free tier above.
+  if (env.GEMINI_API_KEY) {
+    const fallback = env.GEMINI_API_KEY_FALLBACK;
+    connections.set("gemini", { name: "gemini", provider: googleProvider, apiKey: env.GEMINI_API_KEY, ...(fallback ? { fallbackApiKey: fallback } : {}) });
+  }
   if (env.ANTHROPIC_API_KEY) {
     connections.set("anthropic", { name: "anthropic", provider: anthropicProvider, apiKey: env.ANTHROPIC_API_KEY });
   }

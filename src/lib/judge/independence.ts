@@ -30,8 +30,13 @@ interface VoteLike {
 /** The connection half of `connection/model`, which is the vendor. */
 export function vendorOf(model: string): string {
   const slash = model.indexOf("/");
-  return slash === -1 ? model : model.slice(0, slash);
+  const connection = slash === -1 ? model : model.slice(0, slash);
+  // Two connections, one vendor: the paid Gemini key is Google as much as the free one is,
+  // so a vote from each is corroboration within one vendor, never independence.
+  return SAME_VENDOR[connection] ?? connection;
 }
+
+const SAME_VENDOR: Readonly<Record<string, string>> = { gemini: "google" };
 
 /**
  * Only votes that produced a verdict count. A vendor that errored corroborated

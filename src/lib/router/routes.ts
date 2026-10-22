@@ -89,9 +89,26 @@ export const DEFAULT_ROUTES: RouteTable = {
   // run and pass in the afternoon one. It is not a claim that 20b is a better grader
   // than 120b. It is the conservative order given what has actually been measured, and
   // all four stay in the route, so nothing is lost to availability.
+  //
+  // 2026-10-22: a paid Gemini key (connection `gemini`, AI Studio). Calibrated over
+  // eu-support v7's 44 labelled cases before entering any route:
+  //
+  //   gemini/gemini-3.8-flash        41/44   0 false passes   2 false fails   1 error
+  //   gemini/gemini-3.5-flash-lite   42/44   1 FALSE PASS     — out, as on 2026-09-22
+  //   gemini/gemini-4-argon          28/44   0 false passes   14 timeouts at judge size
+  //   gemini/gemini-2.5-flash-lite    0/44   every call refused (thinking control)
+  //
+  // 3.8-flash enters third, after the free pair that has no measured false pass: it is the
+  // first candidate of a third vendor, so it is the tie-breaker and the critical scenario's
+  // third opinion — genuinely independent where those used to come from the same vendor —
+  // and it takes the cases the free tiers drop under rate limits. Placed first it would grade
+  // every case at about four times the cost; the order costs one line to change once the
+  // monthly spend (0079) shows room for it. Paid calls stop at the monthly budget and the
+  // route continues on the free vendors (src/lib/billing/spend.ts).
   judge: [
     { connection: "groq", model: "openai/gpt-oss-20b" },
     { connection: "mistral", model: "ministral-8b-latest" },
+    { connection: "gemini", model: "gemini-3.8-flash" },
     { connection: "mistral", model: "ministral-3b-latest" },
     { connection: "groq", model: "openai/gpt-oss-120b" },
   ],
@@ -102,6 +119,7 @@ export const DEFAULT_ROUTES: RouteTable = {
   judge_critical: [
     { connection: "groq", model: "openai/gpt-oss-20b" },
     { connection: "mistral", model: "ministral-8b-latest" },
+    { connection: "gemini", model: "gemini-3.8-flash" },
     { connection: "mistral", model: "ministral-3b-latest" },
     { connection: "groq", model: "openai/gpt-oss-120b" },
   ],
@@ -110,18 +128,21 @@ export const DEFAULT_ROUTES: RouteTable = {
   // size, which is a guess and labelled as one. Google and OpenRouter are allowed here
   // because a diagnosis is a proposal a human approves, never an edit, so a weak one
   // costs a click rather than a wrong verdict in a client's report.
+  // 2026-10-22: the paid Gemini model leads here — diagnosis is where a stronger model is
+  // visible to the person reading it, and there are few such calls. The free Google key is
+  // gone from every route: its terms allow it synthetic data only.
   diagnose: [
+    { connection: "gemini", model: "gemini-3.8-flash" },
     { connection: "groq", model: "openai/gpt-oss-120b" },
     { connection: "mistral", model: "ministral-14b-latest" },
     { connection: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free" },
-    { connection: "google", model: "gemini-3.5-flash-lite" },
   ],
   // Drafting is latency-sensitive and low-stakes: a human approves every draft.
   draft: [
     { connection: "groq", model: "openai/gpt-oss-20b" },
     { connection: "mistral", model: "ministral-3b-latest" },
     { connection: "groq", model: "openai/gpt-oss-120b" },
-    { connection: "google", model: "gemini-3.5-flash-lite" },
+    { connection: "gemini", model: "gemini-3.8-flash" },
   ],
 };
 

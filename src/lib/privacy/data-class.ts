@@ -15,6 +15,11 @@ import { redact } from "../redact/pii.ts";
  *               improvement data" off); raised from redacted    → identifiable customer data
  *   google      free tier: "Do not submit sensitive, confidential, or personal
  *               information to the Unpaid Services"          → synthetic only
+ *   gemini      the same Gemini API on a paid (billed) key: per Google's pricing page
+ *               (fetched 2026-10-22, updated 2026-10-19) paid-tier data is not used to
+ *               improve Google's products. No EU data residency is promised on this API;
+ *               the provider register must name Google before client runs are graded on
+ *               it (counsel)                                  → identifiable customer data
  *   openrouter  free endpoints may log or train on prompts, per upstream → synthetic only
  *   openai, anthropic  paid APIs, no training on inputs by default → identifiable
  *
@@ -41,7 +46,7 @@ export const DATA_CLASSES = [
 export type DataClass = (typeof DATA_CLASSES)[number];
 
 /** Bump when a ceiling or the classification rule changes. */
-export const DATA_POLICY_VERSION = 2;
+export const DATA_POLICY_VERSION = 3;
 
 const rank = (c: DataClass) => DATA_CLASSES.indexOf(c);
 export const higher = (a: DataClass, b: DataClass): DataClass => (rank(a) >= rank(b) ? a : b);
@@ -51,6 +56,7 @@ export const CONNECTION_CEILINGS: Readonly<Record<string, DataClass>> = {
   groq: "identifiable_customer",
   mistral: "identifiable_customer",
   google: "synthetic",
+  gemini: "identifiable_customer",
   openrouter: "synthetic",
   openai: "identifiable_customer",
   anthropic: "identifiable_customer",

@@ -141,3 +141,14 @@ test("D-4: a report whose contents no longer give its seal is refused on the pag
   assert.match(src("src/lib/mcp/tools.ts"), /found === "mismatch"\) return \{ verified: false/);
   assert.match(src("src/lib/ci/server.ts"), /report && !report\.revoked_at && !mismatch/);
 });
+
+test("B-3: failed sign-ins are also counted per account, and email-sending requests per source address", () => {
+  const actions = src("src/app/sign-in/actions.ts");
+  assert.match(actions, /const SIGN_IN_ACCOUNT_LIMIT: Limit = \{ max: 30, windowSeconds: 60 \* 60 \};/);
+  assert.match(actions, /const MAIL_SOURCE_LIMIT: Limit = \{ max: 20, windowSeconds: 60 \* 60 \};/);
+  const signIn = actions.slice(actions.indexOf("async function signIn("), actions.indexOf("const NEUTRAL_SIGNUP"));
+  assert.ok(signIn.indexOf("accountLimit.allowed") < signIn.indexOf("signInWithPassword"), "checked before the password is tried");
+  assert.match(signIn, /await rateLimit\(account, SIGN_IN_ACCOUNT_LIMIT, \{ onError: "allow" \}\);/);
+  const mail = actions.slice(actions.indexOf("async function emailAllowance"), actions.indexOf("export async function authenticate"));
+  assert.match(mail, /fingerprint\(\["mail-source", address\]\), MAIL_SOURCE_LIMIT/);
+});

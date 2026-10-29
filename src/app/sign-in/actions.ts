@@ -44,6 +44,15 @@ const SIGN_IN_LIMIT: Limit = { max: 10, windowSeconds: 60 * 60 };
 const RESET_LIMIT: Limit = { max: 3, windowSeconds: 60 * 60 };
 const SIGN_UP_LIMIT: Limit = { max: 5, windowSeconds: 60 * 60 };
 const RESEND_LIMIT: Limit = { max: 3, windowSeconds: 60 * 60 };
+/**
+ * The limits above count one address and one email together, so a guesser who changes address
+ * was never slowed on one account, and one address could send to any number of inboxes (final
+ * audit B-3, 2026-10-28). Two wider counts sit beside them: failed sign-ins to one account from
+ * anywhere — generous, since a stranger can spend it and the reset link and Google/GitHub still
+ * work — and email-sending requests from one address, whatever inboxes they name.
+ */
+const SIGN_IN_ACCOUNT_LIMIT: Limit = { max: 30, windowSeconds: 60 * 60 };
+const MAIL_SOURCE_LIMIT: Limit = { max: 20, windowSeconds: 60 * 60 };
 
 function readCredentials(
   form: FormData,
@@ -69,9 +78,16 @@ async function origin(): Promise<string> {
 
 /** Counts one email-sending request; refuses when the count cannot be read. */
 async function emailAllowance(kind: string, email: string, limit: Limit): Promise<string | null> {
-  const counted = await rateLimit(fingerprint([kind, email, await callerAddress()]), limit, { onError: "refuse" });
+  const address = await callerAddress();
+  const counted = await rateLimit(fingerprint([kind, email, address]), limit, { onError: "refuse" });
   if (!counted.counted) return COUNT_UNAVAILABLE_MESSAGE;
   if (!counted.allowed) return refusalMessage(counted.retryAfterMinutes);
+  // Without a known address there is nothing to count by; every such request shares the bucket above.
+  if (address) {
+    const source = await rateLimit(fingerprint(["mail-source", address]), MAIL_SOURCE_LIMIT, { onError: "refuse" });
+    if (!source.counted) return COUNT_UNAVAILABLE_MESSAGE;
+    if (!source.allowed) return refusalMessage(source.retryAfterMinutes);
+  }
   return null;
 }
 
@@ -97,10 +113,13 @@ async function signIn(_prev: AuthState, form: FormData): Promise<AuthState> {
   if (typeof credentials === "string") return { error: credentials };
 
   const who = fingerprint(["signin", credentials.email, await callerAddress()]);
+  const account = fingerprint(["signin-account", credentials.email.toLowerCase()]);
   // Allowed when the count cannot be read: refusing would lock everyone out, the operator
   // included, and Supabase Auth limits password attempts per address on its own.
   const limit = await rateLimit(who, SIGN_IN_LIMIT, { peek: true, onError: "allow" });
   if (!limit.allowed) return { error: refusalMessage(limit.retryAfterMinutes) };
+  const accountLimit = await rateLimit(account, SIGN_IN_ACCOUNT_LIMIT, { peek: true, onError: "allow" });
+  if (!accountLimit.allowed) return { error: `${refusalMessage(accountLimit.retryAfterMinutes)} If this is your account, "Forgot your password?" still sends a reset link.` };
 
   const supabase = await sessionClient();
   // Another person's session in this browser ends first; a failed attempt then leaves none.
@@ -111,6 +130,7 @@ async function signIn(_prev: AuthState, form: FormData): Promise<AuthState> {
     // Counted only on failure: a person who mistypes once and then signs in has spent
     // nothing, and the limit is about guessing rather than about signing in.
     await rateLimit(who, SIGN_IN_LIMIT, { onError: "allow" });
+    await rateLimit(account, SIGN_IN_ACCOUNT_LIMIT, { onError: "allow" });
     const kind = classifyAuthError(error);
     // Supabase says "not confirmed" only after the password matched, so this tells the
     // person nothing a stranger without the password could learn — and it is the one case

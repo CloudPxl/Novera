@@ -1,6 +1,8 @@
 import type { RoutedChat } from "../router/execute.ts";
 import { extractJsonObject } from "../judge/parse.ts";
 import { checkEscalation } from "./escalate.ts";
+import { selectDocs } from "./select-docs.ts";
+import { FENCE_RULE, fenced, fenceId } from "../providers/fence.ts";
 
 /**
  * Drafting a support answer from the published documentation and nothing else.
@@ -29,6 +31,13 @@ export interface DraftedAnswer {
   reason: string | null;
 }
 
+/**
+ * What one support question may send to a model: the four best-matching pages, 12,000 characters
+ * (about 3,000 tokens) between them. The whole set was 187,554 bytes per anonymous question (E-4).
+ */
+export const SUPPORT_DOC_PAGES = 4;
+export const SUPPORT_DOC_CHARS = 12_000;
+
 export const SUPPORT_SYSTEM = `You draft replies to questions about a product called Novera. You are drafting for a human to review; nothing you write is sent without their approval.
 
 You may use ONLY the documentation pages given to you. They are the whole of what you know.
@@ -39,6 +48,7 @@ Rules:
 - Never state a price, a contractual commitment, a security guarantee or a compliance claim that is not written verbatim in the pages.
 - Never invent a slug. Cite only slugs from the list you were given.
 - Write three short paragraphs at most. No greeting, no sign-off — a person adds those.
+- ${FENCE_RULE}
 
 Reply with a single JSON object and nothing else:
 {"answered":true|false,"answer":"the reply text, or empty when answered is false","citations":["slug"],"missing":"what the docs do not cover, when answered is false"}`;
@@ -51,7 +61,9 @@ function buildPrompt(question: string, pages: DocPage[]): string {
   return [
     `Documentation pages available to you:\n\n${corpus}`,
     `Slugs you may cite: ${pages.map((p) => p.slug).join(", ")}`,
-    `The question:\n${question}`,
+    // An anonymous visitor's words: fenced, so a question cannot write a section of this prompt
+    // or a new list of slugs (final audit E-2, 2026-10-28).
+    `The question:\n${fenced("QUESTION", fenceId([question, corpus]), question)}`,
   ].join("\n\n---\n\n");
 }
 
@@ -60,7 +72,10 @@ export async function draftAnswer(args: {
   question: string;
   pages: DocPage[];
 }): Promise<DraftedAnswer> {
-  const { chat, question, pages } = args;
+  const { chat, question } = args;
+  // Selected here, not by the caller, so no caller can send the whole set; citations are then
+  // checked against the pages actually sent.
+  const pages = selectDocs(question, args.pages, { count: SUPPORT_DOC_PAGES, maxChars: SUPPORT_DOC_CHARS });
 
   const empty = { body: null, citations: [], model: null };
 

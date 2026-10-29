@@ -1,5 +1,5 @@
 import { extractJsonObject } from "../judge/parse.ts";
-import { locateQuote } from "../diagnose/parse.ts";
+import { locateQuote, MIN_QUOTE_CHARS } from "../diagnose/parse.ts";
 import { validateSuite } from "../suites/validate.ts";
 import type { SuiteCase } from "../runner/types.ts";
 
@@ -43,6 +43,26 @@ function stringList(value: unknown): string[] {
 }
 
 /**
+ * A safety flag is read generously: only an explicit "no" leaves it off. A model that wrote
+ * `"destructive": "true"`, `1` or `"yes"` produced a draft and a case that were both unflagged, so the
+ * production guard would not have stopped an approved account-deletion scenario (final audit E-13,
+ * 2026-10-28). Failing safe here costs a scenario that cannot run against a production agent; failing
+ * the other way costs a deleted account.
+ */
+export function flagIsSet(value: unknown): boolean {
+  if (value === true) return true;
+  if (typeof value === "number") return value !== 0 && !Number.isNaN(value);
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    return v !== "" && !["false", "no", "n", "0", "off", "none", "null"].includes(v);
+  }
+  return false;
+}
+
+/** How many scenarios one drafting request may store; the prompt asks for at most this many. */
+export const MAX_DRAFTS = 6;
+
+/**
  * Case ids are assigned here, never taken from the model.
  *
  * "It is how a finding is named in a report" — which makes it ours to control. A
@@ -64,6 +84,8 @@ export function parseDraftedScenarios(args: {
   policyBody: string;
   /** Case ids already in use in this workspace, so a new draft never reuses one. */
   usedIds: Iterable<string>;
+  /** How many were asked for. A reply with more is cut to this, not stored whole. */
+  wanted?: number;
 }): { ok: true; parsed: ParsedDrafts } | { ok: false; reason: string } {
   const json = extractJsonObject(args.text);
   if (!json || typeof json !== "object" || Array.isArray(json)) {
@@ -84,11 +106,14 @@ export function parseDraftedScenarios(args: {
     return { ok: false, reason: "The model returned no scenarios." };
   }
 
+  const wanted = Math.min(Math.max(args.wanted ?? MAX_DRAFTS, 1), MAX_DRAFTS);
   const assign = nextCaseId(args.usedIds);
   const drafts: DraftedScenario[] = [];
   const refused: ParsedDrafts["refused"] = [];
 
   list.forEach((raw, index) => {
+    // 40 scenarios were stored when six were asked for (final audit E-8, 2026-10-28).
+    if (drafts.length >= wanted) return;
     const s = (raw ?? null) as Record<string, unknown> | null;
     if (!s || typeof s !== "object" || Array.isArray(s)) {
       refused.push({ index, reason: "Not an object." });
@@ -96,7 +121,9 @@ export function parseDraftedScenarios(args: {
     }
 
     // The policy is checked against, not trusted from, the model.
-    const quote = typeof s.quote === "string" ? locateQuote(args.policyBody, s.quote) : null;
+    const located = typeof s.quote === "string" ? locateQuote(args.policyBody, s.quote) : null;
+    // A one-letter quote is "in" every policy and says nothing about what the case tests.
+    const quote = located && located.replace(/\s+/g, " ").length >= MIN_QUOTE_CHARS ? located : null;
     if (!quote) {
       refused.push({
         index,
@@ -119,6 +146,13 @@ export function parseDraftedScenarios(args: {
       return;
     }
 
+    // A reference the policy does not name is the model's legal opinion, not the customer's: dropped,
+    // as the Suite Builder drops it (builder/extract.ts). "EU AI Act Art. 50(1)" was frozen into
+    // scenarios whose policy named neither the Act nor the article (final audit E-8, 2026-10-28).
+    const dutyRefs = stringList(s.duty_refs).filter((r) => args.policyBody.includes(r));
+    const destructive = flagIsSet(s.destructive);
+    const fixtureOnly = flagIsSet(s.fixture_only);
+
     const id = assign(drafts.length);
     const candidate = {
       id,
@@ -131,11 +165,11 @@ export function parseDraftedScenarios(args: {
       ...(stringList(s.forbidden).length ? { forbidden: stringList(s.forbidden) } : {}),
       ...(Array.isArray(s.checks) && s.checks.length ? { checks: s.checks } : {}),
       ...(s.effect && typeof s.effect === "object" ? { effect: s.effect } : {}),
-      ...(stringList(s.duty_refs).length ? { duty_refs: stringList(s.duty_refs) } : {}),
+      ...(dutyRefs.length ? { duty_refs: dutyRefs } : {}),
       // On the case, not only on the draft row. The runner reads cases; a flag that
       // lived only on the draft would stop guarding the moment the case was promoted.
-      ...(s.destructive === true ? { destructive: true } : {}),
-      ...(s.fixture_only === true ? { fixture_only: true } : {}),
+      ...(destructive ? { destructive: true } : {}),
+      ...(fixtureOnly ? { fixture_only: true } : {}),
     };
 
     // The same validator the importer and the seeder use. One vocabulary for what a
@@ -153,10 +187,10 @@ export function parseDraftedScenarios(args: {
     drafts.push({
       quote,
       scenario: validated.suite.cases[0],
-      dutyRefs: stringList(s.duty_refs),
+      dutyRefs,
       riskLevel: (RISK.has(risk) ? risk : "medium") as "low" | "medium" | "high",
-      destructive: s.destructive === true,
-      fixtureOnly: s.fixture_only === true,
+      destructive,
+      fixtureOnly,
     });
   });
 

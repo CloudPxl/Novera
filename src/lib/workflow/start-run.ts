@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { plannedRoutes, TRIAL_EXHAUSTED, workspaceEntitlement } from "../auth/entitlement.ts";
 import { manifestForNewRun } from "../report/manifest.ts";
-import { startRunExecution } from "./execute-run.ts";
+import { sealCompletedRun, startRunExecution } from "./execute-run.ts";
 import { notifyRunFinished } from "../webhooks/deliver.ts";
 import { track } from "../analytics/track.ts";
 import type { Blocker } from "../billing/entitlement.ts";
@@ -261,7 +261,20 @@ export async function advanceRun(args: {
     .from("runs").select("id, status").eq("id", runId).eq("workspace_id", workspaceId).maybeSingle();
   if (!run) return null;
 
-  if (run.status === "completed" || run.status === "aborted") return { status: run.status as string, started: false, done: true };
+  if (run.status === "completed") {
+    // A completed run whose report was never stored (its slice died between the two writes) is
+    // sealed now, once, and announced then (final audit C-3, 2026-10-28). Never throws: the run is
+    // done either way, and a seal that fails again is retried by the next call.
+    try {
+      if (await sealCompletedRun({ client, workspaceId, runId })) {
+        await notifyRunFinished(client, workspaceId, runId, Date.now() + 8_000);
+      }
+    } catch (thrown) {
+      console.error(`Run ${runId}: its report could not be sealed: ${thrown instanceof Error ? thrown.message : String(thrown)}`);
+    }
+    return { status: "completed", started: false, done: true };
+  }
+  if (run.status === "aborted") return { status: run.status as string, started: false, done: true };
 
   // Take the lease in one statement, so of two callers at the same moment exactly one
   // gets it — and, for a run on the shared trial keys, only while a grading slot is

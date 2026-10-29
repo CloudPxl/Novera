@@ -68,9 +68,9 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
         ))}
         {(agents ?? []).length > 1 && (
           <span className="ml-2 flex flex-wrap gap-x-3 text-xs text-ink-soft">
-            <Link href={q({ agent: undefined })} className={!filter.agent ? "font-semibold text-ink" : "underline underline-offset-2"}>All agents</Link>
+            <Link href={q({ agent: undefined })} className={`inline-flex min-h-6 items-center ${!filter.agent ? "font-semibold text-ink" : "underline underline-offset-2"}`}>All agents</Link>
             {(agents ?? []).map((a) => (
-              <Link key={a.id as string} href={q({ agent: a.id as string })} className={filter.agent === a.id ? "font-semibold text-ink" : "underline underline-offset-2"}>{a.name as string}</Link>
+              <Link key={a.id as string} href={q({ agent: a.id as string })} className={`inline-flex min-h-6 items-center [overflow-wrap:anywhere] ${filter.agent === a.id ? "font-semibold text-ink" : "underline underline-offset-2"}`}>{a.name as string}</Link>
             ))}
           </span>
         )}
@@ -89,7 +89,7 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
                   <Link href={`/runs/${r.id}`} className="grid gap-x-4 gap-y-1 px-5 py-3 transition-colors hover:bg-ground sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                     <span className="min-w-0">
                       <span className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{agentName.get(r.agent_id as string) ?? "Agent"}</span>
+                        <span className="font-medium [overflow-wrap:anywhere]">{agentName.get(r.agent_id as string) ?? "Agent"}</span>
                         <Badge tone={s.tone} pulse={s.state === "running"}>{s.stateLabel}</Badge>
                         {s.band && s.state !== "pass" && s.state !== "running" && <span className="text-xs text-ink-soft">{s.band}</span>}
                       </span>

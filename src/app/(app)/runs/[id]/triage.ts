@@ -69,3 +69,22 @@ export function whyNotPassed(c: WhyInput): WhyNot | null {
     default: return null;
   }
 }
+
+/**
+ * The Overview's sentence when no recorded scenario failed or lacks a result. Final audit D-12,
+ * 2026-10-28: it said "Every scenario passed." for a stopped run with a scenario that never ran
+ * — true of the rows, false of the run. It says what was recorded, out of what was planned.
+ */
+export function nothingToLookAt({ recorded, planned, status }: { recorded: number; planned: number; status: string }): string {
+  if (recorded === 0) return "No scenario was recorded in this run, so there is nothing to look at yet.";
+  const missing = Math.max(0, planned - recorded);
+  const unfinished = status === "queued" || status === "running";
+  if (missing > 0) {
+    const did = `${missing} ${missing === 1 ? "scenario" : "scenarios"}`;
+    if (unfinished) return `Every scenario recorded so far passed; ${did} ${missing === 1 ? "has" : "have"} not run yet.`;
+    if (status === "aborted") return `Every scenario that ran passed; ${did} did not run, because the run ended before it finished.`;
+    return `Every scenario that ran passed; ${did} did not run.`;
+  }
+  if (status === "aborted") return "Every scenario passed, but the run ended before it finished, so no report was sealed.";
+  return "Every scenario passed.";
+}

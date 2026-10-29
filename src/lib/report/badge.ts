@@ -72,6 +72,10 @@ export function badgeContent(receipt: SealReceipt | "unavailable" | null): Badge
   if (grade?.shownAs === "withheld") facts.push("grade withheld");
   else if (grade?.shownAs === "incomplete") facts.push("run incomplete");
   else if (counts.passed !== null && counts.planned !== null) facts.push(`${counts.passed}/${counts.planned} passed`);
+  // Said beside the counts, as the release gate reads it (final audit D-1, 2026-10-28): a badge
+  // read "10/10 passed · sealed" for a run whose every pass rested on one model.
+  const lone = receipt.details.uncorroboratedPasses ?? 0;
+  if (lone > 0) facts.push(`${lone} not corroborated`);
 
   return {
     state: "verified",

@@ -9,7 +9,7 @@
  * Memory is read by the assistant alone. Grading, suites, schedules, policies and reports never
  * see it, so nothing remembered can change a verdict.
  */
-import { looksLikeSecret } from "./core.ts";
+import { claimsCertification, looksLikeSecret } from "./core.ts";
 
 export const MEMORY_KEYS = [
   "timezone", "language", "default_agent", "default_suite", "review_lens",
@@ -43,7 +43,7 @@ export function isMemoryKey(value: unknown): value is MemoryKey {
  * injection takes when it tries to become memory. Refused outright, whoever typed it: a
  * preference never needs to tell a model what to ignore.
  */
-export const INSTRUCTION_SHAPED = /\b(ignore|disregard|override|bypass|forget)\b[^.]{0,40}\b(instruction|instructions|prompt|rules?|policy|previous|above|system|everything)\b|\bsystem prompt\b|\byou are now\b|\bact as\b|\bapprove (all|every)\b|\b(change|raise|set) (the )?(grade|score|verdict)\b|<\/?(system|assistant|instructions?)>|\bfrom now on\b|\b(always|never)\s+(say|answer|reply|respond)\s+(that|with|yes|no|pass|fail|it)\b|\b(always|never)\s+(mark|grade|report|treat)\b[^.]{0,30}\bas\s+(a\s+)?(pass|passed|fail|failed|compliant)\b|\bverdicts?\s+(always\s+)?(pass|passes|fail|fails)\b/i;
+export const INSTRUCTION_SHAPED = /\b(ignore|disregard|override|bypass|forget)\b[^.]{0,40}\b(instruction|instructions|prompt|rules?|policy|previous|above|system|everything)\b|\bsystem prompt\b|\byou are now\b|\bact as\b|\bapprove (all|every)\b|\b(change|raise|set) (the )?(grade|score|verdict)\b|<\/?(system|assistant|instructions?)>|\bfrom now on\b|\b(always|never)\s+(say|answer|reply|respond)\s+(that|with|yes|no|pass|fail|it)\b|\b(always|never)\s+(mark|grade|report|treat)\b[^.]{0,30}\bas\s+(a\s+)?(pass|passed|fail|failed|compliant)\b|\bverdicts?\s+(always\s+)?(pass|passes|fail|fails)\b|\b(pay no attention|do not follow|don'?t follow|stop following|no longer follow)\b|\b(call|describe|label|mark|treat|grade|report)\b[^.]{0,40}\b(certified|compliant|guaranteed)\b|\b(every|all|each)\b[^.]{0,40}\bas\s+(a\s+)?(pass|passed|passing|compliant|certified|safe)\b|\b(say|state|claim|tell)\b[^.]{0,30}\b(all|every|each)\b[^.]{0,40}\b(passed|pass|compliant|certified|safe)\b|\bwhen asked\b[^.]{0,60}\b(say|answer|reply|respond|tell)\b|\bnew role\b|\byou are (?:the|an?)\b/i;
 
 /** A link in any dress: a scheme, `www.`, a markdown link, or a bare `host.tld/path`. */
 const URL_SHAPED = /\bhttps?:\/\/|\bwww\.|\b(?:javascript|data|vbscript|file):|\]\(|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,24}\/\S/i;
@@ -55,16 +55,25 @@ const CONFUSABLES: Record<string, string> = {
   "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "у": "y", "х": "x", "і": "i", "ј": "j", "ѕ": "s", "ԁ": "d", "һ": "h", "ӏ": "l", "ԛ": "q", "ԝ": "w",
   "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O", "Р": "P", "С": "C", "Т": "T", "Х": "X", "І": "I",
   "α": "a", "ο": "o", "ρ": "p", "ε": "e", "ι": "i", "κ": "k", "ν": "v", "τ": "t", "υ": "u",
+  // Latin letters NFKC leaves alone: dotless i, script g, alpha, and the IPA / small-capital forms (final audit E-11).
+  "ı": "i", "ɡ": "g", "ɑ": "a", "ɩ": "i", "ɪ": "i", "ʀ": "r", "ɢ": "g", "ɴ": "n", "ʟ": "l", "ʏ": "y",
+  "ᴀ": "a", "ᴄ": "c", "ᴅ": "d", "ᴇ": "e", "ᴊ": "j", "ᴋ": "k", "ᴍ": "m", "ᴏ": "o", "ᴘ": "p", "ᴛ": "t", "ᴜ": "u", "ᴠ": "v", "ᴡ": "w", "ᴢ": "z",
 };
+
+/** Characters a reader never sees: soft hyphens, zero-width, direction marks, variation selectors, tag characters. */
+const INVISIBLE = /[\p{Default_Ignorable_Code_Point}]/gu;
 
 /**
  * The text the filters read: compatibility forms folded (NFKC: full-width and styled letters),
- * invisible characters removed, look-alike letters read as Latin. A zero-width space or a Cyrillic
- * "о" got "ignore previous instructions" past every pattern (Round 2 audit, 2026-10-19).
+ * invisible characters removed (every default-ignorable code point: zero-width, variation selectors,
+ * the combining grapheme joiner, tag characters), combining marks dropped after decomposition so
+ * "ignóre" is "ignore", and look-alike letters read as Latin. A zero-width space or a Cyrillic
+ * "о" got "ignore previous instructions" past every pattern (Round 2 audit, 2026-10-19); a dotless ı,
+ * a script ɡ, a combining acute, U+FE0F, U+034F and tag characters did the same (final audit E-11, 2026-10-28).
  */
 export function memorySkeleton(value: string): string {
-  return value.normalize("NFKC").replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "")
-    .replace(/[\u0370-\u03FF\u0400-\u04FF\u0500-\u052F]/g, (ch) => CONFUSABLES[ch] ?? ch);
+  return value.normalize("NFKC").replace(INVISIBLE, "").normalize("NFKD").replace(/\p{M}/gu, "")
+    .replace(/[^\u0000-\u007F]/gu, (ch) => CONFUSABLES[ch] ?? ch);
 }
 
 export type MemoryCheck = { ok: true; value: string } | { ok: false; reason: string };
@@ -73,7 +82,7 @@ export type MemoryCheck = { ok: true; value: string } | { ok: false; reason: str
 export function checkMemoryValue(key: unknown, raw: unknown): MemoryCheck {
   if (!isMemoryKey(key)) return { ok: false, reason: "That is not something Ask Novera can remember." };
   // Stored without invisible characters; checked as the skeleton a reader would see.
-  const value = String(raw ?? "").replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "").replace(/\s+/g, " ").trim();
+  const value = String(raw ?? "").replace(INVISIBLE, "").replace(/\s+/g, " ").trim();
   if (!value) return { ok: false, reason: "There is nothing to remember." };
   if (value.length > MEMORY_VALUE_MAX) return { ok: false, reason: `Keep it under ${MEMORY_VALUE_MAX} characters.` };
   const seen = memorySkeleton(value);
@@ -120,6 +129,9 @@ export function suggestionFromPerson(remember: { key: unknown; value: unknown } 
   if (!remember || !isMemoryKey(remember.key) || !SUGGESTIBLE.has(remember.key)) return null;
   const check = checkMemoryValue(remember.key, remember.value);
   if (!check.ok) return null;
+  // A suggestion that has the assistant call an agent certified or compliant is never offered, even
+  // when the person said "agent" (final audit E-10, 2026-10-28).
+  if (claimsCertification(memorySkeleton(check.value))) return null;
   if (remember.key === "explanation_length") {
     return check.value === "concise" || check.value === "detailed" ? { key: remember.key, value: check.value } : null;
   }

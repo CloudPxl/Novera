@@ -168,7 +168,7 @@ export async function askAssistant(threadId: string | null, message: string): Pr
 
   // The same resolution a run uses: a workspace with its own key is answered on that key
   // alone; otherwise on the trial allowance's free-tier keys (src/lib/providers/model-work.ts).
-  const work = await workspaceChat({ client: admin, workspaceId: workspace.id });
+  const work = await workspaceChat({ client: admin, workspaceId: workspace.id, userId: user.id });
   if ("error" in work) return { error: work.error };
   const fundedBy = fundingLabel(work.funding);
 

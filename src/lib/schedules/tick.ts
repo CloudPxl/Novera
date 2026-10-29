@@ -1,7 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { advanceRun, RunRefusal, startRun } from "../workflow/start-run.ts";
-import { announceMissedRuns, deliverDue, notifySchedulePaused } from "../webhooks/deliver.ts";
+import { announceMissedRuns, deliverDue, notifyRunFinished, notifySchedulePaused } from "../webhooks/deliver.ts";
+import { RESEAL_AFTER_MS, RESEAL_FROM, sealCompletedRun } from "../workflow/execute-run.ts";
 import { nextOccurrence, type ScheduleTiming } from "./cadence.ts";
 
 /**
@@ -51,6 +52,48 @@ export interface TickReport {
   finished: number;
   /** Webhook deliveries retried by this tick that arrived. */
   delivered: number;
+  /** Completed runs whose missing report this tick sealed. */
+  sealed?: number;
+}
+
+/** How far back the sweep looks for a completed run with no report, and how many it seals per tick. */
+const RESEAL_LOOKBACK_MS = 3 * 86_400_000;
+const RESEAL_CANDIDATES = 100;
+const MAX_SEALED_PER_TICK = 3;
+
+/**
+ * Seals the reports completed runs never got (final audit follow-up 3, 2026-10-29) — the slice
+ * that completed a run failed or was killed before storing its report. `sealCompletedRun` did
+ * this only when someone advanced the run again, so a scheduled run, which nobody opens, stayed
+ * unsealed and unannounced. Bounded: runs finished between `RESEAL_AFTER_MS` and three days ago
+ * (and not before `RESEAL_FROM`), newest first, a few per tick. A run with nothing graded or an
+ * exploratory scan is passed over by `sealCompletedRun` without a write.
+ */
+export async function sealMissedReports(args: { client: SupabaseClient; deadline: number; now?: Date }): Promise<number> {
+  const { client, deadline } = args;
+  const now = (args.now ?? new Date()).getTime();
+  const from = new Date(Math.max(now - RESEAL_LOOKBACK_MS, Date.parse(RESEAL_FROM))).toISOString();
+  const { data: finished } = await client.from("runs").select("id, workspace_id")
+    .eq("status", "completed")
+    .gte("finished_at", from).lte("finished_at", new Date(now - RESEAL_AFTER_MS).toISOString())
+    .order("finished_at", { ascending: false }).limit(RESEAL_CANDIDATES);
+  if (!finished?.length) return 0;
+  const { data: reports } = await client.from("reports").select("run_id").in("run_id", finished.map((r) => r.id as string));
+  const sealedRuns = new Set((reports ?? []).map((r) => r.run_id as string));
+
+  let sealed = 0;
+  for (const r of finished.filter((x) => !sealedRuns.has(x.id as string))) {
+    if (sealed >= MAX_SEALED_PER_TICK || Date.now() > deadline - 8_000) break;
+    try {
+      if (await sealCompletedRun({ client, workspaceId: r.workspace_id as string, runId: r.id as string, now })) {
+        sealed += 1;
+        await notifyRunFinished(client, r.workspace_id as string, r.id as string, Math.min(deadline, Date.now() + 8_000));
+      }
+    } catch (thrown) {
+      console.error(`Run ${r.id}: its report could not be sealed: ${thrown instanceof Error ? thrown.message : String(thrown)}`);
+    }
+  }
+  return sealed;
 }
 
 interface ScheduleRow {
@@ -121,6 +164,8 @@ export async function runScheduleTick(args: {
     if (result?.started) report.advanced += 1;
     if (result?.started && result.done) report.finished += 1;
   }
+
+  if (deadline - Date.now() > 10_000) report.sealed = await sealMissedReports({ client, deadline: deadline - 2_000, now });
 
   // Webhook deliveries that failed their first attempt, retried with whatever time is
   // left. Their own backoff decides which are due.

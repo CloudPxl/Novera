@@ -2,7 +2,7 @@ import type { AgentAdapter, AgentInvocation, AgentResult, HttpAgentConfig } from
 import { PROBE_INPUT } from "./types.ts";
 import { fillTemplate, readPath } from "./template.ts";
 import { suggestPathHint } from "./discover.ts";
-import { assertPublicUrl, publicOnlyDispatcher, refusedAddress } from "../net/public-url.ts";
+import { assertPublicUrl, guardedFetch, publicOnlyDispatcher, refusedAddress } from "../net/public-url.ts";
 import { BodyTooLarge, readTextLimited } from "../net/read-body.ts";
 
 /**
@@ -123,7 +123,7 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
 
     let response: Response;
     try {
-      response = await fetch(config.url, {
+      response = await guardedFetch(config.url, {
         method: config.method ?? "POST",
         headers,
         body: JSON.stringify(body),

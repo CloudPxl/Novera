@@ -21,7 +21,7 @@ export interface CiRunState {
   status: string;
   error: string | null;
   /** The newest report sealed for the run, withdrawn or not; null when none was sealed. */
-  report: { payload: CiInput | null; revoked: boolean } | null;
+  report: { payload: CiInput | null; revoked: boolean; /** Its payload no longer hashes to its seal. */ mismatch?: boolean } | null;
 }
 
 export interface CiExit {
@@ -52,10 +52,15 @@ export function ciRunExit(run: CiRunState): CiExit {
     return { code: CI_EXIT.incomplete, reason: `The run is ${run.status}; no report was sealed.` };
   }
   if (!run.report) {
-    return { code: CI_EXIT.incomplete, reason: "The run completed without a sealed report: no scenario produced a result to seal." };
+    return { code: CI_EXIT.incomplete, reason: "The run completed without a sealed report. If it finished in the last few minutes its report may still be being sealed, so read this again shortly; otherwise no scenario produced a result to seal." };
   }
   if (run.report.revoked) {
     return { code: CI_EXIT.configuration, reason: "The report for this run was withdrawn by someone in the workspace." };
+  }
+  // Its stored contents no longer give the digest it was sealed with: nothing in it can be gated
+  // on, exactly as /verify says "does not match" (final audit D-4, 2026-10-28).
+  if (run.report.mismatch) {
+    return { code: CI_EXIT.configuration, reason: "The sealed report for this run no longer matches its seal, so it cannot be read as evidence. Check it at /verify." };
   }
   if (!run.report.payload?.coverage) {
     return { code: CI_EXIT.incomplete, reason: "The sealed report carries no counts to decide on." };

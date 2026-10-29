@@ -5,6 +5,7 @@ import { startRun } from "../workflow/start-run.ts";
 import { abortUnfinishedRun } from "../workflow/abort-run.ts";
 import { comparableRuns, loadComparison } from "../evidence/comparison-loader.ts";
 import type { CiInput } from "../report/ci.ts";
+import { contentHash, type Json } from "../report/hash.ts";
 import {
   dedupeDecision, supersededReason, supersededRunIds, suiteRefCandidates, type TriggerRequest,
 } from "./trigger.ts";
@@ -159,7 +160,13 @@ export async function triggerCiRun(args: {
   return { kind: "started", runId, superseded };
 }
 
-/** Stops the unfinished runs earlier commits on this branch started; returns the ones this call stopped. */
+/** Stops the unfinished runs earlier commits on this branch started; returns the ones this call stopped.
+ *
+ * "Earlier" is by trigger time, not by history: a commit hash has no order, so re-triggering an
+ * older commit after a newer one stops the newer one's unfinished run (final audit D-8, 2026-10-28).
+ * Documented in the API reference rather than guessed at: a force-push back to an older commit
+ * is the same request, and there the older commit is the newest. `cancel_superseded: false` opts out.
+ */
 async function supersede(
   db: Db, workspaceId: string, actor: string | null,
   current: { runId: string; agentId: string; gitBranch: string; gitCommitSha: string | null },
@@ -218,10 +225,11 @@ export async function loadCiRun(db: Db, workspaceId: string, runId: string, orig
   ]);
 
   const status = run.status as string;
+  const mismatch = Boolean(report && contentHash(report.payload as Json) !== report.content_hash);
   const exit = ciRunExit({
     status,
     error: (run.error as string | null) ?? null,
-    report: report ? { payload: (report.payload as CiInput | null) ?? null, revoked: Boolean(report.revoked_at) } : null,
+    report: report ? { payload: (report.payload as CiInput | null) ?? null, revoked: Boolean(report.revoked_at), mismatch } : null,
   });
 
   const suite = run.suites as unknown as { key: string; version: number; workspace_id: string | null } | null;
@@ -251,7 +259,7 @@ export async function loadCiRun(db: Db, workspaceId: string, runId: string, orig
     },
     exit,
     // A withdrawn report is not handed out: its link refuses at once (0053).
-    report: report && !report.revoked_at
+    report: report && !report.revoked_at && !mismatch
       ? { content_hash: report.content_hash as string, token: report.token as string, payload: report.payload }
       : null,
     suite_digest: typeof manifest?.suite_digest === "string" ? manifest.suite_digest : null,

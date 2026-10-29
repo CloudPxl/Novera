@@ -46,6 +46,17 @@ export function parseTarget(arg: string, base = DEFAULT_BASE): ReportTarget | { 
   return { base: base.replace(/\/+$/, ""), token: value };
 }
 
+/**
+ * Text from a report or a server, made safe to print to a terminal or a CI log. A suite, agent or
+ * client name is someone else's words, and an escape sequence or a right-to-left override in one
+ * could repaint the line a person reads — "VERIFIED … Exit 0" over a different exit code (final
+ * audit D-6, 2026-10-28). C0 controls (line breaks included: one value, one line), DEL, C1, and
+ * the bidirectional marks, embeddings, overrides and isolates are each shown as U+FFFD.
+ */
+export function printable(value: unknown): string {
+  return String(value ?? "").replace(/[\u0000-\u001F\u007F-\u009F\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, "\uFFFD");
+}
+
 /** The token is the capability; CI logs are not a place to print it whole. */
 export function redactToken(token: string): string {
   return `${token.slice(0, 4)}…`;

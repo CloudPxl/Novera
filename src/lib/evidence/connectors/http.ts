@@ -1,6 +1,7 @@
 import { runChecks, describeFailures, type DeterministicCheck } from "../../judge/checks.ts";
+import { readRefund } from "../../judge/refund-record.ts";
 import { redactCredentials } from "../../providers/types.ts";
-import { assertPublicUrl, publicOnlyDispatcher, refusedAddress } from "../../net/public-url.ts";
+import { assertPublicUrl, guardedFetch, publicOnlyDispatcher, refusedAddress } from "../../net/public-url.ts";
 import { BodyTooLarge, discardBody, formatLimit, readTextLimited } from "../../net/read-body.ts";
 import type {
   ConnectorMode, ValidationResult, VerificationConnector, VerificationInput, VerificationObservation,
@@ -120,7 +121,7 @@ export function httpVerificationConnector(
       // Never followed: a redirect would carry the read-back — and its credential —
       // outside the endpoint the customer configured, which this connector promises not
       // to leave.
-      const response = await fetch(url, { method: "GET", headers, signal: controller.signal, redirect: "manual", dispatcher: publicOnlyDispatcher() } as RequestInit);
+      const response = await guardedFetch(url, { method: "GET", headers, signal: controller.signal, redirect: "manual", dispatcher: publicOnlyDispatcher() } as RequestInit);
       if (response.status >= 300 && response.status < 400) {
         await discardBody(response);
         return { ok: false, why: `The verification endpoint answered ${response.status} (a redirect), and redirects are not followed.` };
@@ -208,12 +209,29 @@ export function httpVerificationConnector(
         return { ...base, status: "unavailable", detail: redactCredentials(result.why, secret) };
       }
 
-      const failures = runChecks(input.expect, {
+      // A record that says nothing either way about a refund — a shape Novera does not read, a
+      // list, a payment that is only "paid" — is not the customer's system disagreeing with the
+      // agent. `refund_recorded` alone cannot settle it, so it is set aside and, if nothing else
+      // checked contradicts the claim, the observation is unavailable: withheld, never a false
+      // contradiction sealed without a model asked (final audit C-6, 2026-10-28).
+      const refund = input.expect.some((c) => c.type === "refund_recorded") ? readRefund(result.text, input.path) : null;
+      const undetermined = refund !== null && !refund.refunded && refund.undetermined === true;
+      const checks = undetermined ? input.expect.filter((c) => c.type !== "refund_recorded") : input.expect;
+      const failures = runChecks(checks, {
         responseText: result.text,
         toolActivity: null,
         latencyMs: null,
         readBackPath: input.path,
       });
+
+      if (undetermined && failures.length === 0) {
+        return {
+          ...base,
+          status: "unavailable",
+          // The record is never quoted: it is the customer's data, and this sentence travels into a report.
+          detail: `The customer's own system answered, but its record does not show whether the refund was made. ${refund.why.replace(/\bThe response\b/g, "The answer")} Novera reads the record's own status, refunded and amount-refunded fields.`,
+        };
+      }
 
       return failures.length === 0
         ? {

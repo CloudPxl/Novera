@@ -104,8 +104,24 @@ export interface BuiltReport {
 const LIMITATIONS =
   "This report records how the named agent behaved on the listed scenarios, under the recorded configuration, on the date shown. It does not cover untested interactions, does not predict future behaviour, and is not a certification, a statutory conformity assessment or a statement of legal compliance; Novera is not a notified body. Obligation codes group the evidence; they do not determine which obligations apply to your organisation. Producing this evidence sent the agent's responses to the grading models named against each scenario, which are operated by third parties and may process data outside the EU.";
 
+/**
+ * Final audit D-1, 2026-10-28: the note said a second model "was unavailable" and that the verdicts
+ * were "marked as uncorroborated below". A workspace key holding one model never had a second to
+ * be unavailable, and passed scenarios are never listed below. Reports already sealed keep the
+ * text they were sealed with; this is what is true of a new one.
+ */
 const UNCORROBORATED_NOTE =
-  "Some verdicts in this run were produced by a single model because a second was unavailable. They are counted in the score and marked as uncorroborated below, and a release gate reads a pass that rests on one model as incomplete evidence, not a pass. Rerun the suite for a fully corroborated result.";
+  "Some verdicts in this run were given by a single model, because no second model was configured or could be reached. They are counted in the score but are not corroborated, and a release gate reads a pass that rests on one model as incomplete evidence, not a pass. Rerun the suite with a second grading model available for a corroborated result.";
+
+/**
+ * Final audit C-3, 2026-10-28: a grader asked to quote what decided a case can quote an agent
+ * that recited its own instructions. The policy is the customer's document and never reaches a
+ * report, so the quote is replaced here, before the guard, rather than failing the seal of a
+ * run whose evidence is otherwise sound (the guard stays the last line, as for secrets).
+ */
+const POLICY_PLACEHOLDER = "[policy text withheld]";
+const POLICY_WITHHELD_NOTE =
+  "Where a finding quoted the policy the agent was given, this report shows a placeholder in its place: the policy is the tested organisation's own document and is not reproduced here.";
 
 const MIXED_GRADING_NOTE =
   "More than one grading model was used in this run, because a provider was unavailable partway through. The verdicts are therefore not uniformly graded. Rerun the suite if you need a single-model result.";
@@ -141,8 +157,21 @@ export function buildReport(input: ReportInput): BuiltReport {
   // written can quote what it leaked. A report is a document that gets forwarded, so
   // anything shaped like personal data in it is replaced, as in a production failure.
   let redactedFindings = 0;
+  let withheldPolicy = 0;
+  // The guard's own threshold (`assertPublishable`): a shorter literal is ordinary prose.
+  const privateLiterals = (input.privateMaterial ?? []).filter((l) => l.length >= 24);
+  const withoutPrivate = (text: string) => {
+    let out = text;
+    for (const literal of privateLiterals) {
+      if (out.includes(literal)) {
+        out = out.split(literal).join(POLICY_PLACEHOLDER);
+        withheldPolicy += 1;
+      }
+    }
+    return out;
+  };
   const scrub = (text: string) => {
-    const r = redact(text);
+    const r = redact(withoutPrivate(text));
     if (Object.keys(r.counts).length) redactedFindings += 1;
     return r.text;
   };
@@ -154,7 +183,8 @@ export function buildReport(input: ReportInput): BuiltReport {
       case: c.caseId,
       obligation: c.obligation,
       severity: c.severity,
-      expected: c.expected,
+      // The suite's own words, which a Suite Builder draft may have quoted from the policy.
+      expected: withoutPrivate(c.expected),
       // The judge's rationale, not the agent's words: a client report states what was
       // wrong without reproducing the conversation.
       observed: scrub(c.status === "error"
@@ -220,10 +250,19 @@ export function buildReport(input: ReportInput): BuiltReport {
     (c) => c.judgeModel && c.judgeModel !== primaryGrader && c.judgeAgreement !== "majority",
   );
 
-  // Only claimed when the suite actually contained one, because the sentence is in a
-  // client-facing document and has to be true of this run, not of the product.
-  const hadCritical = input.cases.some((c) => c.severity?.toLowerCase() === "critical");
-  const criticalNote = hadCritical
+  // Only claimed when it happened, because the sentence is in a client-facing document and has
+  // to be true of this run, not of the product. Final audit D-1, 2026-10-28: it was claimed
+  // whenever the suite held a critical scenario, so a run graded by one model said its five
+  // critical scenarios went to a third. A third opinion is a third vote naming a model (an
+  // unreachable settler is stored as "unknown"). A critical case with no votes stored at all
+  // predates the votes column, which cannot say either way, and keeps the earlier reading.
+  const hadThirdOnCritical = input.cases.some((c) => {
+    if (c.severity?.toLowerCase() !== "critical") return false;
+    const votes = votesOf(c);
+    if (votes.length === 0) return c.judgeAgreement === "agreed" || c.judgeAgreement === "majority";
+    return votes.length >= 3 && (votes[2].status !== "error" || votes[2].model !== "unknown");
+  });
+  const criticalNote = hadThirdOnCritical
     ? " Scenarios marked critical were put to a third model even where the first two agreed."
     : "";
 
@@ -233,14 +272,25 @@ export function buildReport(input: ReportInput): BuiltReport {
     ? ` ${input.coverage.settledByCheck} scenario(s) were settled by a rule in the scenario itself — a statement that is true or false about the transcript — and no model was asked.`
     : "";
 
-  const corroboration = {
-    method:
-      (singleVendor === 0
+  // Final audit D-1, 2026-10-28: the sentence was chosen on `singleVendor === 0`, which is also
+  // true when nothing was corroborated at all, so a run graded by one model sealed "Each verdict
+  // was put to two models from different vendors". It is now chosen from what the votes show.
+  const lone = agreementCount("unconfirmed");
+  const method = corroborated.length === 0
+    ? lone > 0
+      ? `Each verdict a model gave in this run came from one model only (${gradedBy.join(", ") || "not recorded"}); `
+        + "no second model was configured or could be reached, so none of those verdicts is corroborated."
+      : "No model's verdict decided any scenario in this run."
+    : (singleVendor === 0
         ? "Each verdict was put to two models from different vendors; a third settled any disagreement."
         : "Each verdict was put to two models, a different vendor's wherever one could be reached; "
           + "a third settled any disagreement. Where no second vendor was available, a second model "
           + "from the same vendor was used instead, and those verdicts are counted separately below.")
-      + criticalNote + ruleNote,
+      + (lone > 0 ? ` ${lone} verdict(s) rest on one model only, because no second model could be reached.` : "")
+      + criticalNote;
+
+  const corroboration = {
+    method: method + ruleNote,
     agreed: agreementCount("agreed"),
     majority: agreementCount("majority"),
     uncorroborated: agreementCount("unconfirmed"),
@@ -395,6 +445,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       ) ? [REDACTED_GRADING_NOTE] : []),
       ...(input.coverage.effectContradicted > 0 ? [CONTRADICTED_NOTE] : []),
       ...(redactedFindings > 0 ? [SCRUBBED_FINDINGS_NOTE] : []),
+      ...(withheldPolicy > 0 ? [POLICY_WITHHELD_NOTE] : []),
     ].join(" "),
   } satisfies Json;
 

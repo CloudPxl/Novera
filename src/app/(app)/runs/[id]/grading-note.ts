@@ -56,6 +56,12 @@ function baseNote(
       return `graded by ${model} alone — no second model was reachable${why ? ` (${why})` : ""}`;
     }
     case "unresolved":
+      // A row from before 2026-10-28 stamped `unresolved` when no model gave a readable
+      // verdict at all; with fewer than two verdicts there was no disagreement to break
+      // (final audit C-2).
+      if (votes && usable.filter((v) => v.status !== "error").length < 2) {
+        return "no verdict: no grading model returned a readable verdict";
+      }
       return "no verdict: the models disagreed and the tie could not be broken";
     default:
       return `graded by ${model}`;

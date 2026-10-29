@@ -1,4 +1,5 @@
 import { authenticateApiKey } from "@/lib/api/auth.ts";
+import { readMcpBody } from "@/lib/mcp/body.ts";
 import { handleMessage, SUPPORTED_VERSIONS } from "@/lib/mcp/protocol.ts";
 import { buildTools, instructionsFor } from "@/lib/mcp/tools.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
@@ -45,12 +46,10 @@ export async function POST(request: Request) {
   const auth = await authenticateApiKey(request, "read");
   if (!auth.ok) return auth.response;
 
-  let message: unknown;
-  try {
-    message = await request.json();
-  } catch {
-    return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error." } }, { status: 400, headers: HEADERS });
-  }
+  // At most the REST API's 64 KB, refused before parsing (final audit D-11, 2026-10-28).
+  const body = await readMcpBody(request);
+  if (!body.ok) return body.response;
+  const message = body.message;
 
   const tools = buildTools(serviceClient(), auth.caller, new URL(request.url).origin);
   const reply = await handleMessage(message, tools, instructionsFor(auth.caller.scopes));

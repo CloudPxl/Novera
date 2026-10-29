@@ -6,7 +6,7 @@ import { executeCase } from "../src/lib/runner/execute.ts";
 import type { HttpAgentConfig } from "../src/lib/agents/types.ts";
 import type { RoutedChat } from "../src/lib/router/execute.ts";
 import type { SuiteCase } from "../src/lib/runner/types.ts";
-import { setResolverForTests } from "../src/lib/net/public-url.ts";
+import { setGuardedFetchForTests, setResolverForTests } from "../src/lib/net/public-url.ts";
 
 // Reserved `.example` hosts never resolve; the address check sees them as a public host.
 setResolverForTests(async () => ["93.184.216.34"]);
@@ -59,17 +59,16 @@ test("a placeholder nested inside the template still counts", () => {
 
 test("the metadata reaches the agent as data, in the slot the operator chose", async () => {
   let sentBody: Record<string, unknown> = {};
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (_url: string, init: RequestInit) => {
+  setGuardedFetchForTests((async (_url: string, init: RequestInit) => {
     sentBody = JSON.parse(String(init.body));
     return new Response(JSON.stringify({ reply: "ok" }), { status: 200 });
-  }) as typeof fetch;
+  }) as typeof fetch);
 
   try {
     const agent = httpAgent({ ...CONFIG, bodyTemplate: { message: "{{input}}", meta: "{{context}}" } });
     await agent.send({ input: "hello", policy: "", context: { crm_note: "a note" } });
   } finally {
-    globalThis.fetch = originalFetch;
+    setGuardedFetchForTests(null);
   }
 
   assert.equal(sentBody.message, "hello");

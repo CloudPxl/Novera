@@ -278,7 +278,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                     {!termsCurrent && <p role="status" className="mt-3 text-sm text-warning-text">The terms have changed since this was accepted. Accept the current versions to choose a plan.</p>}
                   </div>
                 )}
-                {manage && !termsCurrent && (
+                {manage && !termsCurrent && !view.config.active && (
+                  <p className="text-sm text-ink-soft">The business details and terms are given here once billing opens. Nothing is asked of you before then.</p>
+                )}
+                {manage && !termsCurrent && view.config.active && (
                   <TermsAcceptanceForm
                     set={set.setSha256}
                     draft={!set.allApproved}
@@ -293,7 +296,9 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
 
           <section aria-labelledby="plans-heading">
             <h2 id="plans-heading" className="text-lg font-semibold tracking-tight">Plans</h2>
-            <p className="mt-1 text-sm text-ink-soft">Billed monthly in euros through Stripe. Cancel at any time; a plan runs to the end of the paid month.</p>
+            <p className="mt-1 text-sm text-ink-soft">{view.config.active
+              ? "Billed monthly in euros through Stripe. Cancel at any time; a plan runs to the end of the paid month."
+              : "Billed monthly in euros through Stripe once billing opens; nothing can be bought yet. Until then, runs past the trial come from a pilot."}</p>
             <div className="mt-4 grid gap-4 lg:grid-cols-3">
               <Card className="flex flex-col p-5">
                 <div className="flex items-start justify-between gap-3">

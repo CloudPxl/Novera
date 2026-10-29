@@ -1,4 +1,4 @@
-import { publicOnlyDispatcher } from "../net/public-url.ts";
+import { guardedFetch, publicOnlyDispatcher } from "../net/public-url.ts";
 import { discardBody } from "../net/read-body.ts";
 import type { ScrubbedEvent } from "./scrub.ts";
 
@@ -27,7 +27,7 @@ export const consoleReporter: Reporter = {
 const VENDOR_DEADLINE_MS = 3_000;
 
 async function post(url: string, body: string, headers: Record<string, string>): Promise<void> {
-  const response = await fetch(url, {
+  const response = await guardedFetch(url, {
     method: "POST",
     body,
     headers,

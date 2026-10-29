@@ -14,6 +14,7 @@ import { AUDIT_LABEL } from "../src/lib/audit/record.ts";
 import type { AgentAdapter } from "../src/lib/agents/types.ts";
 import type { RoutedChat } from "../src/lib/router/execute.ts";
 import type { SuiteCase } from "../src/lib/runner/types.ts";
+import { mockGuardedFetch } from "./guarded-fetch.ts";
 
 /**
  * A 404 from the read-back (2026-10-17). It is a missing record only where someone who knows
@@ -33,7 +34,7 @@ const expect_ = [{ type: "must_contain" as const, value: "refunded" }, { type: "
 type Reply = { body: string; status: number; type?: string } | "timeout";
 
 function answer(t: TestContext, reply: Reply) {
-  t.mock.method(globalThis, "fetch", async (_url: string | URL, init: RequestInit) => {
+  mockGuardedFetch(t, async (_url: string | URL, init: RequestInit) => {
     assert.equal(init.method, "GET");
     if (reply === "timeout") {
       return await new Promise<Response>((_resolve, reject) => {

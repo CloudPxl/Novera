@@ -15,6 +15,7 @@ import { extractObligations, idAllocator } from "./extract.ts";
 import { findConflicts, observeAgent, toolsFromActivity } from "./discovery.ts";
 import { bulkEligible, buildCoverage, type CandidateRow, type ObligationRow } from "./coverage.ts";
 import { AUTHORISE_MATERIAL, AUTHORISE_FETCH, ACKNOWLEDGEMENT } from "./constants.ts";
+import { policyTooLong } from "../diagnose/limits.ts";
 
 /**
  * The Suite Builder's work, one function per step, each taking the service-role client
@@ -620,6 +621,10 @@ export async function useSourceAsPolicy(ctx: Ctx, input: { sourceId: string; age
   const { data: source } = await ctx.db.from("suite_sources").select("kind, text, status, title").eq("id", input.sourceId).eq("workspace_id", ctx.workspaceId).maybeSingle();
   if (!source || source.status !== "parsed" || !source.text) return { ok: false, error: "That source has no text to use." };
   if (!["pasted", "upload", "url"].includes(source.kind as string)) return { ok: false, error: "Only your own documents can become a policy version." };
+  // The same ceiling as a policy typed in (final audit E-3, 2026-10-28): a source may be far longer
+  // than a policy that diagnosis and drafting can send whole.
+  const tooLong = policyTooLong((source.text as string).length);
+  if (tooLong) return { ok: false, error: tooLong };
   const { data: agent } = await ctx.db.from("agents").select("id").eq("id", input.agentId).eq("workspace_id", ctx.workspaceId).maybeSingle();
   if (!agent) return { ok: false, error: "That agent is not in this workspace." };
   const { data: latest } = await ctx.db.from("policies").select("version").eq("agent_id", agent.id).order("version", { ascending: false }).limit(1).maybeSingle();

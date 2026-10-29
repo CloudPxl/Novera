@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { ReceiptDetails } from "@/lib/report/public-verify.ts";
+import { uncorroboratedSentence } from "@/lib/report/ci.ts";
 import { Explained } from "@/components/ui/explain-context.tsx";
 import type { ExplainKey } from "@/lib/explainability/glossary.ts";
 
@@ -77,6 +78,12 @@ export function ReceiptDetailsList({ details }: { details: ReceiptDetails }) {
           : grade.shownAs
             ? <>{grade.shownAs === "withheld" ? "Withheld" : "Incomplete"}{grade.threshold !== null ? <span className="text-ink-soft"> · pass mark {grade.threshold}%</span> : null}</>
             : <>{grade.band}{grade.score !== null ? ` · ${grade.score}%` : ""}{grade.threshold !== null ? <span className="text-ink-soft"> · pass mark {grade.threshold}%</span> : null}</>}
+        {/* Format 13 on, and only when the report counts any: the release gate's reading, beside
+            the letter it qualifies (final audit D-1). Absent (null or, from an older cached
+            answer, undefined) says nothing. */}
+        {(details.uncorroboratedPasses ?? 0) > 0 && (
+          <span className="mt-1 block font-medium text-warning-text">{uncorroboratedSentence(details.uncorroboratedPasses!)}</span>
+        )}
       </Row>
       <Row label="Previous report" explain={chain.kind !== "not_recorded" ? "chained_report" : undefined}>
         {chain.kind === "previous"

@@ -1,7 +1,7 @@
 import { REPORT_NOTICE, REPORT_NOTICE_PARAGRAPHS, REPORT_NOTICE_SHORT, REPORT_NOTICE_TITLE, REPORT_NOTICE_VERSION } from "../legal/notices.ts";
 import { obligationLabel, scoreWithheldAs, type ReportPayload } from "./payload.ts";
 import { findingLead, gradedByLine } from "./graders.ts";
-import { ciOutcome } from "./ci.ts";
+import { ciOutcome, uncorroboratedPasses, uncorroboratedSentence } from "./ci.ts";
 
 /**
  * A sealed report, rendered as text.
@@ -19,6 +19,32 @@ import { ciOutcome } from "./ci.ts";
  * Format 1 payloads predate `grade` and `categories`. Every read of those is
  * optional here, because a report already in a client's hands must keep exporting.
  */
+
+/**
+ * A run against Novera's scripted fixture, by the rule every other surface uses (report page,
+ * receipt, badge, CLI, client summary): its recorded environment names the fixture. Final audit
+ * D-3, 2026-10-28: the Markdown and CSV exports were the two that never said so.
+ */
+const isTestData = (payload: Pick<ReportPayload, "subject">) => /fixture/i.test(payload.subject.environment ?? "");
+const TEST_DATA_LINE = "TEST DATA: this run was against Novera's scripted test fixture, not a real agent.";
+
+/**
+ * Text someone else wrote — a client, agent or suite name, a scenario, a grader's rationale
+ * (which can quote the agent under test), a reviewer's note — as Markdown that renders as the
+ * words it is. Final audit D-6/E-12, 2026-10-28: a rationale carrying "\n\n## Grade: A (100%)",
+ * a link and a tracking image rendered as a forged heading, a live link and an image. Line
+ * breaks are folded so nothing can start a heading, list or quote; the characters that open
+ * markup, links, images, HTML or a table cell are escaped; control and bidirectional-override
+ * characters are dropped.
+ */
+export function mdText(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  return String(value)
+    // C0 (bar tab and line breaks, folded below), DEL, C1, and the bidi embeddings, overrides and isolates.
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, "")
+    .replace(/\s*[\r\n]+\s*/g, " ")
+    .replace(/[\\`*_[\]<>|~#!]/g, (c) => `\\${c}`);
+}
 
 function escapeCsv(value: string | number | null | undefined): string {
   let text = value === null || value === undefined ? "" : String(value);
@@ -40,9 +66,11 @@ export function reportToCsv(payload: ReportPayload, contentHash: string): string
   const rows: Array<Array<string | number | null | undefined>> = [];
 
   rows.push(["Novera agent evaluation report"]);
+  if (isTestData(payload)) rows.push(["TEST DATA", TEST_DATA_LINE]);
   rows.push(["Notice", REPORT_NOTICE_SHORT]);
   rows.push(["Client", subject.client]);
   rows.push(["Agent", subject.agent]);
+  rows.push(["Environment", subject.environment]);
   rows.push(["Policy version", subject.policy_version]);
   rows.push(["Suite", run.suite]);
   rows.push(["Run date", run.date]);
@@ -54,6 +82,8 @@ export function reportToCsv(payload: ReportPayload, contentHash: string): string
     rows.push(["Pass mark", payload.grade.threshold]);
     rows.push(["Basis", payload.grade.basis]);
   }
+  // Beside the grade, as on the report page (final audit D-1); format 13 on.
+  if (uncorroboratedPasses(payload) > 0) rows.push(["Corroboration", uncorroboratedSentence(uncorroboratedPasses(payload))]);
   rows.push([]);
 
   rows.push(["Coverage"]);
@@ -146,23 +176,34 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
   const { subject, run, coverage, findings, comparison, limitations } = payload;
   const out: string[] = [];
 
-  out.push(`# Agent evaluation report — ${subject.agent}`);
+  out.push(`# Agent evaluation report — ${mdText(subject.agent)}`);
   out.push("");
+  // At the weight of the title, as on the report page: test data never passes for a real agent.
+  if (isTestData(payload)) {
+    out.push(`> **${TEST_DATA_LINE}**`);
+    out.push("");
+  }
   out.push(`> **${REPORT_NOTICE_TITLE}.** ${REPORT_NOTICE_PARAGRAPHS.join(" ")}`);
   out.push("");
-  out.push(`**Client:** ${subject.client}  `);
-  out.push(`**Agent:** ${subject.agent}  `);
+  out.push(`**Client:** ${mdText(subject.client)}  `);
+  out.push(`**Agent:** ${mdText(subject.agent)}  `);
+  out.push(`**Environment:** ${mdText(subject.environment)}  `);
   out.push(`**Policy version:** v${subject.policy_version}  `);
-  out.push(`**Suite:** ${run.suite}  `);
-  out.push(`**Run date:** ${run.date}  `);
-  out.push(`**Authorisation:** ${subject.authorisation}`);
+  out.push(`**Suite:** ${mdText(run.suite)}  `);
+  out.push(`**Run date:** ${mdText(run.date)}  `);
+  out.push(`**Authorisation:** ${mdText(subject.authorisation)}`);
   out.push("");
 
   if (payload.grade) {
     const g = payload.grade;
-    out.push(`## Grade: ${g.band}${g.score === null ? "" : ` (${g.score}%)`}`);
+    const lone = uncorroboratedPasses(payload);
+    out.push(`## Grade: ${g.band}${g.score === null ? "" : ` (${g.score}%)`}${lone > 0 ? " — not corroborated" : ""}`);
     out.push("");
     out.push(g.basis);
+    if (lone > 0) {
+      out.push("");
+      out.push(`**${uncorroboratedSentence(lone)}**`);
+    }
     out.push("");
   }
 
@@ -221,7 +262,7 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
     out.push("| --- | ---: | ---: | ---: | --- |");
     for (const c of payload.categories) {
       out.push(
-        `| ${c.category} | ${c.passed} | ${c.graded} | ` +
+        `| ${mdText(c.category)} | ${c.passed} | ${c.graded} | ` +
         `${c.score === null ? "no score" : `${c.score}%`} | ${c.critical_failure ? "yes" : "no"} |`,
       );
     }
@@ -274,7 +315,7 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
   }
   if (payload.reissue) {
     out.push("");
-    out.push(`Reissues an earlier report for the same run, to disclose review, digest \`${payload.reissue.of}\`.`);
+    out.push(`Reissues an earlier report for the same run, to disclose review, digest \`${mdText(payload.reissue.of)}\`.`);
   }
   if (run.previous_report_hash) {
     out.push("");
@@ -297,13 +338,13 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
     out.push("No scenario failed or errored.");
   } else {
     for (const f of findings) {
-      out.push(`### ${f.case} — ${obligationLabel(f.obligation)} (${f.severity})`);
+      out.push(`### ${mdText(f.case)} — ${mdText(obligationLabel(f.obligation))} (${mdText(f.severity)})`);
       out.push("");
-      out.push(`**Outcome:** ${f.outcome === "error" ? "no result" : f.outcome}`);
+      out.push(`**Outcome:** ${f.outcome === "error" ? "no result" : mdText(f.outcome)}`);
       out.push("");
-      out.push(`**Expected:** ${f.expected}`);
+      out.push(`**Expected:** ${mdText(f.expected)}`);
       out.push("");
-      out.push(`**${findingLead(f)}:** ${f.observed}`);
+      out.push(`**${findingLead(f)}:** ${mdText(f.observed)}`);
       out.push("");
     }
   }
@@ -311,18 +352,18 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
   if (comparison) {
     out.push("## Compared with the previous run");
     out.push("");
-    out.push(comparison.note);
+    out.push(mdText(comparison.note));
     out.push("");
-    out.push(`- Fixed: ${comparison.fixed.join(", ") || "none"}`);
-    out.push(`- Still failing: ${comparison.persistent_failures.join(", ") || "none"}`);
-    out.push(`- Newly broken: ${comparison.new_failures.join(", ") || "none"}`);
-    out.push(`- No result this time: ${comparison.now_errored.join(", ") || "none"}`);
+    out.push(`- Fixed: ${mdText(comparison.fixed.join(", ")) || "none"}`);
+    out.push(`- Still failing: ${mdText(comparison.persistent_failures.join(", ")) || "none"}`);
+    out.push(`- Newly broken: ${mdText(comparison.new_failures.join(", ")) || "none"}`);
+    out.push(`- No result this time: ${mdText(comparison.now_errored.join(", ")) || "none"}`);
     // Format 10 only. An older report made no claim about stability, so the export
     // makes none either rather than printing an "unstable: none" it never measured.
     if (comparison.unstable && comparison.unstable.length > 0) {
       out.push(
         `- Moved before under an unchanged policy: ${comparison.unstable
-          .map((u) => `${u.case_id} (passed ${u.passes}, failed ${u.fails} of ${u.runs})`)
+          .map((u) => `${mdText(u.case_id)} (passed ${u.passes}, failed ${u.fails} of ${u.runs})`)
           .join(", ")} — not, on its own, evidence about this change`,
       );
     }
@@ -336,9 +377,9 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
     const applied = review.with_findings_applied;
     out.push("## Review by the tested party");
     out.push("");
-    out.push(review.note);
+    out.push(mdText(review.note));
     out.push("");
-    out.push(`- Reviewed by: ${review.reviewed_by}`);
+    out.push(`- Reviewed by: ${mdText(review.reviewed_by)}`);
     out.push(`- Verdicts reviewed: ${review.reviewed} — agreed with ${review.agreed}, disagreed with ${review.disagreed}`
       + (review.resolved_gaps > 0 ? `, finding on ${review.resolved_gaps} with no automated result` : ""));
     out.push(`- Their reading: ${applied.passed} passed, ${applied.failed} failed`
@@ -347,7 +388,7 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
     out.push(`- As of: ${review.as_of.slice(0, 16).replace("T", " ")} UTC`);
     out.push("");
     for (const f of review.findings) {
-      out.push(`**${f.case_id}** — ${f.verdict === "error" ? "no automated result" : `graded ${f.verdict}`}; the reviewer found it ${f.finding}. ${f.note}`);
+      out.push(`**${mdText(f.case_id)}** — ${f.verdict === "error" ? "no automated result" : `graded ${mdText(f.verdict)}`}; the reviewer found it ${mdText(f.finding)}. ${mdText(f.note)}`);
       out.push("");
     }
   }
@@ -441,11 +482,16 @@ export function reportToJunit(payload: ReportPayload, contentHash: string, url: 
   const a = (name: string, value: string | number) => `${name}="${escapeXml(value)}"`;
   const seconds = typeof run.duration_ms === "number" ? (run.duration_ms / 1000).toFixed(3) : "0";
   const out: string[] = [];
+  // The gate reads the evidence as incomplete (exit 2) while no scenario is an error or a skip —
+  // passes resting on one model (G5), say. Every JUnit reporter showed that green; one test case
+  // now carries the gate's reason as an error, so the XML says what the exit code says (final
+  // audit D-1, 2026-10-28). Counted in the totals; it never names or invents a scenario.
+  const gateError = ci.code === 2 && coverage.errored === 0 && coverage.not_run === 0;
 
   out.push('<?xml version="1.0" encoding="UTF-8"?>');
   out.push(
-    `<testsuites ${a("name", `Novera: ${subject.agent} — ${run.suite}`)} ${a("tests", coverage.planned)} ` +
-    `${a("failures", coverage.failed)} ${a("errors", coverage.errored)} ${a("skipped", coverage.not_run)} ` +
+    `<testsuites ${a("name", `Novera: ${subject.agent} — ${run.suite}`)} ${a("tests", coverage.planned + (gateError ? 1 : 0))} ` +
+    `${a("failures", coverage.failed)} ${a("errors", coverage.errored + (gateError ? 1 : 0))} ${a("skipped", coverage.not_run)} ` +
     `${a("time", seconds)} ${a("timestamp", run.date)}>`,
   );
 
@@ -506,11 +552,23 @@ export function reportToJunit(payload: ReportPayload, contentHash: string, url: 
     out.push("  </testsuite>");
   });
 
-  if (groups.length === 0) {
+  if (groups.length === 0 && !gateError) {
     out.push(`  <testsuite ${a("name", "Novera report")} tests="0" failures="0" errors="0" skipped="0">`);
     out.push("    <properties>");
     out.push(...properties);
     out.push("    </properties>");
+    out.push("  </testsuite>");
+  }
+  if (gateError) {
+    out.push(`  <testsuite ${a("name", "Release gate")} tests="1" failures="0" errors="1" skipped="0" ${a("timestamp", run.date)}>`);
+    if (groups.length === 0) {
+      out.push("    <properties>");
+      out.push(...properties);
+      out.push("    </properties>");
+    }
+    out.push(`    <testcase ${a("classname", "novera.release_gate")} ${a("name", "Evidence complete enough to release on")}>`);
+    out.push(`      <error ${a("message", "Evidence incomplete")} ${a("type", `exit ${ci.code}`)}>${escapeXml(ci.reason)}</error>`);
+    out.push("    </testcase>");
     out.push("  </testsuite>");
   }
   out.push("</testsuites>");

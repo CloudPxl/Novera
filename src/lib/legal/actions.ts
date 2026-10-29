@@ -27,6 +27,10 @@ export async function acceptContractTerms(_prev: AcceptanceFormState, form: Form
 
   const config = billingConfig();
   const set = contractSet();
+  // Nothing can be bought while billing is off, and the row would be filed as live (a deployment
+  // without a key reads live rows): a draft accepted "for the sandbox" stood in the ledger as a live
+  // acceptance of draft terms (final audit A-1, 2026-10-28). The acceptance waits for billing.
+  if (!config.active) return { error: "Billing is not open yet, so there are no terms to accept. Until it opens, runs past the trial come from a pilot." };
   if (config.mode === "live") {
     const problems = livePublicationProblems(set);
     if (problems.length) return { error: `Terms cannot be accepted for live billing yet. ${problems.join(" ")}` };

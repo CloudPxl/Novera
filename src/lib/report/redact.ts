@@ -44,6 +44,11 @@ export function assertPublishable(payload: Json, literals: string[] = []): void 
     // Short strings produce false positives against ordinary prose; a real secret or
     // a policy document is never this small.
     if (literal.length < 24) continue;
-    if (serialised.includes(literal)) throw new LeakError("private run material");
+    // The payload is compared in its canonical JSON form, where a newline is written `\n`:
+    // a multi-line policy never matched itself, so the guard did nothing for one (final
+    // audit C-3, 2026-10-28). Both spellings are checked.
+    if (serialised.includes(literal) || serialised.includes(JSON.stringify(literal).slice(1, -1))) {
+      throw new LeakError("private run material");
+    }
   }
 }

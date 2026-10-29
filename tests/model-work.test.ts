@@ -116,5 +116,6 @@ test("model work on Novera's keys outside runs is metered per workspace; a works
   assert.match(said, /own model key/);
   assert.deepEqual(scanCustomerLanguage(said), []);
   const src = (await import("node:fs")).readFileSync("src/lib/providers/model-work.ts", "utf8");
-  assert.match(src, /if \(source === "trial_free"\) \{\n\s+const \{ rateLimit \}[\s\S]{0,200}`model-work:\$\{args\.workspaceId\}`/, "only on Novera's keys, per workspace");
+  assert.match(src, /if \(source === "trial_free"\) \{\n\s+const \{ rateLimit \}[\s\S]{0,800}enforceModelWorkLimits\(\{\n\s+workspaceId: args\.workspaceId/, "only on Novera's keys, per workspace");
+  assert.match(src, /args\.hit\(`model-work:\$\{args\.workspaceId\}`/, "the workspace's own counter");
 });

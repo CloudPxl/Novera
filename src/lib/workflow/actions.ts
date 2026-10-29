@@ -10,6 +10,7 @@ import { NothingToDisclose } from "@/lib/report/reissue.ts";
 import { LeakError } from "@/lib/report/redact.ts";
 import { validateSuite, suiteFromCsv } from "@/lib/suites/validate.ts";
 import { applyPolicyChange } from "@/lib/diagnose/parse.ts";
+import { policyTooLong } from "@/lib/diagnose/limits.ts";
 import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
 import { keyRemovedNotice } from "@/lib/billing/entitlement.ts";
 import { explainKeyFailure } from "@/lib/providers/key-failure.ts";
@@ -123,6 +124,9 @@ export async function savePolicyVersion(_prev: FormState, form: FormData): Promi
   const body = String(form.get("body") ?? "").trim();
 
   if (!body) return { error: "A policy version cannot be empty." };
+  // Diagnosis and drafting send the whole policy to a model on Novera's keys (final audit E-3, 2026-10-28).
+  const tooLong = policyTooLong(body.length);
+  if (tooLong) return { error: tooLong };
 
   const gated = await gate(user.id, workspace.id, "policy.write");
   if ("error" in gated) return { error: gated.error };
@@ -812,7 +816,10 @@ export async function saveVerificationEndpoint(_prev: FormState, form: FormData)
 
   const { data: currentAgent } = await admin.from("agents").select("verification")
     .eq("id", agentId).eq("workspace_id", workspace.id).maybeSingle();
-  const previousMeaning = storedNotFoundMeaning(currentAgent?.verification);
+  // Refused before anything is called or stored: an id from another workspace updated no row,
+  // yet the endpoint was still called, audited and answered "Saved and checked" (final audit, 2026-10-28).
+  if (!currentAgent) return { error: "That agent is not in this workspace." };
+  const previousMeaning = storedNotFoundMeaning(currentAgent.verification);
   // It decides whether a 404 fails a case, so who changed it, and when, is on the audit trail.
   const auditMeaning = async (now: "unavailable" | "contradicted") => {
     if (now === previousMeaning) return;

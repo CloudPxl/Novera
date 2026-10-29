@@ -52,7 +52,13 @@ export type Agreement =
 
 export interface GradedOutcome extends JudgeOutcome {
   votes: JudgeVote[];
-  agreement: Agreement;
+  /**
+   * Null when no model produced a readable verdict at all: there was nothing to agree or
+   * disagree about. Until 2026-10-28 that case was stamped `unresolved`, and a sealed
+   * report counted it as two models disagreeing when one, or none, had answered (final
+   * audit C-2). Rows stored before then keep what they say.
+   */
+  agreement: Agreement | null;
 }
 
 const name = (c: Candidate | null) => (c ? `${c.connection}/${c.model}` : "unknown");
@@ -76,17 +82,26 @@ function vote(outcome: JudgeOutcome): JudgeVote {
 async function nextOpinion(
   base: Omit<Parameters<typeof judgeCase>[0], "task" | "exclude" | "excludeConnections">,
   task: Task,
-  consulted: Candidate[],
+  voters: Candidate[],
+  asked: Candidate[],
   settling = false,
 ): Promise<JudgeOutcome> {
-  const vendors = [...new Set(consulted.map((c) => c.connection))];
-  const independent = await judgeCase({ ...base, task, exclude: consulted, excludeConnections: vendors, settling });
+  // Independence is about the vendors whose verdicts count, so only they are excluded
+  // by connection. Every model that already answered on this case — readably or not —
+  // is excluded by name: re-asking one whose answer could not be read paid twice for the
+  // same unusable opinion (final audit C-1 / E-14, 2026-10-28).
+  const vendors = [...new Set(voters.map((c) => c.connection))];
+  const independent = await judgeCase({ ...base, task, exclude: asked, excludeConnections: vendors, settling });
   if (independent.status !== "error") return independent;
 
-  const sameVendor = await judgeCase({ ...base, task, exclude: consulted, settling });
+  const sameVendor = await judgeCase({ ...base, task, exclude: [...asked, ...independent.answered], settling });
   // Keep the failed cross-vendor attempts: a route that can no longer corroborate
   // independently is a capacity problem the operator should be able to see.
-  return { ...sameVendor, attempts: [...independent.attempts, ...sameVendor.attempts] };
+  return {
+    ...sameVendor,
+    attempts: [...independent.attempts, ...sameVendor.attempts],
+    answered: [...independent.answered, ...sameVendor.answered],
+  };
 }
 
 export async function gradeCase(args: {
@@ -102,16 +117,26 @@ export async function gradeCase(args: {
 
   const first = await judgeCase({ ...base, task });
 
-  // Nothing to corroborate: no model could grade this at all.
+  // Nothing to corroborate: no model gave a readable verdict at all — every one was
+  // unreachable or unreadable. Not a disagreement, so not `unresolved` (final audit C-2,
+  // 2026-10-28): a report that said "two models disagreed" here stated something that
+  // never happened.
   if (first.status === "error") {
-    return { ...first, votes: [vote(first)], agreement: "unresolved" };
+    return { ...first, votes: [vote(first)], agreement: null };
   }
   // Every opinion's attempts, not only the one whose verdict stands: a second model
   // that was rate-limited or timed out is part of how this verdict was reached.
-  const every = (...outcomes: JudgeOutcome[]) => ({ attempts: outcomes.flatMap((o) => o.attempts) });
+  const every = (...outcomes: JudgeOutcome[]) => ({
+    attempts: outcomes.flatMap((o) => o.attempts),
+    answered: outcomes.flatMap((o) => o.answered),
+  });
 
+  // `consulted`: the models whose verdicts count, for independence. `asked`: every model
+  // that answered on this case, which none of the later opinions asks again.
   const consulted: Candidate[] = first.servedBy ? [first.servedBy] : [];
-  const second = await nextOpinion(base, task, consulted);
+  const asked: Candidate[] = [...first.answered];
+  const second = await nextOpinion(base, task, consulted, asked);
+  asked.push(...second.answered);
 
   if (second.status === "error") {
     // One reachable model is still a verdict, but it is not a corroborated one and
@@ -136,7 +161,7 @@ export async function gradeCase(args: {
       return { ...first, ...every(first, second), votes: [vote(first), vote(second)], agreement: "agreed" };
     }
 
-    const confirming = await nextOpinion(base, task, consulted);
+    const confirming = await nextOpinion(base, task, consulted, asked);
     const votes = [vote(first), vote(second), vote(confirming)];
 
     // A third that could not be reached does not undo two that agreed. The verdict
@@ -153,7 +178,7 @@ export async function gradeCase(args: {
 
   // The tie-breaker: a verdict depends on this one answer, so it is not skipped for
   // speed (see `settling` in the router).
-  const third = await nextOpinion(base, task, consulted, true);
+  const third = await nextOpinion(base, task, consulted, asked, true);
   const votes = [vote(first), vote(second), vote(third)];
 
   if (third.status === "error") {

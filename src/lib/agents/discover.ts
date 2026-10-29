@@ -55,6 +55,57 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Who wrote a message in a conversation list. Many chat backends answer with the whole list —
+ * `{"messages":[{role:"user",…},{role:"assistant",…}]}` — and the first string in it is the
+ * customer's own message echoed back: a path to it grades every scenario's input as the agent's
+ * answer (final audit C-11, 2026-10-28).
+ */
+const AGENT_ROLES = new Set(["assistant", "bot", "agent", "ai", "model"]);
+const OTHER_ROLES = new Set(["user", "customer", "human", "system", "developer", "tool", "function"]);
+const ROLE_KEYS = ["role", "author", "sender", "speaker", "from"];
+
+function roleOf(value: unknown): "agent" | "other" | null {
+  if (!isRecord(value)) return null;
+  for (const key of ROLE_KEYS) {
+    const raw = value[key];
+    const role = typeof raw === "string" ? raw : isRecord(raw) && typeof raw.role === "string" ? raw.role : null;
+    if (!role) continue;
+    if (AGENT_ROLES.has(role.toLowerCase())) return "agent";
+    if (OTHER_ROLES.has(role.toLowerCase())) return "other";
+  }
+  return null;
+}
+
+/**
+ * For a leaf inside a conversation list: who wrote the message it sits in, and whether that is
+ * the list's last message from the agent. `null` outside a role-bearing list.
+ */
+function messageContext(source: unknown, path: string): { role: "agent" | "other"; lastAgent: boolean; listPath: string } | null {
+  const segments = path.split(".");
+  let current: unknown = source;
+  let found: { role: "agent" | "other"; lastAgent: boolean; listPath: string } | null = null;
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (Array.isArray(current)) {
+      const index = Number(segments[i]);
+      const item = current[index];
+      const role = roleOf(item);
+      if (role) {
+        let last = -1;
+        current.forEach((m, j) => { if (roleOf(m) === "agent") last = j; });
+        // The innermost list decides: a message's own parts are not another conversation.
+        found = { role, lastAgent: role === "agent" && index === last, listPath: segments.slice(0, i).join(".") };
+      }
+      current = item;
+    } else if (isRecord(current)) {
+      current = current[segments[i]];
+    } else {
+      return found;
+    }
+  }
+  return found;
+}
+
+/**
  * Walks a parsed response collecting every string leaf.
  *
  * Arrays are indexed rather than summarised, because `choices.0.message.content` is a
@@ -78,8 +129,13 @@ export function describeShape(source: unknown): ShapePath[] {
     }
     if (Array.isArray(value)) {
       // Only the first few entries: a hundred-item array would bury everything else,
-      // and the operator needs the shape, not the contents.
+      // and the operator needs the shape, not the contents. A conversation list's last
+      // message is walked too: it is where the agent's newest reply is.
       value.slice(0, 3).forEach((item, i) => walk(item, path ? `${path}.${i}` : String(i), depth + 1));
+      if (value.length > 3 && roleOf(value[value.length - 1])) {
+        const i = value.length - 1;
+        walk(value[i], path ? `${path}.${i}` : String(i), depth + 1);
+      }
       return;
     }
     if (isRecord(value)) {
@@ -165,7 +221,13 @@ function findToolPaths(source: unknown): string[] {
 export function discoverShape(source: unknown): DiscoveredShape {
   const paths = describeShape(source);
   const replyPaths = paths
-    .map((p) => ({ p, score: scoreReply(p) }))
+    .map((p) => {
+      // In a conversation list, a message from anyone but the agent is never the reply, and
+      // the agent's last message is likelier than an earlier one.
+      const message = messageContext(source, p.path);
+      const adjust = !message ? 0 : message.role === "other" ? -1000 : message.lastAgent ? 60 : 0;
+      return { p, score: scoreReply(p) + adjust };
+    })
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 5)
@@ -185,9 +247,19 @@ export function suggestPathHint(source: unknown): string {
   const { replyPaths, paths } = discoverShape(source);
   if (replyPaths.length) {
     const rest = replyPaths.slice(1, 3);
+    const list = messageContext(source, replyPaths[0]);
+    // A response path is a fixed position. In a list that grows by two every turn, the same
+    // position is turn 1's reply on turn 2, so a conversation scenario would grade the wrong
+    // turn without anyone noticing (final audit C-11).
+    const where = list?.listPath ? `"${list.listPath}"` : "the list";
+    const caveat = list
+      ? ` That is ${list.lastAgent ? "the agent's last message" : "a message"} in ${where} as this response stands, but a path`
+        + " names a fixed position: if the agent returns the whole conversation, a later turn is read from the same place,"
+        + " which is then an earlier reply. To grade conversations, return the newest reply in its own field."
+      : "";
     return ` The reply looks like it is at "${replyPaths[0]}"${
       rest.length ? ` (or ${rest.map((p) => `"${p}"`).join(", ")})` : ""
-    }.`;
+    }.${caveat}`;
   }
   if (paths.length) {
     return ` The response carries text at ${paths.slice(0, 3).map((p) => `"${p.path}"`).join(", ")}.`;

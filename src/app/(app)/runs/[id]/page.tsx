@@ -605,7 +605,7 @@ export default async function RunPage({
         seal={sealLine}
         sealed={Boolean(report)}
       />
-      <Link href={`/agents/${run.agent_id}`} className="print-hide text-sm text-ink-soft underline-offset-2 hover:underline">
+      <Link href={`/agents/${run.agent_id}`} className="print-hide text-sm text-ink-soft underline-offset-2 [overflow-wrap:anywhere] hover:underline">
         ← {agent?.name ?? "Agent"}
       </Link>
 
@@ -771,6 +771,8 @@ export default async function RunPage({
               canCompare={comparable.length > 0}
               undecided={undecided}
               recorded={caseRows.length}
+              planned={plannedCases}
+              status={run.status as string}
             />
           )}
           {tab === "overview" && undisclosedReviews > 0 && <ReissueReport runId={run.id} pending={undisclosedReviews} />}

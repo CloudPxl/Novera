@@ -307,7 +307,9 @@ const unroutable = (provider: string | null) => ({
  * Said after the trial runs out: Billing is also where a pilot code from Novera is entered
  * (Settings → Billing, "Have a pilot code?"), and every surface showing this refusal links there.
  */
-export const PILOT_CODE_HINT = "A pilot code from Novera is entered on Billing too.";
+// While billing is not open a pilot is the only way past the trial, so the sentence says how to
+// ask for one, not only where a code goes (final audit A-2, 2026-10-28).
+export const PILOT_CODE_HINT = "A pilot code from Novera is entered on Billing too; to ask for a pilot, apply at nover.space/apply.";
 
 /** The judge_source a run started under this decision is stamped with (0067). */
 export function judgeSourceFor(source: EntitlementSource, runsOn: "own_key" | "novera" | null): JudgeSource | null {

@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentConfig } from "../agents/types.ts";
 import { buildAgentAdapter } from "../agents/factory.ts";
 import type { RunSummary } from "../runner/execute.ts";
-import { buildReport } from "../report/build.ts";
+import { buildReport, type BuiltReport } from "../report/build.ts";
 import { reissueWithReview, NothingToDisclose } from "../report/reissue.ts";
 import type { ReportPayload } from "../report/payload.ts";
 import type { VerdictReview } from "../evidence/reviews.ts";
@@ -63,6 +63,11 @@ export interface PublishedReport {
   expiresAt: string;
 }
 
+export type ReportArgs = Parameters<typeof publishReport>[0];
+
+/** A payload built and checked, not yet stored. */
+export type PreparedReport = BuiltReport;
+
 /**
  * Builds the client-facing payload and stores it with its hash and a share token.
  *
@@ -90,8 +95,20 @@ export async function publishReport(args: {
   durationMs: number | null;
   baseline?: { runId: string; policyVersion: number; cases: Array<{ caseId: string; status: "pass" | "fail" | "error" }> };
   expiresInDays?: number;
+  /** The run's date as the report states it; today when absent. A report sealed late names the day the run finished. */
+  runDate?: string;
 }): Promise<PublishedReport> {
-  const { client, workspaceId, runId, summary } = args;
+  return storeReport(args, await prepareReport(args));
+}
+
+/**
+ * Everything `publishReport` does short of storing: reads what the report chains to, builds the
+ * payload and runs the leak guard. Separate so a run is marked completed only once its report
+ * has been built (final audit C-3, 2026-10-28): a build that threw after the run was completed
+ * left it completed with no report, and nothing ever sealed it.
+ */
+export async function prepareReport(args: Omit<ReportArgs, "expiresInDays">): Promise<PreparedReport> {
+  const { client, runId, summary } = args;
 
   // Both read here rather than passed in: every caller of this function would
   // otherwise have to remember, and a forgotten argument would silently publish a
@@ -131,7 +148,7 @@ export async function publishReport(args: {
     agentName: args.agentName,
     policyVersion: args.policyVersion,
     runId,
-    runDate: new Date().toISOString().slice(0, 10),
+    runDate: args.runDate ?? new Date().toISOString().slice(0, 10),
     environment: args.environment,
     passThreshold: args.passThreshold,
     durationMs: args.durationMs,
@@ -147,7 +164,15 @@ export async function publishReport(args: {
     // Checked verbatim against the payload before anything is stored.
     privateMaterial: [args.policyBody],
   });
+  return { payload, contentHash };
+}
 
+/** Stores a prepared report with a share token. */
+export async function storeReport(
+  args: Pick<ReportArgs, "client" | "workspaceId" | "runId" | "expiresInDays">,
+  { payload, contentHash }: PreparedReport,
+): Promise<PublishedReport> {
+  const { client, workspaceId, runId } = args;
   const token = randomBytes(24).toString("base64url");
   const expiresAt = new Date(Date.now() + (args.expiresInDays ?? 30) * 86_400_000).toISOString();
 

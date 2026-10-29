@@ -143,13 +143,26 @@ export function neverSent(c: { status: CaseStatus; error?: string | null }): boo
   return c.status === "error" && typeof c.error === "string" && NOT_SENT.test(c.error);
 }
 
+/**
+ * A grading error where no model gave a readable verdict at all. Until 2026-10-28 such a
+ * case was stamped `unresolved` like a genuine deadlock, and counted as "two models
+ * disagreed" when one, or none, had answered (final audit C-2). New rows carry no
+ * agreement; this keeps rows stored before then out of `disputed` wherever coverage is
+ * computed afresh. A sealed report keeps the coverage it was sealed with.
+ */
+const NO_OPINION = /^(No grader could answer|Judge unavailable|Judge did not return a readable verdict)/;
+
+function noOpinion(error: string | null | undefined): boolean {
+  return typeof error === "string" && NO_OPINION.test(error);
+}
+
 export function coverage({ plannedCases, cases }: CoverageInput): Coverage {
   const passed = cases.filter((c) => c.status === "pass").length;
   const failed = cases.filter((c) => c.status === "fail").length;
   // An errored row the agent never received is a scenario that did not run, and lands in
   // `notRun` below rather than here.
   const errored = cases.filter((c) => c.status === "error" && !neverSent(c)).length;
-  const disputed = cases.filter((c) => c.status === "error" && c.agreement === "unresolved").length;
+  const disputed = cases.filter((c) => c.status === "error" && c.agreement === "unresolved" && !noOpinion(c.error)).length;
   const unverifiable = cases.filter((c) => c.status === "error" && Boolean(c.evidenceGap)).length;
   const graded = passed + failed;
   const notRun = Math.max(0, plannedCases - (graded + errored));

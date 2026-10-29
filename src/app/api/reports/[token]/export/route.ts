@@ -42,6 +42,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ token: stri
   if (result === null) return new Response("No such report.", { status: 404 });
   if (result === "revoked") return new Response("This report has been withdrawn.", { status: 410 });
   if (result === "expired") return new Response("This report link has expired.", { status: 410 });
+  if (result === "mismatch") return new Response("This report no longer matches its seal, so it is not exported. Check it at /verify.", { status: 409 });
 
   const { payload, content_hash } = result;
   const origin = new URL(request.url).origin;

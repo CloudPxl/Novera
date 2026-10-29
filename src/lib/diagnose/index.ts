@@ -1,6 +1,8 @@
 import type { RoutedChat, RoutedAttempt } from "../router/execute.ts";
 import type { Candidate } from "../router/routes.ts";
+import { policyTooLong } from "./limits.ts";
 import { parsePolicyChange, type PolicyChange } from "./parse.ts";
+import { FENCE_RULE, fenced, fenceId } from "../providers/fence.ts";
 
 /**
  * Explaining one failed scenario and proposing the smallest policy change that would
@@ -43,18 +45,25 @@ Rules:
 - Do not propose anything the agent cannot actually do, and do not propose collecting more personal data than the task needs.
 - Name the real risks of your change, especially any scenario it could newly break. If you can think of none, say so rather than inventing one.
 
+- ${FENCE_RULE}
+
 Reply with a single JSON object and nothing else:
 {"analysis":"two or three sentences on why the response failed","change":"replace"|"add","quoted_old":"exact text from the policy, or empty when adding","proposed_new":"the policy text to put there","risks":["what this change could break"]}`;
 
 function buildPrompt(failure: FailedCase, policyBody: string): string {
+  // The policy, the input, the reply and the grader's rationale (which quotes the reply) are
+  // material, each fenced so none of them can write a section of this prompt (final audit E-2).
+  const reply = failure.responseText ?? "(the agent returned nothing)";
+  const rationale = failure.rationale ?? "(no rationale recorded)";
+  const id = fenceId([policyBody, failure.input, reply, rationale]);
   return [
-    `Current policy:\n${policyBody}`,
+    `Current policy:\n${fenced("POLICY", id, policyBody)}`,
     `Scenario the agent failed (${failure.caseId}, obligation: ${failure.obligation}, severity: ${failure.severity})`,
-    `Customer input:\n${failure.input}`,
+    `Customer input:\n${fenced("CUSTOMER_INPUT", id, failure.input)}`,
     `Expected behaviour:\n${failure.expected}`,
     `Assertions that had to hold:\n${failure.assertions.map((a, i) => `${i + 1}. ${a}`).join("\n")}`,
-    `What the agent actually replied:\n${failure.responseText ?? "(the agent returned nothing)"}`,
-    `Why it was graded a failure:\n${failure.rationale ?? "(no rationale recorded)"}`,
+    `What the agent actually replied:\n${fenced("AGENT_REPLY", id, reply)}`,
+    `Why it was graded a failure:\n${fenced("GRADER_RATIONALE", id, rationale)}`,
   ].join("\n\n---\n\n");
 }
 
@@ -64,6 +73,10 @@ export async function diagnoseFailure(args: {
   policyBody: string;
 }): Promise<DiagnosisOutcome> {
   const { chat, failure, policyBody } = args;
+
+  // A policy saved before the length limit, or by a path that has none, is not sent whole.
+  const tooLong = policyTooLong(policyBody.length);
+  if (tooLong) return { ok: false, change: null, error: tooLong, servedBy: null, attempts: [] };
 
   let response: Awaited<ReturnType<RoutedChat>>;
   try {

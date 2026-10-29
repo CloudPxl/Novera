@@ -57,13 +57,31 @@ jobs:
             '{agent_id: $agent, suite: $suite, git_commit_sha: $sha, git_branch: $branch}
              + (if $pr == "" then {} else {pr_number: ($pr | tonumber)} end)')
           # Safe to retry: the same commit answers with the run it already started.
-          status=$(curl -sS --retry 3 --retry-all-errors -o trigger.json -w '%{http_code}' \
-            -X POST "$NOVERA_API/ci/trigger" \
-            -H "Authorization: Bearer $NOVERA_API_KEY" \
-            -H 'content-type: application/json' -d "$body") || exit 4
+          # A 429 is fair use (runs already in progress, or too many requests): the answer is to
+          # wait, not a fault in this workflow. Wait as long as Retry-After says (30 s when it
+          # says nothing), for at most ten tries and five minutes in all, then exit 4.
+          tries=0; waited=0
+          while :; do
+            rm -f trigger.headers
+            status=$(curl -sS --retry 3 --retry-all-errors --retry-max-time 30 -D trigger.headers -o trigger.json -w '%{http_code}' \
+              -X POST "$NOVERA_API/ci/trigger" \
+              -H "Authorization: Bearer $NOVERA_API_KEY" \
+              -H 'content-type: application/json' -d "$body") || exit 4
+            [ "$status" = "429" ] || break
+            tries=$((tries + 1))
+            pause=$(awk 'tolower($1) == "retry-after:" { gsub(/\r/, "", $2); v = $2 } END { print v }' trigger.headers)
+            case "$pause" in ''|*[!0-9]*) pause=30 ;; ????*) pause=999 ;; esac
+            [ "$pause" -lt 5 ] && pause=5
+            if [ "$tries" -ge 10 ] || [ $((waited + pause)) -gt 300 ]; then
+              echo "Novera is still limiting runs for this workspace ($(jq -r '.error // "no reason given"' trigger.json)). Not a finding about the agent; run the job again later."
+              exit 4
+            fi
+            echo "Novera asked this job to wait (429): trying again in $pause seconds."
+            sleep "$pause"; waited=$((waited + pause))
+          done
           case "$status" in
             200|202) ;;
-            400|401|403|404|409|429)
+            400|401|403|404|409)
               echo "The run was not started ($status): $(jq -r '.error // "no reason given"' trigger.json)"
               exit 3 ;;
             *) echo "Novera answered $status."; exit 4 ;;
@@ -117,7 +135,7 @@ jobs:
 
 ## What the job does
 
-1. **Start the run for this commit** sends the commit, branch and pull request number to `POST /api/v1/ci/trigger`. The same commit sent again — a re-run job, a retried request — answers with the run it already started, so one commit never spends two runs. A newer commit on the same branch stops the unfinished run of the older one: aborted, never sealed, with the newer commit named as the reason.
+1. **Start the run for this commit** sends the commit, branch and pull request number to `POST /api/v1/ci/trigger`. The same commit sent again — a re-run job, a retried request — answers with the run it already started, so one commit never spends two runs. If Novera answers `429` — runs already in progress, or the fair-use limit — the step waits as long as `Retry-After` says (30 seconds when it says nothing) and tries again, for at most ten tries and five minutes in all, then exits `4`. A newer commit on the same branch stops the unfinished run of the older one: aborted, never sealed, with the newer commit named as the reason.
 2. **Drive the run until it is done** calls `POST /api/v1/runs/<id>/execute` until Novera says the run is done. Each call grades for about forty seconds.
 3. **Gate on the evidence** reads `GET /api/v1/ci/runs/<id>` and exits with its `ci_exit_code`, after writing the reason, the comparison with the previous run and the public seal check to the job summary. The seal check (`/verify/<hash>`) shows no content; the report's own link, which does, is never printed.
 4. **Keep the JUnit file** stores `novera-junit.xml` with the job. Any JUnit test reporter can read it; its properties carry the exit code, the suite digest, the seal and the comparison link.
@@ -127,8 +145,8 @@ jobs:
 - `0` — every scenario ran and passed.
 - `1` — at least one scenario failed. A failure outranks missing evidence.
 - `2` — the evidence is incomplete: a scenario produced no result or did not run, the grade was withheld, a pass was given by one model only, the run was stopped or superseded before it finished, or it did not finish in time. Rerun the job; with your own model key, connect a second model.
-- `3` — configuration: the key is missing (a pull request from a fork), wrong or lacks the permission to start runs, the agent or suite is wrong, the agent is archived or has no policy, the workspace has no run left, the fair-use limit was reached, or the run's report was withdrawn. The message names the reason.
-- `4` — infrastructure: Novera could not be reached or answered with an error, or your agent could not be reached and the run was halted. An unreachable agent is never reported as a failure of the agent.
+- `3` — configuration: the key is missing (a pull request from a fork), wrong or lacks the permission to start runs, the agent or suite is wrong, the agent is archived or has no policy, the workspace has no run left, or the run's report was withdrawn. The message names the reason.
+- `4` — infrastructure: Novera could not be reached or answered with an error, it was still limiting runs after the job had waited five minutes (the fair-use limit: three runs in progress at once), or your agent could not be reached and the run was halted. An unreachable agent is never reported as a failure of the agent.
 
 Any non-zero code fails the job. Add the job to your branch protection rules as a required status check and the merge is blocked when the evidence fails or is incomplete.
 

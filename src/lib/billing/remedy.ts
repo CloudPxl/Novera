@@ -1,3 +1,4 @@
+import { billingConfig } from "./config.ts";
 import type { Blocker } from "./entitlement.ts";
 
 /**
@@ -15,16 +16,19 @@ export interface Remedy {
 
 export const BILLING_PATH = "/billing";
 
-export function remedyFor(blocker: Blocker | null): Remedy | null {
+export function remedyFor(blocker: Blocker | null, billingOpen: boolean = billingConfig().active): Remedy | null {
   switch (blocker) {
     case null:
       return null;
+    // While billing is not open, every Subscribe button on Billing is disabled: "Choose a plan" led
+    // a tester to a page with nothing to choose. The same page holds the pilot code and the pilot
+    // request, and that is what the label names until a plan can be bought (final audit A-2).
     case "trial_used":
     case "needs_plan":
-      return { href: BILLING_PATH, label: "Choose a plan" };
+      return { href: BILLING_PATH, label: billingOpen ? "Choose a plan" : "Get pilot access" };
     case "allowance_used":
     case "grant_used":
-      return { href: BILLING_PATH, label: "See plans" };
+      return { href: BILLING_PATH, label: billingOpen ? "See plans" : "Get pilot access" };
     case "subscription_lapsed":
       return { href: BILLING_PATH, label: "Open billing" };
     case "needs_key":

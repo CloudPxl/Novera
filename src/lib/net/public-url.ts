@@ -1,6 +1,6 @@
 import { lookup } from "node:dns/promises";
 import type { LookupFunction } from "node:net";
-import { Agent } from "undici";
+import { Agent, fetch as undiciFetch } from "undici";
 import { isIP } from "node:net";
 
 /**
@@ -65,12 +65,22 @@ function isPublicV6(ip: string): boolean {
   if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return false;         // ::1
   if ((g[0] & 0xfe00) === 0xfc00) return false;                                // fc00::/7 unique local
   if ((g[0] & 0xffc0) === 0xfe80) return false;                                // fe80::/10 link-local
+  if ((g[0] & 0xffc0) === 0xfec0) return false;                                // fec0::/10 site-local (deprecated, still routed by some stacks)
+  if (g[0] === 0x2001 && g[1] === 0) return false;                             // 2001::/32 Teredo: tunnels to an arbitrary IPv4 address
+  if (g[0] === 0x100 && g.slice(1, 4).every((x) => x === 0)) return false;     // 100::/64 discard-only
   if ((g[0] & 0xff00) === 0xff00) return false;                                // multicast
+  // 64:ff9b:1::/48 is NAT64 for a local network (RFC 8215): never public, wherever in it the
+  // IPv4 address sits, so the whole prefix is refused rather than guessing its length.
+  if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 1) return false;
   const embeddedV4 = (hi: number, lo: number) => `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
-  // ::ffff:a.b.c.d (mapped), ::a.b.c.d (compatible) and 64:ff9b::a.b.c.d (NAT64) all
-  // reach an IPv4 address, so they are judged as that address.
+  // ::ffff:a.b.c.d (mapped), ::ffff:0:a.b.c.d (translated, RFC 2765), ::a.b.c.d (compatible),
+  // 64:ff9b::a.b.c.d (NAT64) and 2002:aabb:ccdd:: (6to4, the address in its second and third
+  // groups) all reach an IPv4 address, so they are judged as that address (final audit C-7,
+  // 2026-10-28: the translated, 6to4, local NAT64 and site-local forms passed).
   if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0)) return isPublicV4(embeddedV4(g[6], g[7]));
+  if (g.slice(0, 4).every((x) => x === 0) && g[4] === 0xffff && g[5] === 0) return isPublicV4(embeddedV4(g[6], g[7]));
   if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return isPublicV4(embeddedV4(g[6], g[7]));
+  if (g[0] === 0x2002) return isPublicV4(embeddedV4(g[1], g[2]));
   return true;
 }
 
@@ -184,6 +194,21 @@ export function publicOnlyDispatcher(options: { allowLoopback?: boolean } = {}):
     dispatchers.set(allow, dispatcher);
   }
   return dispatcher;
+}
+
+/**
+ * The fetch to pass that dispatcher to: undici's own, so the request, its decompression and the
+ * guarded connection are one patched version. Node's built-in fetch bundles an older undici
+ * (7.25 in Node 24.16) that a hostile endpoint crashes with more than five content codings,
+ * taking the whole function down (GHSA-xjj6-f33q-929c; final audit F-6, 2026-10-28).
+ */
+export const guardedFetch: typeof fetch = (input, init) => (fetchForTests ?? (undiciFetch as unknown as typeof fetch))(input, init);
+
+let fetchForTests: typeof fetch | null = null;
+
+/** Tests only: answers every guarded request, as `setResolverForTests` answers DNS. */
+export function setGuardedFetchForTests(impl: typeof fetch | null): void {
+  fetchForTests = impl;
 }
 
 /** The sentence for a request the connection-time check refused, if that is why it failed. */

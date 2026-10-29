@@ -89,14 +89,60 @@ export function modelWorkRefusal(retryAfterMinutes: number): string {
   return `This workspace has used its ${MODEL_WORK_LIMIT.max} pieces of model work for this hour on Novera's shared models (diagnoses, drafts, extraction and Ask Novera together). It frees up ${when}. A workspace with its own model key (Settings → Grading) is not limited by this.`;
 }
 
-/** The chat a workspace's model work runs on, or the sentence saying why there is none. */
-export async function workspaceChat(args: { client: SupabaseClient; workspaceId: string }): Promise<WorkspaceChat | { error: string }> {
+/**
+ * The same hour, counted per person across every workspace they own or are acting in. One account
+ * may own 25 workspaces, so the per-workspace counter alone allowed 1,500 operations an hour from
+ * one free sign-up — on a paid vendor's key that every customer's third grading opinion shares
+ * (final audit E-3, 2026-10-28). The ceiling is the same number: a person's model work on Novera's
+ * keys is 60 an hour however many workspaces they spread it over.
+ */
+export const MODEL_WORK_PERSON_LIMIT = { max: 60, windowSeconds: 60 * 60 };
+
+export function modelWorkPersonRefusal(retryAfterMinutes: number): string {
+  const when = retryAfterMinutes <= 1 ? "in a minute" : `in about ${retryAfterMinutes} minutes`;
+  return `You have used your ${MODEL_WORK_PERSON_LIMIT.max} pieces of model work for this hour on Novera's shared models, across all the workspaces you own (diagnoses, drafts, extraction and Ask Novera together). It frees up ${when}. A workspace with its own model key (Settings → Grading) is not limited by this.`;
+}
+
+type Hit = (identifier: string, limit: { max: number; windowSeconds: number }) => Promise<{ allowed: boolean; retryAfterMinutes: number }>;
+
+/**
+ * Counts one piece of model work against the workspace's hour, then against each distinct person's:
+ * the workspace's owner (whose workspaces share a trial and a budget) and the person acting, when
+ * the caller knows who that is. Returns the sentence for the first limit that refuses, or null.
+ * `hit` is the Postgres counter; a test passes its own.
+ */
+export async function enforceModelWorkLimits(args: { workspaceId: string; ownerId?: string | null; userId?: string | null; hit: Hit }): Promise<string | null> {
+  const workspace = await args.hit(`model-work:${args.workspaceId}`, MODEL_WORK_LIMIT);
+  if (!workspace.allowed) return modelWorkRefusal(workspace.retryAfterMinutes);
+  const people = [...new Set([args.ownerId, args.userId].filter((id): id is string => Boolean(id)))];
+  for (const id of people) {
+    const person = await args.hit(`model-work-person:${id}`, MODEL_WORK_PERSON_LIMIT);
+    if (!person.allowed) return modelWorkPersonRefusal(person.retryAfterMinutes);
+  }
+  return null;
+}
+
+/**
+ * The chat a workspace's model work runs on, or the sentence saying why there is none. `userId` is
+ * the person acting when the caller has one; the workspace's owner is always counted.
+ */
+export async function workspaceChat(args: { client: SupabaseClient; workspaceId: string; userId?: string | null }): Promise<WorkspaceChat | { error: string }> {
   try {
     const { connections, routes, source } = await connectionsForWorkspace(args);
     if (source === "trial_free") {
       const { rateLimit } = await import("../support/rate-limit.ts");
-      const limit = await rateLimit(`model-work:${args.workspaceId}`, MODEL_WORK_LIMIT, { onError: "allow" });
-      if (!limit.allowed) return { error: modelWorkRefusal(limit.retryAfterMinutes) };
+      let ownerId: string | null = null;
+      try {
+        const { data } = await args.client.from("workspaces").select("owner_id").eq("id", args.workspaceId).maybeSingle();
+        ownerId = (data?.owner_id as string | undefined) ?? null;
+      } catch { /* the workspace's own counter still applies */ }
+      const refusal = await enforceModelWorkLimits({
+        workspaceId: args.workspaceId,
+        ownerId,
+        userId: args.userId,
+        hit: (identifier, limit) => rateLimit(identifier, limit, { onError: "allow" }),
+      });
+      if (refusal) return { error: refusal };
     }
     const calls: CallRecord[] = [];
     return { chat: observedChat(createRoutedChat({ connections, routes }), calls), funding: await fundingOf(args, source), calls };

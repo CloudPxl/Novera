@@ -46,6 +46,24 @@ export type CiInput = Pick<ReportPayload, "coverage" | "grade"> & {
   run?: { corroboration?: ReportPayload["run"]["corroboration"] };
 };
 
+/**
+ * The passes a sealed report says rest on one model's verdict (format 13 on; 0 for older
+ * formats, which carry no such count and keep the reading they were sealed with).
+ */
+export function uncorroboratedPasses(payload: CiInput): number {
+  return payload.run?.corroboration?.uncorroborated_passes ?? 0;
+}
+
+/**
+ * What every human-facing surface says beside a grade whose passes rest on one model — the
+ * report page, the client summary, the receipt, the badge, the exports. Final audit D-1,
+ * 2026-10-28: those showed a clean "A, 10/10 passed" while the release gate read the same
+ * report as incomplete (exit 2); they now say what the gate says, in the gate's terms.
+ */
+export function uncorroboratedSentence(passes: number): string {
+  return `Not corroborated: ${plural(passes, "pass", "passes")} rest${passes === 1 ? "s" : ""} on one model's verdict, with no second model to corroborate ${passes === 1 ? "it" : "them"}. A release gate reads this report as incomplete evidence, not a pass.`;
+}
+
 export function ciOutcome(payload: CiInput): CiOutcome {
   const { planned, passed, failed, errored, not_run } = payload.coverage;
   const band = payload.grade?.band;
@@ -71,7 +89,7 @@ export function ciOutcome(payload: CiInput): CiOutcome {
   // Decision G5, sealed from format 13: a pass one model gave, because the second it was
   // put to could not be reached, is not corroborated, and a release does not rest on it.
   // Older reports carry no such count and keep the code they were sealed with.
-  const lonePasses = payload.run?.corroboration?.uncorroborated_passes ?? 0;
+  const lonePasses = uncorroboratedPasses(payload);
   if (lonePasses > 0) gaps.push(`${plural(lonePasses, "pass", "passes")} rest${lonePasses === 1 ? "s" : ""} on one model's verdict, with no second to corroborate it`);
 
   if (gaps.length > 0) {

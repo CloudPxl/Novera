@@ -25,6 +25,25 @@ export type ParsedChange =
   | { ok: true; change: PolicyChange }
   | { ok: false; reason: string };
 
+/**
+ * The shortest quote that can name one place in a policy. "." or "refunds" satisfied "quotes text
+ * that is in the policy" and then replaced the first match, which was not the sentence the analysis
+ * was about (final audit E-7, 2026-10-28). Twelve characters is a short clause, not a punctuation mark.
+ */
+export const MIN_QUOTE_CHARS = 12;
+/** What a proposal's prose may weigh in storage; the model is asked for two or three sentences. */
+const ANALYSIS_MAX = 2000;
+const RISKS_MAX = 10;
+const RISK_MAX = 300;
+
+/** How many times a span occurs in a text, overlapping occurrences not counted. */
+function occurrences(text: string, span: string): number {
+  if (!span) return 0;
+  let n = 0;
+  for (let at = text.indexOf(span); at !== -1; at = text.indexOf(span, at + span.length)) n++;
+  return n;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -55,7 +74,7 @@ export function parsePolicyChange(text: string, policyBody: string): ParsedChang
   const parsed = extractJsonObject(text) as Record<string, unknown> | null;
   if (!parsed) return { ok: false, reason: "The model did not return a readable proposal." };
 
-  const analysis = typeof parsed.analysis === "string" ? parsed.analysis.trim() : "";
+  const analysis = typeof parsed.analysis === "string" ? parsed.analysis.trim().slice(0, ANALYSIS_MAX) : "";
   if (!analysis) return { ok: false, reason: "The proposal came back with no explanation." };
 
   const proposedNew = typeof parsed.proposed_new === "string" ? parsed.proposed_new.trim() : "";
@@ -67,7 +86,7 @@ export function parsePolicyChange(text: string, policyBody: string): ParsedChang
   }
 
   const risks = Array.isArray(parsed.risks)
-    ? parsed.risks.filter((r): r is string => typeof r === "string" && r.trim().length > 0).map((r) => r.trim())
+    ? parsed.risks.filter((r): r is string => typeof r === "string" && r.trim().length > 0).map((r) => r.trim().slice(0, RISK_MAX)).slice(0, RISKS_MAX)
     : [];
 
   if (kind === "add") {
@@ -85,6 +104,15 @@ export function parsePolicyChange(text: string, policyBody: string): ParsedChang
       ok: false,
       reason: "The proposal quoted policy text that is not in this policy version, so it was refused.",
     };
+  }
+
+  // A quote that cannot name one place is refused rather than applied to the first match, the same
+  // rule as a target that moved: "applied nearby" and "applied to the first of several" are one failure.
+  if (located.replace(/\s+/g, " ").length < MIN_QUOTE_CHARS) {
+    return { ok: false, reason: "The proposal quoted too little of the policy to say which passage it replaces, so it was refused." };
+  }
+  if (occurrences(policyBody, located) > 1) {
+    return { ok: false, reason: "The proposal quoted text that appears more than once in this policy, so it could not say which passage it replaces and was refused." };
   }
 
   if (located === proposedNew) {
@@ -106,6 +134,10 @@ export function applyPolicyChange(policyBody: string, change: PolicyChange): str
   if (change.quotedOld === null) {
     return `${policyBody.trimEnd()}\n\n${change.proposedNew}\n`;
   }
-  if (!policyBody.includes(change.quotedOld)) return null;
-  return policyBody.replace(change.quotedOld, change.proposedNew);
+  // Absent, or no longer one place (another approved change may have repeated the text): refused.
+  if (occurrences(policyBody, change.quotedOld) !== 1) return null;
+  // Spliced by position, not `String.replace(string, string)`, which reads `$'`, `` $` `` and `$&` in
+  // the replacement and wrote a different policy than the one shown (final audit E-6, 2026-10-28).
+  const at = policyBody.indexOf(change.quotedOld);
+  return policyBody.slice(0, at) + change.proposedNew + policyBody.slice(at + change.quotedOld.length);
 }

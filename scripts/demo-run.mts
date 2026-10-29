@@ -48,9 +48,14 @@ Billing disputes follow the documented escalation path.`;
 // ---------------------------------------------------------------- setup
 
 async function ensureUser(): Promise<string> {
-  const { data: list } = await db.auth.admin.listUsers();
-  const existing = list?.users.find((u) => u.email === DEMO_EMAIL);
-  if (existing) return existing.id;
+  // Every page: the admin list returns 50 users at a time, and a database with more than that
+  // never found the demo user it had already made (final audit, 2026-10-28).
+  for (let page = 1; ; page++) {
+    const { data: list } = await db.auth.admin.listUsers({ page, perPage: 1000 });
+    const existing = list?.users.find((u) => u.email === DEMO_EMAIL);
+    if (existing) return existing.id;
+    if (!list || list.users.length < 1000) break;
+  }
 
   const { data, error } = await db.auth.admin.createUser({
     email: DEMO_EMAIL,

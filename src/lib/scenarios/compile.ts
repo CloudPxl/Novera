@@ -1,5 +1,6 @@
 import type { RoutedChat, RoutedAttempt } from "../router/execute.ts";
 import type { Candidate } from "../router/routes.ts";
+import { policyTooLong } from "../diagnose/limits.ts";
 import { parseDraftedScenarios, type ParsedDrafts } from "./parse.ts";
 
 /**
@@ -77,6 +78,9 @@ export async function compileScenarios(args: {
   // and every one of these has to be read.
   const wanted = Math.min(Math.max(args.wanted ?? 5, 1), 6);
 
+  const tooLong = policyTooLong(args.policyBody.length);
+  if (tooLong) return { ok: false, parsed: null, error: tooLong, servedBy: null, attempts: [] };
+
   let response: Awaited<ReturnType<RoutedChat>>;
   try {
     response = await args.chat("draft", {
@@ -101,6 +105,7 @@ export async function compileScenarios(args: {
     text: response.text,
     policyBody: args.policyBody,
     usedIds: args.usedIds ?? [],
+    wanted,
   });
 
   if (!parsed.ok) {

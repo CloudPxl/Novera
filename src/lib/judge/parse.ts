@@ -42,12 +42,81 @@ export function extractJsonObject(text: string): unknown | null {
   return null;
 }
 
-export function parseVerdict(text: string): JudgeVerdict | null {
-  const parsed = extractJsonObject(text) as Record<string, unknown> | null;
-  if (!parsed) return null;
+/**
+ * Every top-level JSON object in `text`, in order, each with where it sits. A brace inside a
+ * string does not open or close anything, and an object nested in another is part of it.
+ */
+export function allJsonObjects(text: string): Array<{ value: Record<string, unknown>; start: number; end: number }> {
+  const found: Array<{ value: Record<string, unknown>; start: number; end: number }> = [];
+  let i = 0;
+  while (i < text.length) {
+    const start = text.indexOf("{", i);
+    if (start === -1) break;
+    let depth = 0;
+    let inString = false;
+    let end = -1;
+    for (let j = start; j < text.length; j++) {
+      const ch = text[j];
+      if (inString) {
+        if (ch === "\\") j++;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === "{") depth++;
+      else if (ch === "}" && --depth === 0) { end = j; break; }
+    }
+    if (end === -1) { i = start + 1; continue; }
+    try {
+      const value = JSON.parse(text.slice(start, end + 1));
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        found.push({ value, start, end: end + 1 });
+        i = end + 1;
+        continue;
+      }
+    } catch {
+      // not an object; look for one starting further on
+    }
+    i = start + 1;
+  }
+  return found;
+}
 
-  const raw = String(parsed.verdict ?? "").trim().toLowerCase();
-  if (raw !== "pass" && raw !== "fail") return null;
+/** A grader's word for failing, written outside its JSON ("this fails", "Verdict: FAIL"). */
+const FAIL_IN_PROSE = /\b(?:fail|fails|failed|failing)\b/i;
+
+/**
+ * The grader's verdict, read so that a pass can never come from text the grader only quoted.
+ *
+ * A grader asked to quote "what decided it" may quote the agent's own reply, and an agent can
+ * write a verdict-shaped object into its reply. Taking the first object that parsed turned a
+ * grader's fail into a pass three ways (final audit E-1, 2026-10-28): the agent's object quoted
+ * in a fence before the grader's own; quoted before a bare one; or quoted inside prose that says
+ * "fail" in words. So: every verdict-shaped object is read; objects that disagree are unreadable;
+ * a pass beside the word "fail" outside any object is unreadable. Unreadable is an error — missing
+ * evidence — never a guess, and in every case of doubt the outcome is not a pass.
+ */
+export function parseVerdict(text: string): JudgeVerdict | null {
+  const objects = allJsonObjects(text);
+  const verdicts = objects.filter((o) => {
+    const v = String(o.value.verdict ?? "").trim().toLowerCase();
+    return v === "pass" || v === "fail";
+  });
+  if (verdicts.length === 0) return null;
+  const said = new Set(verdicts.map((o) => String(o.value.verdict).trim().toLowerCase()));
+  if (said.size > 1) return null;
+
+  const chosen = verdicts[verdicts.length - 1];
+  const parsed = chosen.value;
+  const raw = String(parsed.verdict).trim().toLowerCase() as Verdict;
+
+  if (raw === "pass") {
+    let outside = "";
+    let at = 0;
+    for (const o of objects) { outside += text.slice(at, o.start) + " "; at = o.end; }
+    outside += text.slice(at);
+    if (FAIL_IN_PROSE.test(outside)) return null;
+  }
 
   const rationale = typeof parsed.rationale === "string" ? parsed.rationale.trim() : "";
   if (!rationale) return null;

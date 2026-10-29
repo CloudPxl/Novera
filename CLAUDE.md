@@ -52,14 +52,14 @@ someone with the service role, not merely someone using the application.
 | Evidence is append-only — a verdict cannot be edited or deleted | `refuse_mutation()` triggers; erasure only through `erase_workspace()` |
 | An errored case cannot be a pass; an evidence gap cannot sit on a verdict; a rule-settled case cannot name a judge | 0019 |
 | A run's inputs were declared *before* it executed — suite version, its SHA-256 suite digest (new runs) and case ids in order, policy version, agent host, judge plan, pass mark, runner version, rubric digest — and its evidence is only those scenarios, each recorded once, while it runs: a completed run takes no new row, and a run is marked completed only when every declared scenario has one | 0016, frozen by trigger; 0043; 0048 |
-| A report was not edited after sealing, and chains to the previous report for that agent | SHA-256 content hash + `previous_report_hash` |
+| A report was not edited after sealing, and chains to the previous report for that agent; one whose stored contents no longer give its digest is refused on its page, exports, MCP and the CI gate, as `/verify` refuses it | SHA-256 content hash + `previous_report_hash`, `src/lib/report/access.ts`, `src/lib/ci/server.ts` |
 | Every report and export says it is testing evidence, not a certification, conformity assessment or notified-body approval — beside the sealed content, never inside it, so no hash changes | `src/lib/legal/notices.ts`, report page, `src/lib/report/export.ts`, `tests/ci.test.ts` |
 | No paid plan starts without a business's details and an acceptance of the current legal texts, with the Civil Code art. 1203 clauses accepted separately; the record names each text's version and SHA-256, cannot be edited, stores no IP, never calls a VAT number validated, and leaves with its workspace (the 10-year accounting-retention gap this opens is with counsel: `docs/LEGAL-COUNSEL-QUESTIONS.md`); live billing also needs approved texts and complete company details, and a production deployment refuses a Stripe test key | 0068, `src/lib/legal/contract.ts`, `startCheckout`, `billingConfig`, `tests/legal-framework.test.ts` |
 | A withdrawn report stays withdrawn, its link and exports refuse at once, and the row names who withdrew it; whether a report is ready to send is computed from the sealed document and never raised because someone wants to share it | 0053, `src/lib/report/readiness.ts`, `verify:db` |
 | A policy version is immutable; editing creates a new one | 0001 + append-only trigger |
 | A diagnosis is a proposal: the model cannot quote policy text that is not in the policy, and a proposal whose target moved is refused rather than applied nearby | 0007 |
 | A drafted or imported scenario cannot enter a suite without a named approval, and cannot be withdrawn once it has; an import carries its file and item hashes, a policy draft its quoted passage, each frozen | 0022 + 0030 |
-| A suite version cannot be changed or deleted once it exists, by anyone; a draft arrives undecided, whoever inserts it; a builder draft quotes its source word for word, and one resting on an open question cannot be approved until a person answers it; a Suite Builder build yields at most one suite (0077), and its drafts are published only with it | 0056, 0077, `verify:builder` |
+| A suite version cannot be changed or deleted once it exists, by anyone; a draft arrives undecided, whoever inserts it; a builder draft quotes its source word for word, and one resting on an open question cannot be approved until a person answers it; a Suite Builder build yields at most one suite (0077; an exploratory scan of it is not that suite, 0080), and its drafts are published only with it | 0056, 0077, 0080, `verify:builder` |
 | An exploratory scan of unapproved drafts is never a conformity report: only the Suite Builder starts one, it cannot be scheduled, and the database refuses it a report | 0056 `reports_not_exploratory`, `src/lib/workflow/start-run.ts` |
 | A curated pack is eu-support v6 scenarios byte for byte (version 1 of each, from v5, stays resolvable for the builds made from it), its quality record computed from the labels; a pack without measured scenarios is not offered; observed agent behaviour is never written as policy | `src/lib/builder/packs.ts`, `tests/builder.test.ts`, `verify:builder` |
 | A sign-in never strands a person: a sign-up whose email could not be sent says no account was created, a reset never claims a link was sent over a mail failure, every emailed or provider link returns only to this deployment and to a fixed list of pages, Google and GitHub appear only when enabled, the last way in cannot be removed, and linking, unlinking, password changes and signing out everywhere are audited | `src/lib/auth/redirects.ts`, `src/lib/auth/errors.ts`, `src/app/auth/callback/`, `tests/auth.test.ts`; dashboard steps in `docs/setup/sign-in-and-email.md` |
@@ -94,7 +94,7 @@ someone with the service role, not merely someone using the application.
 | Novera calls only public addresses — an agent or read-back URL resolving to a private, loopback or metadata address is refused when saved and on every call, and redirects are reported, not followed; every agent and model call has a deadline inside the slice that also bounds reading the answer, every answer read is capped (agent and read-back 256 KB, model 1 MB) and a webhook receiver's is never read, and a run idle for 24 hours is stopped, never sealed | `src/lib/net/public-url.ts`, `src/lib/net/read-body.ts`, 0040, `verify:slices` |
 | A customer's agent is paced (250 ms between sends) and an unreachable or rate-limiting endpoint is not a finding: HTTP 408/429/502/503/504 or no connection is a case error, never a fail, and three in a row halt the run (aborted, never sealed) with the reason — counted in send order, so a success sent before the failures began cannot reset the count while scenarios run in parallel; a reply's NUL or unpaired surrogate is stored as U+FFFD, never an aborted run | `src/lib/runner/execute.ts` (`AGENT_PACE_MS`, `isTransportFailure`), `tests/runner.test.ts` |
 | An aborted run is never sealed — stopped by a person (even mid-slice), idle for 24 hours, or ended by a failure; a stopped run sends its agent no further scenario; at most two slices grade on the shared trial keys at once, and a third waits rather than degrading everyone's verdicts | 0041 `claim_run_slice`, `src/lib/workflow/stop-run.ts`, `verify:slices` |
-| A webhook is signed (HMAC over timestamp and body), sent only to a public address, never follows a redirect, carries counts and links but no reply, input, policy or key, is queued once per run and endpoint, and cannot be edited after it is queued; each attempt is claimed by one sender and counted, and delivery is at least once (receivers deduplicate by `Novera-Delivery`), one broken endpoint never holding up another; an endpoint's secret is sealed and shown once | 0042, 0046, `src/lib/webhooks/`, `verify:webhooks` |
+| A webhook is signed (HMAC over timestamp and body), sent only to a public address, never follows a redirect, carries counts and links but no reply, input, policy or key, says when the run was against the sample fixture (`run.test_data`), is queued once per run and endpoint, and cannot be edited after it is queued; each attempt is claimed by one sender and counted, and delivery is at least once (receivers deduplicate by `Novera-Delivery`), one broken endpoint never holding up another; an endpoint's secret is sealed and shown once | 0042, 0046, `src/lib/webhooks/`, `verify:webhooks` |
 | A production failure is stored redacted — the original only as a hash — cannot be edited, and becomes a test only as a draft a person approves, linked to it for good; one sent through the API needs a `write` key, names it, and the same text twice is one record — each draft with its own R-number however many arrive at once (0077 refuses a duplicate; the recorder takes the next free one), a NUL or unpaired surrogate stored as U+FFFD and an impossible or future date refused | 0031, 0044, 0077, `src/lib/regressions/record.ts` |
 | Only the migration runner can read or change the migration ledger, which decides what runs: it is created closed, and the runner refuses a ledger any API role can reach rather than trust it | 0045, `scripts/migrate.mts`, `verify:db` |
 | A workspace key grades only on models it was proved to reach, and one it cannot reach refuses the run rather than erroring every case | 0025 + 0026, route built from the key |
@@ -110,12 +110,18 @@ someone with the service role, not merely someone using the application.
 **A verdict is the finding of two models from different vendors.** A single judge drifted
 on 25% of scenarios re-grading byte-identical responses, which the comparison reported to
 the operator as fixes and regressions that never happened. Temperature 0; a third model
-settles a disagreement; an unsettleable disagreement is an error, never a guess. Measured
+settles a disagreement; an unsettleable disagreement is an error, never a guess. A grader whose
+answer cannot be read is passed over for the next candidate, and no model is asked twice for one
+case; a reply holding disagreeing verdicts, or a pass beside the word "fail", is unreadable, never a
+pass. What an agent, customer, visitor or document supplied reaches every model prompt inside
+markers with a per-call random id (`src/lib/providers/fence.ts`), so it cannot write a section of ours. Measured
 25% → 6.3% by `npm run measure:stability`. Independence is derived from `judge_votes`, so
 a same-vendor second opinion is reported as exactly that. A pass only one model gave — the
 second could not be reached — is not corroborated: from format 13 the release gate (CLI,
 exports, API `outcome`, webhooks, n8n) reads it as incomplete evidence, exit 2; older reports
-keep their sealed codes (decision G5).
+keep their sealed codes (decision G5). Every surface that shows the grade — the report, the client
+summary, `/verify`, the badge, the exports and JUnit — says "not corroborated" beside it, and a
+new report's method sentence states how many models actually graded it (final audit D-1).
 
 **The route is ordered by measured false passes, and that order is load-bearing.**
 Consensus takes its second opinion from the first candidate of a *different vendor*, so
@@ -275,7 +281,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 1351 unit tests | free |
+| `npm test` | 1422 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |

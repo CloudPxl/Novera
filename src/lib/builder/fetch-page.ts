@@ -1,5 +1,5 @@
 import "server-only";
-import { assertPublicUrl, publicOnlyDispatcher, PrivateAddressError, refusedAddress } from "../net/public-url.ts";
+import { assertPublicUrl, guardedFetch, publicOnlyDispatcher, PrivateAddressError, refusedAddress } from "../net/public-url.ts";
 import { BodyTooLarge, discardBody, readTextLimited } from "../net/read-body.ts";
 import { MAX_UPLOAD_BYTES } from "./sources.ts";
 
@@ -82,7 +82,7 @@ async function guardedGet(url: string, timeoutMs: number, fetchImpl: FetchImpl):
 }
 
 export async function fetchPublicPage(raw: string, options: { fetchImpl?: FetchImpl; allowLoopback?: boolean } = {}): Promise<FetchOutcome> {
-  const fetchImpl = options.fetchImpl ?? ((u, i) => fetch(u, i));
+  const fetchImpl = options.fetchImpl ?? ((u, i) => guardedFetch(u, i));
   const redirects: string[] = [];
   const robotsChecked = new Set<string>();
   let robotsState: FetchedPage["robots"] = "allowed";

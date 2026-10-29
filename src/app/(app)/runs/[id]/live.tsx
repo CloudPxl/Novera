@@ -173,7 +173,10 @@ export function LiveRun({
       // Already settled: read the final rows once and stop. Nothing to drive, and no
       // refresh — the server already rendered this run in its finished form.
       if (status === "completed" || status === "aborted") {
-        await poll();
+        // A completed run with no report asks the server once: if the slice that finished it
+        // died before storing the report, the advance path seals it (final audit C-3). It is a
+        // no-op for a run that has one, or that is not sealed by design.
+        if (!(await poll()) && status === "completed" && !cancelled.current) kick(true);
         return;
       }
 

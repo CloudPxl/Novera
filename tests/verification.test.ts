@@ -4,6 +4,7 @@ import { httpVerificationConnector } from "../src/lib/evidence/connectors/http.t
 import { applyEffectRule } from "../src/lib/judge/effect.ts";
 import type { VerificationObservation } from "../src/lib/evidence/connectors/types.ts";
 import { setResolverForTests } from "../src/lib/net/public-url.ts";
+import { mockGuardedFetch } from "./guarded-fetch.ts";
 
 // Reserved `.example` hosts never resolve; the address check sees them as a public host.
 setResolverForTests(async () => ["93.184.216.34"]);
@@ -13,7 +14,7 @@ const expect_ = [{ type: "must_contain" as const, value: "refunded" }];
 
 function answer(t: TestContext, body: string, status = 200) {
   const seen: string[] = [];
-  t.mock.method(globalThis, "fetch", async (url: string | URL, init: RequestInit) => {
+  mockGuardedFetch(t, async (url: string | URL, init: RequestInit) => {
     seen.push(String(url));
     assert.equal(init.method, "GET", "a verification must never be able to change state");
     return new Response(body, { status });
@@ -76,7 +77,7 @@ test("a scenario cannot point the read-back at another host", async (t) => {
 
 test("the credential goes in the configured header and never into the detail", async (t) => {
   let sent: Record<string, string> = {};
-  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+  mockGuardedFetch(t, async (_url: string, init: RequestInit) => {
     sent = init.headers as Record<string, string>;
     return new Response("not found", { status: 404 });
   });

@@ -7,6 +7,7 @@ import { openAiCompatibleProvider } from "../src/lib/providers/openai-compatible
 import { ProviderError, retryAfterMs, type Provider } from "../src/lib/providers/types.ts";
 import { caseNeedsMs, GRADING_RESERVE_MS } from "../src/lib/runner/execute.ts";
 import { setResolverForTests } from "../src/lib/net/public-url.ts";
+import { mockGuardedFetch } from "./guarded-fetch.ts";
 import type { SuiteCase } from "../src/lib/runner/types.ts";
 
 setResolverForTests(async () => ["93.184.216.34"]);
@@ -31,7 +32,7 @@ test("an agent's timeout is its own setting, never more than 30 s", () => {
 });
 
 test("an agent that runs out its own time is the agent's finding; one cut by the slice is not", async (t) => {
-  t.mock.method(globalThis, "fetch", hangingFetch);
+  mockGuardedFetch(t, hangingFetch);
 
   const own = await httpAgent({ ...agentConfig, timeoutMs: 2_100 }).send({ input: "hi", policy: "" });
   assert.equal(own.timedOut, true);
@@ -44,7 +45,7 @@ test("an agent that runs out its own time is the agent's finding; one cut by the
 });
 
 test("with too little time left, nothing is sent at all", async (t) => {
-  const fetchMock = t.mock.method(globalThis, "fetch", hangingFetch);
+  const fetchMock = mockGuardedFetch(t, hangingFetch);
   const result = await httpAgent(agentConfig).send({ input: "hi", policy: "", deadline: Date.now() + 500 });
   assert.equal(fetchMock.mock.callCount(), 0);
   assert.equal(result.cutByNovera, true);
@@ -52,7 +53,7 @@ test("with too little time left, nothing is sent at all", async (t) => {
 });
 
 test("a redirect is answered, not followed", async (t) => {
-  const fetchMock = t.mock.method(globalThis, "fetch", async () => new Response(null, { status: 302, headers: { location: "http://127.0.0.1/" } }));
+  const fetchMock = mockGuardedFetch(t, async () => new Response(null, { status: 302, headers: { location: "http://127.0.0.1/" } }));
   const result = await httpAgent(agentConfig).send({ input: "hi", policy: "" });
   assert.equal((fetchMock.mock.calls[0].arguments[1] as RequestInit).redirect, "manual");
   assert.equal(result.ok, false);

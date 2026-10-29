@@ -29,6 +29,7 @@ import {
   exitForStatus,
   exportUrl,
   parseTarget,
+  printable,
   redactToken,
   verifyExport,
   type ExportFormat,
@@ -172,11 +173,11 @@ async function suiteValidate(args: string[]): Promise<number> {
   }
   if (!result.ok) {
     console.error(`${file}: ${result.errors.length} problem${result.errors.length === 1 ? "" : "s"}`);
-    for (const e of result.errors) console.error(`  - ${e}`);
+    for (const e of result.errors) console.error(`  - ${printable(e)}`);
     return CI_EXIT.configuration;
   }
   const s = result.suite;
-  console.log(`${file}: valid — ${s.name} v${s.version}, ${s.cases.length} scenarios.`);
+  console.log(`${file}: valid — ${printable(s.name)} v${printable(s.version)}, ${s.cases.length} scenarios.`);
   return 0;
 }
 
@@ -184,7 +185,7 @@ async function reportVerify(args: string[]): Promise<number> {
   const { positional, opts } = flags(args);
   const v = await loadVerified(positional[0], opts);
   console.log(`VERIFIED  ${v.hash}`);
-  console.log(`          ${v.payload.subject.agent} · ${v.payload.run.suite} · ${v.payload.run.date.slice(0, 10)} · ${v.source}`);
+  console.log(`          ${printable(v.payload.subject.agent)} · ${printable(v.payload.run.suite)} · ${printable(String(v.payload.run.date).slice(0, 10))} · ${printable(v.source)}`);
   return 0;
 }
 
@@ -194,10 +195,10 @@ async function reportStatus(args: string[]): Promise<number> {
   const p = v.payload;
   const c = p.coverage;
   const outcome = ciOutcome(p);
-  console.log(`${p.subject.agent} — ${p.run.suite}, ${p.run.date.slice(0, 16).replace("T", " ")} UTC`);
-  console.log(`Grade ${p.grade?.band ?? "not graded"} · ${c.passed} passed · ${c.failed} failed · ${c.errored} no result · ${c.not_run} not run · of ${c.planned}`);
-  if (/fixture/i.test(p.subject.environment)) console.log(`Test data: this run was against a fixture (${p.subject.environment}).`);
-  console.log(`Verified ${v.hash} (${v.source})`);
+  console.log(`${printable(p.subject.agent)} — ${printable(p.run.suite)}, ${printable(String(p.run.date).slice(0, 16).replace("T", " "))} UTC`);
+  console.log(`Grade ${printable(p.grade?.band ?? "not graded")} · ${printable(c.passed)} passed · ${printable(c.failed)} failed · ${printable(c.errored)} no result · ${printable(c.not_run)} not run · of ${printable(c.planned)}`);
+  if (/fixture/i.test(p.subject.environment)) console.log(`Test data: this run was against a fixture (${printable(p.subject.environment)}).`);
+  console.log(`Verified ${v.hash} (${printable(v.source)})`);
   console.log(`${outcome.reason} Exit ${outcome.code}.`);
   if (opts.junit) {
     await writeFile(opts.junit, reportToJunit(p, v.hash, v.url ?? v.source));
@@ -321,12 +322,14 @@ async function main(argv: string[]): Promise<number> {
 main(process.argv.slice(2)).then(
   (code) => process.exit(code),
   (e) => {
+    // A message can carry a server's or a file's words: printed line by line, each made printable.
+    const say = (text: string) => console.error(text.split("\n").map(printable).join("\n"));
     if (e instanceof Exit) {
-      console.error(e.message);
+      say(e.message);
       process.exit(e.code);
     }
     // Anything unforeseen is ours, not the report's: never exit 0 or 1 on it.
-    console.error(e instanceof Error ? e.message : String(e));
+    say(e instanceof Error ? e.message : String(e));
     process.exit(CI_EXIT.infrastructure);
   },
 );

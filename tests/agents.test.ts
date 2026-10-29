@@ -4,6 +4,7 @@ import { fillTemplate, readPath } from "../src/lib/agents/template.ts";
 import { httpAgent } from "../src/lib/agents/http.ts";
 import type { HttpAgentConfig } from "../src/lib/agents/types.ts";
 import { setResolverForTests } from "../src/lib/net/public-url.ts";
+import { mockGuardedFetch } from "./guarded-fetch.ts";
 
 // Reserved `.example` hosts never resolve; the address check sees them as a public host.
 setResolverForTests(async () => ["93.184.216.34"]);
@@ -44,7 +45,7 @@ const config: HttpAgentConfig = {
 };
 
 test("an unreachable agent reports an error instead of throwing", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => {
+  mockGuardedFetch(t, async () => {
     throw new Error("ECONNREFUSED");
   });
 
@@ -55,7 +56,7 @@ test("an unreachable agent reports an error instead of throwing", async (t) => {
 });
 
 test("a non-2xx response is an error and keeps the body as evidence", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => new Response("rate limited", { status: 429 }));
+  mockGuardedFetch(t, async () => new Response("rate limited", { status: 429 }));
 
   const result = await httpAgent(config).send({ input: "hi", policy: "p" });
   assert.equal(result.ok, false);
@@ -64,7 +65,7 @@ test("a non-2xx response is an error and keeps the body as evidence", async (t) 
 });
 
 test("a response missing the configured path is an error, not an empty pass", async (t) => {
-  t.mock.method(globalThis, "fetch", async () =>
+  mockGuardedFetch(t, async () =>
     Response.json({ something_else: "surprise" }),
   );
 
@@ -74,7 +75,7 @@ test("a response missing the configured path is an error, not an empty pass", as
 });
 
 test("a good response is returned with its latency and raw body", async (t) => {
-  t.mock.method(globalThis, "fetch", async () =>
+  mockGuardedFetch(t, async () =>
     Response.json({ reply: "I need to verify your identity first.", calls: [] }),
   );
 
@@ -88,7 +89,7 @@ test("a good response is returned with its latency and raw body", async (t) => {
 test("NUL and unpaired surrogates in a JSON reply become U+FFFD, so the case can be stored (chaos audit 2026-10-17)", async (t) => {
   // Valid JSON text that Postgres cannot hold once parsed: storing it aborted the whole run.
   const body = '{"reply":"No refund for 55120\\u0000 \\ud800 here 😀.","calls":[{"tool":"lookup\\u0000order","arguments":{"order\\udfff":"55120\\u0000"}}]}';
-  t.mock.method(globalThis, "fetch", async () => new Response(body, { headers: { "content-type": "application/json" } }));
+  mockGuardedFetch(t, async () => new Response(body, { headers: { "content-type": "application/json" } }));
   const result = await httpAgent({ ...config, toolActivityPath: "calls" }).send({ input: "hi", policy: "p" });
   assert.equal(result.ok, true);
   assert.equal(result.responseText, "No refund for 55120� � here 😀.", "marked, not dropped; a real pair (the emoji) is kept");
@@ -99,7 +100,7 @@ test("NUL and unpaired surrogates in a JSON reply become U+FFFD, so the case can
 
 test("the auth header is sent only when both a name and a value exist", async (t) => {
   let seen: Record<string, string> = {};
-  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+  mockGuardedFetch(t, async (_url: string, init: RequestInit) => {
     seen = init.headers as Record<string, string>;
     return Response.json({ reply: "ok" });
   });

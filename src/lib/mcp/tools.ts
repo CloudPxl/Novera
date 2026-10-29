@@ -194,6 +194,7 @@ export function buildTools(db: SupabaseClient, caller: McpCaller, origin: string
         const found = await loadReportByToken(token);
         if (found === null) throw new ToolRefusal("No such report.");
         if (found === "revoked" || found === "expired") return { verified: false, status: found };
+        if (found === "mismatch") return { verified: false, status: "live", mismatch: true };
         const recomputed = contentHash(found.payload as unknown as Json);
         return {
           verified: recomputed === found.content_hash,

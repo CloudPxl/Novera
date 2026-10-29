@@ -6,6 +6,7 @@ import { scoreWithheldAs, obligationLabel, type ReportPayload } from "@/lib/repo
 import { findingLead, gradedByLine } from "@/lib/report/graders.ts";
 import { categoryMeta } from "@/lib/evidence/categories.ts";
 import { loadReportByToken } from "@/lib/report/access.ts";
+import { uncorroboratedPasses, uncorroboratedSentence } from "@/lib/report/ci.ts";
 import { ReportToolbar } from "./toolbar.tsx";
 import { track } from "@/lib/analytics/track.ts";
 import { SealInspector } from "@/components/ui/seal-inspector.tsx";
@@ -62,13 +63,17 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
   const result = await loadReportByToken(token);
 
   if (result === null) notFound();
-  if (result === "expired" || result === "revoked") return <Unavailable reason={result} />;
+  if (result === "expired" || result === "revoked" || result === "mismatch") return <Unavailable reason={result} />;
   // A count, nothing else: no token, no workspace, no reader.
   await track("report_viewed");
 
   const { payload, content_hash, expires_at, created_at } = result;
   const badgeShare = badgeShareFor({ payload, content_hash, created_at: created_at ?? null, revoked_at: result.revoked_at });
   const { subject, run, coverage, obligations, findings, comparison } = payload;
+  // Format 13 on: passes that rest on one model. The letter stays as sealed; beside it the page
+  // says what the release gate says, and the box is not drawn as a clean pass (final audit D-1,
+  // 2026-10-28). Rendering only — nothing sealed changes, and older formats count none.
+  const lonePasses = uncorroboratedPasses(payload);
   // Stored beside the payload, not inside it: when the seal was applied. The run's own date
   // and duration are the sealed fields; this says when that evidence was fixed.
   const sealedAt = created_at ? `${new Date(created_at).toISOString().slice(0, 16).replace("T", " ")} UTC` : null;
@@ -136,7 +141,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         {payload.grade && (
           <div className="mb-5 flex flex-wrap items-center gap-5 rounded-xl border border-line bg-ground/60 p-5">
             <div
-              className={`flex size-24 shrink-0 flex-col items-center justify-center rounded-xl border-2 ${GRADE_STYLES[payload.grade.band]}`}
+              className={`flex size-24 shrink-0 flex-col items-center justify-center rounded-xl border-2 ${lonePasses > 0 ? GRADE_STYLES.WITHHELD : GRADE_STYLES[payload.grade.band]}`}
             >
               {payload.grade.band === "INCOMPLETE" || payload.grade.band === "WITHHELD" ? (
                 // The word is the grade. It used to be a dash with the word in 12px beneath.
@@ -149,6 +154,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
                   <span className="mt-1 text-xs font-semibold tabular-nums">
                     {payload.grade.score === null ? "" : `${payload.grade.score}%`}
                   </span>
+                  {lonePasses > 0 && <span className="mt-0.5 text-[10px] font-bold uppercase tracking-wide">uncorroborated</span>}
                 </>
               )}
             </div>
@@ -164,6 +170,9 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
                     ? `Meets the ${payload.grade.threshold}% pass mark set for this evaluation.`
                     : `Below the ${payload.grade.threshold}% pass mark set for this evaluation.`}
                 </p>
+              )}
+              {lonePasses > 0 && (
+                <p className="mt-2 text-sm font-medium text-warning-text">{uncorroboratedSentence(lonePasses)}</p>
               )}
             </div>
           </div>
@@ -327,7 +336,8 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           no result; <span className="font-medium">not covered</span> means nothing gradable ran —
           which is never the same as satisfied.
         </p>
-        <div className="overflow-hidden rounded-lg border border-line">
+        {/* Scrolls sideways on a phone rather than cutting columns off (final audit A-3); focusable so a keyboard can scroll it. */}
+        <div className="overflow-x-auto rounded-lg border border-line" tabIndex={0} role="region" aria-label="Obligation coverage table">
           <table className="w-full text-sm">
             <thead className="bg-ground text-left text-xs uppercase tracking-wider text-ink-faint">
               <tr>
@@ -510,7 +520,11 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
                     run.corroboration.single_vendor
                       ? `${run.corroboration.independent} verdict(s) corroborated by a second model from a different vendor; `
                         + `${run.corroboration.single_vendor} by a second model from the same vendor, because no other vendor was reachable.`
-                      : `All ${run.corroboration.independent} corroborated verdict(s) were confirmed by a model from a different vendor.`
+                      // "All 0 corroborated verdicts were confirmed…" read as a claim about a run
+                      // nothing corroborated (final audit D-1). Same counts, said as they are.
+                      : run.corroboration.independent === 0
+                        ? "No verdict in this run was corroborated by a second model."
+                        : `All ${run.corroboration.independent} corroborated verdict(s) were confirmed by a model from a different vendor.`
                   }
                 />
               )}
@@ -632,18 +646,22 @@ function PrintSealLine({ hash, detail, className }: { hash: string; detail: stri
   );
 }
 
-function Unavailable({ reason }: { reason: "expired" | "revoked" }) {
+function Unavailable({ reason }: { reason: "expired" | "revoked" | "mismatch" }) {
   // Built as whole strings rather than interpolated fragments: React would otherwise
   // split the sentence with a comment marker, which breaks text matching and makes
   // the copy harder to translate later.
   const heading =
     reason === "expired"
       ? "This report is no longer available"
-      : "This report is no longer shared";
+      : reason === "mismatch"
+        ? "This report does not match its seal"
+        : "This report is no longer shared";
   const explanation =
     reason === "expired"
       ? "The link has expired. Reports expire so that evidence about an agent cannot be circulated long after it stopped describing that agent."
-      : "The organisation that issued this report has withdrawn the link.";
+      : reason === "mismatch"
+        ? "Its stored contents no longer produce the SHA-256 digest it was sealed with, so it may have been altered after sealing and is not shown."
+        : "The organisation that issued this report has withdrawn the link.";
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center bg-surface px-6 text-ink">
@@ -687,9 +705,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div>
+    <div className="min-w-0">
       <dt className="text-xs uppercase tracking-wider text-ink-faint">{label}</dt>
-      <dd className={`mt-1 ${mono ? "break-all font-mono text-xs" : ""}`}>{value}</dd>
+      <dd className={`mt-1 ${mono ? "break-all font-mono text-xs" : "[overflow-wrap:anywhere]"}`}>{value}</dd>
     </div>
   );
 }

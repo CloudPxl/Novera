@@ -88,6 +88,13 @@ export interface ReceiptDetails {
   counts: ReceiptCounts;
   /** Null on a format that records no grade (format 1). */
   grade: ReceiptGrade | null;
+  /**
+   * Format 13 on: how many passes rest on one model's verdict, which a release gate reads as
+   * incomplete evidence (G5). Null when the report states no such count — formats before 13,
+   * which are read as they were sealed. Final audit D-1, 2026-10-28: the receipt showed
+   * "A, 10/10" for a run no second model corroborated.
+   */
+  uncorroboratedPasses: number | null;
   chain: ReceiptChain;
   /** The digest of the report this one reissues, when it is a reissue. */
   reissueOf: string | null;
@@ -233,6 +240,7 @@ export function buildReceipt(digest: string, row: SealRow | null): SealReceipt {
         notRun: count(coverage.not_run),
       },
       grade: receiptGrade(payload.grade),
+      uncorroboratedPasses: count(record(run.corroboration)?.uncorroborated_passes),
       chain: receiptChain(run.previous_report_hash),
       reissueOf: reissue ? normaliseDigest(reissue.of) : null,
       // Absent before format 15: no claim either way.

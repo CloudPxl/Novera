@@ -1,6 +1,7 @@
 import "server-only";
 import { serviceClient } from "../supabase/service.ts";
 import type { ReportPayload } from "./payload.ts";
+import { contentHash, type Json } from "./hash.ts";
 
 export interface StoredReport {
   payload: ReportPayload;
@@ -10,7 +11,7 @@ export interface StoredReport {
   created_at: string;
 }
 
-export type ReportAccess = StoredReport | "expired" | "revoked" | null;
+export type ReportAccess = StoredReport | "expired" | "revoked" | "mismatch" | null;
 
 /**
  * The single gate in front of a sealed report.
@@ -34,5 +35,9 @@ export async function loadReportByToken(token: string): Promise<ReportAccess> {
   if (error || !data) return null;
   if (data.revoked_at) return "revoked";
   if (new Date(data.expires_at) < new Date()) return "expired";
+  // A report whose stored contents no longer give its digest was edited after sealing (only a
+  // database superuser could): the page and exports said "Sealed" over it while /verify, the badge,
+  // MCP and the CLI said it did not match (final audit D-4, 2026-10-28). One hash per view.
+  if (contentHash(data.payload as Json) !== data.content_hash) return "mismatch";
   return data as StoredReport;
 }

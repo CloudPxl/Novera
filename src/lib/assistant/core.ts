@@ -1,3 +1,6 @@
+import { selectDocs } from "../support/select-docs.ts";
+import { scanCustomerLanguage } from "../report/language.ts";
+
 /**
  * The in-app assistant: prompt, and the validation that makes its output safe to show.
  *
@@ -83,21 +86,17 @@ Reply with one JSON object and nothing else:
 {"reply":"...","citations":["slug"],"actions":[...],"remember":null}`;
 
 /**
- * The pages worth sending, by plain word overlap with the question. The whole corpus is
- * ~5k tokens and a free-tier Groq key allows 8k a minute; three relevant pages are
- * enough to ground an answer and leave room for the next question.
+ * The pages worth sending, by plain word overlap with the question, cut to the paragraphs that match.
+ * The documentation is ~187 KB (~47,000 tokens), not the ~5k this once assumed, and a free-tier Groq
+ * key allows 8,000 tokens a minute: three whole pages were 25–44 KB, so the first route candidates could
+ * never serve a question and answers came from the weakest model or the paid one (final audit E-5,
+ * 2026-10-28). Three pages and 8,000 characters (~2,000 tokens) leave the workspace snapshot and the next
+ * question room inside that minute. Figures are later checked against what is returned here, so a
+ * figure in a paragraph that was cut is not "known".
  */
+export const ASK_DOC_CHARS = 8_000;
 export function pickDocs(question: string, docs: AssistantDoc[], count = 3): AssistantDoc[] {
-  const words = new Set(
-    question.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3),
-  );
-  const scored = docs.map((d) => {
-    const text = `${d.title} ${d.body}`.toLowerCase();
-    let score = 0;
-    for (const w of words) if (text.includes(w)) score += d.title.toLowerCase().includes(w) ? 3 : 1;
-    return { d, score };
-  });
-  return scored.sort((a, b) => b.score - a.score).slice(0, count).map((s) => s.d);
+  return selectDocs(question, docs, { count, maxChars: ASK_DOC_CHARS });
 }
 
 export function allowedPaths(snapshot: AssistantSnapshot, docs: AssistantDoc[]): string[] {
@@ -190,28 +189,73 @@ export function parseReply(
   return { reply: flattened, citations, actions, remember };
 }
 
+/** Text that is an identifier, not a figure: its digits say nothing about the workspace. */
+const IDENTIFIER = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?|\b(?:[0-9a-f]{16,}|sha-?256:?[0-9a-f]{8,})\b/gi;
+
+const NUMBER_WORDS: Record<string, string> = {
+  zero: "0", one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10",
+  eleven: "11", twelve: "12", thirteen: "13", fourteen: "14", fifteen: "15", sixteen: "16", seventeen: "17", eighteen: "18", nineteen: "19", twenty: "20",
+};
+const COUNTED_NOUN = "(?:(?:trial|suite|managed|sealed|failed|passed|remaining|more)\\s+)*(?:runs?|scenarios?|agents?|reports?|cases?|verdicts?)";
+
+/**
+ * A claim of certification, compliance or a guarantee, anywhere in a sentence that does not deny it.
+ * `scanCustomerLanguage` (the report's word list) only matches "is certified"; "is GDPR compliant and
+ * certified" slipped past it, so the words are checked on their own as well.
+ */
+export function claimsCertification(text: string): string | null {
+  const report = scanCustomerLanguage(text)[0];
+  if (report) return report.matched;
+  for (const sentence of text.split(/(?<=[.!?;:])\s+|\n+/)) {
+    const m = /\b(certified|compliant|conformant|guaranteed?|guarantees)\b/i.exec(sentence);
+    if (!m) continue;
+    const before = sentence.slice(0, m.index).toLowerCase();
+    if (/\b(?:not|never|no|cannot|can't|isn't|aren't|without|nor|rather than|instead of|does not|doesn't|do not|don't)\b[^.]*$/.test(before)) continue;
+    return m[0];
+  }
+  return null;
+}
+
 /**
  * What a reply asserts that nothing it was given supports: a figure that appears in neither the
  * workspace snapshot, the documentation sent with the question, nor the question itself, and any
  * claim that a key or connection works. The model said "1 trial run remaining" with two left and
  * "your key is valid" without one being checked (app-wide audit, 2026-10-08); a reply that does
  * this is not shown.
+ *
+ * What counts as "given" is figures, not the digits inside identifiers: a UUID, a timestamp and a
+ * hash are stripped from the source before its numbers are collected, so "0", "5" or "37" is not
+ * supported because a run id happened to contain one (final audit E-10, 2026-10-28: 32–39 of 94 invented
+ * percentages passed). A percentage must also appear as a percentage — a run's pass count being 12
+ * does not make "12%" a figure Novera gave. Spelled-out counts ("two runs remaining") are read as
+ * numbers, and a claim of certification or compliance is refused as the product's own language rule would.
  */
 export function unsupportedClaims(reply: string, given: { snapshot: AssistantSnapshot; docs: AssistantDoc[]; question: string }): string[] {
   const source = [JSON.stringify(given.snapshot), ...given.docs.map((d) => d.body), given.question].join("\n");
-  const known = new Set(source.match(/\d+(?:[.,]\d+)?/g) ?? []);
+  const figures = source.replace(IDENTIFIER, " ");
+  const known = new Set(figures.match(/\d+(?:[.,]\d+)?/g) ?? []);
+  const percents = new Set((figures.match(/\d+(?:[.,]\d+)?\s?%/g) ?? []).map((p) => p.replace(/\s/g, "")));
+  // An identifier the reply quotes is fine when the source has it verbatim (a run's date, its id).
+  const quoted = reply.replace(IDENTIFIER, (id) => (source.includes(id) ? " " : id));
+  const spelled = quoted.replace(new RegExp(`\\b(${Object.keys(NUMBER_WORDS).join("|")})\\b(?=\\s+${COUNTED_NOUN}\\b)`, "gi"), (w) => NUMBER_WORDS[w.toLowerCase()]);
   const problems: string[] = [];
-  for (const n of reply.match(/\d+(?:[.,]\d+)?/g) ?? []) {
+  for (const n of spelled.match(/\d+(?:[.,]\d+)?/g) ?? []) {
     if (!known.has(n)) problems.push(`the figure ${n}`);
+  }
+  for (const m of spelled.matchAll(/(\d+(?:[.,]\d+)?)\s?%/g)) {
+    // Already named above when the figure itself is unknown.
+    if (known.has(m[1]) && !percents.has(`${m[1]}%`)) problems.push(`the percentage ${m[1]}%`);
   }
   // A run balance is checked against the one sentence that computes it, not against any figure:
   // "1" appears in a snapshot as a policy version or a report count.
-  for (const m of reply.matchAll(/\b(\d+)\s+(?:of\s+\d+\s+)?(?:trial\s+)?(?:suite\s+)?runs?\s+(?:left|remaining)\b/gi)) {
+  for (const m of spelled.matchAll(/\b(\d+)\s+(?:of\s+\d+\s+)?(?:trial\s+)?(?:suite\s+)?runs?\s+(?:left|remaining)\b/gi)) {
     if (!given.snapshot.funding.includes(`${m[1]} of`)) problems.push(`a run balance of ${m[1]}`);
   }
   if (/\b(?:key|credential|connection|token)\b[^.]{0,40}\b(?:is|was|looks|seems)\s+(?:valid|working|fine|correct|ok(?:ay)?)\b/i.test(reply)) {
     problems.push("a claim that a key or connection works");
   }
+  const claim = claimsCertification(reply);
+  if (claim) problems.push(`a claim of "${claim}", which Novera never makes`);
   return [...new Set(problems)].slice(0, 5);
 }
 

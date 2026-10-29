@@ -185,7 +185,9 @@ export function repairFor(row: NoVerdictRow): Repair | null {
 
   // The agent replied; no grader produced a verdict.
   if (row.replied) {
-    const failed = row.judgeAttempts.filter((a) => a.ok !== true).map((a) => String(a.reason ?? ""));
+    // An unreadable answer is recorded as answered (`ok`) with the reason `invalid_output`;
+    // it is a failed attempt all the same, or "Verdict unreadable" could never be chosen.
+    const failed = row.judgeAttempts.filter((a) => a.ok !== true || a.reason === "invalid_output").map((a) => String(a.reason ?? ""));
     const most = (r: string) => failed.length > 0 && failed.filter((x) => x === r).length * 2 >= failed.length;
     const graders = (reason: RepairReason, label: string, happened: string, next: string) =>
       make({ reason, label, owner: "Novera's graders", ...received(), happened, next });

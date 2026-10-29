@@ -6,7 +6,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireContext, assertMembership, gate, ACTIVE_WORKSPACE_COOKIE, INVITE_COOKIE, type AccountMode } from "@/lib/auth/session.ts";
-import { canManageMember, GRANTABLE_ROLES, isRole, ROLE_LABEL, type Role } from "@/lib/auth/permissions.ts";
+import { can, canManageMember, GRANTABLE_ROLES, isRole, ROLE_LABEL, type Role } from "@/lib/auth/permissions.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
@@ -324,9 +324,26 @@ export async function changeRole(_prev: IdentityState, form: FormData): Promise<
   if (!canManageMember(actorRole, member.role, next)) return { error: "Your role cannot make that change. Only the owner manages admins." };
   const { error } = await gated.admin.from("workspace_members").update({ role: next }).eq("workspace_id", workspace.id).eq("user_id", target);
   if (error) return { error: `Could not change the role: ${error.message}` };
-  await recordAudit(gated.admin, { workspaceId: workspace.id, actorId: user.id, subjectUserId: target, action: "member.role_changed", detail: { from: member.role, to: next } });
+  // A key is authenticated by its own scopes, never by its creator's role, so a demotion that took
+  // away the right to manage keys would otherwise leave the keys they made starting runs and
+  // reading replies. Revoked as removal revokes them (final audit, 2026-10-28).
+  let revokedKeys = 0;
+  if (!can(next, "apikey.manage")) {
+    const { data: revoked, error: revokeError } = await gated.admin.from("api_keys").update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
+      .eq("workspace_id", workspace.id).eq("created_by", target).is("revoked_at", null).select("id");
+    // The role has already changed; said plainly so the person revokes the keys by hand rather
+    // than believing it happened.
+    if (revokeError) {
+      await recordAudit(gated.admin, { workspaceId: workspace.id, actorId: user.id, subjectUserId: target, action: "member.role_changed", detail: { from: member.role, to: next, api_keys_revoked: "failed" } });
+      revalidatePath("/settings/members");
+      return { error: `Their role changed, but the API keys they created could not be revoked (${revokeError.message}). Revoke them under Settings → API keys, MCP and webhooks.` };
+    }
+    revokedKeys = revoked?.length ?? 0;
+  }
+  await recordAudit(gated.admin, { workspaceId: workspace.id, actorId: user.id, subjectUserId: target, action: "member.role_changed", detail: { from: member.role, to: next, ...(revokedKeys > 0 ? { api_keys_revoked: revokedKeys } : {}) } });
   revalidatePath("/settings/members");
-  return { notice: `Now ${ROLE_LABEL[next].toLowerCase()}. It applies to their next action.` };
+  const keysNote = revokedKeys > 0 ? ` ${revokedKeys} API key${revokedKeys === 1 ? "" : "s"} they created ${revokedKeys === 1 ? "was" : "were"} revoked.` : "";
+  return { notice: `Now ${ROLE_LABEL[next].toLowerCase()}. It applies to their next action.${keysNote}` };
 }
 
 /** Removal takes effect on the member's next request, and revokes the API keys they created. */

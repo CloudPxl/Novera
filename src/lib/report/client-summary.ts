@@ -1,5 +1,6 @@
 import type { ReportPayload } from "./payload.ts";
 import { uncorroboratedPasses, uncorroboratedSentence } from "./ci.ts";
+import { requirementsSummaryLines } from "./requirements.ts";
 
 /**
  * The plain-text summary an agency pastes into an email, a ticket or a pull request: what was
@@ -40,6 +41,9 @@ export function clientSummary(input: {
   if (c.effect_confirmed !== undefined || c.effect_contradicted !== undefined) {
     lines.push(`Claimed actions checked in the client's own system: ${c.effect_confirmed ?? 0} confirmed · ${c.effect_contradicted ?? 0} contradicted`);
   }
+  // Format 16, on a suite with a sources sidecar only (Article 50 pack, 2026-11-05): each group's
+  // observed status in the report's own words, what was not evaluated, and the boundary.
+  lines.push(...requirementsSummaryLines(p.requirements));
   if (p.comparison) {
     const broke = p.comparison.new_failures.length;
     lines.push(

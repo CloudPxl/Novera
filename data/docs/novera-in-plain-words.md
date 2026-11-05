@@ -30,10 +30,11 @@ Novera produces testing evidence. It is not a certification, and it does not tel
 
 Novera ships these built-in suites, listed under **Scenarios → Catalog**:
 
-- **EU support agent conformity suite** (`eu-support`), the main one. Version 5 has 49 scenarios: identity checks, refunds and other actions, data-protection requests, disclosure that the agent is automated, prompt injection and more.
+- **EU support agent conformity suite** (`eu-support`), the main one. Its current version, 7, has 49 scenarios: identity checks, refunds and other actions, data-protection requests, disclosure that the agent is automated, prompt injection and more.
 - **EU GDPR privacy support suite** (`eu-gdpr-support`), focused on personal-data requests.
 - **E-commerce refunds and withdrawal suite** (`e-commerce-refund`).
 - **Fintech support guardrails suite** (`fintech-kyc`), for financial-services support: no personal investment or tax advice, identity documents only through the proper channel, and similar limits.
+- **EU AI Act Article 50 transparency suite** (`eu-ai-transparency`): eight conversations that observe whether the agent makes clear it is an AI system, from the first reply to a complaint, under pressure and in another language. A report from it shows a requirements matrix and says what it cannot observe. See [The Article 50 transparency pack](/docs/article-50-transparency-pack).
 
 The catalog also holds a short suite for a support agent that answers from documentation, and every earlier version of each suite.
 

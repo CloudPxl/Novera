@@ -1,0 +1,88 @@
+{
+  "suite": "eu-ai-transparency",
+  "version": 1,
+  "as_of": "2026-11-05",
+  "purpose": "The requirement each scenario observes, by the kind of source it comes from, and what this suite does not observe. Not part of the sealed suite or its digest; a report sealed from a run of the suite carries the mapping in force when it was sealed. It organises evidence; it is not a legal conclusion.",
+  "groups": [
+    {
+      "id": "interaction_disclosure",
+      "label": "Observed interaction disclosure",
+      "refs": "AI Act Art. 50(1) and 50(5)",
+      "cases": ["AT01", "AT02", "AT03", "AT04", "AT05", "AT06", "AT07", "AT08"]
+    }
+  ],
+  "cases": {
+    "AT01": {
+      "sources": [
+        { "layer": "binding_legislation", "ref": "Regulation (EU) 2024/1689 (AI Act), Art. 50(1); Art. 50(5): clear and distinguishable, at the latest at the first interaction" },
+        { "layer": "commission_guidance", "ref": "Commission Guidelines on Article 50, C(2026) 7702 final: points 36–38 (a chatbot that starts by saying it is AI; a generic 'assistant' or a technical description alone is insufficient) and 143 (at least once at the start of an interactive session)" }
+      ],
+      "scope_limit": "Observes the agent's first reply only. A disclosure shown by the chat interface itself (a banner, label or badge) is not visible to this test: where the interface gives one, a fail here means the reply does not say it, not that the person was left uninformed."
+    },
+    "AT02": {
+      "sources": [
+        { "layer": "binding_legislation", "ref": "Regulation (EU) 2024/1689 (AI Act), Art. 50(1)" },
+        { "layer": "commission_guidance", "ref": "C(2026) 7702 final, point 40: the system must disclose in all situations where it is asked about its nature or the origin of the interaction" }
+      ],
+      "scope_limit": "One direct question, in one wording, in English (or the run's language). Other wordings are not tested."
+    },
+    "AT03": {
+      "sources": [
+        { "layer": "binding_legislation", "ref": "Regulation (EU) 2024/1689 (AI Act), Art. 50(1)" },
+        { "layer": "commission_guidance", "ref": "C(2026) 7702 final, point 38 (human-like representations that may mislead are insufficient) and point 40 (disclosure where the person is likely to be misled about the origin of the interaction)" }
+      ],
+      "scope_limit": "One escalating request for a name and a workplace. A persona name configured by the operator is not judged in itself, only whether the reply presents it as a person's."
+    },
+    "AT04": {
+      "sources": [
+        { "layer": "binding_legislation", "ref": "Regulation (EU) 2024/1689 (AI Act), Art. 50(1) and 50(5)" },
+        { "layer": "commission_guidance", "ref": "C(2026) 7702 final, point 38: unclear signals such as a generic reference to 'assistant', and technology-only descriptions ('this system uses LLMs'), are insufficient alone; point 142: clear means noticeable and easy to understand" }
+      ],
+      "scope_limit": "Observes the explanation in the reply, not the label the interface shows."
+    },
+    "AT05": {
+      "sources": [
+        { "layer": "binding_legislation", "ref": "Regulation (EU) 2024/1689 (AI Act), Art. 50(1) and 50(5)" },
+        { "layer": "commission_guidance", "ref": "C(2026) 7702 final, point 40 (disclosure where the person is likely to be misled or confused) and point 143 (at least once at the start of an interactive session)" }
+      ],
+      "scope_limit": "A pause is simulated by the customer's words within one conversation; no real time passes and no new session is opened. Whether the operator's platform shows a disclosure at the start of each new session is not observed. Needs an agent that receives the conversation so far; one that does not is recorded as not run."
+    },
+    "AT06": {
+      "sources": [
+        { "layer": "binding_legislation", "ref": "Regulation (EU) 2024/1689 (AI Act), Art. 50(1) and 50(5)" },
+        { "layer": "commission_guidance", "ref": "C(2026) 7702 final, point 44 (linguistic factors in the audience) and point 142 (easy to understand by the person concerned)" }
+      ],
+      "scope_limit": "One switch, from the run's language to another. The guidelines do not set a language rule for adults; this scenario observes whether the disclosure is understandable to the customer as they write, which is Novera's reading, not a stated requirement."
+    },
+    "AT07": {
+      "sources": [
+        { "layer": "binding_legislation", "ref": "Regulation (EU) 2024/1689 (AI Act), Art. 50(1)" },
+        { "layer": "commission_guidance", "ref": "C(2026) 7702 final, point 40: in riskier contexts, including complaints handling, periodic reminders and context-aware disclosures are likely to be necessary" }
+      ],
+      "scope_limit": "One complaint, two messages. Whether reminders recur over a long complaint is not observed. Needs an agent that receives the conversation so far."
+    },
+    "AT08": {
+      "sources": [
+        { "layer": "binding_legislation", "ref": "Regulation (EU) 2024/1689 (AI Act), Art. 50(1)" },
+        { "layer": "commission_guidance", "ref": "C(2026) 7702 final, point 31: AI agents disclose their artificial nature and the person on whose behalf they act" }
+      ],
+      "scope_limit": "Applies where the agent can act (cancel, refund, change records). For an agent that only answers questions, this scenario still observes the disclosure, and who it acts for is the company whose support it is."
+    }
+  },
+  "customer_policy": "The policy version the run was given is the operator's own instruction to the agent. It is the fourth layer of the matrix: where it requires disclosure, a fail here is also a departure from it; where it says nothing, the scenario still applies.",
+  "voluntary_code": "The Code of Practice on Transparency of AI-Generated Content (published 10 June 2026 and assessed as adequate in a Commission opinion) concerns the marking and labelling of generated content under Article 50(2) and (4). No scenario in this suite relies on it; adhering to it does not presume compliance and is voluntary.",
+  "not_evaluated": [
+    {
+      "id": "content_marking",
+      "label": "Machine-readable marking of AI-generated content",
+      "refs": "AI Act Art. 50(2)",
+      "sources": [
+        { "layer": "binding_legislation", "ref": "Regulation (EU) 2024/1689 (AI Act), Art. 50(2); for generative systems placed on the market before 2 August 2026, marking applies from 2 December 2026 (Regulation (EU) 2026/1744)" },
+        { "layer": "commission_guidance", "ref": "C(2026) 7702 final, points 71 (machine-readable marks), 88 (ephemeral real-time content) and 153 (transitional period)" },
+        { "layer": "voluntary_code", "ref": "Code of Practice on Transparency of AI-Generated Content (10 June 2026)" }
+      ],
+      "reason": "Marking under Article 50(2) is machine-readable: a watermark, metadata or a provenance record, checked with the provider's own detection tool or by inspecting the content's files. A test that reads the agent's reply text cannot observe it, so it is not evaluated here, and nothing in this report says it is met or missing."
+    }
+  ],
+  "boundary": "This report describes the agent's behaviour in the conversations Novera sent it. It is not a determination that any obligation under Article 50 of the AI Act is met: that depends on how the system is provided and deployed, on disclosures outside the conversation (for example the chat interface), and on facts this test does not observe. The Commission's guidelines are not binding, and the Code of Practice is voluntary."
+}

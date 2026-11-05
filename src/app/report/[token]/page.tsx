@@ -16,6 +16,10 @@ import { badgeShareFor } from "@/lib/report/badge.ts";
 import { SEAL_ATTRIBUTION, extensionSentence, sealContents } from "@/lib/report/seal.ts";
 import { buildReportGuide, guideFactsFromPayload } from "@/lib/explainability/report-guide.ts";
 import { ReportGuideBox } from "@/components/ui/report-guide.tsx";
+import {
+  NOT_EVALUATED, REQUIREMENT_LAYERS, REQUIREMENT_LAYER_DESCRIPTIONS, REQUIREMENT_LAYER_LABELS,
+  groupStatusText, layerLabel, requirementOutcomeWord,
+} from "@/lib/report/requirements.ts";
 
 const FINGERPRINT_LABELS: Record<string, string> = {
   agent_endpoint: "Agent endpoint",
@@ -403,6 +407,10 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         )}
       </Section>
 
+      {/* Format 16, on a suite with a sources sidecar only (Article 50 pack, 2026-11-05). Absent on
+          every earlier report and on every other suite, and nothing is rendered for those. */}
+      {payload.requirements && <RequirementsMatrix requirements={payload.requirements} />}
+
       {comparison && (
         <Section title="Compared with the previous run">
           <dl className="grid gap-3 sm:grid-cols-3">
@@ -467,6 +475,12 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         <p className="rounded-lg border border-line bg-ground p-4 text-sm leading-relaxed text-ink-soft">
           {payload.limitations}
         </p>
+        {/* Format 16: the matrix's boundary, repeated where a reader looks for the scope. */}
+        {payload.requirements && (
+          <p className="mt-3 rounded-lg border border-line bg-ground p-4 text-sm leading-relaxed text-ink-soft">
+            <strong className="font-semibold text-ink">Requirements matrix boundary.</strong> {payload.requirements.boundary}
+          </p>
+        )}
         <div id="standing-notice" className="mt-4 rounded-lg border border-line p-4 text-sm leading-relaxed text-ink-soft">
           <p className="font-semibold text-ink">{REPORT_NOTICE_TITLE}</p>
           {REPORT_NOTICE_PARAGRAPHS.map((p) => <p key={p.slice(0, 24)} className="mt-2">{p}</p>)}
@@ -672,6 +686,127 @@ function Unavailable({ reason }: { reason: "expired" | "revoked" | "mismatch" })
         Ask whoever sent it to you for a current report.
       </p>
     </main>
+  );
+}
+
+const OUTCOME_TONES: Record<string, string> = {
+  pass: "text-pass-text",
+  fail: "text-fail-text",
+  no_result: "text-warning-text",
+  not_run: "text-ink-soft",
+};
+
+const GROUP_TONES: Record<string, string> = {
+  observed_present: "border-pass-border bg-pass-surface text-pass-text",
+  observed_deficient: "border-fail-border bg-fail-surface text-fail-text",
+  // Amber and dashed, like every other "no result": not a failure, and not quiet either.
+  inconclusive: "border-dashed border-warning-text bg-warning-surface text-warning-text",
+};
+
+/**
+ * The requirements matrix (format 16): the boundary first, the observed status of each group,
+ * the five source layers, a row per scenario, and what the suite does not observe. Prove-level
+ * detail on the one page that is the auditor's document. Every word is read from the sealed block
+ * or from `requirements.ts`; nothing is computed here.
+ */
+function RequirementsMatrix({ requirements: req }: { requirements: NonNullable<ReportPayload["requirements"]> }) {
+  return (
+    <Section title="Requirements matrix">
+      <p className="rounded-lg border-2 border-line-strong bg-ground p-4 text-sm font-medium leading-relaxed text-ink">
+        <strong className="font-semibold">What this matrix is not.</strong> {req.boundary}
+      </p>
+      <p className="mt-4 text-sm leading-relaxed text-ink-soft">
+        {req.note} Sources as of {req.as_of}.
+      </p>
+
+      <ul className="mt-4 space-y-2">
+        {req.groups.map((g) => (
+          <li key={g.id} className={`break-inside-avoid rounded-lg border p-3 text-sm leading-relaxed ${GROUP_TONES[g.status] ?? GROUP_TONES.inconclusive}`}>
+            <p>
+              <span className="font-semibold">{g.label}:</span> {groupStatusText(g)}.
+            </p>
+            <p className="mt-0.5 text-xs">{g.refs}</p>
+          </li>
+        ))}
+      </ul>
+
+      <dl className="mt-5 grid gap-x-6 gap-y-2 rounded-lg border border-line p-4 text-sm sm:grid-cols-2">
+        {REQUIREMENT_LAYERS.map((layer) => (
+          <div key={layer} className="min-w-0">
+            <dt className="font-medium text-ink">{REQUIREMENT_LAYER_LABELS[layer]}</dt>
+            <dd className="text-xs leading-relaxed text-ink-soft">{REQUIREMENT_LAYER_DESCRIPTIONS[layer]}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {/* Scrolls sideways on a phone rather than cutting columns off, as the obligation table does;
+          on paper it wraps instead, since a printed page cannot scroll. */}
+      <div className="mt-5 overflow-x-auto rounded-lg border border-line print:overflow-visible" tabIndex={0} role="region" aria-label="Requirements matrix table">
+        <table className="w-full min-w-[46rem] text-sm print:min-w-0">
+          <thead className="bg-ground text-left text-xs uppercase tracking-wider text-ink-faint">
+            <tr>
+              <th scope="col" className="px-4 py-2.5 font-medium">Scenario</th>
+              <th scope="col" className="px-3 py-2.5 font-medium">Observed outcome</th>
+              <th scope="col" className="px-3 py-2.5 font-medium">Sources</th>
+              <th scope="col" className="px-4 py-2.5 font-medium">Scope limit</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {req.rows.map((r) => (
+              <tr key={r.case} className="break-inside-avoid align-top">
+                <td className="px-4 py-2.5">
+                  <span className="block font-mono text-xs text-ink-faint">{r.case}</span>
+                  <span className="font-medium">{obligationLabel(r.obligation)}</span>
+                </td>
+                <td className={`px-3 py-2.5 font-medium ${r.outcome === "pass" && r.uncorroborated ? "text-warning-text" : (OUTCOME_TONES[r.outcome] ?? "text-ink-soft")}`}>
+                  {requirementOutcomeWord(r)}
+                </td>
+                <td className="px-3 py-2.5 text-xs leading-relaxed text-ink-soft">
+                  {r.sources.map((x, i) => (
+                    <p key={i} className={i > 0 ? "mt-1.5" : undefined}>
+                      <span className="font-medium text-ink">{layerLabel(x.layer)}:</span> {x.ref}
+                    </p>
+                  ))}
+                </td>
+                <td className="px-4 py-2.5 text-xs leading-relaxed text-ink-soft">{r.scope_limit}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <dl className="mt-4 space-y-2 text-sm text-ink-soft">
+        <Line label={REQUIREMENT_LAYER_LABELS.customer_policy} value={req.customer_policy} />
+        <Line label={REQUIREMENT_LAYER_LABELS.voluntary_code} value={req.voluntary_code} />
+      </dl>
+
+      {req.not_evaluated.length > 0 && (
+        <div className="mt-5 rounded-lg border-2 border-dashed border-line-strong p-4">
+          <h3 className="text-sm font-semibold text-ink">Not evaluated</h3>
+          <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+            Not a pass and not a fail: this suite does not observe these, and this report says nothing about whether they are met.
+          </p>
+          <ul className="mt-3 space-y-3">
+            {req.not_evaluated.map((n) => (
+              <li key={n.id} className="break-inside-avoid text-sm leading-relaxed">
+                <p>
+                  <span className="mr-2 inline-block rounded bg-neutral-surface px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-neutral-text ring-1 ring-neutral-border">
+                    {NOT_EVALUATED}
+                  </span>
+                  <span className="font-medium text-ink">{n.label}</span> <span className="text-ink-faint">({n.refs})</span>
+                </p>
+                <p className="mt-1 text-ink-soft">{n.reason}</p>
+                <ul className="mt-1 space-y-0.5 text-xs text-ink-soft">
+                  {n.sources.map((x, i) => (
+                    <li key={i}><span className="font-medium text-ink">{layerLabel(x.layer)}:</span> {x.ref}</li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Section>
   );
 }
 

@@ -2,6 +2,10 @@ import { REPORT_NOTICE, REPORT_NOTICE_PARAGRAPHS, REPORT_NOTICE_SHORT, REPORT_NO
 import { obligationLabel, scoreWithheldAs, type ReportPayload } from "./payload.ts";
 import { findingLead, gradedByLine } from "./graders.ts";
 import { ciOutcome, uncorroboratedPasses, uncorroboratedSentence } from "./ci.ts";
+import {
+  NOT_EVALUATED, REQUIREMENT_LAYERS, REQUIREMENT_LAYER_DESCRIPTIONS, REQUIREMENT_LAYER_LABELS,
+  groupStatusSentence, groupStatusText, layerLabel, requirementOutcomeWord,
+} from "./requirements.ts";
 
 /**
  * A sealed report, rendered as text.
@@ -146,6 +150,33 @@ export function reportToCsv(payload: ReportPayload, contentHash: string): string
   }
   rows.push([]);
 
+  // Format 16, on a suite with a sources sidecar only (Article 50 pack, 2026-11-05). One row per
+  // scenario with its sources by layer; what the suite does not observe is a row marked NOT
+  // EVALUATED, never a pass or a fail.
+  const req = payload.requirements;
+  if (req) {
+    rows.push(["Requirements matrix"]);
+    rows.push(["Boundary", req.boundary]);
+    rows.push(["Note", req.note]);
+    rows.push(["Sources as of", req.as_of]);
+    rows.push(["Customer policy", req.customer_policy]);
+    rows.push(["Voluntary code", req.voluntary_code]);
+    rows.push(["Group", "References", "Status", "Passed", "Failed", "No verdict", "Not run", "Passes on one model's verdict"]);
+    for (const g of req.groups) {
+      rows.push([g.label, g.refs, groupStatusText(g), g.passed, g.failed, g.no_result, g.not_run, g.uncorroborated_passes ?? 0]);
+    }
+    const byLayer = (sources: Array<{ layer: string; ref: string }>) =>
+      REQUIREMENT_LAYERS.map((layer) => sources.filter((x) => x.layer === layer).map((x) => x.ref).join("; "));
+    rows.push(["Scenario", "Obligation", "Observed outcome", ...REQUIREMENT_LAYERS.map((l) => REQUIREMENT_LAYER_LABELS[l]), "Scope limit, or why not evaluated"]);
+    for (const r of req.rows) {
+      rows.push([r.case, obligationLabel(r.obligation), requirementOutcomeWord(r), ...byLayer(r.sources), r.scope_limit]);
+    }
+    for (const n of req.not_evaluated) {
+      rows.push([n.label, n.refs, NOT_EVALUATED, ...byLayer(n.sources), n.reason]);
+    }
+    rows.push([]);
+  }
+
   // Format 11, reissues only.
   if (payload.human_review) {
     const review = payload.human_review;
@@ -168,6 +199,7 @@ export function reportToCsv(payload: ReportPayload, contentHash: string): string
 
   // Never dropped. A list of failures without its scope reads as a finished audit.
   rows.push(["Scope and limitations", limitations]);
+  if (payload.requirements) rows.push(["Requirements matrix boundary", payload.requirements.boundary]);
 
   return csvRows(rows);
 }
@@ -349,6 +381,10 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
     }
   }
 
+  // Format 16 only. Every string in it came from a sidecar sealed into the payload: escaped
+  // like anything else read from the document, so a reference can never become markup.
+  if (payload.requirements) out.push(...requirementsMarkdown(payload.requirements));
+
   if (comparison) {
     out.push("## Compared with the previous run");
     out.push("");
@@ -397,6 +433,10 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
   out.push("");
   out.push(limitations);
   out.push("");
+  if (payload.requirements) {
+    out.push(`**Requirements matrix boundary.** ${mdText(payload.requirements.boundary)}`);
+    out.push("");
+  }
 
   out.push("---");
   out.push("");
@@ -406,6 +446,49 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
   out.push("");
 
   return out.join("\n");
+}
+
+/** The requirements matrix (format 16) as Markdown: boundary first, then status, rows, and what was not evaluated. */
+function requirementsMarkdown(req: NonNullable<ReportPayload["requirements"]>): string[] {
+  const out: string[] = [];
+  out.push("## Requirements matrix");
+  out.push("");
+  out.push(`> **Boundary.** ${mdText(req.boundary)}`);
+  out.push("");
+  out.push(`${mdText(req.note)} Sources as of ${mdText(req.as_of)}.`);
+  out.push("");
+  for (const g of req.groups) out.push(`- **${mdText(groupStatusSentence(g))}**`);
+  out.push("");
+  out.push("Each row cites its sources by layer:");
+  out.push("");
+  for (const layer of REQUIREMENT_LAYERS) {
+    out.push(`- **${REQUIREMENT_LAYER_LABELS[layer]}:** ${mdText(REQUIREMENT_LAYER_DESCRIPTIONS[layer])}`);
+  }
+  out.push("");
+  out.push("| Scenario | Obligation | Observed outcome | Sources | Scope limit |");
+  out.push("| --- | --- | --- | --- | --- |");
+  for (const r of req.rows) {
+    const sources = r.sources.map((x) => `**${mdText(layerLabel(x.layer))}:** ${mdText(x.ref)}`).join("; ");
+    out.push(`| ${mdText(r.case)} | ${mdText(obligationLabel(r.obligation))} | ${mdText(requirementOutcomeWord(r))} | ${sources} | ${mdText(r.scope_limit)} |`);
+  }
+  out.push("");
+  out.push(`**Customer policy:** ${mdText(req.customer_policy)}`);
+  out.push("");
+  out.push(`**Voluntary code:** ${mdText(req.voluntary_code)}`);
+  out.push("");
+  if (req.not_evaluated.length > 0) {
+    out.push("### Not evaluated");
+    out.push("");
+    out.push("Not a pass and not a fail: this suite does not observe these, and this report says nothing about whether they are met.");
+    out.push("");
+    for (const n of req.not_evaluated) {
+      out.push(`**${NOT_EVALUATED}: ${mdText(n.label)} (${mdText(n.refs)}).** ${mdText(n.reason)}`);
+      out.push("");
+      for (const x of n.sources) out.push(`- ${mdText(layerLabel(x.layer))}: ${mdText(x.ref)}`);
+      out.push("");
+    }
+  }
+  return out;
 }
 
 /**
@@ -506,6 +589,8 @@ export function reportToJunit(payload: ReportPayload, contentHash: string, url: 
     property("novera.ci_reason", ci.reason),
     property("novera.limitations", payload.limitations),
     property("novera.notice", REPORT_NOTICE_SHORT),
+    // Format 16 only: the date the requirements matrix's sources were read.
+    ...(payload.requirements ? [property("novera.requirements_as_of", payload.requirements.as_of)] : []),
     ...(extras.properties ?? []).map(([name, value]) => property(name, value)),
   ];
 

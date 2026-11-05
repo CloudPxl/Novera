@@ -9,6 +9,7 @@ import type { RunCaseRecord } from "../runner/types.ts";
 import { redact } from "../redact/pii.ts";
 import type { ReportPayload } from "./payload.ts";
 import { noVerdictRow, repairFor, type Repair } from "../evidence/repair.ts";
+import { buildRequirements } from "./requirements-build.ts";
 
 /**
  * Why a scenario has no result, from the same classifier the run page uses, so a report
@@ -314,6 +315,12 @@ export function buildReport(input: ReportInput): BuiltReport {
   // A letter is withheld entirely when the run did not fully execute — see grade.ts.
   const grade = gradeRun({ coverage: input.coverage, threshold: input.passThreshold });
 
+  // Format 16 (Article 50 pack, 2026-11-05): only for a suite with a sources sidecar, from the
+  // same rows as the findings above. Every other run seals exactly the fields format 15 did.
+  const requirements = buildRequirements({
+    suite: input.suite, extension: input.extension ?? null, policyVersion: input.policyVersion, cases: input.cases,
+  });
+
   const payload = {
     // 2 adds the grade, the pass mark, category coverage and duration; 3 splits a
     // disputed verdict from a dead endpoint and adds the assurance gap; 4 says how
@@ -328,9 +335,10 @@ export function buildReport(input: ReportInput): BuiltReport {
     // a reissue carrying human review; 12 states what was tested, each item recorded by
     // Novera or declared by the customer; 13 and 14 grade corroboration and name every grader;
     // 15 says which official suite an extension carried and in which language scenarios were
-    // sent. Reports sealed as any earlier format are still rendered from their own payload and must
-    // keep verifying — every reader of this payload branches on absence.
-    novera: { format: 15 },
+    // sent; 16 carries the requirements matrix, on a suite with a sources sidecar only. Reports
+    // sealed as any earlier format are still rendered from their own payload and must keep
+    // verifying — every reader of this payload branches on absence.
+    novera: { format: 16 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -431,6 +439,7 @@ export function buildReport(input: ReportInput): BuiltReport {
             : `The suite changed between runs. Added: ${comparison.notInBaseline.join(", ") || "none"}. Removed: ${comparison.missingFromCurrent.join(", ") || "none"}.`,
         }
       : null,
+    ...(requirements ? { requirements } : {}),
     limitations: [
       LIMITATIONS,
       ...(gradedBy.length > 1 ? [mixedGradingIsAFault ? MIXED_GRADING_NOTE : CONSENSUS_GRADING_NOTE] : []),

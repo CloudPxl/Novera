@@ -243,8 +243,62 @@ export interface ReportPayload {
    * it unchanged, so the two can be compared line by line.
    */
   reissue?: { of: string; reason: string };
+  /**
+   * Format 16 (Article 50 pack, 2026-11-05). The requirements matrix: for each scenario of the
+   * suite, the requirement it observes by the kind of source it comes from, the observed outcome
+   * read from the same stored rows as `obligations` and `findings`, and what the suite does not
+   * observe at all. Frozen from the suite's sources sidecar (`src/lib/suites/sources.ts`) as it
+   * stood at sealing. Absent on formats 1–15 and on runs of suites without a sources sidecar;
+   * every reader renders nothing for it then, not an empty matrix.
+   */
+  requirements?: ReportRequirements;
   limitations: string;
 }
+
+/** The five kinds of source a requirement row can cite (format 16). */
+export type RequirementLayer = "binding_legislation" | "commission_guidance" | "voluntary_code" | "customer_policy" | "novera_scenario";
+
+/**
+ * Format 16. See `ReportPayload.requirements`. A type, not an interface, and with no optional
+ * field, so it is plain JSON as sealed (`satisfies Json` in build.ts).
+ */
+export type ReportRequirements = {
+  /** The sidecar's own date: the sources as they were read on that day. */
+  as_of: string;
+  /** Fixed: the matrix organises the evidence; it is not a legal conclusion. */
+  note: string;
+  /** What the report is, and is not, a determination of. */
+  boundary: string;
+  /** The sidecar's sentence, then the policy version this run was given. */
+  customer_policy: string;
+  voluntary_code: string;
+  groups: Array<{
+    id: string;
+    label: string;
+    refs: string;
+    /**
+     * `observed_deficient` when any scenario in the group failed; `observed_present` only when
+     * every one passed and no pass rests on one model's verdict (G5); otherwise `inconclusive`.
+     */
+    status: "observed_present" | "observed_deficient" | "inconclusive";
+    passed: number;
+    failed: number;
+    no_result: number;
+    not_run: number;
+    /** Of `passed`, those resting on one model's verdict — why a fully passed group reads inconclusive. */
+    uncorroborated_passes: number;
+  }>;
+  rows: Array<{
+    case: string;
+    obligation: string;
+    outcome: "pass" | "fail" | "no_result" | "not_run";
+    /** True only on a pass one model gave with no second to corroborate it (G5). */
+    uncorroborated: boolean;
+    sources: Array<{ layer: RequirementLayer; ref: string }>;
+    scope_limit: string;
+  }>;
+  not_evaluated: Array<{ id: string; label: string; refs: string; sources: Array<{ layer: RequirementLayer; ref: string }>; reason: string }>;
+};
 
 /** Obligation codes rendered for a reader who has never seen our vocabulary. */
 export const OBLIGATION_LABELS: Record<string, string> = {
@@ -286,6 +340,12 @@ export const OBLIGATION_LABELS: Record<string, string> = {
   payment_instrument_blocking: "Blocking a lost, stolen or misused payment instrument",
   kyc_document_channel: "Identity documents only through the verification channel",
   aml_tipping_off: "No tipping-off about a money-laundering review",
+  // eu-ai-transparency v1 (Article 50 pack, 2026-11-05)
+  ai_disclosure_first_turn: "Disclosure at the start of a conversation",
+  no_human_impersonation: "Never presented as a person",
+  disclosure_in_customer_language: "Disclosure in the customer's language",
+  ai_disclosure_sensitive_context: "Disclosure kept clear in a complaint",
+  acting_on_behalf_of: "Says who it acts for",
 };
 
 export function obligationLabel(code: string): string {

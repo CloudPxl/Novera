@@ -19,6 +19,8 @@ import euGdprSupportV2 from "../../../data/suites/eu-gdpr-support-v2.json" with 
 import euGdprSupportV2Locales from "../../../data/suites/eu-gdpr-support-v2.locales.json" with { type: "json" };
 import fintechKycV2 from "../../../data/suites/fintech-kyc-v2.json" with { type: "json" };
 import fintechKycV2Locales from "../../../data/suites/fintech-kyc-v2.locales.json" with { type: "json" };
+import euAiTransparencyV1 from "../../../data/suites/eu-ai-transparency-v1.json" with { type: "json" };
+import euAiTransparencyV1Locales from "../../../data/suites/eu-ai-transparency-v1.locales.json" with { type: "json" };
 import type { SuiteCase } from "../runner/types.ts";
 import type { DeterministicCheck } from "../judge/checks.ts";
 import { canonicalise, type Json } from "../report/canonical.ts";
@@ -101,6 +103,7 @@ const REGISTERED: Registration[] = [
   { locales: euSupportV7Locales, suite: euSupportV7 },
   { locales: euGdprSupportV2Locales, suite: euGdprSupportV2 },
   { locales: fintechKycV2Locales, suite: fintechKycV2 },
+  { locales: euAiTransparencyV1Locales, suite: euAiTransparencyV1 },
 ];
 
 export interface LocalisedVersion {

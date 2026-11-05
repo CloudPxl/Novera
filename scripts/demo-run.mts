@@ -90,8 +90,9 @@ const agentConfig: AgentConfig = {
   url: `${appUrl}/api/test-agent`,
   // `{{context}}` is what makes a metadata-channel scenario runnable at all: an
   // agent with no slot for it is recorded as an error rather than run as a
-  // different test.
-  bodyTemplate: { message: "{{input}}", context: "{{context}}" },
+  // different test. `{{history}}` is the same for multi-turn scenarios, as the in-app sample
+  // agent sends it (src/lib/agents/sample.ts).
+  bodyTemplate: { message: "{{input}}", context: "{{context}}", history: "{{history}}" },
   responsePath: "reply",
   toolActivityPath: "tool_calls",
 };
@@ -160,13 +161,15 @@ console.log(`ok, receipt ${probe.probeId}`);
 const policy = await nextPolicyVersion(workspaceId, agentId, userId);
 console.log(`  policy     v${policy.version}`);
 
-// v1 by default, so the demo keeps producing the report it always produced. A newer
-// version is opt-in per invocation: DEMO_SUITE_VERSION=3 npm run demo:run.
+// eu-support v1 by default, so the demo keeps producing the report it always produced. Another
+// built-in suite or version is opt-in per invocation:
+// DEMO_SUITE_KEY=eu-ai-transparency DEMO_SUITE_VERSION=1 npm run demo:run.
+const suiteKey = process.env.DEMO_SUITE_KEY ?? "eu-support";
 const suiteVersion = Number(process.env.DEMO_SUITE_VERSION ?? 1);
 
 const { data: suiteRow, error: suiteErr } = await db
   .from("suites").select("id, key, version, name, cases")
-  .is("workspace_id", null).eq("key", "eu-support").eq("version", suiteVersion).single();
+  .is("workspace_id", null).eq("key", suiteKey).eq("version", suiteVersion).single();
 if (suiteErr || !suiteRow) throw new Error(`Suite not found — run npm run seed:suites (${suiteErr?.message})`);
 
 console.log(`  suite      ${suiteRow.name} v${suiteRow.version} (${(suiteRow.cases as unknown[]).length} cases)\n`);

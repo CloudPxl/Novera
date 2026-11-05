@@ -105,6 +105,7 @@ someone with the service role, not merely someone using the application.
 | `/api/health` and `/status` name a status per component and nothing else — no counts, vendor names, errors or environment values; a client that disconnects mid-response is never reported as an error | `src/lib/observability/health.ts`, `benign.ts`, `tests/block6-ops.test.ts` |
 | A person's finding sits beside a verdict and never replaces it; it needs a reason, freezes the verdict it read, and cannot be filed against another workspace's case | 0028 |
 | The in-app assistant can link only to this workspace's own paths and offer only a run the person presses; it never attests, never sees keys or policy text, and refuses key-shaped input before any model call | `src/lib/assistant/core.ts`, tested |
+| A report from a suite with a requirements sidecar carries, sealed, the requirement each scenario observes by source layer (binding legislation, Commission guidance, voluntary code, customer policy, Novera scenario), each scenario's observed outcome from the stored rows, a group status worded as observation (present / deficient / inconclusive — an uncorroborated pass or a missing verdict is never "present"), what the suite does not evaluate and why, and a boundary statement that it is not a determination that any obligation is met; a run whose scenarios differ from the mapping's gets no matrix | `src/lib/suites/sources.ts`, `src/lib/report/requirements-build.ts`, format 16, `tests/a50-requirements.test.ts` |
 | A review reaches a client only as a *new* sealed report that carries the original unchanged, names it by hash, and labels the reviewers as the tested party — never as a changed score | `src/lib/report/reissue.ts`, format 11 |
 
 **A verdict is the finding of two models from different vendors.** A single judge drifted
@@ -236,7 +237,7 @@ src/lib/review/       failed scenarios as findings (new, recurring, resolved), d
 src/lib/builder/      the Suite Builder: curated packs, sources (parse, fetch one page), extraction, discovery, coverage
 data/packs/           curated baseline packs — selections of eu-support v6, byte for byte (v1 packs from v5, deprecated)
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
-data/suites/          versioned scenario suites (eu-support v1–v7; eu-gdpr-support v1–v2, e-commerce-refund v1, fintech-kyc v1–v2), calibration labels, and `.tiers.json` / `.locales.json` sidecars (triage tiers and language variants, not sealed)
+data/suites/          versioned scenario suites (eu-support v1–v7; eu-gdpr-support v1–v2, e-commerce-refund v1, fintech-kyc v1–v2, eu-ai-transparency v1), calibration labels, and `.tiers.json` / `.locales.json` / `.sources.json` sidecars (triage tiers, language variants and requirement sources, not sealed into the suite)
 src/lib/suites/       validation, the suite digest, tiers by scenario definition, computed changelogs, the catalog (/scenarios?tab=catalog)
 src/lib/ci/           CI gating: trigger parsing, commit dedupe and supersede decisions, the exit-code gate, the GitHub Actions workflow generator
 src/lib/checks/       the single-scenario check's label, verdict words and view state
@@ -281,7 +282,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 1422 unit tests | free |
+| `npm test` | 1459 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -336,7 +337,7 @@ they drive the scripted fixture at `/api/test-agent`.
 
 - **A report payload change breaks every document already in a client's hands.** An added
   field ships with its absence branch in the same commit. Two reports were returning 500
-  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 15); `novera report verify` re-hashes all of them.
+  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 16); `novera report verify` re-hashes all of them.
 - **A model's rendering of our data is not our data.** The judge echoed assertions back
   with the numbering the prompt added; storing that verbatim made every failed case render
   as fully passing.

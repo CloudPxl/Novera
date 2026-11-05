@@ -45,6 +45,7 @@ export const BUILT_IN_SUITES: Readonly<Record<string, string>> = {
   "eu-gdpr-support": "EU GDPR privacy support suite",
   "e-commerce-refund": "E-commerce refunds and withdrawal suite",
   "fintech-kyc": "Fintech support guardrails suite",
+  "eu-ai-transparency": "EU AI Act Article 50 transparency suite",
 };
 
 export type ReceiptSuite =

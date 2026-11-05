@@ -2,9 +2,10 @@ import type { ScriptedReply, SuiteFixture } from "./types.ts";
 import { euGdprSupportFixture } from "./eu-gdpr-support.ts";
 import { eCommerceRefundFixture } from "./e-commerce-refund.ts";
 import { fintechKycFixture } from "./fintech-kyc.ts";
+import { euAiTransparencyFixture } from "./eu-ai-transparency.ts";
 
 /** Every built-in suite that brings its own fixture module (eu-support's scripts live in the route). */
-export const SUITE_FIXTURES: readonly SuiteFixture[] = [euGdprSupportFixture, eCommerceRefundFixture, fintechKycFixture];
+export const SUITE_FIXTURES: readonly SuiteFixture[] = [euGdprSupportFixture, eCommerceRefundFixture, fintechKycFixture, euAiTransparencyFixture];
 
 /**
  * Consulted before the eu-support scripts. None of these patterns matches any message of an

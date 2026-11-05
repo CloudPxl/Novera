@@ -18,6 +18,8 @@ import euGdprSupportV2 from "../../../data/suites/eu-gdpr-support-v2.json" with 
 import euGdprSupportV2Tiers from "../../../data/suites/eu-gdpr-support-v2.tiers.json" with { type: "json" };
 import fintechKycV2 from "../../../data/suites/fintech-kyc-v2.json" with { type: "json" };
 import fintechKycV2Tiers from "../../../data/suites/fintech-kyc-v2.tiers.json" with { type: "json" };
+import euAiTransparencyV1 from "../../../data/suites/eu-ai-transparency-v1.json" with { type: "json" };
+import euAiTransparencyV1Tiers from "../../../data/suites/eu-ai-transparency-v1.tiers.json" with { type: "json" };
 import type { SuiteCase } from "../runner/types.ts";
 import { scenarioDigest } from "./digest.ts";
 
@@ -80,6 +82,7 @@ const REGISTERED: Registration[] = [
   { tiers: euSupportV7Tiers, suite: euSupportV7 },
   { tiers: euGdprSupportV2Tiers, suite: euGdprSupportV2 },
   { tiers: fintechKycV2Tiers, suite: fintechKycV2 },
+  { tiers: euAiTransparencyV1Tiers, suite: euAiTransparencyV1 },
 ];
 
 export interface ClassifiedVersion {

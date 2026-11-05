@@ -147,8 +147,9 @@ const LOCALE_FILES = readdirSync(DIR).filter((f) => f.endsWith(".locales.json"))
 
 test("every locales sidecar validates: known ids, de/fr/ro only, nothing left over", () => {
   assert.deepEqual(localeRegistryProblems(), []);
-  // eu-support v5, v6 and v7, and the three vertical suites at v1 (and v2 for two of them).
-  assert.equal(LOCALE_FILES.length, 8);
+  // eu-support v5, v6 and v7, the three vertical suites at v1 (and v2 for two of them), and the
+  // Article 50 transparency suite at v1.
+  assert.equal(LOCALE_FILES.length, 9);
   for (const f of LOCALE_FILES) {
     const l = read(f);
     assert.deepEqual(Object.keys(l).sort(), ["locales", "purpose", "suite", "version"], f);
@@ -442,7 +443,7 @@ const LOC = { code: "de", name: "German", localised: 8, of: 51, locale_digest: "
 
 test("format 15 states an extension and a language only when the run declared them", () => {
   const plain = buildReport(reportInput()).payload as unknown as ReportPayload;
-  assert.equal(plain.novera.format, 15);
+  assert.equal(plain.novera.format, 16); // 16 since the Article 50 pack (2026-11-05); no requirements on this suite
   assert.equal("extension" in plain.run, false);
   assert.equal("locale" in plain.run, false);
   const both = buildReport(reportInput({ extension: EXT, locale: LOC })).payload as unknown as ReportPayload;

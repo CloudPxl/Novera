@@ -69,6 +69,7 @@ export const EXPECTED_SUITES: ReadonlyArray<{ key: string; version: number }> = 
   { key: "eu-gdpr-support", version: 2 },
   { key: "e-commerce-refund", version: 1 },
   { key: "fintech-kyc", version: 2 },
+  { key: "eu-ai-transparency", version: 1 },
 ];
 
 export const INTEGRATION_GUIDES = ["integration-github-actions", "integration-langgraph-python", "integration-vercel-ai-sdk"] as const;

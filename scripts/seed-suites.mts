@@ -58,6 +58,12 @@ for (const file of (await readdir(dir)).filter((f) => f.endsWith(".json"))) {
       console.log(`  not a suite ${file} — language variants for ${parsed.suite} v${parsed.version}`);
       continue;
     }
+    // A sources sidecar (src/lib/suites/sources.ts): the requirement each scenario maps to,
+    // kept beside a suite so the mapping can follow revised guidance without a new suite version.
+    if (parsed?.not_evaluated && parsed?.suite) {
+      console.log(`  not a suite ${file} — requirement sources for ${parsed.suite} v${parsed.version}`);
+      continue;
+    }
     console.log(`  skipped    ${file}`);
     for (const problem of result.errors) console.log(`             ${problem}`);
     continue;

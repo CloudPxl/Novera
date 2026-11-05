@@ -124,6 +124,14 @@ export function sealContents(payload: ReportPayload): SealItem[] {
         : "That this is the first report for this agent: there is no earlier report to chain to.",
     });
   }
+  // Format 16, on a suite with a sources sidecar only.
+  if (payload.requirements) {
+    const r = payload.requirements;
+    items.push({
+      label: "Requirements matrix",
+      detail: `The sources of the requirement each of ${plural(r.rows.length, "scenario")} observes, as of ${r.as_of}, with each observed outcome, ${plural(r.groups.length, "group status", "group statuses")}, ${plural(r.not_evaluated.length, "item")} not evaluated, and the boundary of what the matrix says.`,
+    });
+  }
   if (payload.human_review) items.push({ label: "Review", detail: "What the tested party's reviewers found, beside the verdicts and never in place of them." });
   if (payload.reissue) items.push({ label: "Reissue", detail: `The SHA-256 of the report this one reissues (${payload.reissue.of.slice(0, 12)}…), carried unchanged.` });
   items.push({ label: "Scope and limitations", detail: "The limitations text written into this report." });

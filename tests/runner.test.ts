@@ -622,3 +622,37 @@ test("pacing never carries a send past the deadline", async () => {
   assert.equal(sent.length, 1, "the first send is immediate; the next would cross the deadline");
   assert.equal(summary.status, "incomplete");
 });
+
+// --- redirects (2026-11-07: a sample on the apex errored all 49 scenarios with HTTP 308) ------
+
+import { REDIRECT_HALT_MESSAGE } from "../src/lib/runner/execute.ts";
+
+const REDIRECT = {
+  ok: false, responseText: null, statusCode: 308,
+  error: "Agent returned HTTP 308, a redirect to https://www.nover.space/api/test-agent. Novera does not follow redirects: change the agent's endpoint to the final address.",
+} as const;
+
+test("three redirects in a row halt the run as a redirect, not as an unreachable endpoint, and send nothing more", async () => {
+  const { store, saved } = memoryStore();
+  const sent: string[] = [];
+  const all: Record<string, Partial<AgentResult>> = Object.fromEntries(many.cases.map((c) => [c.input, REDIRECT]));
+  const summary = await executeRun({
+    runId: "r1", suite: many, agent: scripted(all, sent), policy: "p", judge: judgeArgs(judgeReturning({})), store, concurrency: 1,
+  });
+  assert.equal(summary.status, "aborted");
+  assert.equal(summary.error, REDIRECT_HALT_MESSAGE);
+  assert.deepEqual(sent, ["m1", "m2", "m3"], "the other five scenarios were never sent");
+  assert.deepEqual(saved.map((r) => r.status), ["error", "error", "error"]);
+  assert.match(saved[0].error ?? "", /a redirect to https:\/\/www\.nover\.space\/api\/test-agent/);
+});
+
+test("a redirect between successes does not halt, and redirects never count toward the transport streak", async () => {
+  const { store } = memoryStore();
+  const mixed = await executeRun({
+    runId: "r1", suite: many,
+    agent: scripted({ m2: REDIRECT, m3: REDIRECT, m4: TRANSPORT, m5: TRANSPORT }),
+    policy: "p", judge: judgeArgs(judgeReturning({})), store, concurrency: 1,
+  });
+  assert.notEqual(mixed.error, REDIRECT_HALT_MESSAGE);
+  assert.notEqual(mixed.error, TRANSPORT_HALT_MESSAGE);
+});

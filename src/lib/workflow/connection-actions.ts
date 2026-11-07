@@ -8,7 +8,7 @@ import { recordAudit } from "@/lib/audit/record.ts";
 import { isNoveraFixture } from "@/lib/agents/environment.ts";
 import { attestationActor } from "@/lib/legal/attestation.ts";
 import {
-  fixtureServed, SAMPLE_AGENT_NAME, SAMPLE_POLICY, sampleAgentConfig, sampleAgentDecision, sampleAttestation, sampleVerification,
+  fixtureServed, SAMPLE_AGENT_NAME, SAMPLE_POLICY, sampleAgentConfig, sampleAgentDecision, sampleAttestation, sampleOrigin, sampleVerification,
 } from "@/lib/agents/sample.ts";
 import type { PreflightResult } from "@/lib/agents/preflight.ts";
 import { targetFromEdit, targetFromFields, testConnection } from "./preflight.ts";
@@ -42,10 +42,6 @@ export async function testAgentConnection(form: FormData): Promise<PreflightView
   return tested.ok ? { result: tested.result } : { refused: tested.message };
 }
 
-function appUrl(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? "https://www.nover.space").replace(/\/+$/, "");
-}
-
 /**
  * Connects Novera's own scripted fixture as this workspace's sample agent — or opens the one it
  * already has. Same permission and the same steps as connecting any agent: an attestation stored
@@ -62,7 +58,7 @@ export async function createSampleAgent(): Promise<FormState> {
   if (!fixtureServed()) {
     return { error: "The sample agent is not available on this deployment. Connect your own agent instead." };
   }
-  const origin = appUrl();
+  const origin = sampleOrigin();
   const config = sampleAgentConfig(origin);
   // Refused rather than created: a sample this deployment would not label as test data must not exist.
   if (!isNoveraFixture(config)) {

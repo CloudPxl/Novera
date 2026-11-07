@@ -139,10 +139,13 @@ export function classifyPreflight(
   }
 
   if (status >= 300 && status < 400) {
+    // The adapter's error names where it points (`redirectNote`); the address is the whole fix.
+    const target = /a redirect to (\S+?)\. /.exec(error)?.[1];
     return {
       ...base, outcome: "redirect", ok: false,
       headline: `The endpoint answered with a redirect (HTTP ${status})`,
-      detail: "Novera does not follow redirects, so a request can never be handed on to an address it did not check. Enter the final address.",
+      detail: "Novera does not follow redirects, so a request can never be handed on to an address it did not check. "
+        + (target ? `It points to ${target}: if that is your agent, enter it as the address.` : "Enter the final address."),
     };
   }
 

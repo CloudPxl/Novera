@@ -1,5 +1,5 @@
 import { CI_EXIT, ciOutcome, type CiInput } from "../report/ci.ts";
-import { TRANSPORT_HALT_MESSAGE } from "../runner/execute.ts";
+import { REDIRECT_HALT_MESSAGE, TRANSPORT_HALT_MESSAGE } from "../runner/execute.ts";
 import type { ScenarioDeltas } from "../evidence/compare.ts";
 
 /**
@@ -12,6 +12,8 @@ import type { ScenarioDeltas } from "../evidence/compare.ts";
  *   queued / running            no code yet (null): keep driving the run
  *   aborted, agent unreachable  4 — the runner halted after three transport failures in a row;
  *                               that is the endpoint's availability, not a finding about it
+ *   aborted, address redirects  3 — the runner halted after three redirects in a row; the
+ *                               endpoint is set to an address that is not the final one
  *   aborted otherwise           2 — stopped, superseded, idle or ended by a failure: no evidence
  *   completed, report withdrawn 3 — someone in the workspace withdrew it; a person decides
  *   completed, nothing sealed   2 — no scenario produced a result, so nothing was sealed
@@ -33,6 +35,10 @@ export function isTransportHalt(error: string | null | undefined): boolean {
   return typeof error === "string" && error.startsWith(TRANSPORT_HALT_MESSAGE.slice(0, 60));
 }
 
+export function isRedirectHalt(error: string | null | undefined): boolean {
+  return typeof error === "string" && error.startsWith(REDIRECT_HALT_MESSAGE.slice(0, 60));
+}
+
 export function ciRunExit(run: CiRunState): CiExit {
   if (run.status === "queued" || run.status === "running") {
     return { code: null, reason: `The run is ${run.status}. Call execute until it is done, then read this again.` };
@@ -40,6 +46,9 @@ export function ciRunExit(run: CiRunState): CiExit {
   if (run.status === "aborted") {
     if (isTransportHalt(run.error)) {
       return { code: CI_EXIT.infrastructure, reason: "The agent could not be reached or was rate-limiting, so the run was halted and no report was sealed. This is not a finding about the agent." };
+    }
+    if (isRedirectHalt(run.error)) {
+      return { code: CI_EXIT.configuration, reason: "The agent's address answers with a redirect, which Novera does not follow, so the run was halted and no report was sealed. Change the endpoint to the final address." };
     }
     // The stored sentence is not repeated: "Stopped by" names a person's address, and a CI
     // artifact is often public. A superseding commit is named — it is the pipeline's own.

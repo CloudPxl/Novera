@@ -24,7 +24,7 @@ The result says one of these:
 - **Could not reach the endpoint within 10 s** — the name did not resolve, no connection could be made, or nothing came back in time.
 - **Not a public address** — the name resolves to a private, loopback or internal address, so nothing was sent.
 - **HTTP 401 or 403** — the endpoint refused the request; check the header name and the credential.
-- **Another HTTP status**, or a **redirect**, which Novera does not follow.
+- **Another HTTP status**, or a **redirect**, which Novera does not follow: the error names where it points, so the fix is to enter that address. Three redirects in a row stop the run, as an unreachable endpoint does, and nothing is sealed; a CI gate reads that as a configuration problem (exit 3).
 - **No reply text at the reply path** — the endpoint answered, but not where the reply path points. The result lists the reply's top-level keys (names only, never their values) and, when it can tell, where the reply appears to be, with a button that puts that path in the form so you can test again.
 
 On an agent you already saved, leaving the credential empty tests with the stored one — but only while the address stays on the same host. A stored credential never follows its address to another host: paste it again for the new host, or tick **Remove the stored credential**. The owner, an admin or an operator can test; a workspace can make 20 tests in ten minutes. The same test is `POST /api/v1/agents/test-connection` (see **The Novera API**).

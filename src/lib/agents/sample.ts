@@ -59,6 +59,19 @@ export function sampleAttestation(email: string | null | undefined, date: string
 /** One line under the button. A run with the sample is a run like any other. */
 export const SAMPLE_RUN_NOTE = "A run against it is counted like any run: on the trial, it is one of your three.";
 
+/**
+ * The origin the sample agent is connected on. In production it is always the canonical host:
+ * every other host — the apex `nover.space` included — answers a POST with a 308 before the
+ * route runs (`src/lib/net/canonical-host.ts`), and a run does not follow redirects, so a
+ * sample made from an apex `NEXT_PUBLIC_APP_URL` errored every scenario with "HTTP 308"
+ * (2026-11-07). Elsewhere, the configured app URL, then the canonical host.
+ */
+export function sampleOrigin(env: Record<string, string | undefined> = process.env): string {
+  const canonical = `https://${env.CANONICAL_HOST ?? "www.nover.space"}`;
+  if (env.VERCEL_ENV === "production") return canonical;
+  return trimOrigin(env.NEXT_PUBLIC_APP_URL ?? canonical);
+}
+
 function trimOrigin(origin: string): string {
   return origin.replace(/\/+$/, "");
 }

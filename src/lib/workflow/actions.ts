@@ -28,7 +28,7 @@ import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { spendModelCall } from "@/lib/workflow/model-budget.ts";
 import { track } from "@/lib/analytics/track.ts";
-import { credentialProblem, MAX_AGENT_NAME, newHttpConfig, parseEndpointFields } from "@/lib/agents/connection.ts";
+import { credentialProblem, headerNameProblem, MAX_AGENT_NAME, newHttpConfig, parseEndpointFields } from "@/lib/agents/connection.ts";
 
 export interface FormState {
   error?: string;
@@ -858,6 +858,9 @@ export async function saveVerificationEndpoint(_prev: FormState, form: FormData)
   if (credential && !authHeaderName) {
     return { error: "Name the header the credential goes in." };
   }
+  // Checked like the agent's own header: an unchecked name stored a browser-filled email address.
+  const headerProblem = headerNameProblem(authHeaderName);
+  if (headerProblem) return { error: headerProblem };
 
   const config = {
     kind: "http_read" as const,

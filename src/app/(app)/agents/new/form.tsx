@@ -12,7 +12,7 @@ export function ConnectAgentForm() {
   const keepValues = useKeepValuesOnError(state);
 
   return (
-    <form onSubmitCapture={keepValues} action={submit} className="mt-8 space-y-6">
+    <form onSubmitCapture={keepValues} action={submit} autoComplete="off" className="mt-8 space-y-6">
       <Field label="Name" htmlFor="name" hint="How you'll recognise it. It is printed on the report you share.">
         <input id="name" name="name" required className={inputClass} placeholder="Northwind support bot" />
       </Field>
@@ -86,10 +86,10 @@ export function ConnectAgentForm() {
         </summary>
         <div className="grid gap-4 border-t border-line px-4 py-4 sm:grid-cols-2">
           <Field label="Header name" htmlFor="authHeaderName">
-            <input id="authHeaderName" name="authHeaderName" className={`${inputClass} font-mono text-xs`} placeholder="authorization" />
+            <input id="authHeaderName" name="authHeaderName" autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" className={`${inputClass} font-mono text-xs`} placeholder="authorization" />
           </Field>
           <Field label="Header value" htmlFor="authValue" hint="Encrypted before it is stored. Never shown again.">
-            <input id="authValue" name="authValue" type="password" className={`${inputClass} font-mono text-xs`} placeholder="Bearer …" />
+            <input id="authValue" name="authValue" type="password" autoComplete="new-password" data-1p-ignore data-lpignore="true" data-form-type="other" className={`${inputClass} font-mono text-xs`} placeholder="Bearer …" />
           </Field>
         </div>
       </details>

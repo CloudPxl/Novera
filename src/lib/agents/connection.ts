@@ -69,6 +69,23 @@ const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,100}$/;
 /** Headers the request sets itself; a credential there would replace or break them. */
 const RESERVED_HEADERS = new Set(["content-type", "content-length", "host", "connection", "transfer-encoding"]);
 
+/**
+ * Why a header name cannot carry a credential, or null when it can (an empty name is for the
+ * caller to judge). The agent's connection and its read-back both ask.
+ */
+export function headerNameProblem(name: string): string | null {
+  if (!name) return null;
+  // A browser's password manager fills the field before a password box with the person's sign-in
+  // address; @ is not a header character, so it was refused, but with a sentence about headers.
+  if (name.includes("@")) {
+    return "The header name holds an email address, probably filled in by your browser. Clear it, or enter the header's name, such as authorization or x-api-key.";
+  }
+  if (!HEADER_NAME.test(name) || RESERVED_HEADERS.has(name.toLowerCase())) {
+    return "That is not a header Novera can put a credential in. Use a name such as authorization or x-api-key.";
+  }
+  return null;
+}
+
 export type CredentialChange = "keep" | "replace" | "remove";
 
 export interface ConnectionEdit {
@@ -151,9 +168,8 @@ export function parseEndpointFields(fields: {
     timeoutSeconds = n;
   }
 
-  if (authHeaderName && (!HEADER_NAME.test(authHeaderName) || RESERVED_HEADERS.has(authHeaderName.toLowerCase()))) {
-    return { ok: false, error: "That is not a header Novera can put a credential in. Use a name such as authorization or x-api-key." };
-  }
+  const headerProblem = headerNameProblem(authHeaderName);
+  if (headerProblem) return { ok: false, error: headerProblem };
 
   return {
     ok: true,

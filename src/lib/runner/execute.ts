@@ -57,6 +57,25 @@ export const TRANSPORT_HALT_MESSAGE =
 const TRANSPORT_STATUS = new Set([408, 429, 502, 503, 504]);
 
 /**
+ * The run's end when its agent's address answers with a redirect. Novera never follows one (a
+ * redirect could carry the scenario, and a credential, to an address the public-address check
+ * never saw), so every scenario would be the same configuration error: three in a row end the
+ * run the way an unreachable endpoint does, and a CI gate reads it as configuration (exit 3).
+ */
+export const REDIRECT_HALT_MESSAGE =
+  "The agent's address answers with a redirect; run halted. Three scenarios in a row were answered with "
+  + "HTTP 3xx, and Novera does not follow redirects, so a request never reaches an address it did not check. "
+  + "Change the agent's endpoint to the final address (each scenario's error names where the redirect points). "
+  + "They are recorded as errors, never as failures of the agent; the remaining scenarios were not sent, and no report is sealed.";
+
+const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
+
+/** Whether an agent result is a redirect the request was not allowed to follow. */
+export function isRedirectAnswer(result: Partial<AgentResult> & { ok: boolean }): boolean {
+  return !result.ok && result.statusCode !== undefined && REDIRECT_STATUS.has(result.statusCode);
+}
+
+/**
  * Whether an agent result is a transport failure: the request did not get a usable answer
  * from the agent's server (408/429/502/503/504, or no HTTP status at all — refused, reset,
  * DNS, timeout). Not transport: Novera's own refusals ("Not sent"), a wait cut by Novera's
@@ -70,8 +89,10 @@ export function isTransportFailure(result: Partial<AgentResult> & { ok: boolean 
 
 // In memory only, for the halt decision: never persisted, never part of a record.
 const transportOutcomes = new WeakSet<object>();
+const redirectOutcomes = new WeakSet<object>();
 function flagTransport<T extends object>(outcome: T, result: AgentResult): T {
   if (isTransportFailure(result)) transportOutcomes.add(outcome);
+  else if (isRedirectAnswer(result)) redirectOutcomes.add(outcome);
   return outcome;
 }
 
@@ -618,6 +639,10 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   // (chaos audit 2026-10-17: a WAF's late-answered successes let six refusals through).
   let consecutiveTransport = 0;
   let transportHalted = false;
+  // Redirects count in their own streak, by the same send-order rule: a halt says one cause.
+  let consecutiveRedirect = 0;
+  let redirectHalted = false;
+  let lastRedirectSeq = 0;
   let sendSeq = 0;
   let lastTransportSeq = 0;
 
@@ -641,7 +666,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         return;
       }
 
-      if (transportHalted) return;
+      if (transportHalted || redirectHalted) return;
 
       if (paceMs > 0) {
         const slot = Math.max(Date.now(), nextSendAt);
@@ -653,7 +678,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         nextSendAt = slot + paceMs;
         const wait = slot - Date.now();
         if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-        if (transportHalted) return;
+        if (transportHalted || redirectHalted) return;
       }
 
       // A person pressed Stop: no further message goes to their agent.
@@ -712,6 +737,13 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
       } else if (seq > lastTransportSeq) {
         consecutiveTransport = 0;
       }
+      if (redirectOutcomes.has(outcome)) {
+        consecutiveRedirect++;
+        lastRedirectSeq = Math.max(lastRedirectSeq, seq);
+        if (consecutiveRedirect >= TRANSPORT_HALT_AFTER) redirectHalted = true;
+      } else if (seq > lastRedirectSeq) {
+        consecutiveRedirect = 0;
+      }
 
       if (everyJudgeRateLimited(records[index])) {
         consecutiveQuotaFailures++;
@@ -739,6 +771,9 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   if (transportHalted && status === "completed" && !stopped && !lostLease) {
     status = "aborted";
     error = TRANSPORT_HALT_MESSAGE;
+  } else if (redirectHalted && status === "completed" && !stopped && !lostLease) {
+    status = "aborted";
+    error = REDIRECT_HALT_MESSAGE;
   }
 
   const saved = records.filter(Boolean);

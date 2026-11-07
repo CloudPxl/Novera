@@ -134,7 +134,7 @@ export function VerificationEndpoint({
   const keepValues = useKeepValuesOnError(state);
 
   return (
-    <form onSubmitCapture={keepValues} action={submit} className="mt-4">
+    <form onSubmitCapture={keepValues} action={submit} autoComplete="off" className="mt-4">
       <input type="hidden" name="agentId" value={agentId} />
 
       <p className="text-sm leading-relaxed text-ink-soft">
@@ -172,6 +172,10 @@ export function VerificationEndpoint({
           <input
             id="verification-header"
             name="authHeaderName"
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             defaultValue={current?.authHeaderName ?? ""}
             placeholder="x-api-key"
             className={`${inputClass} mt-1.5`}
@@ -185,7 +189,10 @@ export function VerificationEndpoint({
             id="verification-credential"
             name="credential"
             type="password"
-            autoComplete="off"
+            autoComplete="new-password"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             placeholder={current?.authHeaderName ? "Stored — paste again to replace" : ""}
             className={`${inputClass} mt-1.5`}
           />

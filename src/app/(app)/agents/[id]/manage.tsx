@@ -42,7 +42,7 @@ export function ConnectionEditor({ agentId, current, hasCredential }: {
         </span>
         <span aria-hidden className="text-ink-faint transition-transform duration-200 group-open:rotate-90">›</span>
       </summary>
-      <form onSubmitCapture={keepValues} action={submit} className="space-y-5 border-t border-line px-4 py-4">
+      <form onSubmitCapture={keepValues} action={submit} autoComplete="off" className="space-y-5 border-t border-line px-4 py-4">
         <input type="hidden" name="agentId" value={agentId} />
         <Field label="Name" htmlFor="edit-name" hint="Shown in Novera and on reports sealed from now on. Reports already sealed keep the name they were sealed with.">
           <input id="edit-name" name="name" required maxLength={120} defaultValue={current.name} className={inputClass} />
@@ -77,10 +77,10 @@ export function ConnectionEditor({ agentId, current, hasCredential }: {
           </p>
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
             <Field label="Header name" htmlFor="edit-header">
-              <input id="edit-header" name="authHeaderName" defaultValue={current.authHeaderName} placeholder="authorization" className={`${inputClass} font-mono text-xs`} />
+              <input id="edit-header" name="authHeaderName" autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" defaultValue={current.authHeaderName} placeholder="authorization" className={`${inputClass} font-mono text-xs`} />
             </Field>
             <Field label={hasCredential ? "Replace the credential" : "Credential"} htmlFor="edit-credential" hint="Encrypted before it is stored. Leave empty to keep what is stored.">
-              <input id="edit-credential" name="credential" type="password" autoComplete="off" placeholder={hasCredential ? "Paste a new one to replace it" : "Bearer …"} className={`${inputClass} font-mono text-xs`} />
+              <input id="edit-credential" name="credential" type="password" autoComplete="new-password" data-1p-ignore data-lpignore="true" data-form-type="other" placeholder={hasCredential ? "Paste a new one to replace it" : "Bearer …"} className={`${inputClass} font-mono text-xs`} />
             </Field>
           </div>
           {hasCredential && (

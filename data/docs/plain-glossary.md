@@ -21,7 +21,7 @@ Every word you are likely to meet in Novera or in a Novera report, explained wit
 
 - **Run**: one test of one agent, with one policy version and one suite version, all recorded before anything is sent.
 - **Inputs declared before the run**: the record of what a run will test (the scenarios, the policy version, the graders, the pass mark), frozen before the first message is sent. It shows the inputs were not chosen after the answers were known.
-- **Agent unreachable**: Novera could not get an answer: no connection, no reply in time, or the agent said it was busy or unavailable. That scenario is an error, never a failure of the agent. Three in a row stop the run, and nothing is sealed.
+- **Agent unreachable**: Novera could not get an answer: no connection, no reply in time, or the agent said it was busy or unavailable. That scenario is an error, never a failure of the agent. Three in a row stop the run, and nothing is sealed. The same holds when the agent's address answers with a redirect, which Novera does not follow: three in a row stop the run, and the message names the address to use instead.
 - **Single-scenario check**: one failed or no-result scenario sent to the agent again (**Try this scenario alone**), graded the same way. It is never sealed, never counted in a score or a report, and does not use a trial run.
 - **Schedule**: a suite run automatically every day or week at a fixed hour (in UTC). Each scheduled run is an ordinary run with its own report.
 - **Receipt**: the answer to the one harmless message Novera sends when an agent is connected or its connection is changed. It shows you are testing the agent you think you are.

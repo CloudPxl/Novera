@@ -75,6 +75,26 @@ export function storableText<T>(value: T): T {
   return value;
 }
 
+/**
+ * Where a redirect points, said in the error: "HTTP 308" alone sent a person looking at the
+ * agent, when the fix is one changed address. The origin and path only — a query string can
+ * carry a token — and never followed (see `redirect: "manual"` below).
+ */
+export function redirectNote(response: { status: number; headers: Headers }, requested: string): string {
+  if (response.status < 300 || response.status > 399) return "";
+  const location = response.headers.get("location");
+  let target: URL | null = null;
+  try {
+    target = location ? new URL(location, requested) : null;
+  } catch {
+    target = null;
+  }
+  const where = target && (target.protocol === "https:" || target.protocol === "http:")
+    ? ` to ${(target.origin + target.pathname).slice(0, 300)}`
+    : "";
+  return `, a redirect${where}. Novera does not follow redirects: change the agent's endpoint to the final address.`;
+}
+
 export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAdapter {
   async function call(
     input: string,
@@ -194,7 +214,7 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
         statusCode: response.status,
         latencyMs,
         raw: parsed ?? text,
-        error: `Agent returned HTTP ${response.status}`,
+        error: `Agent returned HTTP ${response.status}${redirectNote(response, config.url)}`,
       };
     }
 

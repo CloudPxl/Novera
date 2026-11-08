@@ -150,3 +150,75 @@ test("a route with nothing left after exclusion is exhausted, not silently serve
     RouteExhaustedError,
   );
 });
+
+// --- pacing Novera's own free keys (2026-11-08) --------------------------------------------------
+
+import { Pacer, PACE_MS, PACE_WAIT_MAX_MS, paceIntervals } from "../src/lib/router/execute.ts";
+
+function ours(name: string, behaviour: (model: string) => Promise<string>): Connection {
+  return { ...connection(name, behaviour), owner: "novera", ceiling: "identifiable_customer" };
+}
+
+test("the pacer hands out one slot per interval per model, and refuses a slot further than the caller can wait", () => {
+  const pacer = new Pacer({ slow: 1_000 });
+  const a = { connection: "slow", model: "a" };
+  assert.equal(pacer.reserve(a, 5_000, 0), 0);
+  assert.equal(pacer.reserve(a, 5_000, 0), 1_000);
+  assert.equal(pacer.reserve(a, 5_000, 400), 1_600);
+  assert.equal(pacer.reserve(a, 1_000, 400), null, "the next slot is 2.6 s away");
+  assert.equal(pacer.reserve(a, 5_000, 400), 2_600, "a refused reservation took no slot");
+  assert.equal(pacer.reserve({ connection: "slow", model: "b" }, 0, 400), 0, "another model on the connection has its own queue");
+  assert.equal(pacer.reserve({ connection: "fast", model: "x" }, 0, 0), 0, "an unlisted connection is never paced");
+  assert.equal(pacer.reserve({ connection: "fast", model: "x" }, 0, 0), 0);
+  assert.equal(PACE_MS.mistral >= 30_000, true, "Mistral's free tier is two requests a minute per model");
+  assert.equal(PACE_MS.groq >= 7_000, true, "Groq's free tier is 8,000 tokens a minute, a grading call about 900");
+  assert.equal(PACE_MS.gemini, undefined, "the paid key is not paced");
+  assert.ok(PACE_WAIT_MAX_MS <= 20_000);
+  assert.deepEqual(paceIntervals({ NOVERA_PACE_MS: "groq=1000, mistral=0,bad,=5" }), { groq: 1_000, mistral: 0 });
+  assert.deepEqual(paceIntervals({}), { ...PACE_MS });
+});
+
+test("calls on one of our paced connections start at least the interval apart", async () => {
+  const starts: number[] = [];
+  const chat = createRoutedChat({
+    connections: new Map([["alpha", ours("alpha", async () => { starts.push(Date.now()); return "ok"; })]]),
+    routes: { ...routes, judge: [{ connection: "alpha", model: "fast" }] },
+    pacer: new Pacer({ alpha: 120 }),
+  });
+  await Promise.all([chat("judge", request), chat("judge", request), chat("judge", request)]);
+  starts.sort((a, b) => a - b);
+  assert.ok(starts[1] - starts[0] >= 110 && starts[2] - starts[1] >= 110, `starts ${starts.map((s) => s - starts[0]).join(", ")}`);
+});
+
+test("a slot too far away for the deadline is not sent: it is recorded as paced and the next candidate answers", async () => {
+  let alphaCalls = 0;
+  const chat = createRoutedChat({
+    connections: new Map([
+      ["alpha", ours("alpha", async () => { alphaCalls++; return "from alpha"; })],
+      ["beta", ours("beta", async () => "from beta")],
+    ]),
+    routes,
+    pacer: new Pacer({ alpha: 60_000 }),
+  });
+  assert.equal((await chat("judge", request)).text, "from alpha");
+  const second = await chat("judge", request, { deadline: Date.now() + 10_000 });
+  assert.equal(second.text, "from beta");
+  assert.equal(alphaCalls, 1);
+  const paced = second.attempts.find((a) => a.connection === "alpha")!;
+  assert.equal(paced.reason, "paced");
+  assert.equal(paced.ok, false);
+  assert.match(paced.error ?? "", /rate-limited/);
+});
+
+test("a customer's own key is never paced", async () => {
+  const starts: number[] = [];
+  const chat = createRoutedChat({
+    connections: new Map([["alpha", connection("alpha", async () => { starts.push(Date.now()); return "ok"; })]]),
+    routes: { ...routes, judge: [{ connection: "alpha", model: "fast" }] },
+    pacer: new Pacer({ alpha: 60_000 }),
+  });
+  await chat("judge", request);
+  await chat("judge", request);
+  assert.equal(starts.length, 2);
+  assert.ok(starts[1] - starts[0] < 1_000);
+});

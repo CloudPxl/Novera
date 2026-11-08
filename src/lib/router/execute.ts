@@ -27,7 +27,9 @@ export type AttemptReason =
   | "out_of_time"
   | "skipped_open_circuit"
   /** Novera's paid connection, passed over because this month's model budget is spent (0079). */
-  | "budget_spent";
+  | "budget_spent"
+  /** Novera's free connection, not asked because its rate leaves no room before the deadline (`Pacer`). */
+  | "paced";
 
 export interface RoutedAttempt {
   connection: string;
@@ -70,6 +72,7 @@ const REASON_WORDS: Record<AttemptReason, string> = {
   no_credential: "has no credential configured",
   out_of_time: "was not asked: the run's time slice was ending",
   skipped_open_circuit: "was skipped after failing repeatedly in this slice",
+  paced: "was not asked: its rate limit left no room for another call in time",
 };
 
 /** One attempt in words: "mistral/ministral-8b-latest did not answer in time". */
@@ -133,6 +136,63 @@ export class CircuitBreaker {
   }
 }
 
+/**
+ * The gap, per connection, between the starts of two calls one slice makes on Novera's own free
+ * keys. Measured 2026-11-08 on eu-support v7 against the fixture: unpaced, the three workers'
+ * calls burst past both free tiers, both breakers opened, and 19 of 38 model-graded scenarios
+ * were graded by one model only ("not corroborated"). Groq's limit is 8,000 tokens a minute and a
+ * grading call is about 850–1,000 of them, so about eight calls a minute. Mistral's free tier
+ * now allows two requests a minute (its own `x-ratelimit-limit-req-minute: 2`, same day), not
+ * the one a second it allowed in September. A customer's own key is never paced: its tier is
+ * theirs. `NOVERA_PACE_MS` ("groq=1000,mistral=0") overrides it for a key on a paid tier.
+ */
+export const PACE_MS: Readonly<Record<string, number>> = { groq: 7_500, mistral: 30_000 };
+
+/** The intervals in force: the defaults, with any `NOVERA_PACE_MS` entry replacing its connection's. */
+export function paceIntervals(env: Record<string, string | undefined> = process.env): Record<string, number> {
+  const intervals: Record<string, number> = { ...PACE_MS };
+  for (const entry of (env.NOVERA_PACE_MS ?? "").split(",")) {
+    const match = /^\s*([a-z0-9_-]+)\s*=\s*(\d{1,6})\s*$/.exec(entry);
+    if (match) intervals[match[1]] = Number(match[2]);
+  }
+  return intervals;
+}
+
+/**
+ * The longest a grading call waits for its connection's next slot, if the case's deadline
+ * leaves room: a corroborated verdict a few seconds later is worth more than an uncorroborated
+ * one now, and a slot past the deadline is not waited for at all.
+ */
+export const PACE_WAIT_MAX_MS = 20_000;
+
+/**
+ * Spaces calls per model, for one slice, like the breaker. Both free tiers count each model
+ * separately (Groq's 429 names the model; Mistral's headers gave ministral-3b its own two a
+ * minute beside ministral-8b's, 2026-11-08), so the interval is the connection's and the queue is
+ * the model's. A call reserves the next free slot and waits for it; a slot further away than the
+ * caller can wait is not reserved, and the router moves to the next candidate instead of sending
+ * a request that would be refused.
+ */
+export class Pacer {
+  private next = new Map<string, number>();
+  private readonly intervals: Readonly<Record<string, number>>;
+
+  constructor(intervals: Readonly<Record<string, number>> = paceIntervals()) {
+    this.intervals = intervals;
+  }
+
+  /** Milliseconds to wait before calling, or null when the slot is more than `maxWait` away. */
+  reserve(candidate: Candidate, maxWait: number, now = Date.now()): number | null {
+    const gap = this.intervals[candidate.connection];
+    if (!gap) return 0;
+    const key = `${candidate.connection}/${candidate.model}`;
+    const slot = Math.max(now, this.next.get(key) ?? 0);
+    if (slot - now > maxWait) return null;
+    this.next.set(key, slot + gap);
+    return slot - now;
+  }
+}
+
 export class RouteExhaustedError extends Error {
   attempts: RoutedAttempt[];
 
@@ -150,6 +210,8 @@ export interface RouterOptions {
   onFallback?: (attempt: RoutedAttempt) => void;
   /** Shared by every request of one slice, so a failing vendor is asked once, not per case. */
   breaker?: CircuitBreaker;
+  /** Shared by every request of one slice, so Novera's free keys are called at their rate. */
+  pacer?: Pacer;
 }
 
 export interface RouteRequestOptions {
@@ -212,7 +274,7 @@ export type RoutedChat = (
 ) => Promise<RoutedResponse>;
 
 export function createRoutedChat(options: RouterOptions): RoutedChat {
-  const { connections, routes, onFallback, breaker } = options;
+  const { connections, routes, onFallback, breaker, pacer } = options;
 
   return async function routedChat(task, request, options) {
     const attempts: RoutedAttempt[] = [];
@@ -329,6 +391,30 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
           break;
         }
         timeoutMs = Math.min(timeoutMs, left);
+      }
+
+      if (ours && pacer) {
+        const room = options?.deadline === undefined ? PACE_WAIT_MAX_MS : options.deadline - Date.now() - MIN_CALL_MS;
+        const wait = pacer.reserve(candidate, Math.min(PACE_WAIT_MAX_MS, room));
+        if (wait === null) {
+          const attempt: RoutedAttempt = {
+            connection: candidate.connection,
+            model: candidate.model,
+            ok: false,
+            // "rate-limited" in the words, as for an open breaker: a slice whose every grader is
+            // held back is out of quota, not broken (`everyJudgeRateLimited`).
+            error: `not asked: ${candidate.connection} is rate-limited and its next free moment was too far away`,
+            ms: 0,
+            reason: "paced",
+          };
+          attempts.push(attempt);
+          onFallback?.(attempt);
+          continue;
+        }
+        if (wait > 0) {
+          await new Promise((r) => setTimeout(r, wait));
+          if (options?.deadline !== undefined) timeoutMs = Math.min(timeoutMs, options.deadline - Date.now());
+        }
       }
 
       let started = Date.now();

@@ -1,6 +1,7 @@
 import type { RoutedChat } from "../router/execute.ts";
 import type { Candidate } from "../router/routes.ts";
 import { judgeCase, type JudgeCase, type JudgeOutcome } from "./index.ts";
+import { vendorOf } from "./independence.ts";
 import type { Task } from "../router/routes.ts";
 
 /**
@@ -79,6 +80,11 @@ function vote(outcome: JudgeOutcome): JudgeVote {
  * single provider key would lose consensus grading altogether and every case would
  * come back uncorroborated. Degraded corroboration, labelled as degraded, beats none.
  */
+/** Whether the votes so far come from more than one vendor. */
+function crossVendor(voters: Candidate[]): boolean {
+  return new Set(voters.map((c) => vendorOf(c.connection))).size > 1;
+}
+
 async function nextOpinion(
   base: Omit<Parameters<typeof judgeCase>[0], "task" | "exclude" | "excludeConnections">,
   task: Task,
@@ -93,6 +99,12 @@ async function nextOpinion(
   const vendors = [...new Set(voters.map((c) => c.connection))];
   const independent = await judgeCase({ ...base, task, exclude: asked, excludeConnections: vendors, settling });
   if (independent.status !== "error") return independent;
+  // A disagreement between two vendors is settled by a third or not at all. Another model of
+  // either side's vendor shares that side's lineage and serving stack: on 2026-11-08 Groq's
+  // gpt-oss-120b joined gpt-oss-20b against Gemini on T08, a critical scenario, and the two Groq
+  // votes made a false pass. Unsettled is an error, never a pass. A workspace whose votes all
+  // come from one vendor (its own key) still settles within it, labelled as such.
+  if (settling && crossVendor(voters)) return independent;
 
   const sameVendor = await judgeCase({ ...base, task, exclude: [...asked, ...independent.answered], settling });
   // Keep the failed cross-vendor attempts: a route that can no longer corroborate
@@ -188,7 +200,8 @@ export async function gradeCase(args: {
       status: "error",
       rationale: null,
       error: `Two models disagreed (${name(first.servedBy)} said ${first.status}, ${name(second.servedBy)} said ${second.status}) and a third could not settle it`
-        + (third.error?.startsWith("No grader could answer: ") ? ` — ${third.error.slice("No grader could answer: ".length).replace(/\.$/, "")}.` : "."),
+        + (third.error?.startsWith("No grader could answer: ") ? ` — ${third.error.slice("No grader could answer: ".length).replace(/\.$/, "")}.` : ".")
+        + (crossVendor(consulted) ? " Only a model from a third vendor settles a disagreement between two." : ""),
       votes,
       agreement: "unresolved",
     };

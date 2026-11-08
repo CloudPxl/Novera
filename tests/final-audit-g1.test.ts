@@ -74,11 +74,14 @@ test("C-1: an unreadable first grader is passed over, and the verdict comes from
 });
 
 test("C-1 / E-14: an unreadable tie-breaker is not re-asked; the route's next candidate settles it", async () => {
-  const g = grading({ "groq/a": "pass", "mistral/b": "fail", "gemini/c": "garbage", "groq/d": "fail" });
+  // The next candidate is a fourth vendor: since 2026-11-08 a tie between two vendors is settled
+  // only by a third (tests/consensus.test.ts), so groq/d could not settle groq/a against mistral/b.
+  const g = grading({ "groq/a": "pass", "mistral/b": "fail", "gemini/c": "garbage", "groq/d": "pass", "openrouter/e": "fail" });
   const outcome = await gradeCase({ chat: g.chat, ...CASE, severity: "medium" });
   // Old code: gemini/c asked twice (independent, then "same-vendor" fallback), ending unresolved.
   assert.equal(count(g.calls, "gemini/c"), 1, "the paid model that answered unreadably is called once");
-  assert.equal(count(g.calls, "groq/d"), 1, "the next candidate is asked");
+  assert.equal(count(g.calls, "openrouter/e"), 1, "the next candidate of a third vendor is asked");
+  assert.equal(count(g.calls, "groq/d"), 0, "a model of either side's vendor does not settle it");
   assert.equal(outcome.status, "fail");
   assert.equal(outcome.agreement, "majority");
 });

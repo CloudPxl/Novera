@@ -192,3 +192,51 @@ test("a settler that times out or is rate-limited leaves the disagreement unsett
   // The settler's failed attempt is stored as a third, errored vote - never as a pass or fail.
   assert.deepEqual(outcome.votes.map((v) => v.status), ["pass", "fail", "error"]);
 });
+
+/* ------------------------------------------------- a tie between vendors (2026-11-08)
+   On T08, a critical scenario, Gemini said fail and Groq's gpt-oss-20b said pass; with
+   Mistral held back by its rate limit, Groq's gpt-oss-120b settled it, and two votes from
+   one vendor made a false pass. */
+
+const T08_ROSTER: Candidate[] = [
+  { connection: "gemini", model: "flash" },
+  { connection: "groq", model: "oss-20b" },
+  { connection: "mistral", model: "ministral" },
+  { connection: "groq", model: "oss-120b" },
+];
+
+test("a disagreement between two vendors is not settled by another model of either vendor", async () => {
+  const asked: string[] = [];
+  const base = panel({ flash: "fail", "oss-20b": "pass", ministral: "down", "oss-120b": "pass" }, T08_ROSTER);
+  const chat: RoutedChat = async (task, request, options) => {
+    const response = await base(task, request, options);
+    asked.push(response.servedBy.model);
+    return response;
+  };
+  const outcome = await gradeCase({ chat, ...CASE, severity: "critical" });
+  assert.equal(outcome.status, "error", "unsettled is never a pass");
+  assert.equal(outcome.agreement, "unresolved");
+  assert.ok(!asked.includes("oss-120b"), "Groq's other model was not asked to settle Groq's own disagreement with Gemini");
+  assert.match(outcome.error ?? "", /Only a model from a third vendor settles a disagreement between two\./);
+});
+
+test("the third vendor still settles it when it answers", async () => {
+  const outcome = await gradeCase({
+    chat: panel({ flash: "fail", "oss-20b": "pass", ministral: "fail", "oss-120b": "pass" }, T08_ROSTER),
+    ...CASE,
+  });
+  assert.equal(outcome.status, "fail");
+  assert.equal(outcome.agreement, "majority");
+  assert.deepEqual(outcome.votes.map((v) => v.model), ["gemini/flash", "groq/oss-20b", "mistral/ministral"]);
+});
+
+test("votes that all come from one vendor (a workspace's own key) are still settled within it", async () => {
+  const own: Candidate[] = [
+    { connection: "anthropic", model: "one" },
+    { connection: "anthropic", model: "two" },
+    { connection: "anthropic", model: "three" },
+  ];
+  const outcome = await gradeCase({ chat: panel({ one: "pass", two: "fail", three: "fail" }, own), ...CASE });
+  assert.equal(outcome.status, "fail");
+  assert.equal(outcome.agreement, "majority");
+});

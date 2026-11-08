@@ -11,10 +11,10 @@
 
 type Reason =
   | "rate_limited" | "timed_out" | "provider_error" | "unauthorized" | "invalid_output"
-  | "refused_data_class" | "no_credential" | "out_of_time" | "skipped_open_circuit";
+  | "refused_data_class" | "no_credential" | "out_of_time" | "skipped_open_circuit" | "paced";
 
 /** Not sent to the vendor at all: passed over before any request left Novera. */
-const NOT_SENT: ReadonlySet<string> = new Set(["refused_data_class", "no_credential", "out_of_time", "skipped_open_circuit"]);
+const NOT_SENT: ReadonlySet<string> = new Set(["refused_data_class", "no_credential", "out_of_time", "skipped_open_circuit", "paced"]);
 
 export interface VendorHealth {
   vendor: string;

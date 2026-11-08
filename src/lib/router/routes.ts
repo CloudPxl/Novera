@@ -66,7 +66,8 @@ export type RouteTable = Record<Task, Candidate[]>;
  *
  * Two facts about the free tiers, both found by measuring rather than reading docs:
  * Groq limits **tokens** per minute (~8k), not requests, so a judge prompt is ~1,500
- * of them; Mistral limits requests (~1/s). `npm run calibrate` paces for both.
+ * of them; Mistral limits requests (~1/s until autumn 2026; two a minute when measured
+ * on 2026-11-08). `npm run calibrate` paces for both, and so does a run (`Pacer`).
  */
 export const DEFAULT_ROUTES: RouteTable = {
   // Reordered 2026-09-24, after the first measurement over v3's 31 labelled cases.
@@ -105,10 +106,24 @@ export const DEFAULT_ROUTES: RouteTable = {
   // every case at about four times the cost; the order costs one line to change once the
   // monthly spend (0079) shows room for it. Paid calls stop at the monthly budget and the
   // route continues on the free vendors (src/lib/billing/spend.ts).
+  //
+  // 2026-11-08: that line changed. A full eu-support v7 run against the fixture graded 19 of 38
+  // model-graded scenarios on one model only: the free tiers were rate-limited within seconds,
+  // their breakers opened, and gemini-3.8-flash answered 35 of the cases alone — the paid key was
+  // already doing the work, without a second opinion beside it. Mistral's free tier had dropped to
+  // two requests a minute. Calibrated the same day over v7's 44 labelled cases:
+  //
+  //   groq/openai/gpt-oss-20b        44/44   0 false passes   0 false fails
+  //   mistral/ministral-8b-latest     4/44   40 rate-limited at 1.5 s pacing (not a measure of the model)
+  //
+  // So gemini-3.8-flash grades first and gpt-oss-20b, the other model with no false pass on v7,
+  // gives the cross-vendor second opinion, paced to Groq's token limit; Mistral settles ties
+  // and confirms critical scenarios, paced to its two a minute. Once the month's budget is spent
+  // the paid key is passed over and the route is the free pair it was before.
   judge: [
+    { connection: "gemini", model: "gemini-3.8-flash" },
     { connection: "groq", model: "openai/gpt-oss-20b" },
     { connection: "mistral", model: "ministral-8b-latest" },
-    { connection: "gemini", model: "gemini-3.8-flash" },
     { connection: "mistral", model: "ministral-3b-latest" },
     { connection: "groq", model: "openai/gpt-oss-120b" },
   ],
@@ -117,9 +132,9 @@ export const DEFAULT_ROUTES: RouteTable = {
   // (src/lib/judge/consensus.ts), which is also what catches the T08 pair: the third
   // opinion now comes from a model that did not miss it.
   judge_critical: [
+    { connection: "gemini", model: "gemini-3.8-flash" },
     { connection: "groq", model: "openai/gpt-oss-20b" },
     { connection: "mistral", model: "ministral-8b-latest" },
-    { connection: "gemini", model: "gemini-3.8-flash" },
     { connection: "mistral", model: "ministral-3b-latest" },
     { connection: "groq", model: "openai/gpt-oss-120b" },
   ],

@@ -111,7 +111,7 @@ someone with the service role, not merely someone using the application.
 **A verdict is the finding of two models from different vendors.** A single judge drifted
 on 25% of scenarios re-grading byte-identical responses, which the comparison reported to
 the operator as fixes and regressions that never happened. Temperature 0; a third model
-settles a disagreement; an unsettleable disagreement is an error, never a guess. A grader whose
+settles a disagreement — a third *vendor* when the two come from different vendors (2026-11-08); an unsettleable disagreement is an error, never a guess. A grader whose
 answer cannot be read is passed over for the next candidate, and no model is asked twice for one
 case; a reply holding disagreeing verdicts, or a pass beside the word "fail", is unreadable, never a
 pass. What an agent, customer, visitor or document supplied reaches every model prompt inside
@@ -186,8 +186,8 @@ the attack in its message instead: that would be a different test under the same
 Next.js 16 (App Router, `src/`, TypeScript) · Tailwind 4 · Supabase (Postgres + auth +
 RLS, **Frankfurt / eu-central-1**) · Vercel Hobby, functions pinned to `fra1` · Resend.
 Judge funding is hybrid: our keys for trials, pilots and Agency Pro's managed runs
-(`plan_managed`) — the free Groq and Mistral tiers first, then a paid Gemini key
-(`GEMINI_API_KEY`, connection `gemini`) as the third vendor, priced call by call and stopped at a
+(`plan_managed`) — a paid Gemini key first (`GEMINI_API_KEY`, connection `gemini`), with the free
+Groq tier as the cross-vendor second opinion and Mistral as the third vendor (since 2026-11-08), priced call by call and stopped at a
 monthly budget (`NOVERA_MODEL_BUDGET_USD`, default $50; 0079) after which grading continues on
 the free vendors — the customer's own key otherwise —
 and **a workspace with its own key is graded on that key alone**, because the report
@@ -282,7 +282,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 1472 unit tests | free |
+| `npm test` | 1479 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -389,19 +389,24 @@ they drive the scripted fixture at `/api/test-agent`.
   D3 decided 2026-10-12: after the trial every run needs a plan or grant (0067). Before live: VAT
   display, a funded grading budget for Agency Pro's managed runs, and publishing prices on the
   home page (it names the plans only) (`docs/BILLING-DECISIONS.md`).
-- **Three grading vendors, the third paid (2026-10-22).** Groq and Mistral (free tiers) grade
-  first; `gemini/gemini-3.8-flash` (paid AI Studio key, calibrated 41/44 on eu-support v7, no false
-  pass) is the tie-breaker, the critical scenario's third opinion, the overflow when the free
-  tiers rate-limit, and first for diagnosis. `gemini-3.5-flash-lite` (a false pass again) and
-  `gemini-4-argon` (14 timeouts at judge size) are in no route. Gemini's paid prices rise on
+- **Three grading vendors, the paid one first (2026-11-08).** `gemini/gemini-3.8-flash` (paid AI
+  Studio key, 41/44 on eu-support v7, no false pass) grades first and leads diagnosis;
+  `groq/openai/gpt-oss-20b` (44/44 on v7, 2026-11-08) is the cross-vendor second opinion; Mistral
+  settles ties and confirms critical scenarios. A tie between two vendors is settled only by a third
+  or stays without a verdict (a Groq model joining Groq against Gemini made a false pass on T08).
+  Calls on our free keys are paced per model (`Pacer`, `NOVERA_PACE_MS` overrides). Measured on a
+  full v7 run: corroborated 19/38 unpaced in the old order → 37/38 paced, one tie left unsettled,
+  no 429 from Groq, about 230 s instead of 46. `gemini-3.5-flash-lite` (a false pass again) and
+  `gemini-4-argon` (14 timeouts at judge size on 2026-10-22; 11.7 s a case, a timeout and the same
+  T07 false fail as flash on 2026-11-08, and Google like the first opinion) are in no route. Gemini's paid prices rise on
   2027-01-01: `verify:launch` fails until `src/lib/billing/model-prices.ts` is re-checked.
 - **Measured capacity on the trial keys (2026-09-29):** one run at a time is clean;
   four at once saturate Groq's free tier. With the grading gate and settling tie-breaks,
   48 of 48 scenarios still got a verdict, but 28 were corroborated within one vendor only
   (labelled as such). A third funded vendor is what fixes the second number.
 - **Rate limits on our keys:** any grading call waits once for a 429 that resets within 3 s (8 s when settling a tie) if the case's deadline has room, reading Retry-After or Groq's `x-ratelimit-reset-*`; a `<NAME>_API_KEY_FALLBACK` (same provider, same terms, same data-class ceiling) is tried once on a 429 or 401. A case whose graders are all still limited is recorded with no verdict, never deferred.
-- **Free-tier ceilings:** Groq 8,000 **tokens** per minute (not requests), Mistral about
-  one request per second, Google's daily quota exhausted by a couple of calibration runs.
+- **Free-tier ceilings:** Groq 8,000 **tokens** per minute per model (not requests), Mistral two
+  requests a minute per model (its headers, 2026-11-08; about one a second in September), Google's daily quota exhausted by a couple of calibration runs.
   Consensus doubles judge calls, so throughput is the thing to measure before promising
   concurrent customer runs. A full 36-case v3 run measured 27 seconds with four rate
   limits absorbed by fallback and no case lost.

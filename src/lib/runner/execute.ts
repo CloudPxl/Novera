@@ -578,7 +578,7 @@ function everyJudgeRateLimited(record: RunCaseRecord): boolean {
   // vendor skipped because it was rate-limited earlier in the slice counts as limited.
   return attempts.every(
     (a) => a.ok === false && (a.reason === "rate_limited"
-      || (a.reason === "skipped_open_circuit" && /rate-limited/.test(a.error ?? ""))
+      || ((a.reason === "skipped_open_circuit" || a.reason === "paced") && /rate-limited/.test(a.error ?? ""))
       || (!a.reason && /rate.?limit|429|quota|too many requests/i.test(a.error ?? ""))),
   );
 }

@@ -8,7 +8,7 @@ import type { RunCaseRecord } from "../runner/types.ts";
 import { coverage, coverageByObligation, coverageByCategory } from "../evidence/coverage.ts";
 import type { Suite } from "../runner/types.ts";
 import { supabaseRunStore } from "../store/supabase-run-store.ts";
-import { CircuitBreaker, createRoutedChat } from "../router/execute.ts";
+import { CircuitBreaker, createRoutedChat, Pacer } from "../router/execute.ts";
 import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
 import { prepareReport, storeReport, type PreparedReport, type ReportArgs } from "./run.ts";
 import { reportEnvironment } from "../agents/environment.ts";
@@ -171,7 +171,7 @@ export async function startRunExecution(args: {
   const { connections, routes } = await connectionsForWorkspace({ client, workspaceId });
   // One breaker for the slice: a vendor that keeps failing is skipped by the next case
   // instead of being waited on again. The next slice starts with a clean slate.
-  const judge = createRoutedChat({ connections, routes, breaker: new CircuitBreaker() });
+  const judge = createRoutedChat({ connections, routes, breaker: new CircuitBreaker(), pacer: new Pacer() });
 
   // The runner marks a run completed when its last scenario is recorded. That write is held
   // back here until the report is built (final audit C-3, 2026-10-28): marked first, a report

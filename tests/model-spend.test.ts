@@ -72,9 +72,9 @@ test("the paid key is its own connection, may read client content, and is the sa
   assert.equal(independenceOf([{ model: "gemini/gemini-3.8-flash", status: "pass" }, { model: "google/gemini-3.5-flash-lite", status: "pass" }]), "single-vendor");
 });
 
-test("routes: the calibrated Gemini model is the third vendor in grading and leads diagnosis; the uncalibrated ones are nowhere", () => {
+test("routes: the calibrated Gemini model grades first beside gpt-oss-20b (both without a false pass on v7) and leads diagnosis; the uncalibrated ones are nowhere", () => {
   for (const task of ["judge", "judge_critical"] as const) {
-    assert.deepEqual(DEFAULT_ROUTES[task].slice(0, 3).map((c) => `${c.connection}/${c.model}`), ["groq/openai/gpt-oss-20b", "mistral/ministral-8b-latest", "gemini/gemini-3.8-flash"]);
+    assert.deepEqual(DEFAULT_ROUTES[task].slice(0, 3).map((c) => `${c.connection}/${c.model}`), ["gemini/gemini-3.8-flash", "groq/openai/gpt-oss-20b", "mistral/ministral-8b-latest"]);
   }
   assert.equal(DEFAULT_ROUTES.diagnose[0].model, "gemini-3.8-flash");
   const all = Object.values(DEFAULT_ROUTES).flat();

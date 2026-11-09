@@ -52,8 +52,23 @@ const OPENAI_COMPATIBLE_HOSTS: Record<string, string> = {
  * Connections available from the server environment. These fund trial runs; a paid
  * workspace's own key is resolved separately and never comes from here.
  */
-export function connectionsFromEnv(env: NodeJS.ProcessEnv = process.env): Map<string, Connection> {
+/**
+ * A provider key as read from the environment, without the whitespace a paste can carry. A key
+ * never contains whitespace, and a header value must be a ByteString: production's Gemini key
+ * ended in U+2028 (a line separator a pasted value picked up), so every call on it failed with
+ * "Cannot convert argument to a ByteString" from 2026-10-22 until 2026-11-09, and grading fell
+ * back to the free vendors. Empty after cleaning is absent.
+ */
+export function cleanKey(value: string | undefined): string | undefined {
+  const cleaned = value?.replace(/[\s\u200B-\u200D\u2060\uFEFF]+/g, "");
+  return cleaned ? cleaned : undefined;
+}
+
+export function connectionsFromEnv(rawEnv: NodeJS.ProcessEnv = process.env): Map<string, Connection> {
   const connections = new Map<string, Connection>();
+  const env = new Proxy(rawEnv, {
+    get: (target, name) => (typeof name === "string" && /_API_KEY(_FALLBACK)?$/.test(name) ? cleanKey(target[name]) : Reflect.get(target, name)),
+  });
 
   if (env.JUDGE_FREE_API_KEY && (env.JUDGE_FREE_PROVIDER ?? "google") === "google") {
     connections.set("google", { name: "google", provider: googleProvider, apiKey: env.JUDGE_FREE_API_KEY });

@@ -222,3 +222,21 @@ test("a customer's own key is never paced", async () => {
   assert.equal(starts.length, 2);
   assert.ok(starts[1] - starts[0] < 1_000);
 });
+
+// --- a pasted key's invisible line separator (production Gemini, 2026-10-22 → 2026-11-09) ----------
+
+test("provider keys from the environment lose pasted whitespace and line separators, so a header can carry them", async () => {
+  const { cleanKey, connectionsFromEnv } = await import("../src/lib/providers/registry.ts");
+  assert.equal(cleanKey("AIzaSyExample123 "), "AIzaSyExample123");
+  assert.equal(cleanKey("  gsk_abc\n"), "gsk_abc");
+  assert.equal(cleanKey("​key﻿"), "key");
+  assert.equal(cleanKey("  \n"), undefined, "nothing left is no key at all");
+  assert.equal(cleanKey(undefined), undefined);
+  const connections = connectionsFromEnv({ GEMINI_API_KEY: "AQ.secret-value ", GROQ_API_KEY: "gsk_x \n", MISTRAL_API_KEY: " " } as unknown as NodeJS.ProcessEnv);
+  assert.equal(connections.get("gemini")?.apiKey, "AQ.secret-value");
+  assert.equal(connections.get("groq")?.apiKey, "gsk_x");
+  assert.equal(connections.has("mistral"), false, "a key that is only whitespace configures nothing");
+  // What fetch would have refused: the cleaned key is a valid header value.
+  assert.doesNotThrow(() => new Headers({ "x-goog-api-key": connections.get("gemini")!.apiKey }));
+  assert.throws(() => new Headers({ "x-goog-api-key": "AQ.secret-value " }));
+});

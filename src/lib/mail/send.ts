@@ -28,8 +28,10 @@ export async function sendEmail(args: {
   html?: string;
   replyTo?: string;
 }): Promise<SendResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL;
+  // Trimmed like the health check reads them: a pasted value's trailing newline or line
+  // separator would make the Authorization header unsendable (as it did Gemini's, 2026-11-09).
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.RESEND_FROM_EMAIL?.trim();
 
   if (!apiKey || !from) {
     return { ok: false, id: null, error: "Email is not configured on this server (RESEND_API_KEY / RESEND_FROM_EMAIL)." };
@@ -95,5 +97,5 @@ export function mailProblem(error: string | null): string {
 
 /** Whether this server has what it needs to send at all — said before a form is used, not after. */
 export function mailConfigured(): boolean {
-  return Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL);
+  return Boolean(process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim());
 }

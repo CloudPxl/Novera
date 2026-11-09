@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { retryWords, type Repair } from "@/lib/evidence/repair.ts";
+import { CATEGORIES, DIAGNOSTICS_DOC, categoryCounts, type DiagnosticReport } from "@/lib/evidence/diagnostics.ts";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Badge, ProgressBar, inputClass } from "@/components/ui/primitives.tsx";
 import { gradingNote } from "./grading-note.ts";
@@ -60,6 +61,8 @@ export interface CaseRow {
   dutyRefs: string[];
   /** For a scenario with no verdict: why, who acts, whether a retest is safe, what to do. */
   repair?: Repair | null;
+  /** The same, as a structured diagnosis: facts apart from the likely cause (src/lib/evidence/diagnostics.ts). */
+  diagnostic?: DiagnosticReport | null;
   /** Set when this scenario's verdict has moved before under an unchanged policy. */
   instability: { passes: number; fails: number; runs: number; cause?: "graders" | "agent" } | null;
 }
@@ -232,6 +235,8 @@ function CaseTableBody({ cases, diagnosis = {} }: CaseTableProps) {
           </select>
         </div>
       </div>
+
+      <NoResultSummary cases={cases} />
 
       {/* The lenses sit above severity because they are the first cut, and below the
           verdict tabs because they refine them rather than replace them. A lens with
@@ -710,7 +715,7 @@ function CaseDetail({ row, diagnosis }: { row: CaseRow; diagnosis?: ReactNode })
   return (
     <div className="novera-panel-in border-t border-line bg-ground px-3 py-4 sm:px-4">
       <p className="sr-only">The evidence for this scenario, in the order Novera gathered it.</p>
-      {row.repair && <RepairNote repair={row.repair} />}
+      {row.repair && <RepairNote repair={row.repair} diagnostic={row.diagnostic ?? null} />}
       <div className="grid gap-4 lg:grid-cols-2">
         <ol className="min-w-0 space-y-4">
           {sent}
@@ -789,13 +794,16 @@ const RECEIVED = { yes: "received it", no: "never received it", unknown: "not kn
  * Why a scenario has no verdict, from what was stored (src/lib/evidence/repair.ts): who
  * acts on it, whether a retest could repeat something the agent did, and the next step.
  */
-function RepairNote({ repair }: { repair: Repair }) {
+function RepairNote({ repair, diagnostic }: { repair: Repair; diagnostic: DiagnosticReport | null }) {
   const explains = REPAIR_EXPLAINS[repair.reason]
     ?? (repair.reason === "agent_http_error" && /HTTP (?:408|429|502|503|504)$/.test(repair.label) ? "agent_unreachable" : undefined);
   return (
     <section aria-label="Why there is no verdict" className="mb-4 rounded-control bg-surface p-3 ring-1 ring-line">
       <div className="flex flex-wrap items-baseline">
-        <p className="text-sm font-medium text-ink">Why there is no verdict: {repair.label}</p>
+        <p className="text-sm font-medium text-ink">
+          {diagnostic && <span className="mr-2 rounded-full bg-sunken px-2 py-0.5 text-xs font-semibold text-ink-soft">{CATEGORIES[diagnostic.category].name}</span>}
+          Why there is no verdict: {repair.label}
+        </p>
         {explains && <Explained id={explains} />}
       </div>
       <p className="mt-1 text-sm leading-relaxed text-ink-soft">{repair.happened}</p>
@@ -819,6 +827,103 @@ function RepairNote({ repair }: { repair: Repair }) {
           Editing the policy will not change this: no verdict was reached, so there is nothing for a policy to explain.
         </p>
       )}
+      {diagnostic && <FullDiagnosis d={diagnostic} />}
     </section>
+  );
+}
+
+const STAGE_WORDS: Record<DiagnosticReport["observedFacts"]["stageReached"], string> = {
+  initialization: "held back before sending",
+  target_invocation: "sending to the agent",
+  read_back_verification: "reading back the claimed action",
+  grader_consensus: "grading the reply",
+};
+const GRADER_WORDS: Record<DiagnosticReport["observedFacts"]["gradersAttempted"][number]["status"], string> = {
+  answered: "answered", unreadable: "answered without a readable verdict", timed_out: "timed out",
+  rate_limited: "rate-limited", error: "failed", not_asked: "not asked",
+};
+const CONFIDENCE_WORDS = { high: "High: read from a typed stored field", medium: "Medium: read from the runner's recorded error", low: "Low: not determined" } as const;
+
+/**
+ * The diagnosis behind a no-result scenario, behind a disclosure: what the stored rows show,
+ * kept apart from what that most likely means, what they cannot show, and what Novera did.
+ */
+function FullDiagnosis({ d }: { d: DiagnosticReport }) {
+  const f = d.observedFacts;
+  const facts: Array<[string, string]> = [
+    ["Stage reached", STAGE_WORDS[f.stageReached]],
+    ["Your agent", RECEIVED[f.agentReceived]],
+    ...(f.httpStatus !== null ? [["HTTP status from the agent", String(f.httpStatus)] as [string, string]] : []),
+    ...(f.latencyMs !== null ? [["Time the agent took", `${(f.latencyMs / 1000).toFixed(1)} s (timeout ${(f.configuredTimeoutMs / 1000).toFixed(0)} s)`] as [string, string]] : []),
+    ...(f.targetUrlMasked ? [["Endpoint", f.targetUrlMasked] as [string, string]] : []),
+    ["Retests of this scenario", String(f.retestsRecorded)],
+    ["Reply fingerprint stored", f.replyFingerprintStored ? "yes (SHA-256)" : "no"],
+    ["Report sealed", f.reportSealed ? "yes" : "no"],
+  ];
+  return (
+    <details className="mt-3 border-t border-line pt-3">
+      <summary className="cursor-pointer text-sm font-medium text-ink outline-none focus-visible:ring-2 focus-visible:ring-ink">Full diagnosis</summary>
+      <div className="mt-3 space-y-4 text-sm">
+        <div>
+          <p className="type-pill text-ink-faint">Observed</p>
+          <dl className="mt-1 grid gap-x-4 gap-y-1 sm:grid-cols-2">
+            {facts.map(([k, v]) => (
+              <div key={k} className="flex flex-wrap gap-x-2">
+                <dt className="text-ink-soft">{k}:</dt>
+                <dd className="break-all text-ink">{v}</dd>
+              </div>
+            ))}
+          </dl>
+          {f.gradersAttempted.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-ink-soft">
+              {f.gradersAttempted.map((g, i) => (
+                <li key={`${g.model}-${i}`}>AI grader <span className="font-mono text-xs text-ink">{g.model}</span> ({g.provider}): {GRADER_WORDS[g.status]}{g.ms !== null ? `, ${(g.ms / 1000).toFixed(1)} s` : ""}</li>
+              ))}
+            </ul>
+          )}
+          {f.storedError && <p className="mt-2 break-words text-ink-soft">Stored error: <span className="text-ink">{f.storedError}</span></p>}
+        </div>
+        <div>
+          <p className="type-pill text-ink-faint">Likely cause</p>
+          <p className="mt-1 text-ink">{d.likelyCause.hypothesis}</p>
+          <p className="mt-0.5 text-xs text-ink-faint">Confidence {CONFIDENCE_WORDS[d.likelyCause.confidence]}. {d.likelyCause.supportingEvidence}</p>
+        </div>
+        <div>
+          <p className="type-pill text-ink-faint">Not known from the stored evidence</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-ink-soft">
+            {d.knownUnknowns.map((u) => <li key={u}>{u}</li>)}
+          </ul>
+        </div>
+        <div>
+          <p className="type-pill text-ink-faint">What Novera did</p>
+          <p className="mt-1 text-ink-soft">{d.noveraAction.details}</p>
+        </div>
+        <div>
+          <p className="type-pill text-ink-faint">Retesting</p>
+          <p className="mt-1 text-ink-soft">
+            {d.retryPolicy.isSafeToRetry ? "Safe to retest." : d.retryPolicy.reasonIfBlocked}
+            {d.retryPolicy.recommendedDelayMs > 0 && ` Wait about ${Math.round(d.retryPolicy.recommendedDelayMs / 1000)} s first.`}
+          </p>
+        </div>
+        <p className="text-xs text-ink-faint">
+          Reference for support: <span className="font-mono">{d.technicalContext.errorClass}</span> · case {d.technicalContext.caseRowId.slice(0, 8)} ·{" "}
+          <Link href={d.technicalContext.documentationUrl} className="underline underline-offset-2">what the categories mean</Link>
+        </p>
+      </div>
+    </details>
+  );
+}
+
+/** One line above the table: the run's no-result scenarios by category, the reader's own fixes first. */
+function NoResultSummary({ cases }: { cases: CaseRow[] }) {
+  const counts = categoryCounts(cases.map((c) => c.diagnostic?.category).filter((c): c is NonNullable<typeof c> => Boolean(c)));
+  if (counts.length === 0) return null;
+  const total = counts.reduce((n, c) => n + c.count, 0);
+  return (
+    <p className="border-b border-line py-3 text-sm text-ink-soft">
+      <span className="font-medium text-ink">No result: {total}.</span>{" "}
+      {counts.map((c) => `${c.count} ${CATEGORIES[c.category].name.toLowerCase()}`).join(" · ")}.{" "}
+      <Link href={DIAGNOSTICS_DOC} className="underline underline-offset-2">What each means</Link>
+    </p>
   );
 }

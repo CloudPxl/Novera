@@ -89,13 +89,27 @@ If the company gave Novera a read-only connection to its own system (called a **
 
 Only scenarios that expect an action are checked this way, and only where the company set up the connection. If none was set up, scenarios that expect an action are reported as unable to verify. That is a limit of the test setup, not a finding against the agent.
 
-## Who judged the answers
+## Which AI graders judged the answers
 
 Most answers are judged by AI models, called **graders**. Novera does not rely on one: each answer goes to two graders made by different companies, and if they disagree, a third settles it. If even that cannot settle it, the scenario has no result. Novera never picks a side.
 
 Some scenarios carry fixed rules, such as "must not say this" or "must not use that tool". A rule can fail a scenario without asking any grader. It can never pass one, because not doing the wrong thing is not the same as doing the right thing.
 
 Under **Scope and limitations**, the report says exactly how its verdicts were reached: how many the first two graders agreed on, how many a third settled, how many rest on one grader only, how many were settled by a rule, and whether the graders came from different companies or one. A company that grades with its own model account may use models from one company only, and the report says so. See [How a run works](/docs/how-a-run-works).
+
+## When a scenario has no result
+
+A scenario without a verdict is never counted as a pass or a failure. On the run page each one carries a category, a plain sentence of what happened, and a **Full diagnosis**: what the stored evidence shows, the likely cause with how sure Novera is of it, what the evidence cannot tell, what Novera already did, and whether a retest is safe.
+
+- **Blocked by configuration**: a setting stopped the scenario, such as the agent's address, its response path, its credentials, or your own grading key. Fix the setting named, then retest. Retesting before that gives the same answer.
+- **Not run**: Novera held the scenario back before sending it, because the agent's setup could not carry it (no conversation or metadata channel) or the agent is marked as production and the scenario could change something. The agent never received it.
+- **Could not complete**: the scenario was sent and no complete reply arrived: a timeout, or the endpoint could not be reached. Whether the agent acted on it is not known.
+- **Result unavailable**: the agent answered, and the answer could not be read as a reply: an error status, a reply that was not JSON, or one larger than Novera reads.
+- **Inconclusive**: the evidence did not settle it. The AI graders disagreed and no grader from a third company could settle it, or the agent claimed an action that could not be checked.
+- **Blocked on Novera's side**: the agent replied, and Novera's AI graders were rate-limited, slow or unreachable, or the run's time slice ended. Nothing about your agent needs to change; retest the scenario. On your own model key, the same thing is that key's limit, and it is shown as configuration instead.
+- **Withdrawn or expired**: a report that was withdrawn by its workspace, or whose link has expired. The evidence stays stored.
+
+A diagnosis keeps what was observed apart from what it probably means. A cause read from a stored field Novera wrote itself is marked high confidence; one read from the error the agent's answer produced is medium; an error Novera never classified says "not determined" instead of guessing. No diagnosis says a person reviewed anything: verdicts come from AI graders and fixed rules, and a person's finding is recorded separately, beside the verdict.
 
 ## Comparison with the previous run
 

@@ -135,3 +135,13 @@ export function plainText(block: Block): string {
   if (block.kind === "codeblock") return block.text;
   return block.spans.map((s) => s.text).join("");
 }
+
+/**
+ * A heading's anchor: its words, lower-case, joined by hyphens — so `/docs/reading-a-report#when-a-scenario-has-no-result`
+ * lands on "When a scenario has no result". Letters with accents keep their base letter.
+ */
+export function headingId(spans: Span[]): string {
+  return spans.map((s) => s.text).join("")
+    .normalize("NFKD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}

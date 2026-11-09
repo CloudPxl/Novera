@@ -8,7 +8,7 @@ import { currentUser } from "@/lib/auth/session.ts";
 import { notFound } from "next/navigation";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { CodeBlock } from "@/components/docs/code-block.tsx";
-import { parseDocBody, type Span } from "@/lib/docs/markdown.ts";
+import { headingId, parseDocBody, type Span } from "@/lib/docs/markdown.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -121,7 +121,8 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
               return (
                 <Tag
                   key={i}
-                  className={`pt-2 font-semibold tracking-tight text-ink ${
+                  id={headingId(block.spans)}
+                  className={`scroll-mt-24 pt-2 font-semibold tracking-tight text-ink ${
                     block.level === 2 ? "text-lg" : "text-base"
                   }`}
                 >

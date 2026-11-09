@@ -10,6 +10,8 @@ import { sessionClient } from "@/lib/supabase/server.ts";
 import { rerunFrom } from "@/lib/workflow/actions.ts";
 import { RefusableForm } from "@/components/ui/refusable-form.tsx";
 import { noVerdictRow, repairFor } from "@/lib/evidence/repair.ts";
+import { diagnose } from "@/lib/evidence/diagnostics.ts";
+import { agentTimeoutMs } from "@/lib/agents/http.ts";
 import { readinessOf, READINESS_LABEL } from "@/lib/report/readiness.ts";
 import type { ReportPayload } from "@/lib/report/payload.ts";
 import { ReadinessPanel } from "./readiness.tsx";
@@ -98,7 +100,7 @@ export default async function RunPage({
   const { data: run } = await db
     .from("runs")
     .select(
-      "id, workspace_id, status, agent_id, policy_id, suite_id, baseline_run_id, error, created_at, started_at, finished_at, pass_threshold, judge_model, schedule_id, api_key_id, manifest, lease_until",
+      "id, workspace_id, status, agent_id, policy_id, suite_id, baseline_run_id, error, created_at, started_at, finished_at, pass_threshold, judge_model, judge_source, schedule_id, api_key_id, manifest, lease_until",
     )
     .eq("id", id)
     .maybeSingle();
@@ -157,7 +159,7 @@ export default async function RunPage({
         await db
           .from("run_cases")
           .select(
-            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by, tool_activity, transcript, raw_expired_at, raw_sha256, judge_attempts",
+            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by, tool_activity, transcript, raw_expired_at, raw_sha256, judge_attempts, created_at",
           )
           .eq("run_id", id)
           .order("case_id")
@@ -471,11 +473,29 @@ export default async function RunPage({
     settledBy: (c.settled_by as string | null) ?? null,
     ruleCount: ruleCountByCase.get(c.case_id as string) ?? 0,
     // Why there is no verdict, and whether a retest could repeat something the agent did.
-    repair: repairFor(noVerdictRow(c, {
-      observationStatus: observationByCase.get(c.id as string)?.status ?? null,
-      scenario: scenarioById.get(c.case_id as string) ?? null,
-      toolCalls: normaliseTrajectory(c.tool_activity).filter((e) => e.type === "tool_call").length,
-    })),
+    ...(() => {
+      const noVerdict = noVerdictRow(c, {
+        observationStatus: observationByCase.get(c.id as string)?.status ?? null,
+        scenario: scenarioById.get(c.case_id as string) ?? null,
+        toolCalls: normaliseTrajectory(c.tool_activity).filter((e) => e.type === "tool_call").length,
+      });
+      const repair = repairFor(noVerdict);
+      // The structured diagnosis (src/lib/evidence/diagnostics.ts): the same reason, laid out as
+      // observed facts, a likely cause with its confidence, what is not known, and who acts.
+      const diagnostic = repair ? diagnose({
+        runId: id, caseRowId: c.id as string, scenarioId: c.case_id as string, row: noVerdict, repair,
+        ownKey: run.judge_source === "workspace_key",
+        runStartedAt: (run.started_at as string | null) ?? null,
+        recordedAt: (c.created_at as string | null) ?? null,
+        latencyMs: (c.latency_ms as number | null) ?? null,
+        agentUrl: typeof (agent?.config as { url?: unknown } | undefined)?.url === "string" ? (agent!.config as { url: string }).url : null,
+        agentTimeoutMs: agentTimeoutMs((agent?.config ?? {}) as { timeoutMs?: number }),
+        retestsRecorded: retestsByCase.get(c.id as string)?.length ?? 0,
+        replyFingerprintStored: Boolean(c.raw_sha256),
+        reportSealed: Boolean(report?.content_hash),
+      }) : null;
+      return { repair, diagnostic };
+    })(),
   }));
 
   // The diagnosis controls are server-rendered per case and handed to the client

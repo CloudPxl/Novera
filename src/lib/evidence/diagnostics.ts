@@ -263,16 +263,16 @@ const STAGE: Readonly<Record<NoResultCategory, DiagnosticStage>> = {
   WITHDRAWN_EXPIRED: "grader_consensus",
 };
 
-function stageFor(reason: RepairReason, category: NoResultCategory): DiagnosticStage {
+function stageFor(reason: RepairReason, category: NoResultCategory, replied: boolean): DiagnosticStage {
   if (reason === "readback_unavailable" || reason === "action_not_verified") return "read_back_verification";
   if (reason === "graders_refused_data_class" || NOVERA_GRADER_REASONS.has(reason)) return "grader_consensus";
   if (reason === "unclassified") return "grader_consensus";
-  if (reason === "cut_by_slice") return "target_invocation";
+  if (reason === "cut_by_slice") return replied ? "grader_consensus" : "target_invocation";
   return STAGE[category];
 }
 
 /** What the stored rows cannot tell, per reason. Each is a boundary, not a guess. */
-function unknownsFor(reason: RepairReason, agentReceived: Repair["agentReceived"]): string[] {
+function unknownsFor(reason: RepairReason, replied: boolean): string[] {
   const acted = "Whether the agent took any action in your systems while handling it: Novera sees only what the agent reports and what a read-back confirms.";
   switch (reason) {
     case "agent_timeout":
@@ -297,7 +297,7 @@ function unknownsFor(reason: RepairReason, agentReceived: Repair["agentReceived"
     case "graders_refused_data_class":
       return ["How the reply would have been graded: no AI grader returned a verdict on it."];
     case "cut_by_slice":
-      return [agentReceived === "yes" ? "How the reply would have been graded." : "How the agent would have answered: the scenario was not completed in this run's time."];
+      return [replied ? "How the reply would have been graded: the run's time ran out before a grader answered." : "How the agent would have answered: the scenario was not completed in this run's time."];
     case "production_guard":
     case "no_metadata_slot":
     case "no_conversation_slot":
@@ -320,7 +320,10 @@ function confidenceFor(reason: RepairReason, row: NoVerdictRow): { confidence: "
       ? { confidence: "high", supportingEvidence: `${failed} stored grader request${failed === 1 ? "" : "s"} with a typed reason.` }
       : { confidence: "medium", supportingEvidence: "The stored error names the graders; no typed request reasons were stored with it." };
   }
-  if (["production_guard", "no_metadata_slot", "no_conversation_slot", "not_sent_address", "cut_by_slice"].includes(reason)) {
+  if (reason === "cut_by_slice") {
+    return { confidence: "high", supportingEvidence: "Novera's runner recorded that the run's time slice ended before this scenario was finished." };
+  }
+  if (["production_guard", "no_metadata_slot", "no_conversation_slot", "not_sent_address"].includes(reason)) {
     return { confidence: "high", supportingEvidence: "Novera's own runner wrote this outcome with a fixed sentence when it held the scenario back." };
   }
   return { confidence: "medium", supportingEvidence: "The runner's recorded error for the agent's answer (status, size or format)." };
@@ -378,7 +381,7 @@ export function diagnose(input: DiagnoseInput): DiagnosticReport {
     observedFacts: {
       startedAt: input.runStartedAt,
       recordedAt: input.recordedAt,
-      stageReached: stageFor(repair.reason, category),
+      stageReached: stageFor(repair.reason, category, row.replied),
       httpStatus: http ? Number(http[1]) : null,
       latencyMs: input.latencyMs,
       configuredTimeoutMs: input.agentTimeoutMs,
@@ -390,7 +393,7 @@ export function diagnose(input: DiagnoseInput): DiagnosticReport {
       reportSealed: input.reportSealed,
       storedError: row.error,
     },
-    knownUnknowns: unknownsFor(repair.reason, repair.agentReceived),
+    knownUnknowns: unknownsFor(repair.reason, row.replied),
     likelyCause: {
       hypothesis: repair.reason === "unclassified" ? "Not determined from the stored rows." : repair.happened,
       confidence: sure.confidence,

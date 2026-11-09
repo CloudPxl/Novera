@@ -842,6 +842,10 @@ const GRADER_WORDS: Record<DiagnosticReport["observedFacts"]["gradersAttempted"]
   answered: "answered", unreadable: "answered without a readable verdict", timed_out: "timed out",
   rate_limited: "rate-limited", error: "failed", not_asked: "not asked",
 };
+/** A measured duration: milliseconds under a second, so a fast reply never reads "0.0 s". */
+function duration(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
+}
 const CONFIDENCE_WORDS = { high: "High: read from a typed stored field", medium: "Medium: read from the runner's recorded error", low: "Low: not determined" } as const;
 
 /**
@@ -854,7 +858,7 @@ function FullDiagnosis({ d }: { d: DiagnosticReport }) {
     ["Stage reached", STAGE_WORDS[f.stageReached]],
     ["Your agent", RECEIVED[f.agentReceived]],
     ...(f.httpStatus !== null ? [["HTTP status from the agent", String(f.httpStatus)] as [string, string]] : []),
-    ...(f.latencyMs !== null ? [["Time the agent took", `${(f.latencyMs / 1000).toFixed(1)} s (timeout ${(f.configuredTimeoutMs / 1000).toFixed(0)} s)`] as [string, string]] : []),
+    ...(f.latencyMs !== null ? [["Time the agent took", `${duration(f.latencyMs)} (timeout ${(f.configuredTimeoutMs / 1000).toFixed(0)} s)`] as [string, string]] : []),
     ...(f.targetUrlMasked ? [["Endpoint", f.targetUrlMasked] as [string, string]] : []),
     ["Retests of this scenario", String(f.retestsRecorded)],
     ["Reply fingerprint stored", f.replyFingerprintStored ? "yes (SHA-256)" : "no"],
@@ -877,7 +881,7 @@ function FullDiagnosis({ d }: { d: DiagnosticReport }) {
           {f.gradersAttempted.length > 0 && (
             <ul className="mt-2 space-y-0.5 text-ink-soft">
               {f.gradersAttempted.map((g, i) => (
-                <li key={`${g.model}-${i}`}>AI grader <span className="font-mono text-xs text-ink">{g.model}</span> ({g.provider}): {GRADER_WORDS[g.status]}{g.ms !== null ? `, ${(g.ms / 1000).toFixed(1)} s` : ""}</li>
+                <li key={`${g.model}-${i}`}>AI grader <span className="font-mono text-xs text-ink">{g.model}</span> ({g.provider}): {GRADER_WORDS[g.status]}{g.ms !== null && g.status !== "not_asked" ? `, ${duration(g.ms)}` : ""}</li>
               ))}
             </ul>
           )}
@@ -922,7 +926,7 @@ function NoResultSummary({ cases }: { cases: CaseRow[] }) {
   return (
     <p className="border-b border-line py-3 text-sm text-ink-soft">
       <span className="font-medium text-ink">No result: {total}.</span>{" "}
-      {counts.map((c) => `${c.count} ${CATEGORIES[c.category].name.toLowerCase()}`).join(" · ")}.{" "}
+      {counts.map((c) => `${c.count} ${CATEGORIES[c.category].name.charAt(0).toLowerCase()}${CATEGORIES[c.category].name.slice(1)}`).join(" · ")}.{" "}
       <Link href={DIAGNOSTICS_DOC} className="underline underline-offset-2">What each means</Link>
     </p>
   );

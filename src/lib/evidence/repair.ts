@@ -113,7 +113,8 @@ export function repairFor(row: NoVerdictRow): Repair | null {
   }
   if (/time slice was ending/.test(error)) {
     return make({ reason: "cut_by_slice", label: "Cut short by Novera", owner: "Novera's graders",
-      agentReceived: /^Not sent/.test(error) ? "no" : "unknown",
+      // A stored reply settles it: the agent received the scenario and answered; only grading was cut.
+      agentReceived: /^Not sent/.test(error) ? "no" : row.replied ? "yes" : "unknown",
       retry: /^Not sent/.test(error) ? "safe" : row.actsOnTheWorld ? "check_first" : "safe",
       happened: "Novera's time for this part of the run ran out around this scenario. It says nothing about the agent.",
       next: "Retest this scenario." });

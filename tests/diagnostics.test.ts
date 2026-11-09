@@ -147,3 +147,19 @@ test("a redirect or a refused credential from the agent is configuration; anothe
   assert.equal(at("Agent returned HTTP 500").category, "RESULT_UNAVAILABLE");
   assert.equal(at("Agent returned HTTP 500").observedFacts.httpStatus, 500);
 });
+
+test("a grading slice that ran out after the agent replied: the agent received it, the stage is grading, the unknown is the grade", () => {
+  const row = { ...base, replied: true, error: "No grader could answer: gemini/gemini-3.8-flash did not answer in time; groq/openai/gpt-oss-20b was not asked: the run's time slice was ending." };
+  const repair = repairFor(row)!;
+  assert.equal(repair.reason, "cut_by_slice");
+  assert.equal(repair.agentReceived, "yes", "a stored reply settles whether the agent received it");
+  const d = diagnose({ ...input(row), repair });
+  assert.equal(d.category, "BLOCKED_NOVERA");
+  assert.equal(d.observedFacts.stageReached, "grader_consensus");
+  assert.match(d.knownUnknowns[0], /How the reply would have been graded/);
+  assert.doesNotMatch(d.likelyCause.supportingEvidence, /held the scenario back/);
+  // Without a reply, the slice cut the exchange itself.
+  const unsent = diagnose(input({ ...base, error: "Not sent: the run's time slice was ending." }));
+  assert.equal(unsent.observedFacts.stageReached, "target_invocation");
+  assert.equal(unsent.observedFacts.agentReceived, "no");
+});

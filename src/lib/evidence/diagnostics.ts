@@ -352,8 +352,13 @@ export interface DiagnoseInput {
 
 export function diagnose(input: DiagnoseInput): DiagnosticReport {
   const { repair, row } = input;
-  const category = categoryFor(repair.reason, { ownKey: input.ownKey });
   const http = row.error ? /HTTP (\d{3})/.exec(row.error) : null;
+  // A redirect means the endpoint's address is wrong, and 401/403 means its credential is: both
+  // are settings, which the bare reason ("the agent answered HTTP n") cannot tell apart.
+  const status = http ? Number(http[1]) : null;
+  const category = repair.reason === "agent_http_error" && status !== null && ((status >= 300 && status < 400) || status === 401 || status === 403)
+    ? "BLOCKED_CONFIG"
+    : categoryFor(repair.reason, { ownKey: input.ownKey });
   const graders = gradersAttempted(row.judgeAttempts);
   const triedAnother = graders.length > 1;
   const sure = confidenceFor(repair.reason, row);

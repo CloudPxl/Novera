@@ -8,7 +8,7 @@ You sign in to Novera with an email address and a password, or — where they ar
 
 Choose **Create one** on the sign-in page, enter your address and a password of at least 8 characters, and Novera asks its email provider to send you a confirmation link. The page then shows **Check your inbox** with the address the link was sent to.
 
-Novera does not say the email has arrived — only that it was handed over for delivery. If the email could not be sent at all, the page says so and **no account is created**; nothing was saved, so you can try again later or use another way in.
+Novera does not say the email has arrived — only that it was handed over for delivery. If the email could not be sent at all, the page says so and **no account is created**; nothing was saved, so you can try again in a few minutes or use Google or GitHub instead.
 
 If an account already exists for that address, no new email is sent and the page reads the same way. This is deliberate: the sign-up form does not tell a stranger whether an address has an account.
 

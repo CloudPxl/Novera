@@ -195,7 +195,7 @@ export default async function RegulatoryMappingPage({ searchParams }: { searchPa
             { title: "Inputs declared before the run", body: "Suite version and scenario order, policy version, agent host, grading plan, pass mark, runner version and rubric digest are frozen before the first scenario is sent." },
             { title: "Append-only evidence", body: "Each declared scenario is recorded once. A verdict cannot be edited, or deleted short of erasing the whole workspace — by you or by Novera." },
             { title: "Sealed and chained", body: "Each report carries a SHA-256 digest of its content and the hash of the previous report for the same agent, so anyone holding a copy can re-check it." },
-            { title: "Who graded", body: "Every model consulted is recorded with its vote, including one that was overruled, and the report says how each verdict was corroborated. A scenario settled by a rule or the read-back names no model." },
+            { title: "Which AI graders decided", body: "Every model consulted is recorded with its vote, including one that was overruled, and the report says how each verdict was corroborated. A scenario settled by a rule or the read-back names no model." },
             { title: "Authorisation on record", body: "The confirmation that you own the agent or are authorised to test it is stored with the run and sealed into its report." },
             { title: "Retention", body: "The agent's raw replies are kept for your workspace's retention period, 30 to 365 days (180 by default), then emptied, leaving the verdict and a SHA-256 of each reply." },
           ]}

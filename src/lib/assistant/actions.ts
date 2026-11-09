@@ -204,14 +204,14 @@ export async function askAssistant(threadId: string | null, message: string): Pr
     if (!thread) {
       const { data: created, error } = await admin.from("assistant_threads")
         .insert({ workspace_id: workspace.id, user_id: user.id, title: question.slice(0, 80) }).select("id").single();
-      if (error || !created) return { error: "The conversation could not be saved. Try again.", fundedBy };
+      if (error || !created) return { error: "The assistant answered, but the conversation could not be saved, so the answer was not kept. Asking again counts as a new question.", fundedBy };
       thread = created as { id: string };
     }
     const { data: stored, error: storeError } = await admin.from("assistant_messages")
       // A reply built from computed facts names no model: no model wrote it.
       .insert(messageRows(thread.id, question, { reply: parsed.reply, citations: parsed.citations, fundedBy, model: outcome === "ok" ? model : null }))
       .select("id, role");
-    if (storeError) return { error: "The conversation could not be saved. Try again.", fundedBy };
+    if (storeError) return { error: "The assistant answered, but the conversation could not be saved, so the answer was not kept. Asking again counts as a new question.", fundedBy };
     await admin.from("assistant_threads").update({ last_message_at: new Date().toISOString() }).eq("id", thread.id);
 
     // A suggestion to remember something — only from what the person said, only if memory is

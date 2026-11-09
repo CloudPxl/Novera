@@ -13,11 +13,11 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
   return (
     <html lang="en">
       <body className="bg-surface text-ink">
-        <title>Something went wrong · Novera</title>
+        <title>Novera failed to load · Novera</title>
         <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6">
           <ErrorState
             level={1}
-            title="Something went wrong on our side"
+            title="Novera failed to load"
             reference={error.digest}
             action={
               <>
@@ -34,7 +34,7 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
               </>
             }
           >
-            Novera could not load. Trying again usually works; if it does not, write to us from the{" "}
+            The cause is in Novera, not in anything you did. Reloading once often works. If it fails again, write to us from the{" "}
             {/* Not an email address: nover.space receives no mail, so a mailto bounced. */}
             <Link href="/support" className="font-medium underline underline-offset-2">support page</Link>{" "}
             and quote the reference below.

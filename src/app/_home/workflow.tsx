@@ -19,7 +19,7 @@ import { useSystemMotion } from "@/components/ui/motion.ts";
 const STEPS = [
   { title: "Connect the agent", body: "Point Novera at an HTTP endpoint you operate and confirm you are authorised to test it. One harmless request goes first, and its reply is saved as a receipt.", time: "2 minutes" },
   { title: "Write the policy", body: "The rules the agent should keep, in plain sentences. Saving creates a version that is never edited, so a report always names what it was measured against.", time: "5 minutes" },
-  { title: "Run the suite", body: "Every scenario goes to your agent and comes back with a verdict, its evidence and who decided it — or with the reason there is none.", time: "a few minutes" },
+  { title: "Run the suite", body: "Every scenario goes to your agent and comes back with a verdict, its evidence and which AI graders decided it — or with the reason there is none.", time: "a few minutes" },
   { title: "Prepare and share the report", body: "Novera says whether the report is ready to send, and what stands in the way if not. Then one private link — expiring and revocable — or an export.", time: "when it is ready" },
 ];
 

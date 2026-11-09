@@ -12,7 +12,7 @@ export default function PublicError({ error, retry }: { error: Error & { digest?
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center bg-surface px-6 text-ink">
       <ErrorState
         level={1}
-        title="Something went wrong on our side"
+        title="Novera failed to display this page"
         reference={error.digest}
         action={
           <>
@@ -29,8 +29,9 @@ export default function PublicError({ error, retry }: { error: Error & { digest?
           </>
         }
       >
-        The page did not load. Trying again usually works; if it does not, contact support and
-        quote the reference below.
+        The cause is in Novera, not in anything you did. Reloading once often works. If it fails
+        again, write to us from the support page and quote the reference below: it identifies this
+        exact failure.
       </ErrorState>
     </main>
   );

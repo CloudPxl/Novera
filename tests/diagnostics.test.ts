@@ -138,3 +138,12 @@ test("categories count in the order a reader acts on them", () => {
   ]);
   assert.equal(CATEGORY_ORDER.length, Object.keys(CATEGORIES).length);
 });
+
+test("a redirect or a refused credential from the agent is configuration; another status is an unreadable result", () => {
+  const at = (error: string) => diagnose(input({ ...base, error }));
+  assert.equal(at("Agent returned HTTP 308, a redirect to https://www.example.com/chat.").category, "BLOCKED_CONFIG");
+  assert.equal(at("Agent returned HTTP 401").category, "BLOCKED_CONFIG");
+  assert.equal(at("Agent returned HTTP 403").category, "BLOCKED_CONFIG");
+  assert.equal(at("Agent returned HTTP 500").category, "RESULT_UNAVAILABLE");
+  assert.equal(at("Agent returned HTTP 500").observedFacts.httpStatus, 500);
+});

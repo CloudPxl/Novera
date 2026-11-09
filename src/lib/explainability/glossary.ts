@@ -182,7 +182,7 @@ export const GLOSSARY: Record<ExplainKey, ExplainEntry> = {
     whyItMatters:
       "A run that could not finish is never sealed, and three unreachable answers in a row stop it, so an outage on either side cannot pass for a result. Nothing on this page changes a stored verdict.",
     nextAction:
-      "If a run stopped on an unreachable agent, check the agent's endpoint and run the suite again. If a component here is degraded, try again later or contact support.",
+      "If a run stopped on an unreachable agent, check the agent's endpoint and run the suite again. If a component here is degraded, start the run once it shows as operational again; if a degraded component stopped a run of yours, write to us from the support page with the run's link.",
     docsHref: "/docs/how-a-run-works",
   },
 

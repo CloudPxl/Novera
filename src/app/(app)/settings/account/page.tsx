@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 /** Codes this page owns; anything else in `?problem=` is ignored, never printed. */
 const PROBLEMS: Record<string, string> = {
   identity_taken: "That account is already connected to a different Novera sign-in, so it was not linked here. Nothing changed.",
-  link_failed: "Connecting that account did not complete, and nothing changed. Try again.",
+  link_failed: "Connecting that account did not complete, and nothing changed. Try again; if it fails a second time, check that the provider account shares a verified email address, or write to us from the support page.",
 };
 
 const PERSONAL_ACTIONS: AuditAction[] = ["identity.linked", "identity.unlinked", "account.password_set", "account.password_changed", "account.signed_out_everywhere"];

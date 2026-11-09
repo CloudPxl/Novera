@@ -140,3 +140,18 @@ test("the funding line names the plan and what is left", async () => {
   const noKey = { connected: false, routable: false, provider: null };
   assert.equal(fundingLine(resolveEntitlement({ ...D3, byok: noKey, trialRunsUsed: 3, subscriptions: [SUB_PRO], managedRunTimes: [iso(T0 + 60)] }), false), "Agency Pro · 99 of 100 managed runs left");
 });
+
+// --- a grant read back at once by a server whose clock is behind the database's (2026-11-09) -------
+
+test("a grant whose start is a moment ahead of this server's clock is in force; a future grant is not; the end is exact", async () => {
+  const { grantInForce, GRANT_START_CLOCK_TOLERANCE_MS } = await import("../src/lib/billing/entitlement.ts");
+  const now = new Date("2026-11-09T17:00:00.000Z");
+  const grant = (startsAt: string, endsAt: string | null = null) =>
+    ({ startsAt, endsAt, revokedAt: null } as unknown as Parameters<typeof grantInForce>[0]);
+  assert.equal(grantInForce(grant("2026-11-09T17:00:00.085Z"), now), true, "85 ms ahead: the measured skew");
+  assert.equal(grantInForce(grant(new Date(now.getTime() + GRANT_START_CLOCK_TOLERANCE_MS).toISOString()), now), true);
+  assert.equal(grantInForce(grant(new Date(now.getTime() + GRANT_START_CLOCK_TOLERANCE_MS + 1).toISOString()), now), false);
+  assert.equal(grantInForce(grant("2026-11-10T00:00:00.000Z"), now), false, "a grant that starts tomorrow is not in force");
+  assert.equal(grantInForce(grant("2026-11-01T00:00:00.000Z", "2026-11-09T17:00:00.000Z"), now), false, "the end is not widened");
+  assert.equal(grantInForce({ ...grant("2026-11-01T00:00:00.000Z"), revokedAt: "2026-11-02T00:00:00.000Z" } as never, now), false);
+});

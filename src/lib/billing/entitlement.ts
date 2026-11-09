@@ -186,10 +186,21 @@ function countBetween(runTimes: string[], from: number | null, to: number | null
   return n;
 }
 
+/**
+ * How far ahead of this server's clock a grant's start may be and still count as started. A
+ * grant's `starts_at` is the database's `now()` (a redeemed pilot code, an operator's grant); read
+ * back at once by a server whose clock is behind the database's, it was "not started yet" — 85 ms
+ * on 2026-11-09, which made a just-redeemed code read as no funding. The database's own funding
+ * check (0067) uses its own clock, so this only stops the application refusing what the database
+ * would accept. The end is not widened.
+ */
+export const GRANT_START_CLOCK_TOLERANCE_MS = 5_000;
+
 /** A grant is in force between its start and its end, until it is revoked. */
 export function grantInForce(g: GrantRow, now: Date): boolean {
   const at = now.getTime();
-  return !g.revokedAt && (ts(g.startsAt) ?? Infinity) <= at && (g.endsAt === null || at < (ts(g.endsAt) ?? -Infinity));
+  return !g.revokedAt && (ts(g.startsAt) ?? Infinity) - GRANT_START_CLOCK_TOLERANCE_MS <= at
+    && (g.endsAt === null || at < (ts(g.endsAt) ?? -Infinity));
 }
 
 /**

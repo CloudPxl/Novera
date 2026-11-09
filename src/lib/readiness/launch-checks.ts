@@ -87,7 +87,26 @@ export const MIGRATION_PROBES: ReadonlyArray<{ migration: string; table: string;
   { migration: "0070", table: "ci_triggers", column: null },
   { migration: "0071", table: "suites", column: "extends_suite_id" },
   { migration: "0072", table: "case_retests", column: "origin" },
+  { migration: "0075", table: "billing_pilot_codes", column: null },
+  { migration: "0076", table: "billing_entitlement_grants", column: "owner_id" },
+  { migration: "0078", table: "allowance_spent_by_erased_runs", column: null },
+  { migration: "0079", table: "model_spend", column: null },
 ];
+
+/**
+ * Migrations that created nothing the app's role can see — an index, a function, a trigger or a
+ * data repair — so no probe can show them applied. The check reads "newest" as the newest file
+ * not listed here; `npm run migrate -- --check` is the authoritative answer for these. A new
+ * migration gets a probe above or a line here (tests/block6-ops.test.ts keeps that true).
+ */
+export const MIGRATIONS_WITHOUT_PROBE: ReadonlySet<string> = new Set([
+  "0069", // reports_content_hash_idx
+  "0073", // agents_one_sample_per_workspace (unique index)
+  "0074", // counts_against_allowance and the allowance functions
+  "0077", // unique indexes on regression drafts and suites per build
+  "0080", // suites_one_per_build redefined
+  "0081", // sample agent address repaired (an update)
+]);
 
 const NOT_HERE = "not available in this deployment";
 
@@ -115,7 +134,7 @@ async function migrationsCheck({ db, files }: LaunchInput): Promise<LaunchCheck>
     for (const p of MIGRATION_PROBES) results.push({ migration: p.migration, present: await db.objectExists(p.table, p.column) });
     const absent = results.filter((r) => !r.present).map((r) => r.migration);
     const names = files ? await files.migrations().catch(() => null) : null;
-    const numbers = (names ?? []).map(migrationNumber).filter((n): n is string => n !== null).sort();
+    const numbers = (names ?? []).map(migrationNumber).filter((n): n is string => n !== null && !MIGRATIONS_WITHOUT_PROBE.has(n)).sort();
     const newestFile = numbers.at(-1) ?? null;
     const newestProbe = MIGRATION_PROBES.at(-1)!.migration;
     const how = "Inferred from objects the newest migrations created, because the ledger is closed to the app by design";

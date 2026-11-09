@@ -7,7 +7,7 @@ import { captureError } from "../src/lib/observability/capture.ts";
 import { windowLimiter } from "../src/lib/observability/limiter.ts";
 import { scrubText } from "../src/lib/observability/scrub.ts";
 import {
-  EXPECTED_SUITES, INTEGRATION_GUIDES, MIGRATION_PROBES, diskLaunchFiles, launchExitCode, runLaunchChecks,
+  EXPECTED_SUITES, INTEGRATION_GUIDES, MIGRATION_PROBES, MIGRATIONS_WITHOUT_PROBE, diskLaunchFiles, launchExitCode, runLaunchChecks,
   type LaunchDb, type LaunchFiles,
 } from "../src/lib/readiness/launch-checks.ts";
 import { readRepoDoc } from "../src/lib/readiness/repo-docs.ts";
@@ -321,6 +321,20 @@ test("the expected built-in suites are files in data/suites", () => {
 test("every probe names a migration file that exists", () => {
   const files = readdirSync("supabase/migrations");
   for (const p of MIGRATION_PROBES) assert.ok(files.some((f) => f.startsWith(`${p.migration}_`)), p.migration);
+});
+
+test("every migration since the probes began is either probed or listed as having nothing to probe", async () => {
+  const probed = new Set(MIGRATION_PROBES.map((p) => p.migration));
+  const first = MIGRATION_PROBES[0].migration;
+  for (const f of readdirSync("supabase/migrations")) {
+    const n = /^(\d{4})_/.exec(f)?.[1];
+    if (!n || n < first) continue;
+    assert.ok(probed.has(n) !== MIGRATIONS_WITHOUT_PROBE.has(n), `${f}: give it a probe or list it in MIGRATIONS_WITHOUT_PROBE, not both`);
+  }
+  // The newest probeable migration present, with only unprobeable ones after it, passes.
+  const checks = await runLaunchChecks({ resend: RESEND_OK, db: GOOD_DB, env: READY_ENV,
+    files: { ...FILES, migrations: async () => ["0079_model_spend.sql", "0080_scan_not_a_published_build.sql", "0081_sample_agent_canonical_host.sql"] } });
+  assert.equal(checks.find((c) => c.id === "migrations")!.status, "pass");
 });
 
 test("a missing repository file or directory is 'not available here', never a crash", async () => {

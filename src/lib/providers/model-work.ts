@@ -17,7 +17,7 @@ import type { JudgeSource } from "../billing/entitlement.ts";
  * is no fallback from a workspace key to ours: when the key fails, the operation fails and says so.
  */
 export type Funding = "trial_free" | "workspace_key" | "plan_managed";
-export type ModelOperation = "diagnose" | "draft" | "extract" | "assistant";
+export type ModelOperation = "diagnose" | "draft" | "extract" | "assistant" | "insight_grade";
 
 export interface CallRecord {
   task: string;

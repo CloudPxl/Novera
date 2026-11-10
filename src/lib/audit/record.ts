@@ -24,7 +24,9 @@ export type AuditAction =
   | "billing.pilot_code_redeemed"
   | "contract.accepted"
   | "workspace.export_requested" | "workspace.exported"
-  | "agent.updated" | "agent.archived" | "agent.restored" | "agent.read_back_changed";
+  | "agent.updated" | "agent.archived" | "agent.restored" | "agent.read_back_changed"
+  | "insight_target.created" | "insight_target.reclassified" | "insight_target.do_not_contact_set"
+  | "insight_scan.queued" | "insight_scan.aborted";
 
 export async function recordAudit(admin: SupabaseClient, event: {
   workspaceId: string | null;
@@ -96,4 +98,9 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   "agent.updated": "changed an agent's connection",
   "agent.archived": "archived an agent",
   "agent.restored": "restored an archived agent",
+  "insight_target.created": "recorded a public demo bot as an insight target",
+  "insight_target.reclassified": "changed the recorded facts of an insight target",
+  "insight_target.do_not_contact_set": "marked an insight target do not contact",
+  "insight_scan.queued": "queued an insight scan for the browser worker",
+  "insight_scan.aborted": "aborted an insight scan",
 };

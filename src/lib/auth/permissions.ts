@@ -51,6 +51,8 @@ export const PERMISSIONS = {
   "schedule.write": BUILD,
   "suite.import": BUILD,
   "case.retest": BUILD,
+  // Recording a public demo bot and queueing an insight scan of it (0082). Staff-only pages today.
+  "insight.manage": BUILD,
   "diagnosis.request": CONTRIBUTE,
   "diagnosis.decide": APPROVE,
   "finding.record": APPROVE,

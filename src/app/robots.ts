@@ -13,7 +13,7 @@ const ALLOW = ["/", "/docs", "/solutions", "/verify", "/legal", "/api/og", "/llm
 const DISALLOW = [
   "/api/", "/auth/", "/report/", "/invite/", "/reset-password", "/sign-in",
   "/dashboard", "/agents", "/runs/", "/runs", "/reports", "/review", "/scenarios", "/regressions",
-  "/builder", "/workspaces", "/settings/", "/settings", "/inbox", "/readiness", "/welcome",
+  "/builder", "/workspaces", "/settings/", "/settings", "/inbox", "/readiness", "/insight", "/welcome",
 ];
 
 export default function robots(): MetadataRoute.Robots {

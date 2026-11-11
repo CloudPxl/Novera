@@ -221,3 +221,27 @@ test("insight code, tests and fixtures name only fictional hosts", () => {
     }
   }
 });
+
+// ---------------------------------------------------------------- the operator pages
+
+test("every insight page checks staff before anything else, is never indexed, and every action checks staff and the role", () => {
+  for (const file of ["src/app/(app)/insight/page.tsx", "src/app/(app)/insight/new/page.tsx", "src/app/(app)/insight/[targetId]/page.tsx", "src/app/(app)/insight/scan/[scanId]/page.tsx"]) {
+    const page = readFileSync(file, "utf8");
+    const body = page.slice(page.indexOf("export default async function"));
+    const firstStatement = body.slice(body.indexOf("{\n") + 2).trim().split("\n")[0];
+    assert.equal(firstStatement, "await requireStaff();", `${file}: the staff check comes first`);
+    assert.match(page, /robots: \{ index: false, follow: false \}/, file);
+  }
+  const actions = readFileSync("src/lib/workflow/insight.ts", "utf8");
+  assert.match(actions, /^"use server";/);
+  assert.match(actions, /async function context\(\) \{\n\s+await requireStaff\(\);[\s\S]*?gate\(user\.id, workspace\.id, "insight\.manage"\)/);
+  for (const name of ["createInsightTarget", "reclassifyInsightTarget", "markInsightDoNotContact", "queueInsightScan", "abortInsightScan"]) {
+    const at = actions.indexOf(`export async function ${name}(`);
+    assert.ok(at >= 0, name);
+    const fn = actions.slice(at, actions.indexOf("\nexport async function", at + 10) === -1 ? undefined : actions.indexOf("\nexport async function", at + 10));
+    assert.match(fn, /await context\(\);\n\s+if \("error" in gated\) return \{ error: gated\.error \};/, `${name} is gated first`);
+    assert.match(fn, /recordAudit\(/, `${name} leaves an audit line`);
+  }
+  const robotsSource = readFileSync("src/app/robots.ts", "utf8");
+  assert.match(robotsSource, /"\/insight"/, "crawlers are kept out of the staff pages");
+});

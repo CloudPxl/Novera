@@ -226,7 +226,7 @@ test("only staff may open /readiness, and nothing invites a crawler to it", () =
   assert.equal(firstStatement, "await requireStaff();", "the staff check comes before anything is computed");
   assert.match(page, /robots: \{ index: false, follow: false \}/);
   assert.match(read("src/lib/auth/staff.ts"), /if \(!isStaff\(user\.email\)\) redirect\("\/dashboard"\)/);
-  assert.match(read("src/components/shell/top-bar.tsx"), /const staff: NavItem\[\] = isStaff\(user\.email\) \? \[\{ href: "\/inbox", label: "Inbox" \}, \{ href: "\/readiness", label: "Readiness" \}\] : \[\];/);
+  assert.match(read("src/components/shell/top-bar.tsx"), /const staff: NavItem\[\] = isStaff\(user\.email\) \? \[\{ href: "\/inbox", label: "Inbox" \}, \{ href: "\/readiness", label: "Readiness" \}, \{ href: "\/insight", label: "Insight" \}\] : \[\];/);
 
   const rule = robots().rules;
   const disallow = ([] as string[]).concat((Array.isArray(rule) ? rule[0] : rule).disallow ?? []);

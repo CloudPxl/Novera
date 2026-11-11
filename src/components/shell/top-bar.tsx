@@ -80,7 +80,7 @@ export async function TopBar() {
   // `nav` so they can leave the bar where it is full: agency and enterprise mode fill it at 1024
   // (Readiness pushed it 77 px past the edge in enterprise mode), so there they sit in the bar
   // from xl and in the menu below it. The compact personal bar has room from lg.
-  const staff: NavItem[] = isStaff(user.email) ? [{ href: "/inbox", label: "Inbox" }, { href: "/readiness", label: "Readiness" }] : [];
+  const staff: NavItem[] = isStaff(user.email) ? [{ href: "/inbox", label: "Inbox" }, { href: "/readiness", label: "Readiness" }, { href: "/insight", label: "Insight" }] : [];
   const compactNav = mode === "personal" && !multi;
   const funding = entitlement.fundingLine;
   const badge = fundingBadge(entitlement);

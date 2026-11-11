@@ -8,7 +8,7 @@ import { buttonClass } from "@/components/ui/button-link.tsx";
  * from the sealed report. Without a clipboard the text is shown selected instead, as Copy link
  * does; the result is announced in a live region.
  */
-export function CopySummary({ text }: { text: string }) {
+export function CopySummary({ text, name = "Client summary" }: { text: string; /** What the text is, as a person reads it; the run page's is the client summary. */ name?: string }) {
   const [said, setSaid] = useState("");
   const [shown, setShown] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -19,10 +19,10 @@ export function CopySummary({ text }: { text: string }) {
       if (!navigator.clipboard?.writeText) throw new Error("no clipboard");
       await navigator.clipboard.writeText(text);
       setShown(false);
-      setSaid("Client summary copied.");
+      setSaid(`${name} copied.`);
     } catch {
       setShown(true);
-      setSaid("Could not copy automatically. The summary is selected: press Ctrl+C, or ⌘C on a Mac.");
+      setSaid(`Could not copy automatically. The ${name.toLowerCase()} is selected: press Ctrl+C, or ⌘C on a Mac.`);
       requestAnimationFrame(() => field.current?.select());
     }
     if (timer.current) clearTimeout(timer.current);
@@ -31,9 +31,9 @@ export function CopySummary({ text }: { text: string }) {
 
   return (
     <>
-      <button type="button" onClick={copy} className={`print:hidden ${buttonClass("secondary", "sm")}`}>Copy client summary</button>
+      <button type="button" onClick={copy} className={`print:hidden ${buttonClass("secondary", "sm")}`}>Copy {name.charAt(0).toLowerCase()}{name.slice(1)}</button>
       {shown && (
-        <textarea ref={field} readOnly value={text} rows={8} aria-label="Client summary" onFocus={(e) => e.currentTarget.select()}
+        <textarea ref={field} readOnly value={text} rows={8} aria-label={name} onFocus={(e) => e.currentTarget.select()}
           className="w-full rounded-control border border-line-strong bg-surface px-2 py-1 type-mono text-xs text-ink" />
       )}
       <span role="status" aria-live="polite" className="sr-only">{said}</span>

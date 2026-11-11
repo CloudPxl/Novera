@@ -63,3 +63,7 @@ claude_usage_state.json
 # Pilot code lists (real codes never enter the public repository; seed:pilot-codes also refuses a file here)
 *.pilot-codes.csv
 pilot-codes*.csv
+
+# The browser worker installs and builds in its own directory (workers/insight-browser/README.md)
+/workers/insight-browser/node_modules
+/workers/insight-browser/dist

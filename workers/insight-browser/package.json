@@ -1,0 +1,14 @@
+{
+  "name": "novera-insight-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Novera's browser worker for public-demo insight scans: types a fixed set of prompts into a public chat widget, paced and declared, and reports what it displayed.",
+  "type": "module",
+  "bin": { "novera-insight-worker": "dist/worker.mjs" },
+  "files": ["dist/worker.mjs", "README.md"],
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "playwright": "1.64.1"
+  },
+  "license": "UNLICENSED"
+}

@@ -209,7 +209,8 @@ test("a rule-settled verdict is corroborated by construction; an unfinished or f
 test("insight code, tests and fixtures name only fictional hosts", () => {
   const files = [
     "src/lib/insight/suite-v1.ts", "src/lib/insight/suite.ts", "src/lib/insight/card.ts", "src/lib/insight/classify.ts",
-    "supabase/migrations/0082_insight_scans.sql",
+    "supabase/migrations/0082_insight_scans.sql", "src/lib/insight/fixture-widget.ts", "docs/INSIGHT-SCANS.md",
+    "workers/insight-browser/README.md", "workers/insight-browser/src/score.ts", "workers/insight-browser/src/guards.ts",
     ...readdirSync("tests").filter((f) => /^insight.*\.test\.ts$/.test(f) || f === "robots.test.ts").map((f) => `tests/${f}`),
   ];
   const allowed = /^(?:(?:[a-z0-9.-]*\.)?(?:example|test|invalid|localhost|example\.com|example\.org|example\.net|nover\.space)|127\.0\.0\.1)$/i;

@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Agent worktrees (Claude Code): separate checkouts, linted in their own directory.
     ".claude/**",
+    // Built bundles: generated from linted sources.
+    "workers/insight-browser/dist/**",
+    "workers/insight-browser/node_modules/**",
   ]),
 ]);
 

@@ -148,7 +148,7 @@ export function insightCard(args: {
   const date = dateOf(scan.finished_at ?? scan.created_at);
   const declared = scan.scenario_ids.length;
   const limitations = [
-    `${declared} scripted prompt${declared === 1 ? "" : "s"} in one session${date ? ` on ${date}` : ""}; a different day or wording may produce different replies.`,
+    `${declared} scripted prompt${declared === 1 ? "" : "s"}, sent one at a time, each in a fresh browser session${date ? `, on ${date}` : ""}; a different day or wording may produce different replies.`,
     "Replies are what the chat widget displayed, captured by Novera's browser worker and redacted before storage; no screenshot was kept.",
     "Each verdict is the finding of AI graders and names them; a verdict from one vendor only is marked not corroborated.",
     "A prompt with no result is counted separately and is never a pass or a failure.",

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fakeInsightDb } from "./helpers/insight-fake-db.ts";
 import { handleWorkerEvent } from "../src/lib/insight/events.ts";
 import { claimForWorker } from "../src/lib/insight/claim.ts";
 import { PrivateAddressError } from "../src/lib/net/public-url.ts";
@@ -12,75 +13,7 @@ import type { InsightScanRow } from "../src/lib/insight/types.ts";
 type Row = Record<string, unknown>;
 const TOKEN = "123e4567-e89b-12d3-a456-426614174000";
 const NOW = new Date("2026-11-10T10:00:30.000Z");
-
-/** A chainable fake of the Supabase client over in-memory tables, plus the three 0082 functions. */
-function fakeDb(seed: Record<string, Row[]>) {
-  const rows: Record<string, Row[]> = Object.fromEntries(Object.entries(seed).map(([k, v]) => [k, v.map((r) => ({ ...r }))]));
-  const rpcs: Array<{ name: string; args: Row }> = [];
-  const inserted: Array<{ table: string; row: Row }> = [];
-  function builder(table: string) {
-    const filters: Array<(r: Row) => boolean> = [];
-    let op: "select" | "insert" | "update" | "upsert" = "select";
-    let payload: Row = {};
-    const apply = () => {
-      const matching = (rows[table] ??= []).filter((r) => filters.every((f) => f(r)));
-      if (op === "insert") {
-        if (table === "insight_observations" && rows[table].some((r) => r.scan_id === payload.scan_id && r.scenario_id === payload.scenario_id)) {
-          return { data: null, error: { message: "duplicate key value violates unique constraint" } };
-        }
-        rows[table].push({ id: `${table}-${rows[table].length + 1}`, ...payload });
-        inserted.push({ table, row: payload });
-        return { data: [payload], error: null };
-      }
-      if (op === "update") {
-        for (const r of matching) Object.assign(r, payload);
-        return { data: matching, error: null };
-      }
-      if (op === "upsert") {
-        const existing = rows[table].find((r) => r.id === payload.id);
-        if (existing) Object.assign(existing, payload); else rows[table].push({ ...payload });
-        return { data: [payload], error: null };
-      }
-      return { data: matching, error: null };
-    };
-    const b = {
-      select() { return b; },
-      insert(p: Row) { op = "insert"; payload = p; return b; },
-      update(p: Row) { op = "update"; payload = p; return b; },
-      upsert(p: Row) { op = "upsert"; payload = p; return b; },
-      eq(col: string, v: unknown) { filters.push((r) => r[col] === v); return b; },
-      maybeSingle() { const out = apply(); return Promise.resolve({ data: out.data?.[0] ?? null, error: out.error }); },
-      single() { const out = apply(); return Promise.resolve({ data: out.data?.[0] ?? null, error: out.error ?? (out.data?.[0] ? null : { message: "no row" }) }); },
-      then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) { return Promise.resolve(apply()).then(resolve, reject); },
-    };
-    return b;
-  }
-  const client = {
-    from(table: string) { return builder(table); },
-    rpc(name: string, args: Row) {
-      rpcs.push({ name, args });
-      const scan = (rows.insight_scans ?? []).find((r) => r.id === args.scan);
-      if (name === "touch_insight_lease") {
-        const ok = Boolean(scan && scan.lease_token === args.token && scan.status === "running");
-        if (ok) scan!.lease_until = new Date(NOW.getTime() + 120_000).toISOString();
-        return Promise.resolve({ data: ok, error: null });
-      }
-      if (name === "finish_insight_scan") {
-        const ok = Boolean(scan && scan.lease_token === args.token && scan.status === "running");
-        if (ok) Object.assign(scan!, { status: args.new_status, error_kind: args.new_status === "error" ? args.kind : null, error_detail: args.new_status === "error" ? args.detail : null, finished_at: NOW.toISOString() });
-        return Promise.resolve({ data: ok, error: null });
-      }
-      if (name === "claim_insight_scan") {
-        const queued = (rows.insight_scans ?? []).find((r) => r.status === "queued");
-        if (!queued) return Promise.resolve({ data: null, error: null });
-        Object.assign(queued, { status: "running", claimed_by: args.worker, lease_token: TOKEN, lease_until: new Date(NOW.getTime() + 120_000).toISOString() });
-        return Promise.resolve({ data: { ...queued }, error: null });
-      }
-      return Promise.resolve({ data: null, error: { message: `unknown rpc ${name}` } });
-    },
-  } as unknown as SupabaseClient;
-  return { client, rows, rpcs, inserted };
-}
+const fakeDb = (seed: Record<string, Row[]>) => fakeInsightDb(seed, { token: () => TOKEN, now: () => NOW });
 
 const scanRow = (over: Partial<InsightScanRow> = {}): Row => ({
   id: "s1", workspace_id: "w1", target_id: "t1", suite_key: "public-insight", suite_version: 1, suite_digest: INSIGHT_SUITE_DIGEST,

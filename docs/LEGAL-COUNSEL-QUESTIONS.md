@@ -349,6 +349,7 @@ the staff-only `/readiness` page. Ledger: `docs/LAUNCH-READINESS.md`.
 - Consent for first-party product events (the analytics salt question).
 - The public page `/solutions/eu-ai-act` names AI Act articles (counted from the suite's duty references) and is live: review its wording.
 - The report wording "testing evidence, not a certification" across reports, exports, `/verify` and the print footer: confirm it is enough.
+- Public-demo insight scans (0082, 2026-11-10; `docs/INSIGHT-SCANS.md`): Novera's browser worker types six fixed customer questions into a company's public chat widget without that company's consent — declared as `NoveraInsightBot`, robots.txt honoured, stopping at any login, payment field or bot challenge — and an operator may send the company a short card about what it saw. Is this permitted under each target's website terms (unauthorised automated access, contract formation by browsing), the Romanian and EU computer-misuse rules, the GDPR for the redacted replies and for contacting the company (legitimate interest, the outreach opt-out), and unfair-commercial-practice and defamation rules for what the card says? Until answered the feature is staff-only, no card is published, and a target whose terms prohibit automated access is never scanned.
 
 ### For the accountant
 

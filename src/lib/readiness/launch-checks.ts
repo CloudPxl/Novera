@@ -94,6 +94,7 @@ export const MIGRATION_PROBES: ReadonlyArray<{ migration: string; table: string;
   { migration: "0082", table: "insight_scans", column: null },
   { migration: "0083", table: "runs", column: "completes_run_id" },
   { migration: "0084", table: "run_case_holds", column: "not_before" },
+  { migration: "0085", table: "insight_handoffs", column: null },
 ];
 
 /**

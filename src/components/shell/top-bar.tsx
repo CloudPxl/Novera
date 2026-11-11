@@ -80,7 +80,7 @@ export async function TopBar() {
   // `nav` so they can leave the bar where it is full: agency and enterprise mode fill it at 1024
   // (Readiness pushed it 77 px past the edge in enterprise mode), so there they sit in the bar
   // from xl and in the menu below it. The compact personal bar has room from lg.
-  const staff: NavItem[] = isStaff(user.email) ? [{ href: "/inbox", label: "Inbox" }, { href: "/readiness", label: "Readiness" }, { href: "/insight", label: "Insight" }] : [];
+  const staff: NavItem[] = isStaff(user.email) ? [{ href: "/inbox", label: "Inbox" }, { href: "/readiness", label: "Readiness" }] : [];
   const compactNav = mode === "personal" && !multi;
   const funding = entitlement.fundingLine;
   const badge = fundingBadge(entitlement);
@@ -181,6 +181,9 @@ export async function TopBar() {
 
             <div className="border-t border-line py-1 lg:border-t-0">
               {can(role, "agent.write") && <Link href="/agents/new" className={menuItemClass}>Connect an agent</Link>}
+              {/* Public-demo insight scans (0082, 0085): every role that may run them, in the menu
+                  so the bar's measured width does not change. */}
+              {can(role, "insight.manage") && <Link href="/insight" className={menuItemClass}>Public demo scans</Link>}
               {/* Settings is in the nav itself (above, stacked, below lg), and so is Audit in
                   enterprise mode: listed twice on a phone before (UI audit, 2026-10-08). */}
               {(mode !== "personal" || multi) && <Link href="/settings/members" className={menuItemClass}>Members</Link>}

@@ -26,7 +26,10 @@ export type AuditAction =
   | "workspace.export_requested" | "workspace.exported"
   | "agent.updated" | "agent.archived" | "agent.restored" | "agent.read_back_changed"
   | "insight_target.created" | "insight_target.reclassified" | "insight_target.do_not_contact_set"
-  | "insight_scan.queued" | "insight_scan.aborted";
+  | "insight_scan.queued" | "insight_scan.aborted"
+  | "insight_fix.proposed" | "insight_fix.decided"
+  | "insight_outreach.drafted" | "insight_outreach.approved" | "insight_outreach.sent_recorded" | "insight_outreach.outcome_recorded"
+  | "insight_handoff.created";
 
 export async function recordAudit(admin: SupabaseClient, event: {
   workspaceId: string | null;
@@ -103,4 +106,11 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   "insight_target.do_not_contact_set": "marked an insight target do not contact",
   "insight_scan.queued": "queued an insight scan for the browser worker",
   "insight_scan.aborted": "aborted an insight scan",
+  "insight_fix.proposed": "asked for a fix suggestion on a failed insight reply",
+  "insight_fix.decided": "accepted or rejected an insight fix suggestion",
+  "insight_outreach.drafted": "drafted an outreach note from an insight scan",
+  "insight_outreach.approved": "approved an outreach note to be sent by hand",
+  "insight_outreach.sent_recorded": "recorded that an outreach note was sent",
+  "insight_outreach.outcome_recorded": "recorded what came of an outreach note",
+  "insight_handoff.created": "linked an insight target to an owner-authorised agent",
 };

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { requireStaff } from "@/lib/auth/staff.ts";
 import { requireWorkspace } from "@/lib/auth/session.ts";
+import { can } from "@/lib/auth/permissions.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { PageHeader, Panel } from "@/components/ui/page.tsx";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
@@ -13,10 +13,10 @@ import { CATEGORY_TONE } from "./tone.ts";
 export const metadata: Metadata = { title: "Insight scans · Novera", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
-/** Public demo bots recorded in this workspace, and their latest scan. Staff only. */
+/** Public demo bots recorded in this workspace, and their latest scan. Every member reads; owners, admins and operators act. */
 export default async function InsightPage() {
-  await requireStaff();
-  const { workspace } = await requireWorkspace();
+  const { workspace, role } = await requireWorkspace();
+  const mayManage = can(role, "insight.manage");
   const db = await sessionClient();
   const { data: targets } = await db.from("insight_targets")
     .select("id, name, demo_url, category, do_not_contact, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(200);
@@ -33,14 +33,14 @@ export default async function InsightPage() {
   return (
     <main className="w-full py-8 text-ink">
       <PageHeader
-        eyebrow="Staff"
+        eyebrow="Public demo scans"
         title="Insight scans"
         description="Public demo bots, classified from what they can reach. Only a category A target is scanned, by Novera's browser worker, and a scan is never a run or a report."
-        action={<ButtonLink href="/insight/new">Add a public demo bot</ButtonLink>}
+        action={mayManage ? <ButtonLink href="/insight/new">Add a public demo bot</ButtonLink> : undefined}
       />
       {rows.length === 0 ? (
         <div className="mt-6">
-          <EmptyState title="No targets yet" action={<ButtonLink href="/insight/new" variant="secondary">Add a public demo bot</ButtonLink>}>
+          <EmptyState title="No targets yet" action={mayManage ? <ButtonLink href="/insight/new" variant="secondary">Add a public demo bot</ButtonLink> : undefined}>
             Add a company&rsquo;s public demo chatbot to see how it is classified, then scan it.
           </EmptyState>
         </div>

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireStaff } from "@/lib/auth/staff.ts";
 import { requireWorkspace } from "@/lib/auth/session.ts";
+import { can } from "@/lib/auth/permissions.ts";
+import { CONFIDENCE_WORDS, WHERE_TO_APPLY } from "@/lib/insight/fixes.ts";
 import { sessionClient } from "@/lib/supabase/server.ts";
 import { Disclosure, HealthLine, Metrics, PageHeader, Panel, Section, TabNav } from "@/components/ui/page.tsx";
 import { Badge } from "@/components/ui/primitives.tsx";
@@ -12,30 +13,44 @@ import { INDEPENDENCE_LABEL, independenceOf } from "@/lib/judge/independence.ts"
 import type { InsightObservationRow, InsightScanRow, InsightTargetRow } from "@/lib/insight/types.ts";
 import { CopySummary } from "../../../runs/[id]/copy-summary.tsx";
 import { AbortScanForm, LiveScan } from "../../forms.tsx";
+import { DecideFixForm, ProposeFixForm } from "../../followup-forms.tsx";
+
+interface FixRow {
+  id: string; observation_id: string; scenario_id: string; finding: string; evidence_quotes: string[]; root_cause: string;
+  confidence: keyof typeof CONFIDENCE_WORDS; proposed_change: string; where_to_apply: keyof typeof WHERE_TO_APPLY;
+  validation_plan: string; risks: string; does_not_prove: string; model: string; status: "proposed" | "accepted" | "rejected";
+  decision_reason: string | null; decided_at: string | null; created_at: string;
+}
 
 export const metadata: Metadata = { title: "Insight scan · Novera", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
-const TABS = ["progress", "card"] as const;
+const TABS = ["progress", "card", "fixes"] as const;
 
 function verdictTone(o: InsightObservationRow): "pass" | "fail" | "error" {
   return o.status === "pass" ? "pass" : o.status === "fail" ? "fail" : "error";
 }
 
 export default async function InsightScanPage({ params, searchParams }: { params: Promise<{ scanId: string }>; searchParams: Promise<{ tab?: string }> }) {
-  await requireStaff();
+  const { workspace, role } = await requireWorkspace();
   const { scanId } = await params;
   const requested = (await searchParams).tab ?? "";
   const tab = (TABS as readonly string[]).includes(requested) ? (requested as (typeof TABS)[number]) : "progress";
-  const { workspace } = await requireWorkspace();
+  const mayManage = can(role, "insight.manage");
   const db = await sessionClient();
   const { data: scanRow } = await db.from("insight_scans").select("*").eq("id", scanId).maybeSingle();
   if (!scanRow || scanRow.workspace_id !== workspace.id) notFound();
   const scan = scanRow as InsightScanRow;
-  const [{ data: targetRow }, { data: obsRows }] = await Promise.all([
+  const [{ data: targetRow }, { data: obsRows }, { data: fixRows }] = await Promise.all([
     db.from("insight_targets").select("*").eq("id", scan.target_id).maybeSingle(),
     db.from("insight_observations").select("*").eq("scan_id", scanId).order("created_at"),
+    db.from("insight_fix_suggestions").select("*").eq("scan_id", scanId).order("created_at", { ascending: false }),
   ]);
+  const fixes = (fixRows ?? []) as FixRow[];
+  const titleOf = (id: string) => {
+    const category = suite?.cases.find((c) => c.id === id)?.category;
+    return category && CATEGORY_TITLE[category] ? `${id} · ${CATEGORY_TITLE[category]}` : id;
+  };
   if (!targetRow) notFound();
   const target = targetRow as InsightTargetRow;
   const observations = (obsRows ?? []) as InsightObservationRow[];
@@ -59,6 +74,7 @@ export default async function InsightScanPage({ params, searchParams }: { params
       <TabNav label="Scan sections" current={tab} tabs={[
         { key: "progress", label: "Progress", href: `/insight/scan/${scanId}` },
         { key: "card", label: "Insight card", href: `/insight/scan/${scanId}?tab=card` },
+        { key: "fixes", label: "Fixes", href: `/insight/scan/${scanId}?tab=fixes`, count: fixes.length },
       ]} />
 
       {tab === "progress" && (
@@ -140,7 +156,7 @@ export default async function InsightScanPage({ params, searchParams }: { params
             </dl>
           </Section>
 
-          {active && (
+          {active && mayManage && (
             <Section title="Abort">
               <Panel className="max-w-xl p-5"><AbortScanForm scanId={scan.id} /></Panel>
             </Section>
@@ -191,6 +207,49 @@ export default async function InsightScanPage({ params, searchParams }: { params
               </p>
             </>
           )}
+        </div>
+      )}
+      {tab === "fixes" && (
+        <div className="mt-6 space-y-6">
+          <p className="measure text-sm text-ink-soft">
+            For each reply that failed, a model can suggest one change for the bot&rsquo;s owner to try. It sees only the reply, so the cause it names is a hypothesis;
+            every quote is checked against the stored reply word for word before the suggestion is kept, and a person accepts or rejects it.
+          </p>
+          {observations.filter((o) => o.status === "fail").length === 0 ? (
+            <p className="text-sm text-ink-soft">{scan.status === "graded" ? "No reply failed, so there is nothing to fix." : "Suggestions are offered once a reply has failed."}</p>
+          ) : observations.filter((o) => o.status === "fail").map((o) => {
+            const forThis = fixes.filter((f) => f.observation_id === o.id);
+            const open = forThis.some((f) => f.status === "proposed");
+            return (
+              <Section key={o.id} title={titleOf(o.scenario_id)}>
+                {forThis.map((f) => (
+                  <Panel key={f.id} className="mb-3 p-5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={f.status === "accepted" ? "pass" : f.status === "rejected" ? "neutral" : "live"}>{f.status === "proposed" ? "Waiting for a decision" : f.status === "accepted" ? "Accepted" : "Rejected"}</Badge>
+                      <Badge tone="neutral">{CONFIDENCE_WORDS[f.confidence]}</Badge>
+                      <span className="text-xs text-ink-faint">{f.model} · {f.created_at.slice(0, 10)}</span>
+                    </div>
+                    <dl className="mt-3 space-y-2 text-sm">
+                      <div><dt className="type-pill text-ink-faint">Finding</dt><dd className="text-ink">{f.finding}</dd></div>
+                      {f.evidence_quotes.length > 0 && (
+                        <div><dt className="type-pill text-ink-faint">From the reply, word for word</dt>
+                          <dd><ul className="mt-1 space-y-1">{f.evidence_quotes.map((q) => <li key={q} className="border-l-2 border-line pl-2 text-ink-soft [overflow-wrap:anywhere]">{q}</li>)}</ul></dd></div>
+                      )}
+                      <div><dt className="type-pill text-ink-faint">Possible cause</dt><dd className="text-ink">{f.root_cause}</dd></div>
+                      <div><dt className="type-pill text-ink-faint">Change to try · {WHERE_TO_APPLY[f.where_to_apply]}</dt><dd className="whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">{f.proposed_change}</dd></div>
+                      <div><dt className="type-pill text-ink-faint">How to check it worked</dt><dd className="text-ink">{f.validation_plan}</dd></div>
+                      <div><dt className="type-pill text-ink-faint">Risks</dt><dd className="text-ink">{f.risks}</dd></div>
+                    </dl>
+                    <p className="mt-3 text-xs text-ink-faint">{f.does_not_prove}</p>
+                    {f.decision_reason && <p className="mt-2 text-xs text-ink-soft">Reason: {f.decision_reason}</p>}
+                    <div className="mt-3"><CopySummary text={[`${o.scenario_id}: ${f.finding}`, `Possible cause (${CONFIDENCE_WORDS[f.confidence].toLowerCase()}): ${f.root_cause}`, `Change to try (${WHERE_TO_APPLY[f.where_to_apply]}): ${f.proposed_change}`, `How to check it worked: ${f.validation_plan}`, `Risks: ${f.risks}`, f.does_not_prove].join("\n\n")} name="Suggestion" /></div>
+                    {mayManage && f.status === "proposed" && <div className="mt-4"><DecideFixForm suggestionId={f.id} /></div>}
+                  </Panel>
+                ))}
+                {mayManage && !open && <ProposeFixForm observationId={o.id} />}
+              </Section>
+            );
+          })}
         </div>
       )}
     </main>

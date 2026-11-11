@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireStaff } from "@/lib/auth/staff.ts";
 import { requireWorkspace, gate } from "@/lib/auth/session.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { assertPublicUrl, PrivateAddressError } from "@/lib/net/public-url.ts";
@@ -11,9 +10,9 @@ import { scanRefusal } from "@/lib/insight/gates.ts";
 import { INSIGHT_SUITE, INSIGHT_SUITE_DIGEST } from "@/lib/insight/suite.ts";
 
 /**
- * The operator's actions on public-demo insight scans (0082). Staff only while counsel has the
- * question (docs/LEGAL-COUNSEL-QUESTIONS.md), and checked against the live role
- * (`insight.manage`) so the rows stay workspace-scoped and opening it later is one line. Every
+ * The operator's actions on public-demo insight scans (0082). Open to every workspace member whose
+ * live role holds `insight.manage` (owner, admin, operator) since counsel approved the Category A
+ * posture on 2026-11-11 (docs/LEGAL-COUNSEL-QUESTIONS.md); the category rules are unchanged. Every
  * rule that matters is also held by the database or the claim function; these refuse first, in
  * words. Each change is an audit line.
  */
@@ -28,7 +27,6 @@ const text = (form: FormData, key: string, max: number) => String(form.get(key) 
 const factsFrom = (form: FormData) => parseFacts(Object.fromEntries(FACT_KEYS.map((k) => [k, form.get(k)])));
 
 async function context() {
-  await requireStaff();
   const { user, workspace, role } = await requireWorkspace();
   const gated = await gate(user.id, workspace.id, "insight.manage");
   return { user, workspace, role, gated };
@@ -148,6 +146,7 @@ export async function queueInsightScan(_prev: InsightFormState, form: FormData):
   }).select("id").single();
   if (error) {
     if (error.code === "23505") return { error: "A scan of this target is already queued or running. One session at a time." };
+    if (error.code === "54000") return { error: "This workspace has queued 10 scans in the last 24 hours, the most allowed. Queue this one tomorrow." };
     return { error: `The scan could not be queued: ${error.message}` };
   }
   await recordAudit(gated.admin, { workspaceId: workspace.id, actorId: user.id, action: "insight_scan.queued", detail: { scan_id: data.id, target_id: targetId } });

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { requireStaff } from "@/lib/auth/staff.ts";
+import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth/session.ts";
+import { can } from "@/lib/auth/permissions.ts";
 import { PageHeader, Panel } from "@/components/ui/page.tsx";
 import { TargetForm } from "../forms.tsx";
 
@@ -8,8 +9,9 @@ export const metadata: Metadata = { title: "Add a public demo bot · Novera", ro
 export const dynamic = "force-dynamic";
 
 export default async function NewInsightTargetPage() {
-  await requireStaff();
-  await requireWorkspace();
+  const { role } = await requireWorkspace();
+  // Recording a target is acting; a reviewer or auditor reads the list instead.
+  if (!can(role, "insight.manage")) redirect("/insight");
   return (
     <main className="w-full py-8 text-ink">
       <PageHeader

@@ -226,7 +226,9 @@ test("only staff may open /readiness, and nothing invites a crawler to it", () =
   assert.equal(firstStatement, "await requireStaff();", "the staff check comes before anything is computed");
   assert.match(page, /robots: \{ index: false, follow: false \}/);
   assert.match(read("src/lib/auth/staff.ts"), /if \(!isStaff\(user\.email\)\) redirect\("\/dashboard"\)/);
-  assert.match(read("src/components/shell/top-bar.tsx"), /const staff: NavItem\[\] = isStaff\(user\.email\) \? \[\{ href: "\/inbox", label: "Inbox" \}, \{ href: "\/readiness", label: "Readiness" \}, \{ href: "\/insight", label: "Insight" \}\] : \[\];/);
+  assert.match(read("src/components/shell/top-bar.tsx"), /const staff: NavItem\[\] = isStaff\(user\.email\) \? \[\{ href: "\/inbox", label: "Inbox" \}, \{ href: "\/readiness", label: "Readiness" \}\] : \[\];/);
+  // Public demo scans left the staff menu on 2026-11-11: offered to every role holding insight.manage.
+  assert.match(read("src/components/shell/top-bar.tsx"), /can\(role, "insight\.manage"\) && <Link href="\/insight"/);
 
   const rule = robots().rules;
   const disallow = ([] as string[]).concat((Array.isArray(rule) ? rule[0] : rule).disallow ?? []);

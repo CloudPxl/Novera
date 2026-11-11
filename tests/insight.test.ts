@@ -224,17 +224,19 @@ test("insight code, tests and fixtures name only fictional hosts", () => {
 
 // ---------------------------------------------------------------- the operator pages
 
-test("every insight page checks staff before anything else, is never indexed, and every action checks staff and the role", () => {
+// Staff-only until 2026-11-11; since then open to the roles holding insight.manage (counsel's
+// approval as David reported it). Every page still reads the workspace first and is never indexed.
+test("every insight page reads the workspace before anything else, is never indexed, and every action checks the role", () => {
   for (const file of ["src/app/(app)/insight/page.tsx", "src/app/(app)/insight/new/page.tsx", "src/app/(app)/insight/[targetId]/page.tsx", "src/app/(app)/insight/scan/[scanId]/page.tsx"]) {
     const page = readFileSync(file, "utf8");
     const body = page.slice(page.indexOf("export default async function"));
     const firstStatement = body.slice(body.indexOf("{\n") + 2).trim().split("\n")[0];
-    assert.equal(firstStatement, "await requireStaff();", `${file}: the staff check comes first`);
+    assert.match(firstStatement, /^const \{ [^}]+ \} = await requireWorkspace\(\);$/, `${file}: the workspace and role are read first`);
     assert.match(page, /robots: \{ index: false, follow: false \}/, file);
   }
   const actions = readFileSync("src/lib/workflow/insight.ts", "utf8");
   assert.match(actions, /^"use server";/);
-  assert.match(actions, /async function context\(\) \{\n\s+await requireStaff\(\);[\s\S]*?gate\(user\.id, workspace\.id, "insight\.manage"\)/);
+  assert.match(actions, /async function context\(\) \{\n\s+const \{ user, workspace, role \} = await requireWorkspace\(\);\n\s+const gated = await gate\(user\.id, workspace\.id, "insight\.manage"\)/);
   for (const name of ["createInsightTarget", "reclassifyInsightTarget", "markInsightDoNotContact", "queueInsightScan", "abortInsightScan"]) {
     const at = actions.indexOf(`export async function ${name}(`);
     assert.ok(at >= 0, name);

@@ -1,11 +1,13 @@
 # Public-demo insight scans
 
-Staff-only. Novera's browser worker chats with a company's **public** demo chatbot — six fixed
-questions, paced, declared as `NoveraInsightBot` — and Novera grades each reply with its AI graders
-and computes a short insight card. It is a prospecting tool: the card can open a conversation that
-leads to an owner-authorised evaluation, which is the product. Plan and reasoning:
-`docs/DECISIONS.md` (2026-11-10, 2026-11-11). Whether this is lawful for third parties is with
-counsel (`docs/LEGAL-COUNSEL-QUESTIONS.md`, "Public-demo insight scans").
+Open to every workspace role holding `insight.manage` (owner, admin, operator) since 2026-11-11,
+when David reported counsel's approval of the Category A posture (`docs/LEGAL-COUNSEL-QUESTIONS.md`,
+"Public-demo insight scans"); reviewers and auditors read. Novera's browser worker chats with a
+company's **public** demo chatbot — six fixed questions, paced, declared as `NoveraInsightBot` — and
+Novera grades each reply with its AI graders and computes a short insight card. It is a prospecting
+tool: the card can open a conversation that leads to an owner-authorised evaluation, which is the
+product. Plan and reasoning: `docs/DECISIONS.md` (2026-11-10, 2026-11-11). The customer guide is
+`data/docs/public-demo-scans.md` (`/docs/public-demo-scans`).
 
 ## What a scan is, and what it is not
 
@@ -37,6 +39,29 @@ counsel (`docs/LEGAL-COUNSEL-QUESTIONS.md`, "Public-demo insight scans").
    append-only. No reply, or a reply cut off, is an error row — never a verdict.
 6. When every scenario has an observation the scan is `graded`; the card is computed from the rows
    every time it is read (`src/lib/insight/card.ts`).
+
+7. A reply whose grading stopped only for Novera's capacity is not recorded yet: the server answers
+   503 with the grading so far, sealed (`src/lib/insight/grading-state.ts`), and the worker posts
+   the same reply again after 20 s — never the prompt. At most three gradings, then it is recorded
+   as it stands.
+
+## After a graded scan (0085)
+
+- **Fixes** (scan page): a model suggests one change per failed reply on the `diagnose` route
+  (`model_operations.operation = insight_fix`); code refuses it unless every quote is verbatim in the
+  stored reply, the confidence is hypothesis or likely, a validation plan and risks are written and
+  the language rule holds; the fixed "does not prove" sentence is the code's and the database's. A
+  person accepts or rejects it, once.
+- **Outreach** (target page): a draft from template v1 (`src/lib/insight/outreach.ts`) and the card,
+  never a model's text, never more than 40 characters of a reply; disclosure (non-affiliation, the
+  bot's name, robots.txt) and opt-out lines required by the database. Draft → approved → sent
+  (recorded) → outcome, forward only. Novera never sends it; no recipient address is stored. Do not
+  contact refuses every draft and every approval or send record, and an "opted out" outcome sets it.
+- **Handoff** (target page): link an agent connected in Agents with the owner's authorisation
+  attested; its runs are ordinary runs. The only way a B or C bot is tested.
+- **Since the scan before** (target overview): the last two graded scans compared scenario by
+  scenario (`src/lib/insight/compare.ts`); no result on either side moves nothing.
+- At most 10 scans queued per workspace in 24 hours, counted in Postgres under a lock (0085).
 
 Ends without a grade, each with its own kind: `robots_disallowed`, `address_refused`,
 `target_refused`, `page_load_failed`, `redirected_offsite`, `blocked_challenge`, `widget_not_found`,

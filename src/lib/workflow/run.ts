@@ -97,6 +97,11 @@ export async function publishReport(args: {
   expiresInDays?: number;
   /** The run's date as the report states it; today when absent. A report sealed late names the day the run finished. */
   runDate?: string;
+  /**
+   * Set only for a completion run (0083): the report it completes, that report's run and date, the
+   * scenarios re-executed, and the runs whose stored rows it carries. `summary` is then the merged one.
+   */
+  completion?: { of: string; ofRunId: string; ofDate: string; scenarioIds: string[]; carriedFrom: string[] };
 }): Promise<PublishedReport> {
   return storeReport(args, await prepareReport(args));
 }
@@ -161,6 +166,7 @@ export async function prepareReport(args: Omit<ReportArgs, "expiresInDays">): Pr
     byObligation: summary.byObligation,
     baseline: args.baseline,
     stability,
+    ...(args.completion ? { completion: { ...args.completion, completedOn: args.runDate ?? new Date().toISOString().slice(0, 10) } } : {}),
     // Checked verbatim against the payload before anything is stored.
     privateMaterial: [args.policyBody],
   });

@@ -92,6 +92,7 @@ export const MIGRATION_PROBES: ReadonlyArray<{ migration: string; table: string;
   { migration: "0078", table: "allowance_spent_by_erased_runs", column: null },
   { migration: "0079", table: "model_spend", column: null },
   { migration: "0082", table: "insight_scans", column: null },
+  { migration: "0083", table: "runs", column: "completes_run_id" },
 ];
 
 /**

@@ -252,6 +252,22 @@ export interface ReportPayload {
    * every reader renders nothing for it then, not an empty matrix.
    */
   requirements?: ReportRequirements;
+  /**
+   * Format 17 (0083), and only on a completion: this report re-executed the named scenarios of an
+   * earlier sealed report, which produced no result there, and carries every other verdict from the
+   * stored rows of the runs listed in `carried_from`. `of` is that report's digest; it is unchanged
+   * and keeps verifying. Every count, grade and coverage figure above is computed from the combined
+   * stored rows. Absent on every other report; every reader renders nothing for it then.
+   */
+  completion?: {
+    of: string;
+    of_run: string;
+    of_date: string;
+    scenario_ids: string[];
+    completed_on: string;
+    carried_from: string[];
+    note: string;
+  };
   limitations: string;
 }
 

@@ -6,6 +6,7 @@ import { scoreWithheldAs, obligationLabel, type ReportPayload } from "@/lib/repo
 import { findingLead, gradedByLine } from "@/lib/report/graders.ts";
 import { categoryMeta } from "@/lib/evidence/categories.ts";
 import { loadReportByToken } from "@/lib/report/access.ts";
+import { completedBy } from "@/lib/report/completed-by.ts";
 import { uncorroboratedPasses, uncorroboratedSentence } from "@/lib/report/ci.ts";
 import { ReportToolbar } from "./toolbar.tsx";
 import { track } from "@/lib/analytics/track.ts";
@@ -73,6 +74,8 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
 
   const { payload, content_hash, expires_at, created_at } = result;
   const badgeShare = badgeShareFor({ payload, content_hash, created_at: created_at ?? null, revoked_at: result.revoked_at });
+  // Outside the sealed content: later reports that complete this one (0083), by digest only.
+  const completions = await completedBy(content_hash);
   const { subject, run, coverage, obligations, findings, comparison } = payload;
   // Format 13 on: passes that rest on one model. The letter stays as sealed; beside it the page
   // says what the release gate says, and the box is not drawn as a clean pass (final audit D-1,
@@ -629,6 +632,10 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             <span className="break-all font-mono text-xs text-ink-soft">{payload.reissue.of}</span>.
           </p>
         )}
+        {/* Format 17, and only on a completion (0083). Nothing is rendered for any other report. */}
+        {payload.completion && (
+          <p className="mt-4 leading-relaxed [overflow-wrap:anywhere]">{payload.completion.note}</p>
+        )}
         {run.previous_report_hash && (
           <p className="mt-4 leading-relaxed">
             This report follows an earlier one for the same agent, whose digest was{" "}
@@ -639,6 +646,15 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         <p className="mt-3">
           Access to this link expires on {new Date(expires_at).toISOString().slice(0, 10)}.
         </p>
+        {completions.length > 0 && (
+          <p className="mt-3 [overflow-wrap:anywhere]">
+            A later report completes this one: scenarios that produced no result here were re-executed. This report is
+            unchanged. Its completion&rsquo;s digest:{" "}
+            {completions.map((h, i) => (
+              <span key={h}>{i > 0 && ", "}<a href={`/verify/${h}`} className="break-all font-mono text-xs underline underline-offset-2">{h}</a></span>
+            ))}.
+          </p>
+        )}
       </footer>
       <PrintSealLine
         className="mt-8 border-t"

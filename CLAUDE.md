@@ -108,6 +108,7 @@ someone with the service role, not merely someone using the application.
 | The in-app assistant can link only to this workspace's own paths and offer only a run the person presses; it never attests, never sees keys or policy text, and refuses key-shaped input before any model call | `src/lib/assistant/core.ts`, tested |
 | A report from a suite with a requirements sidecar carries, sealed, the requirement each scenario observes by source layer (binding legislation, Commission guidance, voluntary code, customer policy, Novera scenario), each scenario's observed outcome from the stored rows, a group status worded as observation (present / deficient / inconclusive — an uncorroborated pass or a missing verdict is never "present"), what the suite does not evaluate and why, and a boundary statement that it is not a determination that any obligation is met; a run whose scenarios differ from the mapping's gets no matrix | `src/lib/suites/sources.ts`, `src/lib/report/requirements-build.ts`, format 16, `tests/a50-requirements.test.ts` |
 | A review reaches a client only as a *new* sealed report that carries the original unchanged, names it by hash, and labels the reviewers as the tested party — never as a changed score | `src/lib/report/reissue.ts`, format 11 |
+| A no result is resolved beside a run, never inside it: a retest is a single-scenario check (B1), and a completion run (0083) re-executes only declared no-result scenarios a retest cannot harm, through `startRun`, under the same agent connection, policy version, suite, language and grading funding; its report (format 17, completions only) carries every other verdict from the stored rows of the runs it completes, recomputes every figure from the combined rows, names the completed report by digest and states which scenarios ran later and when; the completed report stays sealed and its page says a later report completes it; at most three completions deep, one in progress | 0083, `src/lib/evidence/completion.ts`, `src/lib/workflow/completion.ts`, `tests/completion.test.ts` |
 
 **A verdict is the finding of two models from different vendors.** A single judge drifted
 on 25% of scenarios re-grading byte-identical responses, which the comparison reported to
@@ -285,7 +286,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 1549 unit tests | free |
+| `npm test` | 1563 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -342,7 +343,7 @@ they drive the scripted fixture at `/api/test-agent`.
 
 - **A report payload change breaks every document already in a client's hands.** An added
   field ships with its absence branch in the same commit. Two reports were returning 500
-  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 16); `novera report verify` re-hashes all of them.
+  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 16, a completion 17); `novera report verify` re-hashes all of them.
 - **A model's rendering of our data is not our data.** The judge echoed assertions back
   with the numbering the prompt added; storing that verbatim made every failed case render
   as fully passing.

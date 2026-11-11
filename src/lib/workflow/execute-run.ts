@@ -16,6 +16,7 @@ import { declaredLocalisation } from "./localised-run.ts";
 import { readBackNotFoundMeans, rubricHash } from "../report/manifest.ts";
 import { LeakError } from "../report/redact.ts";
 import { serviceClient } from "../supabase/service.ts";
+import { completionOf, mergeChainRows, MAX_COMPLETIONS, type ChainLink } from "../evidence/completion.ts";
 
 /**
  * What the run names as its funding, as its report states it (0067): a grant to the workspace, a
@@ -65,9 +66,29 @@ async function loadRunContext(client: SupabaseClient, workspaceId: string, runId
   // it stops here rather than send a different test under a declared digest.
   const localisation = declaredLocalisation(run.manifest, stored.cases);
   if (!localisation.ok) throw new Error(localisation.error);
-  const suite: Suite = { ...stored, cases: localisation.cases };
+  const fullSuite: Suite = { ...stored, cases: localisation.cases };
+  // A run executes exactly the scenarios its manifest declared (0043 and 0048 refuse any other). For
+  // every run but a completion (0083) that is the whole suite; a run with no manifest predates them.
+  const declaredIds = (run.manifest as { suite?: { case_ids?: unknown } } | null)?.suite?.case_ids;
+  const suite: Suite = Array.isArray(declaredIds)
+    ? { ...fullSuite, cases: fullSuite.cases.filter((c) => (declaredIds as unknown[]).includes(c.id)) }
+    : fullSuite;
   const workspace = workspaceRow.data as { name: string };
-  return { run, agent, policy, suite, workspace, exploratory: stored.approval === "exploratory" };
+  return { run, agent, policy, suite, fullSuite, workspace, exploratory: stored.approval === "exploratory" };
+}
+
+/** The runs a completion's report draws on, newest first, ending with the original (0083). */
+async function evidenceChain(client: SupabaseClient, workspaceId: string, runId: string, manifest: unknown): Promise<ChainLink[]> {
+  const chain: ChainLink[] = [{ runId, declared: completionOf(manifest)?.scenario_ids ?? null }];
+  let next = completionOf(manifest);
+  while (next && chain.length <= MAX_COMPLETIONS + 1) {
+    const { data } = await client.from("runs").select("id, manifest").eq("id", next.run_id).eq("workspace_id", workspaceId).maybeSingle();
+    if (!data) throw new Error("A run this completion draws on could not be read, so its report is not sealed.");
+    const c = completionOf(data.manifest);
+    chain.push({ runId: data.id as string, declared: c?.scenario_ids ?? null });
+    next = c;
+  }
+  return chain;
 }
 
 type RunContext = Awaited<ReturnType<typeof loadRunContext>>;
@@ -108,8 +129,27 @@ async function reportFor(client: SupabaseClient, workspaceId: string, ctx: RunCo
   const endedAt = run.finished_at ? new Date(run.finished_at as string).getTime() : Date.now();
   const durationMs = startedAt === null ? null : endedAt - startedAt;
 
+  // A completion's report covers the whole suite: this run's rows for what it re-executed, and the
+  // stored rows of the runs it completes for everything else, every figure recomputed from them.
+  const completes = completionOf(run.manifest);
+  let summary = whole;
+  let completion: ReportArgs["completion"];
+  if (completes) {
+    const chain = await evidenceChain(client, workspaceId, run.id as string, run.manifest);
+    summary = await summaryFromStoredRows({ client, runId: run.id as string, suite: ctx.fullSuite, status: whole.status, error: whole.error, chain });
+    const { data: completed } = await client.from("reports").select("payload").eq("content_hash", completes.report_hash).eq("workspace_id", workspaceId).limit(1).maybeSingle();
+    completion = {
+      of: completes.report_hash,
+      ofRunId: completes.run_id,
+      ofDate: String((completed?.payload as { run?: { date?: unknown } } | null)?.run?.date ?? ""),
+      scenarioIds: completes.scenario_ids,
+      carriedFrom: chain.slice(1).map((l) => l.runId),
+    };
+  }
+
   return prepareReport({
-    client, workspaceId, runId: run.id as string, summary: whole,
+    client, workspaceId, runId: run.id as string, summary,
+    completion,
     passThreshold: (run.pass_threshold as number | null) ?? 80,
     durationMs,
     clientName: workspace.name,
@@ -365,14 +405,19 @@ export async function summaryFromStoredRows(args: {
   suite: Suite;
   status: RunSummary["status"];
   error?: string;
+  /**
+   * A completion's evidence chain (0083), newest first, ending with the original: each scenario's
+   * row is taken from the newest run that declared it. Omitted for every other run.
+   */
+  chain?: ChainLink[];
 }): Promise<RunSummary> {
-  const { client, runId, suite, status, error } = args;
+  const { client, runId, suite, status, error, chain } = args;
 
-  const { data: rows } = await client
-    .from("run_cases")
-    .select("id, case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, failed_assertions, evidence_gap, settled_by, error, transcript")
-    .eq("run_id", runId)
-    .order("case_id");
+  const columns = "id, run_id, case_id, category, obligation, severity, input, expected, assertions, response_text, tool_activity, status, rationale, latency_ms, usage, judge_model, judge_attempts, judge_votes, judge_agreement, failed_assertions, evidence_gap, settled_by, error, transcript";
+  const { data: stored } = chain
+    ? await client.from("run_cases").select(columns).in("run_id", chain.map((l) => l.runId)).order("case_id")
+    : await client.from("run_cases").select(columns).eq("run_id", runId).order("case_id");
+  const rows = chain ? mergeChainRows(chain, (stored ?? []) as Array<{ run_id: string; case_id: string } & Record<string, unknown>>) : stored;
 
   // Observations live in their own table, so a summary rebuilt from stored evidence
   // has to go and get them. Without this a report regenerated later would forget that
@@ -398,7 +443,8 @@ export async function summaryFromStoredRows(args: {
   }
 
   const cases: RunCaseRecord[] = (rows ?? []).map((r) => ({
-    runId,
+    // The run whose stored row this is: another run of the chain for a scenario a completion carried.
+    runId: (r.run_id as string | undefined) ?? runId,
     caseId: r.case_id as string,
     category: r.category as string,
     obligation: r.obligation as string,

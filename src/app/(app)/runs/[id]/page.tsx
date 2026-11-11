@@ -54,6 +54,7 @@ import { NOVERA_ATTRIBUTION, SEAL_ATTRIBUTION, sealContents } from "@/lib/report
 import { DiagnoseButton, ProposalCard, RetestHistory, type Proposal, type Retest } from "./diagnose.tsx";
 import { ResolveNoResults } from "./resolve.tsx";
 import { resolvePlan } from "@/lib/evidence/resolve.ts";
+import { completionOf } from "@/lib/evidence/completion.ts";
 import { TryScenarioAlone } from "@/components/ui/try-scenario-alone.tsx";
 import { clientSummary } from "@/lib/report/client-summary.ts";
 import { CANONICAL_HOST } from "@/lib/net/canonical-host.ts";
@@ -143,7 +144,12 @@ export default async function RunPage({
   const exploratory = suite?.approval === "exploratory";
   const scanBuild = exploratory ? ((suite?.provenance as { build_id?: string } | null)?.build_id ?? null) : null;
   const suiteCases = Array.isArray(suite?.cases) ? (suite.cases as Array<Record<string, unknown>>) : [];
-  const plannedCases = suiteCases.length;
+  // What this run declared it would execute: the whole suite, except on a completion (0083), which
+  // declares only the scenarios it re-executes. Counted from the manifest so its page is not read
+  // as a suite with most scenarios missing.
+  const completes = completionOf(run.manifest);
+  const declaredIds = (run.manifest as { suite?: { case_ids?: unknown } } | null)?.suite?.case_ids;
+  const plannedCases = completes && Array.isArray(declaredIds) ? declaredIds.length : suiteCases.length;
   const settled = run.status === "completed" || run.status === "aborted";
 
   // A run in flight: its newest recorded scenario, which with its own timestamps says whether it
@@ -650,6 +656,18 @@ export default async function RunPage({
         </div>
       )}
 
+      {completes && (
+        <div role="note" className="mt-4 rounded-panel border border-info-border bg-info-surface px-4 py-3 text-info-text">
+          <p className="font-semibold">Completion of an earlier run</p>
+          <p className="mt-1 text-sm">
+            This run re-executes {completes.scenario_ids.length === 1 ? "scenario" : "scenarios"} {completes.scenario_ids.join(", ")}, which
+            produced no result in <Link href={`/runs/${completes.run_id}`} className="font-medium underline underline-offset-2">that run</Link>.
+            Its report carries every other verdict from that run&rsquo;s stored evidence and computes the counts from both; the earlier
+            report stays sealed and unchanged.
+          </p>
+        </div>
+      )}
+
       {/* What the manifest declared about the suite's composition and language, when either
           differs from an official suite sent in English. */}
       {(composition.extension || composition.locale) && (
@@ -764,7 +782,15 @@ export default async function RunPage({
           )}
 
           {/* One button for the gaps: retest what is safe to retest, name the fix for the rest. */}
-          {offerResolve && <ResolveNoResults runId={run.id as string} plan={resolve} mayRetest={can(role, "case.retest")} />}
+          {offerResolve && (
+            <ResolveNoResults
+              runId={run.id as string}
+              plan={resolve}
+              mayRetest={can(role, "case.retest")}
+              // A completion needs a sealed, unwithdrawn report to extend, and a role that starts runs.
+              mayComplete={mayRerun && Boolean(report?.content_hash) && !report?.revoked_at}
+            />
+          )}
 
           {/* The 60-second guide, read from this run's rows (src/lib/explainability/report-guide.ts). */}
           <ReportGuideBox

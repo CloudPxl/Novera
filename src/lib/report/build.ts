@@ -10,6 +10,7 @@ import { redact } from "../redact/pii.ts";
 import type { ReportPayload } from "./payload.ts";
 import { noVerdictRow, repairFor, type Repair } from "../evidence/repair.ts";
 import { buildRequirements } from "./requirements-build.ts";
+import { COMPLETION_LIMITATION, completionNote } from "../evidence/completion.ts";
 
 /**
  * Why a scenario has no result, from the same classifier the run page uses, so a report
@@ -70,6 +71,11 @@ export interface ReportInput {
    * runs up to this one. Omitted when nobody looked, which is different from empty.
    */
   stability?: Map<string, CaseStability>;
+  /**
+   * Set only on a completion run's report (0083): `cases`, `coverage` and the breakdowns are then
+   * the merged ones, and the payload is format 17 with a `completion` block. Absent otherwise.
+   */
+  completion?: { of: string; ofRunId: string; ofDate: string; scenarioIds: string[]; carriedFrom: string[]; completedOn: string };
   /** Verbatim strings that must not appear in the output (policy body, system prompt). */
   privateMaterial?: string[];
   /** Declared before the run and frozen on the row; null for runs that predate it. */
@@ -337,8 +343,9 @@ export function buildReport(input: ReportInput): BuiltReport {
     // 15 says which official suite an extension carried and in which language scenarios were
     // sent; 16 carries the requirements matrix, on a suite with a sources sidecar only. Reports
     // sealed as any earlier format are still rendered from their own payload and must keep
-    // verifying — every reader of this payload branches on absence.
-    novera: { format: 16 },
+    // verifying — every reader of this payload branches on absence. 17 is a completion
+    // (0083), and only a completion: every other report stays 16.
+    novera: { format: input.completion ? 17 : 16 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -440,8 +447,25 @@ export function buildReport(input: ReportInput): BuiltReport {
         }
       : null,
     ...(requirements ? { requirements } : {}),
+    ...(input.completion
+      ? {
+          completion: {
+            of: input.completion.of,
+            of_run: input.completion.ofRunId,
+            of_date: input.completion.ofDate,
+            scenario_ids: input.completion.scenarioIds,
+            completed_on: input.completion.completedOn,
+            carried_from: input.completion.carriedFrom,
+            note: completionNote({
+              of: input.completion.of, ofDate: input.completion.ofDate, scenarioIds: input.completion.scenarioIds,
+              completedOn: input.completion.completedOn, runId: input.runId, carriedFrom: input.completion.carriedFrom,
+            }),
+          },
+        }
+      : {}),
     limitations: [
       LIMITATIONS,
+      ...(input.completion ? [COMPLETION_LIMITATION] : []),
       ...(gradedBy.length > 1 ? [mixedGradingIsAFault ? MIXED_GRADING_NOTE : CONSENSUS_GRADING_NOTE] : []),
       ...(corroboration.uncorroborated > 0 ? [UNCORROBORATED_NOTE] : []),
       ...(input.coverage.unverifiable > 0 ? [UNVERIFIABLE_NOTE] : []),

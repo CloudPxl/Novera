@@ -1,7 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { plannedRoutes, TRIAL_EXHAUSTED, workspaceEntitlement } from "../auth/entitlement.ts";
-import { manifestForNewRun } from "../report/manifest.ts";
+import { agentConfigHash, manifestForNewRun } from "../report/manifest.ts";
+import { planCompletion, type CompletionPlan } from "./completion.ts";
 import { sealCompletedRun, startRunExecution } from "./execute-run.ts";
 import { notifyRunFinished } from "../webhooks/deliver.ts";
 import { track } from "../analytics/track.ts";
@@ -95,29 +96,57 @@ export async function startRun(args: {
    * were localised and the digest of the variants, before anything is sent.
    */
   locale?: string | null;
+  /**
+   * A completion run (0083): re-execute only these no-result scenarios of a sealed run, under the
+   * same terms, for a report that combines them with that run's stored rows. Planned and checked
+   * by `planCompletion`; refused unless the agent connection, policy version, suite, language and
+   * grading funding are the ones the completed run used.
+   */
+  completes?: { runId: string; scenarioIds: string[] } | null;
 }): Promise<{ id: string }> {
   const { client, workspaceId, agentId } = args;
-  const locale = parseLocale(args.locale);
+
+  let completion: CompletionPlan | null = null;
+  if (args.completes) {
+    const planned = await planCompletion({ client, workspaceId, runId: args.completes.runId, scenarioIds: args.completes.scenarioIds });
+    if ("error" in planned) throw new RunRefusal(planned.error);
+    if (planned.target.agent_id !== agentId) throw new RunRefusal("That run is another agent's.");
+    if (args.suiteId && args.suiteId !== planned.target.suite_id) throw new RunRefusal("A completion runs the suite of the run it completes.");
+    completion = planned;
+  }
+
+  // A completion is sent in the language of the run it completes, whatever the caller asked.
+  const locale = completion ? runLocale(completion.target.manifest.locale) : parseLocale(args.locale);
   if (typeof locale !== "string") throw new RunRefusal(locale.error);
 
   const { data: agent } = await client
-    .from("agents").select("attestation_text, archived_at").eq("id", agentId).eq("workspace_id", workspaceId).maybeSingle();
+    .from("agents").select("attestation_text, archived_at, config").eq("id", agentId).eq("workspace_id", workspaceId).maybeSingle();
   if (!agent) throw new RunRefusal("That agent could not be found in this workspace.");
   // Every entry point — the button, rerun, the API, MCP, a schedule, a Builder scan — comes
   // through here, and 0063 refuses the row regardless.
   if (agent.archived_at) throw new RunRefusal(ARCHIVED_AGENT);
+  if (completion) {
+    const declared = (completion.target.manifest.agent as { config_hash?: unknown } | undefined)?.config_hash;
+    if (typeof declared !== "string" || declared !== agentConfigHash(agent.config)) {
+      throw new RunRefusal("The agent's connection changed since that run, so its scenarios would not be sent the same way. Rerun the suite for a report from one connection.");
+    }
+  }
 
   const { data: policy } = await client
     .from("policies").select("id").eq("agent_id", agentId).eq("workspace_id", workspaceId)
     .order("version", { ascending: false }).limit(1).maybeSingle();
   if (!policy) throw new RunRefusal("Save a policy version before running the suite.");
+  if (completion && policy.id !== completion.target.policy_id) {
+    throw new RunRefusal("A newer policy version was saved since that run, so a completion would grade under two policies. Rerun the suite under the new policy.");
+  }
 
   // A named suite is re-checked: a run must never name a suite the workspace cannot
   // read. With none named, the newest built-in version — pinning `version 1` once ran a
   // 16-scenario suite for anyone who never opened the dropdown.
   const suiteQuery = client.from("suites").select("id, workspace_id, approval, cases");
-  const { data: suite } = args.suiteId
-    ? await suiteQuery.eq("id", args.suiteId).maybeSingle()
+  const suiteId = completion?.target.suite_id ?? args.suiteId;
+  const { data: suite } = suiteId
+    ? await suiteQuery.eq("id", suiteId).maybeSingle()
     : await suiteQuery.is("workspace_id", null).eq("key", "eu-support")
         .order("version", { ascending: false }).limit(1).maybeSingle();
   // Another workspace's suite is refused in the same words as one that does not exist, so a
@@ -140,7 +169,10 @@ export async function startRun(args: {
   // A baseline is only ever a run in the same language: a scenario sent in German is not the
   // same test as the one sent in English, so its verdicts cannot be fixes or regressions of it.
   let baselineId: string | null = null;
-  if (args.baselineRunId) {
+  if (completion) {
+    // Compared with the run it completes: the comparison then names exactly what the completion changed.
+    baselineId = completion.target.id;
+  } else if (args.baselineRunId) {
     const { data: chosen } = await client
       .from("runs").select("id, locale:manifest->>locale").eq("id", args.baselineRunId).eq("workspace_id", workspaceId)
       .eq("agent_id", agentId).eq("suite_id", suite.id).maybeSingle();
@@ -163,6 +195,9 @@ export async function startRun(args: {
   if (!entitlement.canRun) {
     throw new RunRefusal(entitlement.blockedReason ?? "This workspace cannot start a run.", entitlement.blocker);
   }
+  if (completion && entitlement.judgeSource !== completion.target.judge_source) {
+    throw new RunRefusal("Grading for this workspace is now funded differently than for that run, so the combined report could not name one source. Rerun the suite.");
+  }
 
   // Declared before anything runs, and frozen by the row (0016).
   const declared = await manifestForNewRun({
@@ -171,7 +206,9 @@ export async function startRun(args: {
     declared: args.customerDeclared,
     runId: args.runId,
     locale,
+    completes: completion ? { runId: completion.target.id, reportHash: completion.reportHash, scenarioIds: completion.scenarioIds } : null,
   });
+  if (completion && !declared.manifest) throw new RunRefusal("The completion could not declare its terms, so it was not started.");
 
   const { data: run, error } = await client
     .from("runs")
@@ -187,6 +224,7 @@ export async function startRun(args: {
       api_key_id: args.apiKeyId ?? null,
       schedule_id: args.scheduleId ?? null,
       manifest: declared.manifest, manifest_hash: declared.manifest_hash,
+      ...(completion ? { completes_run_id: completion.target.id } : {}),
     })
     .select("id").single();
   // The database counts the trial (0049), fair use and plan allowances (0067) under locks: of
@@ -196,11 +234,12 @@ export async function startRun(args: {
   if (refused) throw refused;
   // Archived between the check above and the insert: the database decided (0063).
   if (error && /agent_archived/.test(error.message)) throw new RunRefusal(ARCHIVED_AGENT);
+  if (error && /runs_one_completion_in_progress/.test(error.message)) throw new RunRefusal("A completion of this run is already in progress. Open it from the run's page.");
   if (error || !run) throw new Error(`Could not start the run: ${error?.message ?? "no row returned"}`);
   await track("run_created", {
     workspaceId, userId: args.userId,
     properties: {
-      source: args.exploratory ? "builder_scan" : args.scheduleId ? "schedule" : args.apiKeyId ? "api" : args.baselineRunId ? "rerun" : "button",
+      source: args.exploratory ? "builder_scan" : completion ? "completion" : args.scheduleId ? "schedule" : args.apiKeyId ? "api" : args.baselineRunId ? "rerun" : "button",
       judge_source: entitlement.judgeSource,
     },
   });

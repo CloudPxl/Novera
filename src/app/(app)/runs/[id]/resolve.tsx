@@ -2,7 +2,9 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Spinner } from "@/components/ui/button.tsx";
+import { Button, Spinner, SubmitButton } from "@/components/ui/button.tsx";
+import { RefusableForm } from "@/components/ui/refusable-form.tsx";
+import { completeRunEvidence } from "@/lib/workflow/completion-actions.ts";
 import { Badge, Card } from "@/components/ui/primitives.tsx";
 import { CATEGORIES } from "@/lib/evidence/diagnostics.ts";
 import { resolveOutcomes, resolveSummary, type ResolvePlan, type RetestRow } from "@/lib/evidence/resolve.ts";
@@ -23,7 +25,13 @@ type Answer =
 /** Between two retests: the diagnosis's own delay, capped so a person is not kept waiting a minute between scenarios. */
 const MAX_GAP_MS = 15_000;
 
-export function ResolveNoResults({ runId, plan, mayRetest }: { runId: string; plan: ResolvePlan; mayRetest: boolean }) {
+export function ResolveNoResults({ runId, plan, mayRetest, mayComplete = false }: {
+  runId: string;
+  plan: ResolvePlan;
+  mayRetest: boolean;
+  /** A sealed report exists and this person may start runs: a completion run can be offered (0083). */
+  mayComplete?: boolean;
+}) {
   const [since] = useState(() => new Date().toISOString());
   const [rows, setRows] = useState<RetestRow[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
@@ -158,6 +166,23 @@ export function ResolveNoResults({ runId, plan, mayRetest }: { runId: string; pl
 
       {halt && <p role="alert" className="mt-4 text-sm text-fail-text">{halt}</p>}
       {done && !halt && <p role="status" className="mt-4 text-sm text-ink">{resolveSummary(outcomes, plan)}</p>}
+
+      {mayComplete && plan.retestable.length > 0 && (
+        <div className="mt-5 border-t border-line pt-4">
+          <p className="text-sm text-ink-soft">
+            To unblock the report, complete the evidence: a new run of only {plan.retestable.length === 1 ? "this scenario" : `these ${plan.retestable.length} scenarios`},
+            against the same agent connection, policy version and suite. Its report carries every other verdict from this run unchanged,
+            computes the counts from both, and names this report by its digest; this report stays sealed. It uses one run.
+          </p>
+          <RefusableForm action={completeRunEvidence} className="mt-3">
+            <input type="hidden" name="runId" value={runId} />
+            {plan.retestable.map((item) => <input key={item.runCaseId} type="hidden" name="scenarioId" value={item.scenarioId} />)}
+            <SubmitButton size="sm" pendingLabel="Starting…">
+              Complete the evidence ({plan.retestable.length} scenario{plan.retestable.length === 1 ? "" : "s"})
+            </SubmitButton>
+          </RefusableForm>
+        </div>
+      )}
       {!mayRetest && plan.retestable.length > 0 && (
         <p className="mt-3 text-xs text-ink-faint">Your role in this workspace cannot retest; an owner, admin or operator can.</p>
       )}

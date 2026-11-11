@@ -196,6 +196,13 @@ export function reportToCsv(payload: ReportPayload, contentHash: string): string
     rows.push(["Reissues report", payload.reissue.of]);
     rows.push([]);
   }
+  // Format 17, completions only.
+  if (payload.completion) {
+    rows.push(["Completes report", payload.completion.of]);
+    rows.push(["Re-executed scenarios", payload.completion.scenario_ids.join(" ")]);
+    rows.push(["Re-executed on", payload.completion.completed_on]);
+    rows.push([]);
+  }
 
   // Never dropped. A list of failures without its scope reads as a finished audit.
   rows.push(["Scope and limitations", limitations]);
@@ -348,6 +355,11 @@ export function reportToMarkdown(payload: ReportPayload, contentHash: string, ur
   if (payload.reissue) {
     out.push("");
     out.push(`Reissues an earlier report for the same run, to disclose review, digest \`${mdText(payload.reissue.of)}\`.`);
+  }
+  // Format 17, completions only.
+  if (payload.completion) {
+    out.push("");
+    out.push(mdText(payload.completion.note));
   }
   if (run.previous_report_hash) {
     out.push("");

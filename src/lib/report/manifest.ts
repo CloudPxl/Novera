@@ -112,6 +112,12 @@ export interface RunManifest {
    * system, so it never follows the read-back to another one.
    */
   read_back?: { not_found_means: "contradicted"; host: string };
+  /**
+   * Present only on a completion run (0083): the run it completes, that run's sealed report it
+   * extends, and the scenarios it re-executes — which are also exactly `suite.case_ids`. Absent on
+   * every other run, and on every run declared before 2026-11-11.
+   */
+  completes?: { run_id: string; report_hash: string; scenario_ids: string[] };
 }
 
 /**
@@ -226,6 +232,8 @@ export function buildRunManifest(args: {
   declared?: Declared;
   /** The agent's stored read-back settings (`agents.verification`), when it has any. */
   verification?: unknown;
+  /** Set only on a completion run (0083). */
+  completes?: { runId: string; reportHash: string; scenarioIds: string[] } | null;
 }): { manifest: RunManifest; hash: string } {
   const routes = args.routes ?? DEFAULT_ROUTES;
   const manifest: RunManifest = {
@@ -278,6 +286,9 @@ export function buildRunManifest(args: {
       const host = declaredNotFoundContradicts(args.verification) ? endpointHost((args.verification as { url: string }).url) : null;
       return host ? { read_back: { not_found_means: "contradicted" as const, host } } : {};
     })(),
+    ...(args.completes
+      ? { completes: { run_id: args.completes.runId, report_hash: args.completes.reportHash, scenario_ids: args.completes.scenarioIds } }
+      : {}),
   };
 
   return { manifest, hash: contentHash(manifest as unknown as Json) };
@@ -318,6 +329,12 @@ export async function manifestForNewRun(args: {
   runId?: string;
   /** The language the scenarios are sent in; English when omitted. */
   locale?: Locale;
+  /**
+   * A completion run (0083): declares only these scenarios, in suite order, and what it completes.
+   * Without a manifest a completion cannot show its terms, so its absence refuses the run instead
+   * of starting one without.
+   */
+  completes?: { runId: string; reportHash: string; scenarioIds: string[] } | null;
 }): Promise<{ id: string; manifest: RunManifest | null; manifest_hash: string | null }> {
   const id = args.runId ?? randomUUID();
 
@@ -347,7 +364,10 @@ export async function manifestForNewRun(args: {
       suiteId: args.suiteId,
       suiteKey: String(suite.key),
       suiteVersion: Number(suite.version),
-      caseIds: cases.map((c) => String(c.id)),
+      // A completion declares only the scenarios it re-executes, in suite order: 0043 and 0048 then
+      // hold it to exactly those, as they hold every run to what it declared.
+      caseIds: cases.map((c) => String(c.id)).filter((id) => !args.completes || args.completes.scenarioIds.includes(id)),
+      completes: args.completes ?? null,
       // Of the row as stored, which is what the runner will execute.
       suiteDigest: suiteDigest({
         key: String(suite.key), version: Number(suite.version), name: String(suite.name),
@@ -369,7 +389,8 @@ export async function manifestForNewRun(args: {
     });
 
     return { id, manifest, manifest_hash: hash };
-  } catch {
+  } catch (e) {
+    if (args.completes) throw e;
     return { id, manifest: null, manifest_hash: null };
   }
 }

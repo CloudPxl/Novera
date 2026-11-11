@@ -1,5 +1,10 @@
-import type { RunCaseRecord, RunStore } from "../runner/types.ts";
+import type { HeldCase, RunCaseRecord, RunStore } from "../runner/types.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+/** Postgres's "undefined table", or PostgREST's word for a table its schema cache does not hold. */
+function missingTable(error: { code?: string; message?: string }): boolean {
+  return error.code === "42P01" || error.code === "PGRST205" || /could not find the table/i.test(error.message ?? "");
+}
 
 /**
  * RunStore backed by Supabase.
@@ -13,7 +18,7 @@ export function supabaseRunStore(
   workspaceId: string,
   /** The token this slice's claim wrote (0047). Every write below is fenced by it when given. */
   options: { leaseToken?: string } = {},
-): RunStore {
+): RunStore & { heldCases(runId: string): Promise<HeldCase[]> } {
   const { leaseToken } = options;
   // Whose lease it is, not whether the run is still going: a person who stops a run keeps
   // the scenarios already sent (they finish and are saved), and that is decided by
@@ -113,6 +118,48 @@ export function supabaseRunStore(
         }
       }
       return "saved";
+    },
+
+    async holdCase(runId, held) {
+      // Fenced like a saved case: a slice that lost the run keeps nothing.
+      if (!(await holds(runId))) return "not_holder";
+      const { error } = await client.from("run_case_holds").upsert({
+        run_id: runId,
+        workspace_id: workspaceId,
+        case_id: held.caseId,
+        executed: held.executed,
+        observation: held.observation,
+        grading: held.grading,
+        attempts: held.attempts,
+        not_before: new Date(held.notBefore).toISOString(),
+      }, { onConflict: "run_id,case_id" });
+      // A database without 0084 cannot hold: the case is recorded at once, as before holds existed.
+      if (error && missingTable(error)) return "unavailable";
+      if (error) throw new Error(`Could not hold case ${held.caseId}: ${error.message}`);
+      return "held";
+    },
+
+    async releaseHold(runId, caseId) {
+      const { error } = await client.from("run_case_holds").delete()
+        .eq("run_id", runId).eq("case_id", caseId).eq("workspace_id", workspaceId);
+      if (error) throw new Error(`Could not release the hold on ${caseId}: ${error.message}`);
+    },
+
+    /** The cases an earlier slice held (0084), oldest due first. */
+    async heldCases(runId) {
+      const { data, error } = await client.from("run_case_holds")
+        .select("case_id, executed, observation, grading, attempts, not_before")
+        .eq("run_id", runId).eq("workspace_id", workspaceId).order("not_before");
+      if (error && missingTable(error)) return [];
+      if (error) throw new Error(`Could not read held cases: ${error.message}`);
+      return (data ?? []).map((row) => ({
+        caseId: row.case_id as string,
+        executed: row.executed as HeldCase["executed"],
+        observation: (row.observation as HeldCase["observation"]) ?? null,
+        grading: row.grading as HeldCase["grading"],
+        attempts: row.attempts as number,
+        notBefore: Date.parse(row.not_before as string),
+      }));
     },
 
     async isStopped(runId) {

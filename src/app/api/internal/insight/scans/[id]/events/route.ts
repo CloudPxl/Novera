@@ -1,7 +1,7 @@
 import { BodyTooLarge, bodyTooLarge, readJsonBody } from "@/lib/api/body.ts";
 import { apiJson } from "@/lib/api/respond.ts";
 import { handleWorkerEvent } from "@/lib/insight/events.ts";
-import { parseEventRequest, REPLY_LIMIT_BYTES } from "@/lib/insight/protocol.ts";
+import { GRADING_STATE_LIMIT_CHARS, parseEventRequest, REPLY_LIMIT_BYTES } from "@/lib/insight/protocol.ts";
 import { isWorkerRequest } from "@/lib/insight/worker-secret.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
 
@@ -11,7 +11,8 @@ export const maxDuration = 60;
 const NO_STORE = { "Cache-Control": "no-store" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A reply, its capture record and the envelope. */
-const BODY_LIMIT = REPLY_LIMIT_BYTES + 8 * 1024;
+// A reply, its capture, and a deferred grading carried back (src/lib/insight/grading-state.ts).
+const BODY_LIMIT = REPLY_LIMIT_BYTES + GRADING_STATE_LIMIT_CHARS + 8 * 1024;
 
 /**
  * The browser worker reports on a scan it holds: a heartbeat, the page it reached, its own

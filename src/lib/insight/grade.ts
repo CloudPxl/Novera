@@ -1,6 +1,6 @@
 import type { RoutedChat } from "../router/execute.ts";
 import type { SuiteCase } from "../runner/types.ts";
-import { gradeCase, type Agreement, type JudgeVote } from "../judge/consensus.ts";
+import { gradeCase, type Agreement, type JudgeVote, type PendingGrading } from "../judge/consensus.ts";
 import { describeFailures, runChecks } from "../judge/checks.ts";
 
 /**
@@ -21,6 +21,8 @@ export type GradeResult =
       judgeAgreement: Agreement | null;
       settledBy: "deterministic" | "models";
       error: string | null;
+      /** Stopped short only for Novera's grading capacity: a later grading can resume from here. */
+      pending?: PendingGrading;
     };
 
 export async function gradeObservation(args: {
@@ -28,8 +30,10 @@ export async function gradeObservation(args: {
   scenario: SuiteCase;
   responseText: string | null;
   partial: boolean;
+  /** Resume a grading deferred for capacity (src/lib/insight/grading-state.ts). */
+  resume?: PendingGrading;
 }): Promise<GradeResult> {
-  const { chat, scenario, responseText, partial } = args;
+  const { chat, scenario, responseText, partial, resume } = args;
   if (responseText === null || responseText.trim() === "") return { kind: "ungraded", reason: "no_reply" };
   if (partial) return { kind: "ungraded", reason: "partial" };
 
@@ -59,6 +63,7 @@ export async function gradeObservation(args: {
       forbidden: scenario.forbidden,
     },
     agentResponse: responseText,
+    ...(resume ? { resume } : {}),
   });
   return {
     kind: "graded",
@@ -70,5 +75,6 @@ export async function gradeObservation(args: {
     judgeAgreement: outcome.agreement,
     settledBy: "models",
     error: outcome.status === "error" ? (outcome.error ?? "No AI grader produced a usable verdict.") : null,
+    ...(outcome.pending ? { pending: outcome.pending } : {}),
   };
 }

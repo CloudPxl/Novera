@@ -279,6 +279,8 @@ export interface AdvanceResult {
   passed?: number;
   failed?: number;
   errored?: number;
+  /** Answered scenarios whose grading waits for Novera's graders (0084); they are not sent again. */
+  regrading?: number;
   error?: string;
 }
 
@@ -361,6 +363,7 @@ export async function advanceRun(args: {
       passed: summary.coverage.passed,
       failed: summary.coverage.failed,
       errored: summary.coverage.errored,
+      ...(summary.held ? { regrading: summary.held } : {}),
     };
   } catch (thrown) {
     const message = thrown instanceof Error ? thrown.message : String(thrown);

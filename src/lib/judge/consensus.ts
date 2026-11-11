@@ -1,4 +1,4 @@
-import type { RoutedChat } from "../router/execute.ts";
+import type { RoutedAttempt, RoutedChat } from "../router/execute.ts";
 import type { Candidate } from "../router/routes.ts";
 import { judgeCase, type JudgeCase, type JudgeOutcome } from "./index.ts";
 import { vendorOf } from "./independence.ts";
@@ -116,39 +116,93 @@ async function nextOpinion(
   };
 }
 
+/**
+ * Why a model was not heard from, when a later call could hear from it: a limit that resets, a
+ * reply that did not arrive in time, a vendor error, a slice that was ending, a breaker that
+ * opened, a pacer with no room. A key the vendor refused, a missing credential, a data class
+ * the vendor may not receive and a spent budget are not capacity, and do not clear by waiting.
+ */
+const TRANSIENT_REASONS: ReadonlySet<string> = new Set([
+  "rate_limited", "timed_out", "provider_error", "out_of_time", "skipped_open_circuit", "paced",
+]);
+
+const same = (a: { connection: string; model: string }, b: { connection: string; model: string }) =>
+  a.connection === b.connection && a.model === b.model;
+
+/**
+ * Whether an opinion that produced no verdict could still be given by a model not heard from on
+ * this case. A model that answered — readably or not — is never asked again (final audit C-1),
+ * so only a model that was never heard from counts.
+ */
+export function couldAnswerLater(failed: Pick<JudgeOutcome, "attempts">, asked: Candidate[]): boolean {
+  return failed.attempts.some((a) => !a.ok && a.reason !== undefined && TRANSIENT_REASONS.has(a.reason) && !asked.some((c) => same(c, a)));
+}
+
+/**
+ * Grading that stopped short of a corroborated verdict only because Novera's grading capacity ran
+ * out (2026-11-11). Production's two no-results in the month before were both this: a slice
+ * ending before the second model was asked, and a tie whose only third vendor was at its rate
+ * limit. The agent had answered both times. Kept, a later call resumes from here: the opinions
+ * already given stand, the models that answered are not asked again, and a tie is still settled
+ * only by a third vendor. Nothing is guessed; a resumption that still finds no model is the same
+ * no-result it would have been.
+ */
+export interface PendingGrading {
+  /** The readable opinions given so far, in the order given. */
+  opinions: JudgeOutcome[];
+  /** Every model that answered on this case, readably or not. None is asked again. */
+  asked: Candidate[];
+  /** The attempts of the opinions that produced no verdict, for provenance. */
+  attempts: RoutedAttempt[];
+}
+
 export async function gradeCase(args: {
   chat: RoutedChat;
   testCase: JudgeCase;
   agentResponse: string;
   toolActivity?: unknown;
   severity: string;
-}): Promise<GradedOutcome> {
-  const { chat, testCase, agentResponse, toolActivity, severity } = args;
+  /** Continue a grading that stopped for capacity (`PendingGrading`), instead of starting afresh. */
+  resume?: PendingGrading;
+}): Promise<GradedOutcome & { pending?: PendingGrading }> {
+  const { chat, testCase, agentResponse, toolActivity, severity, resume } = args;
   const task = severity === "high" || severity === "critical" ? "judge_critical" : "judge";
   const base = { chat, testCase, agentResponse, toolActivity };
+  const given = resume?.opinions.filter((o) => o.status !== "error") ?? [];
+  const earlier = resume?.attempts ?? [];
 
-  const first = await judgeCase({ ...base, task });
+  // `consulted`: the models whose verdicts count, for independence. `asked`: every model
+  // that answered on this case, which none of the later opinions asks again.
+  const consulted: Candidate[] = given.flatMap((o) => (o.servedBy ? [o.servedBy] : []));
+  const asked: Candidate[] = [...(resume?.asked ?? [])];
+  for (const c of consulted) if (!asked.some((a) => same(a, c))) asked.push(c);
+
+  // Every opinion's attempts, not only the one whose verdict stands: a second model
+  // that was rate-limited or timed out is part of how this verdict was reached. Those of an
+  // earlier, interrupted grading come first.
+  const every = (...outcomes: JudgeOutcome[]) => ({
+    attempts: [...earlier, ...outcomes.flatMap((o) => o.attempts)],
+    answered: outcomes.flatMap((o) => o.answered),
+  });
+  const pendingAfter = (failed: JudgeOutcome, opinions: JudgeOutcome[]): { pending?: PendingGrading } =>
+    couldAnswerLater(failed, asked)
+      ? { pending: { opinions, asked: [...asked], attempts: [...earlier, ...failed.attempts] } }
+      : {};
+
+  const first = given[0] ?? await judgeCase({ ...base, task, ...(asked.length ? { exclude: [...asked] } : {}) });
+  if (!given[0]) asked.push(...first.answered);
 
   // Nothing to corroborate: no model gave a readable verdict at all — every one was
   // unreachable or unreadable. Not a disagreement, so not `unresolved` (final audit C-2,
   // 2026-10-28): a report that said "two models disagreed" here stated something that
   // never happened.
   if (first.status === "error") {
-    return { ...first, votes: [vote(first)], agreement: null };
+    return { ...first, ...every(first), votes: [vote(first)], agreement: null, ...pendingAfter(first, []) };
   }
-  // Every opinion's attempts, not only the one whose verdict stands: a second model
-  // that was rate-limited or timed out is part of how this verdict was reached.
-  const every = (...outcomes: JudgeOutcome[]) => ({
-    attempts: outcomes.flatMap((o) => o.attempts),
-    answered: outcomes.flatMap((o) => o.answered),
-  });
+  if (!given[0] && first.servedBy) consulted.push(first.servedBy);
 
-  // `consulted`: the models whose verdicts count, for independence. `asked`: every model
-  // that answered on this case, which none of the later opinions asks again.
-  const consulted: Candidate[] = first.servedBy ? [first.servedBy] : [];
-  const asked: Candidate[] = [...first.answered];
-  const second = await nextOpinion(base, task, consulted, asked);
-  asked.push(...second.answered);
+  const second = given[1] ?? await nextOpinion(base, task, consulted, asked);
+  if (!given[1]) asked.push(...second.answered);
 
   if (second.status === "error") {
     // One reachable model is still a verdict, but it is not a corroborated one and
@@ -158,10 +212,11 @@ export async function gradeCase(args: {
       ...every(first, second),
       votes: [vote(first), vote(second)],
       agreement: "unconfirmed",
+      ...pendingAfter(second, [first]),
     };
   }
 
-  if (second.servedBy) consulted.push(second.servedBy);
+  if (!given[1] && second.servedBy) consulted.push(second.servedBy);
 
   if (first.status === second.status) {
     // Two agreeing models settle an ordinary scenario. A critical one gets a third
@@ -173,7 +228,7 @@ export async function gradeCase(args: {
       return { ...first, ...every(first, second), votes: [vote(first), vote(second)], agreement: "agreed" };
     }
 
-    const confirming = await nextOpinion(base, task, consulted, asked);
+    const confirming = given[2] ?? await nextOpinion(base, task, consulted, asked);
     const votes = [vote(first), vote(second), vote(confirming)];
 
     // A third that could not be reached does not undo two that agreed. The verdict
@@ -190,7 +245,8 @@ export async function gradeCase(args: {
 
   // The tie-breaker: a verdict depends on this one answer, so it is not skipped for
   // speed (see `settling` in the router).
-  const third = await nextOpinion(base, task, consulted, asked, true);
+  const third = given[2] ?? await nextOpinion(base, task, consulted, asked, true);
+  if (!given[2]) asked.push(...third.answered);
   const votes = [vote(first), vote(second), vote(third)];
 
   if (third.status === "error") {
@@ -204,6 +260,7 @@ export async function gradeCase(args: {
         + (crossVendor(consulted) ? " Only a model from a third vendor settles a disagreement between two." : ""),
       votes,
       agreement: "unresolved",
+      ...pendingAfter(third, [first, second]),
     };
   }
 

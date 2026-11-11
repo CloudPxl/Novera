@@ -260,6 +260,8 @@ export async function startRunExecution(args: {
     judge,
     store: holdingStore,
     skipCaseIds: [...recorded],
+    // Answered scenarios whose grading an earlier slice could not finish (0084).
+    held: (await store.heldCases(runId)).filter((h) => !recorded.has(h.caseId)),
     // Null for every agent without a read-back endpoint, which is the normal case:
     // a scenario expecting a change of state then reports it as unverified rather
     // than passed, which is the honest outcome and always has been.

@@ -37,7 +37,8 @@ export async function runScan(scan: ClaimedScan, opts: RunnerOptions): Promise<"
   const stableMs = opts.stableMs ?? 2500;
   let lost = false;
 
-  const send = async (event: WorkerEvent): Promise<EventAnswer> => {
+  const send = async (first: WorkerEvent): Promise<EventAnswer> => {
+    let event = first;
     for (let attempt = 0; attempt < 6; attempt++) {
       let answer: EventAnswer;
       try {
@@ -47,6 +48,8 @@ export async function runScan(scan: ClaimedScan, opts: RunnerOptions): Promise<"
       }
       if (answer.ok) return answer;
       if (answer.stop) { lost = true; return answer; }
+      // Grading deferred for the server's capacity: the same reply again, with the grading so far.
+      if (answer.grading_state && event.kind === "turn") event = { ...event, grading_state: answer.grading_state };
       // Paced, or a server that did not answer: the same event again, never the prompt again.
       if (answer.status === 429 || answer.status === 0 || answer.status >= 500) {
         await sleep(answer.retry_after_ms ?? Math.min(2000 * 2 ** attempt, 15_000));

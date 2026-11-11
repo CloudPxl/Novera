@@ -80,6 +80,8 @@ export function LiveRun({
   // Requests to continue the run that this page has sent and not yet heard back from, and
   // whether it has sent any: the stalled notice waits for the page's own attempt first.
   const [inFlight, setInFlight] = useState(0);
+  // Answered scenarios whose grading waits for Novera's graders (0084), as the last slice left them.
+  const [regrading, setRegrading] = useState(0);
   const [attempted, setAttempted] = useState(false);
   const started = useRef(false);
   const lastKick = useRef(0);
@@ -149,6 +151,7 @@ export function LiveRun({
         }
         if (!cancelled.current) {
           setWaiting(body.waiting === "grading_capacity");
+          if (body.started) setRegrading(typeof body.regrading === "number" ? body.regrading : 0);
           if (body.started) setFailure(null);
         }
       })
@@ -264,7 +267,9 @@ export function LiveRun({
             <p role="status" className="text-sm text-ink-soft">
               {waiting
                 ? "Waiting for a grading slot: other trial runs are using Novera's shared graders. It continues on its own."
-                : ""}
+                : regrading > 0
+                  ? `${regrading} answered scenario${regrading === 1 ? " is" : "s are"} waiting for a second grader: Novera's graders were busy, so the reply is kept and graded again shortly. Your agent is not asked again.`
+                  : ""}
             </p>
             <form action={stop}>
               <input type="hidden" name="runId" value={runId} />

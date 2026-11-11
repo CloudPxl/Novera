@@ -32,9 +32,12 @@ import { INSIGHT_SUITE, INSIGHT_SUITE_DIGEST } from "../src/lib/insight/suite.ts
 import { PACING_MS, parseClaimRequest, parseEventRequest } from "../src/lib/insight/protocol.ts";
 import { isWorkerRequest, workerSecret } from "../src/lib/insight/worker-secret.ts";
 import type { GradeResult } from "../src/lib/insight/grade.ts";
+import type { PendingGrading } from "../src/lib/judge/consensus.ts";
 import { fakeInsightDb } from "../tests/helpers/insight-fake-db.ts";
 
 const KEY = randomBytes(32).toString("hex");
+// The server seals a deferred grading under the deployment's key; here, the verifier's own.
+process.env.NOVERA_ENCRYPTION_KEY = KEY;
 const SECRET = workerSecret(KEY);
 const WORKER = "verify-local";
 const BUNDLE = "workers/insight-browser/dist/worker.mjs";
@@ -44,12 +47,33 @@ type Row = Record<string, unknown>;
 const db = fakeInsightDb({ insight_scans: [], insight_targets: [], insight_observations: [], insight_workers: [] });
 const pageLoads = new Map<string, number>();
 const sent = new Map<string, number>();
+const turnPosts = new Map<string, number>();
 const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
 
+/**
+ * When set, the next grading stops for capacity (a third vendor rate-limited on a tie), as
+ * production's T08 did; the resumed grading then settles it.
+ */
+let deferNextGrading = false;
+const TIE: PendingGrading = {
+  opinions: [
+    { status: "pass", rationale: "a", failedAssertions: [], usage: {}, servedBy: { connection: "fixture", model: "a" }, attempts: [], answered: [{ connection: "fixture", model: "a" }], rawJudgeText: null, error: null },
+    { status: "fail", rationale: "b", failedAssertions: [], usage: {}, servedBy: { connection: "other", model: "b" }, attempts: [], answered: [{ connection: "other", model: "b" }], rawJudgeText: null, error: null },
+  ],
+  asked: [{ connection: "fixture", model: "a" }, { connection: "other", model: "b" }],
+  attempts: [{ connection: "third", model: "c", ok: false, ms: 1, reason: "rate_limited" }],
+};
+const resumedWith: Array<PendingGrading | undefined> = [];
+
 /** The AI graders, as a fixed rule: a reply that adopts the persona fails, everything else passes. */
-const grade = async (args: { scenario: { id: string }; responseText: string | null; partial: boolean }): Promise<GradeResult> => {
+const grade = async (args: { scenario: { id: string }; responseText: string | null; partial: boolean; resume?: PendingGrading }): Promise<GradeResult> => {
   if (args.responseText === null) return { kind: "ungraded", reason: "no_reply" };
   if (args.partial) return { kind: "ungraded", reason: "partial" };
+  resumedWith.push(args.resume);
+  if (deferNextGrading) {
+    deferNextGrading = false;
+    return { kind: "graded", status: "error", rationale: null, failedAssertions: [], judgeModel: null, judgeVotes: [], judgeAgreement: "unresolved", settledBy: "models", error: "Two models disagreed and a third could not settle it.", pending: TIE };
+  }
   const fail = /DEVMODE/.test(args.responseText);
   return {
     kind: "graded", status: fail ? "fail" : "pass", rationale: fail ? "Adopted the persona." : "Met the expectation.", failedAssertions: [],
@@ -109,6 +133,7 @@ const server = createServer(async (req, res) => {
     if (m) {
       const parsed = parseEventRequest(await body(req));
       if ("error" in parsed) { json(res, 400, parsed); return; }
+      if (parsed.event.kind === "turn") bump(turnPosts, `${m[1]}:${parsed.event.grading_state ? "with-state" : "plain"}`);
       const answer = await handleWorkerEvent({ db: db.client, scanId: m[1], workerId: parsed.worker_id, token: parsed.lease_token, event: parsed.event }, deps);
       json(res, answer.ok ? 200 : answer.status, answer);
       return;
@@ -240,6 +265,20 @@ for (const [variant, kind] of [["login", "blocked_login"], ["payment", "blocked_
   await runWorker();
   const row = obsOf(id)[0];
   check(scanOf(id).status === "graded" && row?.status === "error" && row.response_text === null && row.settled_by === null, "silent: a no-reply row, never a verdict", JSON.stringify(row));
+}
+
+// 8. A grading stopped for Novera's capacity is resumed from the same reply: the worker posts it
+// again with the sealed state after the wait, and never types the prompt to the widget again.
+{
+  const id = queue("deferred", "/widget?variant=plain&tag=deferred", ["P06"]);
+  deferNextGrading = true;
+  resumedWith.length = 0;
+  await runWorker();
+  const rows = obsOf(id);
+  check(scanOf(id).status === "graded" && rows.length === 1 && rows[0].status === "pass", "deferred: the reply is graded on the second post and recorded once", `${scanOf(id).status}, ${rows.map((r) => r.status).join(",")}`);
+  check(sent.get("deferred") === 1, "deferred: the prompt was typed once, never again", `${sent.get("deferred")} sent`);
+  check(turnPosts.get(`${id}:plain`) === 1 && turnPosts.get(`${id}:with-state`) === 1, "deferred: the same turn posted again with the sealed grading", JSON.stringify([turnPosts.get(`${id}:plain`), turnPosts.get(`${id}:with-state`)]));
+  check(resumedWith.length === 2 && resumedWith[0] === undefined && resumedWith[1]?.opinions.length === 2, "deferred: the second grading resumed from the opinions already given");
 }
 
 server.close();

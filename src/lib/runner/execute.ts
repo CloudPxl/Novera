@@ -3,12 +3,12 @@ import { extractJsonObject } from "../judge/parse.ts";
 import { SIMULATOR_SYSTEM, parseSimulatorReply, simulatorPrompt, type Persona } from "../simulate/persona.ts";
 import { withDeadline, type RoutedChat } from "../router/execute.ts";
 import { AGENT_TIMEOUT_MAX_MS } from "../agents/http.ts";
-import { gradeCase } from "../judge/consensus.ts";
+import { gradeCase, type PendingGrading } from "../judge/consensus.ts";
 import { applyEffectRule } from "../judge/effect.ts";
 import { runChecks, describeFailures } from "../judge/checks.ts";
 import type { VerificationConnector, VerificationObservation } from "../evidence/connectors/types.ts";
 import { coverage, coverageByObligation, coverageByCategory, type Coverage, type ObligationCoverage, type CategoryCoverage } from "../evidence/coverage.ts";
-import type { CaseOutcome, ConversationTurn, RunCaseRecord, RunStore, Suite, SuiteCase } from "./types.ts";
+import type { CaseOutcome, ConversationTurn, HeldCase, RunCaseRecord, RunStore, Suite, SuiteCase } from "./types.ts";
 import { conversationInput, conversationResponse, mergeToolActivity } from "./conversation.ts";
 
 export interface ExecuteRunArgs {
@@ -27,6 +27,13 @@ export interface ExecuteRunArgs {
   concurrency?: number;
   /** Case ids already recorded by an earlier attempt. Never graded twice. */
   skipCaseIds?: string[];
+  /**
+   * Cases an earlier slice held because their grading stopped for capacity (0084): never sent
+   * again, their grading resumed once due.
+   */
+  held?: HeldCase[];
+  /** How long a held case waits before it is graded again. `HOLD_GAP_MS` unless a test says otherwise. */
+  holdGapMs?: number;
   /**
    * Stop picking up new cases after this moment.
    *
@@ -101,6 +108,8 @@ export interface RunSummary {
   /** `incomplete` means the time budget ran out; the run is resumable, not failed. */
   status: "completed" | "aborted" | "incomplete";
   cases: RunCaseRecord[];
+  /** Answered scenarios still held for grading when the slice ended (0084). */
+  held?: number;
   coverage: Coverage;
   byObligation: ObligationCoverage[];
   byCategory: CategoryCoverage[];
@@ -131,6 +140,15 @@ export const GRADING_RESERVE_MS = 10_000;
  * and, on the last slice, seal the report.
  */
 export const CASE_GRACE_MS = 13_000;
+
+/**
+ * How many times a held case is graded, the first included, before it is recorded as whatever
+ * the grading reached (0084), and how long apart. Mistral, the only third vendor on Novera's
+ * keys, allows two requests a minute; four gradings half a minute apart give each model that
+ * was not heard from about two minutes to come back.
+ */
+export const MAX_GRADING_ATTEMPTS = 4;
+export const HOLD_GAP_MS = 30_000;
 
 /** Assumed for an agent whose pace this slice has not yet seen. */
 const UNSEEN_AGENT_MS = 6_000;
@@ -469,6 +487,44 @@ export async function executeCase(args: {
     };
   }
 
+  return gradeWithModels({
+    testCase, judge, observation,
+    executed: {
+      responseText: agentResult.responseText,
+      transcript: finalTranscript,
+      toolActivity: toolActivity ?? null,
+      latencyMs: agentResult.latencyMs,
+      agentUsage: agentResult.usage ?? null,
+    },
+  });
+}
+
+/** A case as it was executed, before the models graded it: what a held case keeps (0084). */
+export interface ExecutedCase {
+  responseText: string;
+  /** Every turn of a conversation scenario; null for a single message. */
+  transcript: ConversationTurn[] | null;
+  toolActivity: unknown;
+  latencyMs: number | null;
+  agentUsage: unknown;
+}
+
+/**
+ * The model-graded end of a case: consensus over the reply, then the effect rule. One function
+ * for a case graded as it ran and for a held case resumed in a later slice (0084), so a resumed
+ * case is graded exactly as a fresh one would have been.
+ */
+export async function gradeWithModels(args: {
+  testCase: SuiteCase;
+  judge: RoutedChat;
+  executed: ExecutedCase;
+  observation: VerificationObservation | null;
+  resume?: PendingGrading;
+}): Promise<CaseOutcome> {
+  const { testCase, judge, executed, observation, resume } = args;
+  const transcript = executed.transcript;
+  const isConversation = transcript !== null;
+
   // Two models must agree. A single judge was measured at 25% verdict drift on
   // identical responses (npm run measure:stability), which would have shown up in a
   // customer's rerun as fixes and regressions that never happened.
@@ -482,8 +538,9 @@ export async function executeCase(args: {
       assertions: testCase.assertions,
       forbidden: testCase.forbidden,
     },
-    agentResponse: isConversation ? conversationResponse(transcript) : agentResult.responseText,
-    toolActivity,
+    agentResponse: isConversation ? conversationResponse(transcript) : executed.responseText,
+    toolActivity: executed.toolActivity,
+    ...(resume ? { resume } : {}),
   });
 
   // Deterministic, and applied after grading rather than inside the prompt: whether
@@ -493,19 +550,19 @@ export async function executeCase(args: {
     status: verdict.status,
     rationale: verdict.rationale,
     error: verdict.error,
-    toolActivity,
+    toolActivity: executed.toolActivity,
     observation,
   });
 
   return {
-    responseText: agentResult.responseText,
-    transcript: finalTranscript,
-    toolActivity: toolActivity ?? null,
+    responseText: executed.responseText,
+    transcript,
+    toolActivity: executed.toolActivity,
     status: ruled.status,
     rationale: ruled.rationale,
-    latencyMs: agentResult.latencyMs,
+    latencyMs: executed.latencyMs,
     usage: {
-      agent: agentResult.usage ?? null,
+      agent: executed.agentUsage,
       judge: verdict.usage,
     },
     judgeModel: verdict.servedBy ? `${verdict.servedBy.connection}/${verdict.servedBy.model}` : null,
@@ -517,6 +574,8 @@ export async function executeCase(args: {
     settledBy: "models",
     observation,
     error: ruled.error,
+    // Never stored on the row: what a later slice needs to finish the grading (0084).
+    ...(verdict.pending ? { gradingPending: verdict.pending } : {}),
   };
 }
 
@@ -646,6 +705,78 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   let sendSeq = 0;
   let lastTransportSeq = 0;
 
+  // Held cases (0084): never sent again; graded where their grading stopped, once due.
+  const outstanding = new Map<string, HeldCase>((args.held ?? []).map((h) => [h.caseId, h]));
+  for (const id of outstanding.keys()) alreadyDone.add(id);
+  const caseRecord = (testCase: SuiteCase, outcome: CaseOutcome): RunCaseRecord => {
+    const stored = { ...outcome };
+    delete stored.gradingPending;
+    return {
+      runId,
+      caseId: testCase.id,
+      category: testCase.category,
+      obligation: testCase.obligation,
+      severity: testCase.severity,
+      input: testCase.input,
+      expected: testCase.expected_behavior,
+      assertions: testCase.assertions,
+      ...stored,
+    };
+  };
+  /** Holds the case if its grading can still finish later; false when it is recorded now instead. */
+  async function holdIfPending(testCase: SuiteCase, outcome: CaseOutcome, gradedTimes: number): Promise<boolean | "not_holder"> {
+    if (!outcome.gradingPending || !store.holdCase || outcome.responseText === null || gradedTimes >= MAX_GRADING_ATTEMPTS) return false;
+    const held: HeldCase = {
+      caseId: testCase.id,
+      executed: {
+        responseText: outcome.responseText,
+        transcript: outcome.transcript ?? null,
+        toolActivity: outcome.toolActivity,
+        latencyMs: outcome.latencyMs,
+        agentUsage: (outcome.usage as { agent?: unknown } | null)?.agent ?? null,
+      },
+      observation: outcome.observation,
+      grading: outcome.gradingPending,
+      attempts: gradedTimes,
+      notBefore: Date.now() + (args.holdGapMs ?? HOLD_GAP_MS),
+    };
+    const answer = await store.holdCase(runId, held);
+    if (answer === "not_holder") return "not_holder";
+    if (answer === "unavailable") return false;
+    outstanding.set(testCase.id, held);
+    return true;
+  }
+  async function resumeDue(): Promise<void> {
+    for (const held of [...outstanding.values()].sort((x, y) => x.notBefore - y.notBefore)) {
+      if (held.notBefore > Date.now()) continue;
+      if (deadline !== undefined && Date.now() >= deadline) return;
+      if (stopped || lostLease) return;
+      const index = suite.cases.findIndex((c) => c.id === held.caseId);
+      if (index < 0) {
+        // Not a scenario this run declared: nothing of it can be recorded.
+        outstanding.delete(held.caseId);
+        await store.releaseHold?.(runId, held.caseId);
+        continue;
+      }
+      const testCase = suite.cases[index];
+      const outcome = await gradeWithModels({
+        testCase,
+        judge: hardStop === undefined ? judge : withDeadline(judge, hardStop),
+        executed: held.executed,
+        observation: held.observation,
+        resume: held.grading,
+      });
+      const again = await holdIfPending(testCase, outcome, held.attempts + 1);
+      if (again === "not_holder") { lostLease = true; return; }
+      if (again) continue;
+      const saved = await store.saveCase(caseRecord(testCase, outcome));
+      if (saved === "not_holder") { lostLease = true; return; }
+      outstanding.delete(held.caseId);
+      await store.releaseHold?.(runId, held.caseId);
+      if (saved !== "already_recorded") records[index] = caseRecord(testCase, outcome);
+    }
+  }
+
   async function worker(): Promise<void> {
     while (true) {
       const index = cursor++;
@@ -700,24 +831,35 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
       startedThisSlice++;
       const seq = ++sendSeq;
 
-      let outcome: CaseOutcome;
-      records[index] = {
-        runId,
-        caseId: testCase.id,
-        category: testCase.category,
-        obligation: testCase.obligation,
-        severity: testCase.severity,
-        input: testCase.input,
-        expected: testCase.expected_behavior,
-        assertions: testCase.assertions,
-        ...(outcome = await executeCase({
-          testCase, agent, policy, judge,
-          verifier: args.verifier,
-          agentIsProduction: args.agentIsProduction,
-          hardStop,
-        })),
-      };
+      const outcome: CaseOutcome = await executeCase({
+        testCase, agent, policy, judge,
+        verifier: args.verifier,
+        agentIsProduction: args.agentIsProduction,
+        hardStop,
+      });
+      records[index] = caseRecord(testCase, outcome);
       slowestAgentMs = Math.max(slowestAgentMs, records[index].latencyMs ?? 0);
+      // The agent answered and only grading capacity is missing: keep the reply and finish the
+      // grading in a later slice rather than record a no-result Novera caused (0084). Counted
+      // for the quota stop below like any case whose graders were all rate-limited.
+      const heldNow = await holdIfPending(testCase, outcome, 1);
+      if (heldNow === "not_holder") {
+        delete records[index];
+        lostLease = true;
+        return;
+      }
+      if (heldNow) {
+        if (seq > lastTransportSeq) consecutiveTransport = 0;
+        if (seq > lastRedirectSeq) consecutiveRedirect = 0;
+        if (everyJudgeRateLimited(records[index])) {
+          consecutiveQuotaFailures++;
+          if (consecutiveQuotaFailures >= 2) quotaExhausted = true;
+        } else {
+          consecutiveQuotaFailures = 0;
+        }
+        delete records[index];
+        continue;
+      }
       const saved = await store.saveCase(records[index]);
       if (saved === "not_holder" || saved === "already_recorded") {
         // Not this slice's evidence to count: either nothing was stored, or the run already
@@ -758,7 +900,19 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   let error: string | undefined;
 
   try {
+    await resumeDue();
     await Promise.all(Array.from({ length: Math.min(concurrency, suite.cases.length) }, worker));
+    // Only held cases left: wait for the next one to fall due if this slice has room for it,
+    // rather than end the slice and leave the run waiting on the next call.
+    while (outstanding.size > 0 && !ranOutOfTime && !stopped && !lostLease && !transportHalted && !redirectHalted) {
+      // Each pass grades at least the earliest hold, which is then recorded or held again with
+      // one more attempt counted, so this ends.
+      const due = Math.min(...[...outstanding.values()].map((h) => h.notBefore));
+      if (deadline !== undefined && Math.max(due, Date.now()) >= deadline) break;
+      const wait = due - Date.now();
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      await resumeDue();
+    }
   } catch (thrown) {
     // Reaching here means the failure was outside a case (a store write, say).
     // The run is aborted and says so; the cases already saved remain valid evidence.
@@ -788,7 +942,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
     // Not finished and not failed: another slice holds the run and writes its outcome.
     status = "incomplete";
     error = superseded;
-  } else if (status === "completed" && ranOutOfTime) {
+  } else if (status === "completed" && (ranOutOfTime || outstanding.size > 0)) {
     if (quotaExhausted) {
       error =
         "Every grading vendor was rate-limited, so the remaining scenarios were not started. "
@@ -821,6 +975,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
     runId,
     status,
     cases: saved,
+    ...(outstanding.size > 0 ? { held: outstanding.size } : {}),
     coverage: coverage({
       plannedCases: suite.cases.length,
       // Mapped, not spread: the record calls it `judgeAgreement` and coverage calls

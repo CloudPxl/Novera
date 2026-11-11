@@ -18,6 +18,8 @@ export const HEARTBEAT_MS = 20_000;
 export const REPLY_LIMIT_BYTES = 64 * 1024;
 export const CAPTURE_LIMIT_BYTES = 4_000;
 export const PROMPT_LIMIT_CHARS = 4_000;
+/** A sealed grading state is ASCII; its byte limit is GRADING_STATE_LIMIT_BYTES (grading-state.ts). */
+export const GRADING_STATE_LIMIT_CHARS = 32 * 1024;
 
 /** How the worker introduces itself. `/bot` says what it does and how to opt out. */
 export const BOT_TOKEN = "NoveraInsightBot";
@@ -58,7 +60,11 @@ export type WorkerEvent =
       consent_clicked: boolean;
     }
   | { kind: "robots"; allowed: boolean; crawl_delay_ms: number | null; status: number | null }
-  | { kind: "turn"; scenario_id: string; prompt_text: string; response_text: string | null; capture: ObservationCapture }
+  | {
+      kind: "turn"; scenario_id: string; prompt_text: string; response_text: string | null; capture: ObservationCapture;
+      /** The sealed grading so far, echoed back after a "deferred" answer (src/lib/insight/grading-state.ts). */
+      grading_state?: string;
+    }
   | { kind: "error"; error_kind: ScanErrorKind; detail: string };
 
 export interface EventRequest {
@@ -69,7 +75,14 @@ export interface EventRequest {
 
 export type EventAnswer =
   | { ok: true; next: string | null; wait_ms: number }
-  | { ok: false; status: number; error: string; retry_after_ms?: number; stop: boolean };
+  | {
+      ok: false; status: number; error: string; retry_after_ms?: number; stop: boolean;
+      /**
+       * Grading deferred for Novera's capacity (503): post the same turn again after
+       * `retry_after_ms`, carrying this — the same reply, never the prompt again.
+       */
+      grading_state?: string;
+    };
 
 const WORKER_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -159,7 +172,13 @@ export function parseWorkerEvent(raw: unknown): WorkerEvent | { error: string } 
         // Nothing arrived: the capture says so by having no captured_at.
         return { error: "turn with no response_text must not carry captured_at." };
       }
-      return { kind: "turn", scenario_id, prompt_text, response_text, capture };
+      let grading_state: string | undefined;
+      if (raw.grading_state !== undefined) {
+        const state = str(raw.grading_state, GRADING_STATE_LIMIT_CHARS);
+        if (!state || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(state)) return { error: "turn.grading_state must be the sealed state the server sent." };
+        grading_state = state;
+      }
+      return { kind: "turn", scenario_id, prompt_text, response_text, capture, ...(grading_state ? { grading_state } : {}) };
     }
     case "error": {
       const kind = str(raw.error_kind, 40);

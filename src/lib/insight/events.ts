@@ -5,6 +5,7 @@ import { NOT_DETECTED, REDACTION_POLICY_VERSION } from "../redact/pii.ts";
 import { recordModelOperation, workspaceChat, type WorkspaceChat } from "../providers/model-work.ts";
 import { gradeObservation, type GradeResult } from "./grade.ts";
 import { insightSuite, scenarioOf } from "./suite.ts";
+import { INSIGHT_GRADING_ATTEMPTS, INSIGHT_REGRADE_AFTER_MS, openGradingState, replyDigest, sealGradingState } from "./grading-state.ts";
 import { LEASE_MS, PACING_MS, waitBeforeNextTurn, type EventAnswer, type WorkerEvent } from "./protocol.ts";
 import type { InsightScanRow, ObservationCapture } from "./types.ts";
 
@@ -151,6 +152,18 @@ export async function handleWorkerEvent(
         redaction = { policy_version: REDACTION_POLICY_VERSION, counts: {}, original_hash: null, redacted_hash: null, not_detected: NOT_DETECTED, none: "no reply arrived" };
       }
 
+      // A grading an earlier post of this same reply could not finish (deferred for capacity).
+      let attempt = 1;
+      let resume: Parameters<typeof grade>[0]["resume"];
+      if (event.grading_state !== undefined) {
+        const opened = responseText === null
+          ? null
+          : openGradingState(event.grading_state, { scan: scan.id, scenario: event.scenario_id, reply: replyDigest(responseText) });
+        if (!opened) return refuse(422, "The grading state was not one this server sealed for this reply.", false);
+        attempt = opened.attempt + 1;
+        resume = opened.pending;
+      }
+
       let result: GradeResult | { kind: "unavailable"; reason: string };
       let funding: WorkspaceChat["funding"] | null = null;
       let chat: WorkspaceChat | null = null;
@@ -166,11 +179,29 @@ export async function handleWorkerEvent(
           chat = resolved;
           funding = resolved.funding;
           try {
-            result = await grade({ chat: resolved.chat, scenario, responseText, partial: false });
+            result = await grade({ chat: resolved.chat, scenario, responseText, partial: false, ...(resume ? { resume } : {}) });
           } catch (e) {
             result = { kind: "unavailable", reason: e instanceof Error ? e.message : "The AI graders could not be reached." };
           }
         }
+      }
+
+      // The reply is whole and only the graders' capacity is missing: record nothing yet. The worker
+      // posts the same reply again with the grading so far, sealed, and the next grading resumes.
+      if (result.kind === "graded" && result.pending && responseText !== null && attempt < INSIGHT_GRADING_ATTEMPTS) {
+        if (chat) {
+          try {
+            await recordModelOperation(db, {
+              workspaceId: scan.workspace_id, operation: "insight_grade", funding: chat.funding, outcome: "no_usable_output", calls: chat.calls,
+              detail: `insight scan ${scan.id} scenario ${event.scenario_id}: grading deferred (${attempt} of ${INSIGHT_GRADING_ATTEMPTS})`,
+            });
+          } catch { /* a count, not evidence */ }
+        }
+        return {
+          ok: false, status: 503, stop: false, retry_after_ms: INSIGHT_REGRADE_AFTER_MS,
+          error: "The reply was captured. Novera's graders were busy, so it is graded again shortly: post the same turn again with grading_state.",
+          grading_state: sealGradingState({ scan: scan.id, scenario: event.scenario_id, reply: replyDigest(responseText), attempt, pending: result.pending }),
+        };
       }
 
       const row: ObservationInsert = {

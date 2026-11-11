@@ -1,3 +1,4 @@
+import type { PendingGrading } from "../judge/consensus.ts";
 import type { Persona } from "../simulate/persona.ts";
 import type { CaseStatus } from "../evidence/coverage.ts";
 import type { CaseEffect, EvidenceGap } from "../judge/effect.ts";
@@ -128,6 +129,12 @@ export interface CaseOutcome {
    */
   transcript?: ConversationTurn[] | null;
   error: string | null;
+  /**
+   * Set when the models stopped short of a corroborated verdict only for Novera's grading
+   * capacity: a model not yet heard from could still answer. A suite run holds such a case and
+   * resumes its grading in a later slice (0084). Never written to the row.
+   */
+  gradingPending?: PendingGrading;
 }
 
 export interface ConversationTurn {
@@ -174,4 +181,28 @@ export interface RunStore {
    * sent: a slice that lost it sends nothing more, because the slice that took over will.
    */
   holdsRun?(runId: string): Promise<boolean>;
+  /**
+   * Keeps a case whose grading stopped for capacity, replacing an earlier hold of the same case
+   * (0084). `not_holder` when this slice no longer holds the run: nothing was kept. `unavailable`
+   * when this database cannot hold: the case is recorded at once instead.
+   */
+  holdCase?(runId: string, held: HeldCase): Promise<"held" | "not_holder" | "unavailable">;
+  /** Drops a hold once its case is recorded. */
+  releaseHold?(runId: string, caseId: string): Promise<void>;
+}
+
+/**
+ * A scenario the agent answered whose grading stopped short of a corroborated verdict only for
+ * Novera's grading capacity (0084). Its reply is kept, never sent again, and a later slice
+ * resumes the grading where it stopped.
+ */
+export interface HeldCase {
+  caseId: string;
+  executed: import("./execute.ts").ExecutedCase;
+  observation: VerificationObservation | null;
+  grading: PendingGrading;
+  /** How many times the case has been graded, the first included. */
+  attempts: number;
+  /** Epoch ms before which it is not graded again. */
+  notBefore: number;
 }

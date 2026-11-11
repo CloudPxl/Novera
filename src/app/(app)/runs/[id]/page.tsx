@@ -52,6 +52,8 @@ import { badgeShareFor } from "@/lib/report/badge.ts";
 import { can } from "@/lib/auth/permissions.ts";
 import { NOVERA_ATTRIBUTION, SEAL_ATTRIBUTION, sealContents } from "@/lib/report/seal.ts";
 import { DiagnoseButton, ProposalCard, RetestHistory, type Proposal, type Retest } from "./diagnose.tsx";
+import { ResolveNoResults } from "./resolve.tsx";
+import { resolvePlan } from "@/lib/evidence/resolve.ts";
 import { TryScenarioAlone } from "@/components/ui/try-scenario-alone.tsx";
 import { clientSummary } from "@/lib/report/client-summary.ts";
 import { CANONICAL_HOST } from "@/lib/net/canonical-host.ts";
@@ -606,6 +608,12 @@ export default async function RunPage({
   });
   // A Suite Builder scan is never rerun from here (0056); a role that cannot start runs is not offered one.
   const mayRerun = !exploratory && can(role, "run.start");
+  // The no-result scenarios, split by what their diagnoses say: retest now, or fix first
+  // (src/lib/evidence/resolve.ts). Offered on a completed run only; an aborted run is rerun.
+  const resolve = run.status === "completed"
+    ? resolvePlan(caseRows.map((c) => ({ runCaseId: c.id, scenarioId: c.caseId, status: c.status, diagnostic: c.diagnostic ?? null })))
+    : { retestable: [], fixFirst: [] };
+  const offerResolve = !exploratory && resolve.retestable.length + resolve.fixFirst.length > 0;
   const compareHere = deliverable.kind !== "share" && previousRun !== null;
   const executed = run.started_at
     ? `Executed ${utc(run.started_at)}${run.finished_at ? ` to ${utc(run.finished_at)}` : ", not finished"} · status ${run.status as string}`
@@ -754,6 +762,9 @@ export default async function RunPage({
               )}
             </div>
           )}
+
+          {/* One button for the gaps: retest what is safe to retest, name the fix for the rest. */}
+          {offerResolve && <ResolveNoResults runId={run.id as string} plan={resolve} mayRetest={can(role, "case.retest")} />}
 
           {/* The 60-second guide, read from this run's rows (src/lib/explainability/report-guide.ts). */}
           <ReportGuideBox

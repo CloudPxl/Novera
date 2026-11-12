@@ -150,6 +150,8 @@ export interface DiagnosticReport {
   };
   retryPolicy: {
     isSafeToRetry: boolean;
+    /** True when the agent received the scenario and may have acted on it: a person checks their system and sends it again themselves. */
+    mayHaveActed?: boolean;
     /** How long to wait before a retest helps; 0 when waiting changes nothing. */
     recommendedDelayMs: number;
     /** Why a retest should wait, or will not help, when it should or will not. */
@@ -415,6 +417,7 @@ export function diagnose(input: DiagnoseInput): DiagnosticReport {
     },
     retryPolicy: {
       isSafeToRetry: safe,
+      ...(repair.retry === "check_first" ? { mayHaveActed: true } : {}),
       recommendedDelayMs: delayFor(repair.reason),
       reasonIfBlocked: repair.retry === "fix_first"
         ? "Retesting gives the same answer until the cause is fixed."

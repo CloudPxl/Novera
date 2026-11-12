@@ -24,6 +24,8 @@ export interface ResolveItem {
   blocked: string | null;
   /** Set when a retest recorded after the run already reached a verdict: the cause was fixed. */
   fixedBy?: "retest";
+  /** The agent received it and may have acted: a completion sends it again only after a person retested it. */
+  mayHaveActed?: boolean;
 }
 
 export interface ResolvePlan {
@@ -43,8 +45,9 @@ export function retestWords(verdict: CheckVerdict, words: string): string {
 }
 
 /**
- * The scenarios a completion run may now re-execute: the ones safe to retest, and the fix-first
- * ones a retest has since shown produce a verdict — the fix was made. A retest's verdict is never
+ * The scenarios a completion run may now re-execute: the ones safe to retest, and the others once
+ * a retest has since reached a verdict — the fix was made, or a person chose to send a scenario
+ * that may have acted again. The server admits exactly these (`eligibleScenarios`). A retest's verdict is never
  * itself put in a report: a person can retest as often as they like, so sealing a chosen retest
  * would let the tested party pick the sample. The completion run sends the scenario once more,
  * declared before it runs, and seals whatever that one execution produces.
@@ -73,6 +76,7 @@ export function resolvePlan(cases: ReadonlyArray<{
       delayMs: d.retryPolicy.recommendedDelayMs,
       blocked: d.retryPolicy.isSafeToRetry ? null : d.retryPolicy.reasonIfBlocked,
       ...(c.retestReachedVerdict ? { fixedBy: "retest" as const } : {}),
+      ...(d.retryPolicy.mayHaveActed ? { mayHaveActed: true } : {}),
     };
     (d.retryPolicy.isSafeToRetry ? plan.retestable : plan.fixFirst).push(item);
   }

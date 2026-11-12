@@ -27,12 +27,14 @@ const deliveryWords = (how: ChannelDelivery, what: "metadata" | "earlier turns")
     : how === "message" ? "sent inside the message, which the report states"
       : "not sent to this agent: its request has no field for them and the delivery option is off";
 
-export function SuiteSpecCards({ suites, delivery, open }: {
+export function SuiteSpecCards({ suites, delivery, open, hasReadBack }: {
   suites: SpecSuite[];
   /** How this agent receives metadata and earlier turns; null for an agent that is not an HTTP endpoint. */
   delivery: { context: ChannelDelivery; conversation: ChannelDelivery } | null;
   /** The suite shown open: the one the launcher selects. */
   open?: string;
+  /** Whether this agent has a read-only endpoint configured; without one, a scenario that needs it can fail and never pass. */
+  hasReadBack?: boolean;
 }) {
   if (suites.length === 0) return null;
   return (
@@ -78,6 +80,12 @@ export function SuiteSpecCards({ suites, delivery, open }: {
                     {spec.withRules} scenario{spec.withRules === 1 ? " has" : "s have"} rules that can fail it without a model; every scenario the rules do not fail is read by two AI graders from different companies.
                     <ExplainTrigger id="consensus_tiebreaker" />
                     {spec.withEffect > 0 && <> {spec.withEffect} expect an action and need evidence beyond the reply.<ExplainTrigger id="action_not_verified" /></>}
+                    {spec.needsReadBack.length > 0 && hasReadBack === false && (
+                      <span className="mt-1 block font-medium text-warning-text">
+                        {spec.needsReadBack.join(", ")} can pass only when Novera can read the result in your system, and this agent has no read-only endpoint.
+                        Until one is set under Verifying what the agent does, {spec.needsReadBack.length === 1 ? "it" : "each"} can fail but not pass, and the grade is shown over the other scenarios.
+                      </span>
+                    )}
                   </dd>
                   <dt className="text-ink-faint">Time</dt>
                   <dd className="text-ink-soft">About {spec.estimatedMinutes} minutes on Novera&apos;s keys, estimated from a measured run; an agent that answers slowly takes longer. A run can be left: it continues and seals its report by itself.</dd>

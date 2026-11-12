@@ -327,10 +327,10 @@ export default async function DashboardPage() {
             {
               label: "Latest run",
               value: latestSum ? <Badge tone={latestSum.tone}>{latestSum.stateLabel}</Badge> : <span className="text-ink-faint">None yet</span>,
-              note: latestRun ? `${agentName.get(latestRun.agent_id as string) ?? "Agent"} · ${day(latestRun.created_at as string)}${latestSum?.band && latestSum.state !== "pass" ? ` · ${latestSum.band}` : ""}` : undefined,
+              note: latestRun ? `${agentName.get(latestRun.agent_id as string) ?? "Agent"} · ${day(latestRun.created_at as string)}${latestSum?.band && latestSum.state !== "pass" ? ` · ${latestSum.scoped ?? latestSum.band}` : ""}` : undefined,
               href: latestRun ? `/runs/${latestRun.id}` : undefined,
               // Only a grade that was withheld or never given needs saying what that means.
-              help: latestSum?.band === "Grade withheld" ? <ExplainTrigger id="grade_withheld" /> : latestSum?.band === "Incomplete" ? <ExplainTrigger id="grade_incomplete" /> : undefined,
+              help: latestSum?.scoped ? <ExplainTrigger id="grade_scoped" /> : latestSum?.band === "Grade withheld" ? <ExplainTrigger id="grade_withheld" /> : latestSum?.band === "Incomplete" ? <ExplainTrigger id="grade_incomplete" /> : undefined,
             },
             { label: "Open findings", value: open.length, note: newRegressions ? `${newRegressions} newly broken` : open.length ? "None new since last run" : "Nothing failing", href: open.length ? "/review" : undefined, help: <ExplainTrigger id="regression_delta" /> },
             { label: "Reports ready", value: <>{readyCount}<span className="text-sm font-normal text-ink-faint"> of {readinessByAgent.size}</span></>, note: "Computed from each sealed report", href: "/reports" },

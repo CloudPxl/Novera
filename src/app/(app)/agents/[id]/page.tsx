@@ -246,7 +246,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
               {[
                 { k: "Connection", v: !latestProbe ? <span className="text-ink-faint">Never checked</span> : latestProbe.error ? <Badge tone="fail">Did not answer the last check</Badge> : <span>Answered in {latestProbe.latency_ms} ms · {formatWhen(latestProbe.created_at as string, context.profile)}</span>, href: `/agents/${agent.id}?tab=connection` },
                 { k: "Policy", v: latestPolicy ? <span>Version {latestPolicy.version} · <span className="text-ink-soft">{String(latestPolicy.body).split("\n")[0].slice(0, 90)}{String(latestPolicy.body).length > 90 ? "…" : ""}</span></span> : <span className="text-warning-text">None yet — a run needs one</span>, href: `/agents/${agent.id}?tab=policy` },
-                { k: "Latest run", v: latestSummary && latestCompleted ? <span className="flex flex-wrap items-center gap-2"><Badge tone={latestSummary.tone}>{latestSummary.stateLabel}</Badge>{latestSummary.band && latestSummary.state !== "pass" ? <span className="text-ink-soft">{latestSummary.band}</span> : null}<span className="text-ink-faint">{formatWhen(latestCompleted.created_at as string, context.profile)}</span></span> : <span className="text-ink-faint">No completed run</span>, href: latestCompleted ? `/runs/${latestCompleted.id}` : `/agents/${agent.id}?tab=runs` },
+                { k: "Latest run", v: latestSummary && latestCompleted ? <span className="flex flex-wrap items-center gap-2"><Badge tone={latestSummary.tone}>{latestSummary.stateLabel}</Badge>{latestSummary.band && latestSummary.state !== "pass" ? <span className="text-ink-soft">{latestSummary.scoped ?? latestSummary.band}</span> : null}<span className="text-ink-faint">{formatWhen(latestCompleted.created_at as string, context.profile)}</span></span> : <span className="text-ink-faint">No completed run</span>, href: latestCompleted ? `/runs/${latestCompleted.id}` : `/agents/${agent.id}?tab=runs` },
                 { k: "Open findings", v: latestSummary?.counts ? <span>{latestSummary.counts.failed} failed · {latestSummary.counts.noVerdict} without a verdict</span> : <span className="text-ink-faint">—</span>, href: `/review?agent=${agent.id}` },
                 { k: "Next scheduled run", v: nextSchedule ? (nextSchedule.state === "paused" ? <span className="text-high-text">Paused{nextSchedule.pausedReason ? ` — ${nextSchedule.pausedReason}` : ""}</span> : <span>{formatWhen(nextSchedule.nextRunAt, context.profile)}</span>) : <span className="text-ink-faint">No schedule</span>, href: `/agents/${agent.id}?tab=schedule` },
               ].map((row) => (
@@ -265,7 +265,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
           <section id="what-each-suite-tests" className="mt-6 scroll-mt-24">
             <h2 className="type-h3">What each suite tests</h2>
             <p className="mt-1 mb-3 text-sm text-ink-soft">Counted from the suite itself. Open one to see what it exercises, how this agent will be sent it, and some of its scenarios.</p>
-            <SuiteSpecCards suites={specSuites} delivery={agentDelivery} open={defaultSuiteId} />
+            <SuiteSpecCards suites={specSuites} delivery={agentDelivery} hasReadBack={Boolean((agent.verification as { url?: string } | null)?.url)} open={defaultSuiteId} />
           </section>
         )}
         {tab === "runs" && (
@@ -293,7 +293,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                     <span aria-hidden className="text-ink-faint transition-transform duration-200 group-open:rotate-90">›</span>
                   </summary>
                   <div className="border-t border-line p-3">
-                    <SuiteSpecCards suites={specSuites} delivery={agentDelivery} />
+                    <SuiteSpecCards suites={specSuites} delivery={agentDelivery} hasReadBack={Boolean((agent.verification as { url?: string } | null)?.url)} />
                   </div>
                 </details>
               )}
@@ -321,7 +321,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                                 <span className="sr-only"> passed, failed, no verdict</span>
                               </span>
                             )}
-                            {sum.band && sum.state !== "pass" && sum.state !== "running" && <span className="text-xs text-ink-soft">{sum.band}</span>}
+                            {sum.band && sum.state !== "pass" && sum.state !== "running" && <span className="text-xs text-ink-soft">{sum.scoped ?? sum.band}</span>}
                             <Badge tone={sum.tone} pulse={sum.state === "running"}>{sum.stateLabel}</Badge>
                           </span>
                         </Card>

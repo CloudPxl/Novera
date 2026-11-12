@@ -126,7 +126,7 @@ test("a retest that reached a verdict is said as that, and never as the retest f
   assert.match(panel, /The retest above is not what is sealed/);
 });
 
-test("a scenario that needed a fix can be completed once a retest shows the fix was made; one that may have acted never", () => {
+test("a scenario that needed a fix, or that may have acted, can be completed once a stored retest reached a verdict", () => {
   const plan = resolvePlan([
     { runCaseId: "c1", scenarioId: "T41", status: "error", diagnostic: diagnosis(true) },
     { runCaseId: "c2", scenarioId: "T12", status: "error", diagnostic: diagnosis(false) },
@@ -145,9 +145,9 @@ test("a scenario that needed a fix can be completed once a retest shows the fix 
     ["T22", { status: "error", retry: "check_first" as const, fixedSince: true }],
   ]);
   const got = eligibleScenarios({ requested: ["T41", "T12", "T13", "T22"], suiteOrder: ["T12", "T13", "T22", "T41"], merged });
-  assert.deepEqual(got.ok, ["T13", "T41"]);
-  assert.deepEqual(got.refused.map((r) => r.id).sort(), ["T12", "T22"]);
-  assert.match(got.refused.find((r) => r.id === "T22")!.why, /may already have acted/);
+  // T22 may have acted, and a person has retested it since: it is admitted, as the panel offers it.
+  assert.deepEqual(got.ok, ["T13", "T22", "T41"]);
+  assert.deepEqual(got.refused.map((r) => r.id), ["T12"]);
   // The server reads the retests itself; a client cannot say a fix was made.
   const server = readFileSync("src/lib/workflow/completion.ts", "utf8");
   assert.match(server, /from\("case_retests"\)\.select\("run_case_id, status"\)/);

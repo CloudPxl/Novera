@@ -150,7 +150,7 @@ export function ResolveNoResults({ runId, plan, mayRetest, mayComplete = false }
 
       {plan.fixFirst.length > 0 && (
         <div className="mt-4">
-          <p className="type-pill text-ink-faint">Needs a fix first</p>
+          <p className="type-pill text-ink-faint">Needs a fix or a check first</p>
           <ul className="mt-1.5 divide-y divide-line" aria-label="Scenarios that need a fix first">
             {plan.fixFirst.map((item) => (
               <li key={item.runCaseId} className="py-2 text-sm">
@@ -163,7 +163,11 @@ export function ResolveNoResults({ runId, plan, mayRetest, mayComplete = false }
                   {item.step} <span className="text-ink-faint">({item.owner})</span>
                 </p>
                 {item.fixedBy === "retest"
-                  ? <p className="mt-0.5 text-xs font-medium text-pass-text">A retest since this run reached a verdict, so the cause was fixed. It can be completed below.</p>
+                  ? <p className="mt-0.5 text-xs font-medium text-pass-text">
+                      {item.mayHaveActed
+                        ? "You retested this scenario since the run and it reached a verdict. It can be completed below, which sends it to your agent once more."
+                        : "A retest since this run reached a verdict, so the cause was fixed. It can be completed below."}
+                    </p>
                   : item.blocked && <p className="mt-0.5 text-xs text-ink-soft">{item.blocked}</p>}
               </li>
             ))}
@@ -187,6 +191,12 @@ export function ResolveNoResults({ runId, plan, mayRetest, mayComplete = false }
             the counts and grade are computed from both, and this report is named by its digest and stays sealed.
             The retest above is not what is sealed: a retest can be repeated, so the report takes the one execution declared for it. It uses one run.
           </p>
+          {ready.some((i) => i.mayHaveActed) && (
+            <p className="mt-1 text-sm text-ink-soft">
+              {ready.filter((i) => i.mayHaveActed).map((i) => i.scenarioId).join(", ")} expect{ready.filter((i) => i.mayHaveActed).length === 1 ? "s" : ""} your agent to act, so this sends a request it may act on again.
+              A pass there is recorded only when a read-only endpoint confirms the action; without one the new report can record a fail, or again no result.
+            </p>
+          )}
           <RefusableForm action={completeRunEvidence} className="mt-3">
             <input type="hidden" name="runId" value={runId} />
             {ready.map((item) => <input key={item.runCaseId} type="hidden" name="scenarioId" value={item.scenarioId} />)}

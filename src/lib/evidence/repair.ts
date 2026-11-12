@@ -134,10 +134,10 @@ export function repairFor(row: NoVerdictRow): Repair | null {
   if (row.evidenceGap) {
     return make({ reason: "action_not_verified", label: "Action not verified", owner: "your configuration", ...received(), retry: "check_first",
       happened: row.evidenceGap === "no_state_evidence"
-        ? "The agent said it did something, and nothing independent confirmed it: no read-only endpoint is configured."
+        ? "The scenario expects the agent to act. The graders read the reply as meeting it, and nothing independent confirmed the action: no read-only endpoint is configured."
         : "The agent said it called a tool, and its reply carried no record of the call.",
       next: row.evidenceGap === "no_state_evidence"
-        ? "Configure a read-only endpoint on the agent's page so the action can be checked, then retest."
+        ? "Configure a read-only endpoint on the agent's page so the action can be checked, then retest. Without one this scenario can reach a fail and never a pass: nothing confirms what the reply says was done."
         : "Point the agent's tool-activity path at where its replies list tool calls, then retest." });
   }
   if (row.judgeAgreement === "unresolved" && /^Two models disagreed/.test(error)) {

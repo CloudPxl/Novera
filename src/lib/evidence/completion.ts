@@ -51,8 +51,12 @@ export interface Eligibility {
 /**
  * Which requested scenarios a completion may re-execute: each must be in the run's declaration,
  * have no result in the evidence as it stands, and be one a retest cannot harm — the diagnosis's
- * own rule (`repairFor(...).retry === "safe"`) — or one whose cause needed a fix that a later
- * retest has shown was made (`fixedSince`). Returned in suite order.
+ * own rule (`repairFor(...).retry === "safe"`) — or one a person has retested since, with a
+ * stored retest that reached a verdict (`fixedSince`): for a cause that needed a fix, that shows
+ * the fix was made; for a scenario that may already have acted, it shows a person, told to check
+ * their system first, chose to send it again. Novera never sends such a scenario again by itself,
+ * and the panel offers exactly what this admits (`completable` in resolve.ts), so a button is
+ * never shown that this then refuses. Returned in suite order.
  */
 export function eligibleScenarios(args: {
   requested: readonly string[];
@@ -66,11 +70,13 @@ export function eligibleScenarios(args: {
     const row = args.merged.get(id);
     if (!row) { out.refused.push({ id, why: "has no stored row in this run" }); continue; }
     if (row.status !== "error") { out.refused.push({ id, why: "already has a verdict" }); continue; }
-    // A cause that needed fixing, and a retest recorded since that reached a verdict: it was fixed.
-    // Never for a scenario that may already have acted (`check_first`): that one is not sent again.
-    if (row.retry === "fix_first" && row.fixedSince) continue;
+    // A retest recorded since that reached a verdict: the cause was fixed, or — for a scenario
+    // that may already have acted — a person has already sent it again after the warning.
+    if ((row.retry === "fix_first" || row.retry === "check_first") && row.fixedSince) continue;
     if (row.retry !== "safe") {
-      out.refused.push({ id, why: row.retry === "fix_first" ? "would give the same answer until its cause is fixed" : "may already have acted in the agent's system, so it is not sent again automatically" });
+      out.refused.push({ id, why: row.retry === "fix_first"
+        ? "would give the same answer until its cause is fixed"
+        : "may already have acted in the agent's system: check there, retest it yourself, and complete the evidence once that retest reaches a verdict" });
       continue;
     }
   }

@@ -18,6 +18,8 @@ export interface SuiteSpec {
   withRules: number;
   /** Scenarios that expect an action and so need evidence beyond the reply. */
   withEffect: number;
+  /** Scenarios whose pass needs the customer's system read independently (`state_confirmed`). */
+  needsReadBack: string[];
   /** Not run against an agent that serves real customers. */
   testTargetOnly: number;
   estimatedMinutes: number;
@@ -51,6 +53,7 @@ export function suiteSpec(cases: readonly SuiteCase[]): SuiteSpec {
     conversations: cases.filter((c) => (c.earlier_turns?.length ?? 0) > 0 || Boolean(c.persona)).map((c) => c.id),
     withRules: cases.filter((c) => (c.checks?.length ?? 0) > 0 || (c.turn_checks?.length ?? 0) > 0).length,
     withEffect: cases.filter((c) => Boolean(c.effect)).length,
+    needsReadBack: cases.filter((c) => (c.effect as { evidence?: unknown } | undefined)?.evidence === "state_confirmed").map((c) => c.id),
     testTargetOnly: cases.filter((c) => c.destructive || c.fixture_only).length,
     estimatedMinutes: Math.max(1, Math.round((turns * MEASURED_SECONDS_PER_TURN) / 60)),
   };

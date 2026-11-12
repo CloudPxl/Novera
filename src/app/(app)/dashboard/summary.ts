@@ -1,5 +1,6 @@
 import { pipelineOutcome, type PipelineOutcome } from "../../../lib/report/outcome.ts";
 import type { ReportPayload } from "../../../lib/report/payload.ts";
+import { scopedGradeOfReport } from "../../../lib/evidence/grade.ts";
 
 /**
  * What one run row on the dashboard says, from its stored rows and its sealed report.
@@ -21,6 +22,12 @@ export interface RunSummary {
   stateLabel: string;
   tone: "live" | "neutral" | "pass" | "fail" | "error";
   band: string | null;
+  /**
+   * The scoped grade of a report whose whole-suite band is withheld or incomplete, said with its
+   * scope ("Scoped A · 13 of 14"), computed from the sealed counts; null when there is none. A list
+   * that showed only "Grade withheld" hid a letter the report itself shows.
+   */
+  scoped: string | null;
   counts: { passed: number; failed: number; noVerdict: number; planned: number } | null;
   coverage: { ran: number; verdict: number; planned: number } | null;
   startedBy: string;
@@ -31,20 +38,22 @@ const BAND_WORD: Record<string, string> = { WITHHELD: "Grade withheld", INCOMPLE
 export function summariseRun(r: RunSummaryInput): RunSummary {
   const startedBy = r.scheduleId ? "Schedule" : r.apiKeyName ? `API · ${r.apiKeyName}` : "In the app";
   if (r.status === "queued" || r.status === "running") {
-    return { state: "running", stateLabel: r.status === "queued" ? "Starting" : "Running", tone: "live", band: null, counts: null, coverage: null, startedBy };
+    return { state: "running", stateLabel: r.status === "queued" ? "Starting" : "Running", tone: "live", band: null, scoped: null, counts: null, coverage: null, startedBy };
   }
   if (r.status !== "completed") {
-    return { state: "stopped", stateLabel: "Stopped, never sealed", tone: "neutral", band: null, counts: null, coverage: null, startedBy };
+    return { state: "stopped", stateLabel: "Stopped, never sealed", tone: "neutral", band: null, scoped: null, counts: null, coverage: null, startedBy };
   }
   const outcome = pipelineOutcome({ status: r.status }, r.payload);
   const c = r.payload?.coverage;
   const band = r.payload?.grade?.band ?? null;
   const notRun = (c as { not_run?: number } | undefined)?.not_run ?? 0;
+  const scoped = r.payload ? scopedGradeOfReport(r.payload) : null;
   return {
     state: outcome,
     stateLabel: outcome === "pass" ? "Pass" : outcome === "fail" ? "Fail" : "Evidence incomplete",
     tone: outcome === "pass" ? "pass" : outcome === "fail" ? "fail" : "error",
     band: band ? (BAND_WORD[band] ?? `Grade ${band}`) : null,
+    scoped: scoped ? `Scoped ${scoped.band} · ${scoped.evaluated} of ${scoped.planned}` : null,
     counts: c ? { passed: c.passed, failed: c.failed, noVerdict: c.errored + notRun, planned: c.planned } : null,
     coverage: c ? { ran: c.planned - notRun, verdict: c.passed + c.failed, planned: c.planned } : null,
     startedBy,

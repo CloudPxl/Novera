@@ -91,7 +91,7 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
                       <span className="flex flex-wrap items-center gap-2">
                         <span className="font-medium [overflow-wrap:anywhere]">{agentName.get(r.agent_id as string) ?? "Agent"}</span>
                         <Badge tone={s.tone} pulse={s.state === "running"}>{s.stateLabel}</Badge>
-                        {s.band && s.state !== "pass" && s.state !== "running" && <span className="text-xs text-ink-soft">{s.band}</span>}
+                        {s.band && s.state !== "pass" && s.state !== "running" && <span className="text-xs text-ink-soft">{s.scoped ?? s.band}</span>}
                       </span>
                       <span className="mt-0.5 block text-xs text-ink-faint">{formatWhen(r.created_at as string, context.profile)} · {s.startedBy}</span>
                     </span>

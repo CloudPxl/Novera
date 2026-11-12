@@ -349,8 +349,8 @@ test("a manifest without an extension or a language carries neither key, and has
   assert.equal(hash, contentHash(manifest as unknown as Json));
   // Explicit nulls are the same as absence: nothing is written.
   assert.equal(buildRunManifest({ ...MANIFEST_BASE, extension: null, locale: null }).hash, hash);
-  assert.deepEqual(compositionFromManifest(manifest), { extension: null, locale: null });
-  assert.deepEqual(compositionFromManifest(null), { extension: null, locale: null });
+  assert.deepEqual(compositionFromManifest(manifest), { extension: null, locale: null, delivery: null });
+  assert.deepEqual(compositionFromManifest(null), { extension: null, locale: null, delivery: null });
 });
 
 test("a manifest with an extension and a language round-trips into the report's parts", () => {
@@ -369,6 +369,7 @@ test("a manifest with an extension and a language round-trips into the report's 
   assert.deepEqual(compositionFromManifest(JSON.parse(JSON.stringify(manifest))), {
     extension: { base_suite: "eu-support v5", base_suite_digest: "a".repeat(64), scenarios: 2, extension_digest: "b".repeat(64) },
     locale: { code: "de", name: "German", localised: V5_LOCALISABLE.length, of: 49, locale_digest: de.digest },
+    delivery: null,
   });
 });
 

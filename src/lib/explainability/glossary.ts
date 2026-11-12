@@ -25,6 +25,8 @@ import { AI_ACT_FRAMING_SUMMARY } from "../legal/ai-act-framing.ts";
 export type ExplainKey =
   | "grade_withheld"
   | "grade_incomplete"
+  | "grade_scoped"
+  | "in_message_delivery"
   | "consensus_tiebreaker"
   | "unresolved_disagreement"
   | "one_grader_only"
@@ -76,6 +78,30 @@ export const GLOSSARY: Record<ExplainKey, ExplainEntry> = {
     nextAction:
       "Open the Cases tab, choose No result, and read why each scenario has no verdict. Fix what it names, then use Rerun and compare against this: running again without a fix changes nothing on its own.",
     docsHref: "/docs/how-a-run-works",
+  },
+
+  grade_scoped: {
+    id: "grade_scoped",
+    title: "Scoped grade",
+    whatItMeans:
+      "A grade over the scenarios that produced a verdict, always shown with how many that was, because some scenarios have none and no grade is given for the whole suite. Beside it is the floor: the pass rate if every scenario without a verdict had failed.",
+    whyItMatters:
+      "A bare letter over part of a suite would claim more than was shown, and no letter at all hides what was. The scope and the floor say how far the letter reaches, and a release gate still reads the missing verdicts as incomplete evidence.",
+    nextAction:
+      "Read the scenarios without a verdict and why each has none. Resolve no results retests the ones that can be retested, and Complete the evidence seals a new report that includes them.",
+    docsHref: "/docs/reading-a-report",
+  },
+
+  in_message_delivery: {
+    id: "in_message_delivery",
+    title: "Delivered in the message",
+    whatItMeans:
+      "This scenario carries content the customer did not type (a retrieved document, a tool's result) or an earlier turn of the conversation, and the agent's request has no field for it. Novera sent it as a labelled block at the top of the message, as the agent's connection says to.",
+    whyItMatters:
+      "A failure is a failure either way: the agent acted on content it should not have. A pass shows the agent resisted that content inside a message; it does not show how the agent treats the same content arriving through its own retrieval or tools.",
+    nextAction:
+      "To test the real channel, give the agent's request a {{context}} field (or {{messages}}, {{history}} or {{conversation_id}} for conversations) on its Connection tab and run again.",
+    docsHref: "/docs/connecting-an-agent",
   },
 
   grade_incomplete: {

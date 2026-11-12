@@ -9,7 +9,7 @@ import { assertPublicUrl, PrivateAddressError } from "@/lib/net/public-url.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import type { HttpAgentConfig } from "@/lib/agents/types.ts";
 import {
-  archiveConfirmed, changedConnectionFields, nextHttpConfig, parseConnectionEdit, touchesConnection,
+  archiveConfirmed, changedConnectionFields, nextHttpConfig, normaliseCredential, parseConnectionEdit, touchesConnection,
 } from "@/lib/agents/connection.ts";
 import type { FormState } from "./actions.ts";
 
@@ -77,6 +77,8 @@ export async function updateAgentConnection(_prev: FormState, form: FormData): P
     responsePath: form.get("responsePath"), toolActivityPath: form.get("toolActivityPath"),
     timeoutSeconds: form.get("timeoutSeconds"), authHeaderName: form.get("authHeaderName"),
     credential: form.get("credential"), removeCredential: form.get("removeCredential"),
+    headers: form.get("headers"), streamPath: form.get("streamPath"), conversationIdPath: form.get("conversationIdPath"),
+    inlineChannels: form.get("inlineChannels"), preset: form.get("preset"),
   }, storedIds.length > 0, current.url);
   if (!parsed.ok) return { error: parsed.error };
   const edit = parsed.value;
@@ -108,7 +110,7 @@ export async function updateAgentConnection(_prev: FormState, form: FormData): P
   if (!updated) return { error: "This agent was archived meanwhile. Restore it first." };
 
   if (edit.credential === "replace" && edit.newCredential) {
-    await storeSecret({ client: admin, workspaceId: workspace.id, scope: "agent_auth", plaintext: edit.newCredential, agentId });
+    await storeSecret({ client: admin, workspaceId: workspace.id, scope: "agent_auth", plaintext: normaliseCredential(edit.authHeaderName, edit.newCredential).value, agentId });
   }
   if (edit.credential !== "keep" && storedIds.length) {
     // After the new one is stored, never before: the adapter reads the newest credential.

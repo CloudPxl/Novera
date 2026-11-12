@@ -13,7 +13,7 @@ For every scenario message Novera sends one `POST` with a JSON body built from y
 - `{{input}}` — the customer's message. Required.
 - `{{history}}` — the conversation so far, for scenarios with earlier turns. When the template string is exactly `"{{history}}"` it becomes an array of `{ "role": "user" | "assistant", "content": "…" }`; anywhere else it is that array as JSON text. The current message is not in it: it arrives in `{{input}}`. An agent whose template has no `{{history}}` or `{{conversation_id}}` is not sent multi-turn scenarios; they are recorded as not run, never flattened into separate messages.
 - `{{conversation_id}}` — a string that stays the same across the turns of one scenario, for an agent that keeps its own state.
-- `{{context}}` — what the agent is told *about* the conversation rather than by the customer (account fields, a note), as JSON text. Some scenarios deliver an attack through this channel, because real injections arrive there. Without the placeholder, those scenarios are recorded as not run, not sent as an ordinary message.
+- `{{context}}` — what the agent is told *about* the conversation rather than by the customer (account fields, a note), as JSON text. Some scenarios deliver an attack through this channel, because real injections arrive there. Without the placeholder, those scenarios are sent with that content as a labelled block inside the message when the agent's delivery option is ticked (the report names them and says what a pass there does not show), and recorded as not run when it is not.
 - `{{policy}}` — the approved policy text for the run, if your agent wants it.
 
 ## The connection in Novera

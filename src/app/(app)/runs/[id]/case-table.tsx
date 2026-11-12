@@ -796,7 +796,7 @@ const RECEIVED = { yes: "received it", no: "never received it", unknown: "not kn
  */
 function RepairNote({ repair, diagnostic }: { repair: Repair; diagnostic: DiagnosticReport | null }) {
   const explains = REPAIR_EXPLAINS[repair.reason]
-    ?? (repair.reason === "agent_http_error" && /HTTP (?:408|429|502|503|504)$/.test(repair.label) ? "agent_unreachable" : undefined);
+    ?? (repair.reason === "agent_http_error" && /HTTP (?:408|429|502|503|504)(?:, twice)?$/.test(repair.label) ? "agent_unreachable" : undefined);
   return (
     <section aria-label="Why there is no verdict" className="mb-4 rounded-control bg-surface p-3 ring-1 ring-line">
       <div className="flex flex-wrap items-baseline">

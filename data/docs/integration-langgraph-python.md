@@ -8,7 +8,7 @@ This guide wraps a LangGraph graph in a FastAPI endpoint that Novera can call, p
 
 Novera sends one `POST` per scenario message with a JSON body built from your template. The placeholders it fills are `{{input}}` (the customer's message, required), `{{history}}` (earlier turns, as `{ "role": "user" | "assistant", "content": … }`, not including the current message), `{{conversation_id}}` (stable across the turns of one scenario), `{{context}}` (what the agent is told about the conversation rather than by the customer, as JSON text) and `{{policy}}`. Any other placeholder is refused when you save the connection.
 
-Two of them switch scenarios on. Without `{{history}}` or `{{conversation_id}}`, multi-turn scenarios are recorded as not run. Without `{{context}}`, scenarios that deliver an injection through the context channel are recorded as not run. Neither is sent to your agent as an ordinary message, because that would be a different test.
+Two of them switch scenarios on. Without `{{history}}`, `{{messages}}` or `{{conversation_id}}`, multi-turn scenarios are sent with the earlier turns inside the message when the agent's delivery option is ticked (the report says so), and recorded as not run when it is not. Without `{{context}}`, scenarios that deliver content through the context channel are handled the same way. A scenario delivered inside the message is a weaker test of that channel, which is why the report names each one and says what a pass there does not show; give the endpoint the field to test the channel itself.
 
 ## The connection in Novera
 

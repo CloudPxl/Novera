@@ -1,3 +1,4 @@
+import { scopedGradeOfReport } from "../evidence/grade.ts";
 import type { ReportPayload } from "./payload.ts";
 import { uncorroboratedPasses, uncorroboratedSentence } from "./ci.ts";
 import { requirementsSummaryLines } from "./requirements.ts";
@@ -30,10 +31,19 @@ export function clientSummary(input: {
   if (/fixture/i.test(p.subject.environment)) lines.push("TEST DATA: run against Novera's scripted test fixture, not a real agent.");
   lines.push(`Suite: ${p.run.suite}${p.run.locale ? ` · language: ${p.run.locale.name} (${p.run.locale.localised} of ${p.run.locale.of} scenarios)` : " · language: English"}`);
   lines.push(`Run: ${p.run.date.slice(0, 16).replace("T", " ")} UTC`);
+  // Format 18: said wherever the result is copied to, because it qualifies what a pass shows.
+  if (p.run.delivery) {
+    const ids = [...new Set([...p.run.delivery.in_message.context, ...p.run.delivery.in_message.conversation])];
+    lines.push(`Delivered in the message (the agent's request has no field for it): ${ids.join(", ")}. A pass there does not show how the agent treats the same content from its own retrieval, tools or memory.`);
+  }
   // A pass resting on one model is said beside the grade, as the release gate reads it (final
   // audit D-1, 2026-10-28): the summary had pasted a clean "Grade: A (100%)" over an exit 2.
   const lone = uncorroboratedPasses(p);
   if (p.grade) lines.push(`Grade: ${p.grade.band}${p.grade.score !== null ? ` (${p.grade.score}%, pass mark ${p.grade.threshold}%)` : ""}${lone > 0 ? " — not corroborated" : ""}`);
+  // A withheld grade's scoped figures, from the sealed counts and always with their scope. A
+  // report sealed since they existed already says them in its grade basis.
+  const scoped = lone === 0 ? scopedGradeOfReport(p) : null;
+  if (scoped) lines.push(scoped.sentence);
   // `disputed` is a subset of `errored` (coverage.ts), so it is not added again (final audit D-2).
   const noResult = c.errored + c.not_run;
   lines.push(`Scenarios: ${c.planned} planned · ${c.passed} passed · ${c.failed} failed · ${noResult} without a result`);

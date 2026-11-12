@@ -7,7 +7,7 @@ import { RefusableForm } from "@/components/ui/refusable-form.tsx";
 import { completeRunEvidence } from "@/lib/workflow/completion-actions.ts";
 import { Badge, Card } from "@/components/ui/primitives.tsx";
 import { CATEGORIES } from "@/lib/evidence/diagnostics.ts";
-import { resolveOutcomes, resolveSummary, type ResolvePlan, type RetestRow } from "@/lib/evidence/resolve.ts";
+import { completable, resolveOutcomes, resolveSummary, type ResolvePlan, type RetestRow } from "@/lib/evidence/resolve.ts";
 
 /**
  * "Resolve no results": one button retests every no-result scenario whose diagnosis says a
@@ -44,6 +44,11 @@ export function ResolveNoResults({ runId, plan, mayRetest, mayComplete = false }
 
   const outcomes = resolveOutcomes(plan, rows, since);
   const total = plan.retestable.length + plan.fixFirst.length;
+  // What a completion run may re-execute: the retest-safe scenarios, and the fix-first ones a
+  // retest has since shown produce a verdict.
+  const ready = completable(plan, rows);
+  const reached = outcomes.filter((o) => o.verdict === "pass" || o.verdict === "fail").length
+    + plan.fixFirst.filter((i) => i.fixedBy === "retest").length;
 
   const run = useCallback(async () => {
     setRunning(true);
@@ -157,7 +162,9 @@ export function ResolveNoResults({ runId, plan, mayRetest, mayComplete = false }
                 <p className="mt-1 text-sm text-ink">
                   {item.step} <span className="text-ink-faint">({item.owner})</span>
                 </p>
-                {item.blocked && <p className="mt-0.5 text-xs text-ink-soft">{item.blocked}</p>}
+                {item.fixedBy === "retest"
+                  ? <p className="mt-0.5 text-xs font-medium text-pass-text">A retest since this run reached a verdict, so the cause was fixed. It can be completed below.</p>
+                  : item.blocked && <p className="mt-0.5 text-xs text-ink-soft">{item.blocked}</p>}
               </li>
             ))}
           </ul>
@@ -167,18 +174,24 @@ export function ResolveNoResults({ runId, plan, mayRetest, mayComplete = false }
       {halt && <p role="alert" className="mt-4 text-sm text-fail-text">{halt}</p>}
       {done && !halt && <p role="status" className="mt-4 text-sm text-ink">{resolveSummary(outcomes, plan)}</p>}
 
-      {mayComplete && plan.retestable.length > 0 && (
-        <div className="mt-5 border-t border-line pt-4">
-          <p className="text-sm text-ink-soft">
-            To unblock the report, complete the evidence: a new run of only {plan.retestable.length === 1 ? "this scenario" : `these ${plan.retestable.length} scenarios`},
-            against the same agent connection, policy version and suite. Its report carries every other verdict from this run unchanged,
-            computes the counts from both, and names this report by its digest; this report stays sealed. It uses one run.
+      {mayComplete && ready.length > 0 && (
+        <div className={`mt-5 rounded-control border p-4 ${reached > 0 ? "border-pass-border bg-pass-surface" : "border-line bg-ground/60"}`}>
+          <p className="text-sm font-medium text-ink">
+            {reached > 0
+              ? `${reached} scenario${reached === 1 ? "" : "s"} now reach${reached === 1 ? "es" : ""} a verdict. Seal a completed report that includes ${reached === 1 ? "it" : "them"}.`
+              : "Seal a completed report"}
+          </p>
+          <p className="mt-1 text-sm text-ink-soft">
+            One press runs only {ready.length === 1 ? `scenario ${ready[0].scenarioId}` : `these ${ready.length} scenarios (${ready.map((i) => i.scenarioId).join(", ")})`} once more,
+            against the same agent connection, policy version and suite, and seals a new report: every other verdict is carried from this run unchanged,
+            the counts and grade are computed from both, and this report is named by its digest and stays sealed.
+            The retest above is not what is sealed: a retest can be repeated, so the report takes the one execution declared for it. It uses one run.
           </p>
           <RefusableForm action={completeRunEvidence} className="mt-3">
             <input type="hidden" name="runId" value={runId} />
-            {plan.retestable.map((item) => <input key={item.runCaseId} type="hidden" name="scenarioId" value={item.scenarioId} />)}
+            {ready.map((item) => <input key={item.runCaseId} type="hidden" name="scenarioId" value={item.scenarioId} />)}
             <SubmitButton size="sm" pendingLabel="Starting…">
-              Complete the evidence ({plan.retestable.length} scenario{plan.retestable.length === 1 ? "" : "s"})
+              Complete the evidence and seal a new report ({ready.length} scenario{ready.length === 1 ? "" : "s"})
             </SubmitButton>
           </RefusableForm>
         </div>

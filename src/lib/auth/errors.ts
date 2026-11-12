@@ -97,7 +97,9 @@ export function authErrorMessage(kind: AuthErrorKind, context: "signup" | "signi
     case "not_confirmed":
       return "This address has not been confirmed yet. Use the link in the confirmation email, or send a new one below.";
     case "invalid_credentials":
-      return "That email address and password do not match an account.";
+      // Said to everyone alike, so it reveals nothing about any address: an account made with a
+      // provider has no password until one is added, and its owner otherwise meets only this line.
+      return "That email address and password do not match an account. If you joined with another sign-in method shown on this page, use that; a password can then be added under Settings, Account.";
     case "provider_disabled":
       return "That sign-in method is not available yet. Use email and password, or another method.";
     case "identity_taken":

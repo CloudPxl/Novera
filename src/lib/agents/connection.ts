@@ -9,7 +9,10 @@ import type { HttpAgentConfig } from "./types.ts";
  */
 
 /** The placeholders `httpAgent` fills. Anything else would be sent to the agent literally. */
-export const BODY_PLACEHOLDERS = ["input", "policy", "context", "history", "conversation_id"] as const;
+export const BODY_PLACEHOLDERS = ["input", "messages", "policy", "context", "history", "conversation_id"] as const;
+
+/** A reply path meaning the whole reply body, for an endpoint that answers in plain text (`WHOLE_BODY_PATH` in http.ts). */
+export const WHOLE_BODY = "$text";
 
 export const DEFAULT_BODY_TEMPLATE = '{"message":"{{input}}"}';
 
@@ -44,8 +47,8 @@ export function parseBodyTemplate(raw: string): Parsed<Record<string, unknown>> 
     return { ok: false, error: "The request body must be a JSON object, for example {\"message\": \"{{input}}\"}." };
   }
   const serialised = JSON.stringify(template);
-  if (!serialised.includes("{{input}}")) {
-    return { ok: false, error: "The request body needs {{input}} somewhere, so we know where to put the scenario." };
+  if (!serialised.includes("{{input}}") && !serialised.includes("{{messages}}")) {
+    return { ok: false, error: "The request body needs {{input}} somewhere (or {{messages}}, for an endpoint that takes a list of chat messages), so we know where to put the scenario." };
   }
   const unknown = [...new Set([...serialised.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))]
     .filter((name) => !(BODY_PLACEHOLDERS as readonly string[]).includes(name));
@@ -59,9 +62,65 @@ export function parseBodyTemplate(raw: string): Parsed<Record<string, unknown>> 
   return { ok: true, value: template as Record<string, unknown> };
 }
 
-/** A dot path into the agent's JSON reply: "reply", "choices.0.message.content". */
+/** A dot path into the agent's JSON reply: "reply", "choices.0.message.content", "*.payload.message". */
 function validPath(path: string): boolean {
-  return path.length <= MAX_PATH_CHARS && /^[\w-]+(\.[\w-]+)*$/.test(path);
+  return path.length <= MAX_PATH_CHARS && /^([\w-]+|\*)(\.([\w-]+|\*))*$/.test(path);
+}
+
+/** Fixed, non-secret request headers: at most this many, each value at most this long. */
+export const MAX_EXTRA_HEADERS = 10;
+export const MAX_HEADER_VALUE = 500;
+
+/** A header whose name says it carries a credential. Those are encrypted, never kept in the configuration. */
+export function looksLikeCredentialHeader(name: string): boolean {
+  return /^(authorization|proxy-authorization|cookie)$/i.test(name) || /(key|token|secret|password|auth|credential|session)/i.test(name);
+}
+
+/**
+ * "Other headers" as typed: one `Name: value` per line. They are stored with the connection in
+ * the clear and their names are part of a run's declared request shape, so a header that carries
+ * a credential is refused here and belongs under Authentication, where it is encrypted.
+ */
+export function parseExtraHeaders(raw: string): Parsed<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const colon = line.indexOf(":");
+    const name = (colon < 0 ? line : line.slice(0, colon)).trim();
+    const value = colon < 0 ? "" : line.slice(colon + 1).trim();
+    if (colon < 0 || !name || !value) return { ok: false, error: `Each header is one line, "Name: value". This line is not: ${line.trim().slice(0, 60)}` };
+    if (!HEADER_NAME.test(name) || RESERVED_HEADERS.has(name.toLowerCase())) {
+      return { ok: false, error: `Novera cannot send a header named ${name.slice(0, 60)}.` };
+    }
+    if (looksLikeCredentialHeader(name)) {
+      return { ok: false, error: `${name} looks like it carries a credential. Put it under Authentication, where it is encrypted; other headers are stored as written.` };
+    }
+    if (value.length > MAX_HEADER_VALUE || /[^\t\x20-\x7e]/.test(value)) {
+      return { ok: false, error: `The value of ${name} must be at most ${MAX_HEADER_VALUE} plain ASCII characters.` };
+    }
+    out[name] = value;
+  }
+  if (Object.keys(out).length > MAX_EXTRA_HEADERS) return { ok: false, error: `At most ${MAX_EXTRA_HEADERS} other headers.` };
+  return { ok: true, value: out };
+}
+
+/** Other headers, as the form shows them again. */
+export function formatExtraHeaders(headers: Record<string, string> | undefined): string {
+  return Object.entries(headers ?? {}).map(([k, v]) => `${k}: ${v}`).join("\n");
+}
+
+/**
+ * A credential as it is sent. A bare API token pasted under `authorization` is sent as
+ * `Bearer <token>`: the platforms whose tokens begin this way all expect that scheme, and
+ * without it every request is refused as unauthorised. Anything that already names a scheme, and
+ * any other header, is sent exactly as pasted. The note says what was done, never the value.
+ */
+export function normaliseCredential(headerName: string | null, value: string): { value: string; note: string | null } {
+  const bare = value.trim();
+  if (headerName && headerName.toLowerCase() === "authorization" && /^(app-|sk-|gsk_|dataset-|pat_|eyJ)[^\s]+$/.test(bare)) {
+    return { value: `Bearer ${bare}`, note: "The credential was a bare token, so it is sent as “Authorization: Bearer …”." };
+  }
+  return { value, note: null };
 }
 
 /** An HTTP header name (RFC 9110 token). The credential travels in it. */
@@ -88,15 +147,8 @@ export function headerNameProblem(name: string): string | null {
 
 export type CredentialChange = "keep" | "replace" | "remove";
 
-export interface ConnectionEdit {
+export interface ConnectionEdit extends EndpointFields {
   name: string;
-  url: string;
-  bodyTemplate: Record<string, unknown>;
-  responsePath: string;
-  toolActivityPath: string | null;
-  /** Seconds; null is the default (the longest Novera waits). */
-  timeoutSeconds: number | null;
-  authHeaderName: string | null;
   credential: CredentialChange;
   /** Present only when `credential` is "replace". Never echoed anywhere. */
   newCredential?: string;
@@ -111,6 +163,18 @@ export interface EndpointFields {
   /** Seconds; null is the default (the longest Novera waits). */
   timeoutSeconds: number | null;
   authHeaderName: string | null;
+  /** Fixed, non-secret headers. Empty when none. */
+  headers: Record<string, string>;
+  streamPath: string | null;
+  conversationIdPath: string | null;
+  /** Deliver metadata and earlier turns in the message when the request has no field for them. */
+  inlineChannels: boolean;
+  preset: string | null;
+  /**
+   * Whether the caller sent the four fields above at all (the forms do; an older API caller does
+   * not). When it did not, an edit keeps what the agent has rather than clearing it.
+   */
+  advancedShown: boolean;
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -126,6 +190,7 @@ export const MAX_ENDPOINT_URL = 2048;
 export function parseEndpointFields(fields: {
   url: unknown; bodyTemplate: unknown; responsePath: unknown; toolActivityPath: unknown;
   timeoutSeconds?: unknown; authHeaderName: unknown;
+  headers?: unknown; streamPath?: unknown; conversationIdPath?: unknown; inlineChannels?: unknown; preset?: unknown;
 }): Parsed<EndpointFields> {
   const url = str(fields.url).trim();
   const responsePath = str(fields.responsePath).trim();
@@ -139,9 +204,18 @@ export function parseEndpointFields(fields: {
   if (url.length > MAX_ENDPOINT_URL) return { ok: false, error: `The endpoint URL is longer than ${MAX_ENDPOINT_URL} characters.` };
   let parsedUrl: URL;
   try {
-    parsedUrl = new URL(url);
+    // `{{conversation_id}}` may sit in the path or query, for a platform that keys a conversation
+    // by its address. Read with a stand-in, so the rest of the address is checked as written.
+    parsedUrl = new URL(url.split("{{conversation_id}}").join("conversation"));
   } catch {
     return { ok: false, error: "That endpoint URL is not valid." };
+  }
+  if (url.includes("{{")) {
+    const hostEnd = url.indexOf("/", url.indexOf("//") + 2);
+    const beforePath = hostEnd < 0 ? url : url.slice(0, hostEnd);
+    if (beforePath.includes("{{") || /\{\{(?!conversation_id\}\})/.test(url)) {
+      return { ok: false, error: "The only placeholder an address can carry is {{conversation_id}}, and only after the host." };
+    }
   }
   if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
     return { ok: false, error: "The endpoint must be an http or https address." };
@@ -154,7 +228,9 @@ export function parseEndpointFields(fields: {
   if (!body.ok) return body;
 
   if (!responsePath) return { ok: false, error: "Tell us where the reply text sits in the response." };
-  if (!validPath(responsePath)) return { ok: false, error: "The reply path is a dot path such as reply or choices.0.message.content." };
+  if (responsePath !== WHOLE_BODY && !validPath(responsePath)) {
+    return { ok: false, error: `The reply path is a dot path such as reply or choices.0.message.content, or ${WHOLE_BODY} when the endpoint answers in plain text.` };
+  }
   if (toolActivityPath && !validPath(toolActivityPath)) {
     return { ok: false, error: "The tool activity path is a dot path such as tool_calls or data.actions." };
   }
@@ -171,11 +247,31 @@ export function parseEndpointFields(fields: {
   const headerProblem = headerNameProblem(authHeaderName);
   if (headerProblem) return { ok: false, error: headerProblem };
 
+  const extra = parseExtraHeaders(str(fields.headers));
+  if (!extra.ok) return extra;
+  if (authHeaderName && Object.keys(extra.value).some((k) => k.toLowerCase() === authHeaderName.toLowerCase())) {
+    return { ok: false, error: `${authHeaderName} is the credential's header, so it cannot also be listed under other headers.` };
+  }
+  const streamPath = str(fields.streamPath).trim();
+  if (streamPath && !validPath(streamPath)) return { ok: false, error: "The stream path is a dot path such as answer or choices.0.delta.content." };
+  const conversationIdPath = str(fields.conversationIdPath).trim();
+  if (conversationIdPath && !validPath(conversationIdPath)) return { ok: false, error: "The conversation id path is a dot path such as conversation_id." };
+  if (conversationIdPath && !JSON.stringify(body.value).includes("{{conversation_id}}") && !url.includes("{{conversation_id}}")) {
+    return { ok: false, error: "A conversation id read from the reply has to be sent back: put {{conversation_id}} in the request body or the address." };
+  }
+  const preset = str(fields.preset).trim();
+
   return {
     ok: true,
     value: {
       url, bodyTemplate: body.value, responsePath, toolActivityPath: toolActivityPath || null,
       timeoutSeconds, authHeaderName: authHeaderName || null,
+      headers: extra.value,
+      streamPath: streamPath || null,
+      conversationIdPath: conversationIdPath || null,
+      inlineChannels: fields.inlineChannels === "on" || fields.inlineChannels === true,
+      preset: /^[a-z0-9-]{1,40}$/.test(preset) ? preset : null,
+      advancedShown: typeof fields.headers === "string",
     },
   };
 }
@@ -204,6 +300,11 @@ export function newHttpConfig(fields: EndpointFields): HttpAgentConfig {
     ...(fields.toolActivityPath ? { toolActivityPath: fields.toolActivityPath } : {}),
     ...(fields.timeoutSeconds !== null ? { timeoutMs: fields.timeoutSeconds * 1000 } : {}),
     ...(fields.authHeaderName ? { authHeaderName: fields.authHeaderName } : {}),
+    ...(Object.keys(fields.headers).length ? { headers: fields.headers } : {}),
+    ...(fields.streamPath ? { streamPath: fields.streamPath } : {}),
+    ...(fields.conversationIdPath ? { conversationIdPath: fields.conversationIdPath } : {}),
+    ...(fields.inlineChannels ? { inlineChannels: true } : {}),
+    ...(fields.preset ? { preset: fields.preset } : {}),
   };
 }
 
@@ -214,6 +315,7 @@ export function newHttpConfig(fields: EndpointFields): HttpAgentConfig {
 export function parseConnectionEdit(fields: {
   name: unknown; url: unknown; bodyTemplate: unknown; responsePath: unknown; toolActivityPath: unknown;
   timeoutSeconds: unknown; authHeaderName: unknown; credential: unknown; removeCredential: unknown;
+  headers?: unknown; streamPath?: unknown; conversationIdPath?: unknown; inlineChannels?: unknown; preset?: unknown;
 }, hasStoredCredential: boolean, currentUrl?: string): Parsed<ConnectionEdit> {
   const name = str(fields.name).trim();
   const credential = str(fields.credential);
@@ -226,7 +328,7 @@ export function parseConnectionEdit(fields: {
   const endpoint = parseEndpointFields(fields);
   if (!endpoint.ok) return endpoint;
   const { url, authHeaderName } = endpoint.value;
-  const parsedUrl = new URL(url);
+  const parsedUrl = new URL(url.split("{{conversation_id}}").join("conversation"));
 
   if (remove && credential) return { ok: false, error: "Either paste a new credential or remove the stored one, not both." };
   const change: CredentialChange = remove ? "remove" : credential ? "replace" : "keep";
@@ -280,12 +382,24 @@ export function nextHttpConfig(current: HttpAgentConfig, edit: ConnectionEdit): 
   else delete next.timeoutMs;
   if (edit.authHeaderName && edit.credential !== "remove") next.authHeaderName = edit.authHeaderName;
   else delete next.authHeaderName;
+  if (edit.advancedShown) {
+    if (Object.keys(edit.headers).length) next.headers = edit.headers;
+    else delete next.headers;
+    if (edit.streamPath) next.streamPath = edit.streamPath;
+    else delete next.streamPath;
+    if (edit.conversationIdPath) next.conversationIdPath = edit.conversationIdPath;
+    else delete next.conversationIdPath;
+    if (edit.inlineChannels) next.inlineChannels = true;
+    else delete next.inlineChannels;
+    if (edit.preset) next.preset = edit.preset;
+  }
   return next;
 }
 
 /** Field names, as an audit line names them. Never a value. */
 export type ChangedField =
-  | "name" | "url" | "bodyTemplate" | "responsePath" | "toolActivityPath" | "timeout" | "authHeaderName" | "credential";
+  | "name" | "url" | "bodyTemplate" | "responsePath" | "toolActivityPath" | "timeout" | "authHeaderName" | "credential"
+  | "headers" | "streamPath" | "conversationIdPath" | "delivery";
 
 /** Order-insensitive JSON equality, enough for a template a person edits. */
 function sameJson(a: unknown, b: unknown): boolean {
@@ -317,6 +431,10 @@ export function changedConnectionFields(
   if ((b.timeoutMs ?? null) !== (a.timeoutMs ?? null)) out.push("timeout");
   if ((b.authHeaderName ?? null) !== (a.authHeaderName ?? null)) out.push("authHeaderName");
   if (credential !== "keep") out.push("credential");
+  if (!sameJson(b.headers ?? {}, a.headers ?? {})) out.push("headers");
+  if ((b.streamPath ?? null) !== (a.streamPath ?? null)) out.push("streamPath");
+  if ((b.conversationIdPath ?? null) !== (a.conversationIdPath ?? null)) out.push("conversationIdPath");
+  if (Boolean(b.inlineChannels) !== Boolean(a.inlineChannels)) out.push("delivery");
   return out;
 }
 

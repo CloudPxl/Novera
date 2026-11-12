@@ -11,6 +11,7 @@ import { LeakError } from "@/lib/report/redact.ts";
 import { validateSuite, suiteFromCsv } from "@/lib/suites/validate.ts";
 import { applyPolicyChange } from "@/lib/diagnose/parse.ts";
 import { policyTooLong } from "@/lib/diagnose/limits.ts";
+import { placeholderProblem } from "@/lib/agents/policy-starters.ts";
 import { workspaceEntitlement } from "@/lib/auth/entitlement.ts";
 import { keyRemovedNotice } from "@/lib/billing/entitlement.ts";
 import { explainKeyFailure } from "@/lib/providers/key-failure.ts";
@@ -28,7 +29,7 @@ import type { AgentConfig, HttpAgentConfig } from "@/lib/agents/types.ts";
 import { recordAudit } from "@/lib/audit/record.ts";
 import { spendModelCall } from "@/lib/workflow/model-budget.ts";
 import { track } from "@/lib/analytics/track.ts";
-import { credentialProblem, headerNameProblem, MAX_AGENT_NAME, newHttpConfig, parseEndpointFields } from "@/lib/agents/connection.ts";
+import { credentialProblem, headerNameProblem, MAX_AGENT_NAME, newHttpConfig, normaliseCredential, parseEndpointFields } from "@/lib/agents/connection.ts";
 
 export interface FormState {
   error?: string;
@@ -60,6 +61,8 @@ export async function connectAgent(_prev: FormState, form: FormData): Promise<Fo
     url: form.get("url"), bodyTemplate: form.get("bodyTemplate"), responsePath: form.get("responsePath"),
     toolActivityPath: form.get("toolActivityPath"), timeoutSeconds: form.get("timeoutSeconds"),
     authHeaderName: form.get("authHeaderName"),
+    headers: form.get("headers"), streamPath: form.get("streamPath"), conversationIdPath: form.get("conversationIdPath"),
+    inlineChannels: form.get("inlineChannels"), preset: form.get("preset"),
   });
   if (!endpoint.ok) return { error: endpoint.error };
   try {
@@ -105,7 +108,8 @@ export async function connectAgent(_prev: FormState, form: FormData): Promise<Fo
       client: admin,
       workspaceId: workspace.id,
       scope: "agent_auth",
-      plaintext: authValue,
+      // A bare token under `authorization` is stored as it is sent: with its scheme.
+      plaintext: normaliseCredential(authHeaderName, authValue).value,
       agentId: agent.id as string,
     });
   }
@@ -127,6 +131,9 @@ export async function savePolicyVersion(_prev: FormState, form: FormData): Promi
   // Diagnosis and drafting send the whole policy to a model on Novera's keys (final audit E-3, 2026-10-28).
   const tooLong = policyTooLong(body.length);
   if (tooLong) return { error: tooLong };
+  // A starting point saved as written would seal someone else's rules as this agent's.
+  const unfilled = placeholderProblem(body);
+  if (unfilled) return { error: unfilled };
 
   const gated = await gate(user.id, workspace.id, "policy.write");
   if ("error" in gated) return { error: gated.error };

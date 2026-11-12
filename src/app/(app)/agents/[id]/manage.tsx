@@ -8,6 +8,7 @@ import { Field, inputClass } from "@/components/ui/primitives.tsx";
 import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 import { MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS } from "@/lib/agents/connection.ts";
 import { ConnectionTest } from "../connection-test.tsx";
+import { AdvancedConnectionFields, DeliveryChoice } from "../connection-fields.tsx";
 
 export interface EditableConnection {
   name: string;
@@ -17,6 +18,11 @@ export interface EditableConnection {
   toolActivityPath: string;
   timeoutSeconds: string;
   authHeaderName: string;
+  headers: string;
+  streamPath: string;
+  conversationIdPath: string;
+  inlineChannels: boolean;
+  preset: string;
 }
 
 const code = "rounded bg-sunken px-1 py-0.5 font-mono text-ink";
@@ -48,23 +54,25 @@ export function ConnectionEditor({ agentId, current, hasCredential }: {
           <input id="edit-name" name="name" required maxLength={120} defaultValue={current.name} className={inputClass} />
         </Field>
         <Field label="Endpoint URL" htmlFor="edit-url" hint="Checked to be a public address when saved, and again on every call.">
-          <input id="edit-url" name="url" type="url" required defaultValue={current.url} className={inputClass} />
+          <input id="edit-url" name="url" inputMode="url" required defaultValue={current.url} className={inputClass} />
         </Field>
         <Field
           label="Request body"
           htmlFor="edit-body"
-          hint={<>A JSON object with <code className={code}>{"{{input}}"}</code>. It may also carry <code className={code}>{"{{policy}}"}</code>, <code className={code}>{"{{context}}"}</code>, <code className={code}>{"{{history}}"}</code> and <code className={code}>{"{{conversation_id}}"}</code>; any other placeholder is refused, because it would reach your agent as written.</>}
+          hint={<>A JSON object with <code className={code}>{"{{input}}"}</code>. It may also carry <code className={code}>{"{{policy}}"}</code>, <code className={code}>{"{{context}}"}</code>, <code className={code}>{"{{history}}"}</code>, <code className={code}>{"{{messages}}"}</code> and <code className={code}>{"{{conversation_id}}"}</code>; any other placeholder is refused, because it would reach your agent as written.</>}
         >
           <textarea id="edit-body" name="bodyTemplate" rows={5} defaultValue={current.bodyTemplate} className={`${inputClass} font-mono text-xs`} />
         </Field>
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Reply path" htmlFor="edit-reply" hint="Dot path to the reply text, e.g. reply or choices.0.message.content">
+          <Field label="Reply path" htmlFor="edit-reply" hint="Dot path to the reply text, e.g. reply or choices.0.message.content. $text reads a plain-text reply whole.">
             <input id="edit-reply" name="responsePath" required defaultValue={current.responsePath} className={`${inputClass} font-mono text-xs`} />
           </Field>
           <Field label="Tool activity path" htmlFor="edit-tools" hint="Optional. Leave empty if your agent does not report its actions.">
             <input id="edit-tools" name="toolActivityPath" defaultValue={current.toolActivityPath} className={`${inputClass} font-mono text-xs`} />
           </Field>
         </div>
+        <AdvancedConnectionFields idPrefix="edit" defaults={current} />
+        <DeliveryChoice idPrefix="edit" defaultChecked={current.inlineChannels} />
         <Field label="Timeout (seconds)" htmlFor="edit-timeout" hint={`Optional, ${MIN_TIMEOUT_SECONDS}–${MAX_TIMEOUT_SECONDS}. Empty waits the longest Novera can, ${MAX_TIMEOUT_SECONDS} s: a run works in time slices.`}>
           <input id="edit-timeout" name="timeoutSeconds" type="number" inputMode="numeric" min={MIN_TIMEOUT_SECONDS} max={MAX_TIMEOUT_SECONDS} step={1} defaultValue={current.timeoutSeconds} className={`${inputClass} sm:max-w-40`} />
         </Field>

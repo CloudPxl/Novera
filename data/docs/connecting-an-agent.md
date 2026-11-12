@@ -4,7 +4,35 @@ published: true
 ---
 Novera talks to your agent over HTTP. You give it the endpoint URL, a JSON request body template containing `{{input}}` where the scenario text should go, and the path to the reply text in the response.
 
-If your agent also receives data *about* a conversation — account fields, a profile, a CRM note — put `{{context}}` in the template where that data belongs. Some scenarios attack that channel, because real prompt injections arrive there rather than in something a customer typed. If there is nowhere to put it, those scenarios are reported as not run rather than sent to your agent as an ordinary message, which would be a different test.
+## Starting from a platform or a curl command
+
+You do not have to write the request yourself. On the connect page, **Start from** fills the form for a platform Novera knows:
+
+- **Dify** (chat, agent or chatflow app): the chat-messages API. Novera asks for a streamed answer, which every Dify app type supports, and uses the conversation id Dify issues. If you paste Dify's API base (`…/v1`), `/v1/chat-messages` is added and the form says so.
+- **OpenAI-compatible chat completions** and **Anthropic-compatible messages**: the conversation travels as `{{messages}}`, the whole chat list ending with the scenario's message. Replace `your-model` with the name your endpoint expects.
+- **Flowise**, **n8n chat trigger**, **Langflow**: each scenario gets its own session id.
+- **Voiceflow**: the reply is every text message of the answer, one per line (`*.payload.message`), and each scenario is its own user in the address.
+- **Custom JSON endpoint**: one field with the message, one field of the reply.
+
+A starting point only fills fields you can read and change. It is the connection check, not the starting point, that shows the endpoint answers. Platforms that need several requests for one message (Botpress's Chat API) or whose input is defined by your own application (LangServe, LangGraph) have no starting point; use the curl import or the custom format.
+
+**Paste a curl command** reads a command from your platform's API documentation into the form: the address, the headers and the request body, with the message field turned into `{{input}}` (or a chat list into `{{messages}}`) and a session or conversation id into `{{conversation_id}}`. The command is read in your browser. It is never run and never sent to Novera; a credential in it goes into the credential field, which is stored encrypted. The form lists what it read and what you still have to check.
+
+A bare API token pasted under `authorization` (one beginning `app-`, `sk-` and the like) is sent as `Bearer` followed by the token, and the connection check says so. Anything that already names a scheme, and any other header, is sent as pasted. Headers that are not secret go under **Other headers**, one per line; a header that carries a key is refused there and belongs under Authentication.
+
+## How the reply is read
+
+- **JSON**: the text at the reply path, such as `reply` or `choices.0.message.content`. A `*` stands for every element of a list.
+- **A stream of server-sent events**: read to its end and put back together in order, from the stream path (or the reply path). If the stream replaces what it sent (an output filter), the reply is the replacement; if it ends in an error, there is no reply.
+- **Plain text**: set the reply path to `$text` and the whole body is the reply.
+
+The path is chosen when you connect and stored. It is never guessed again during a run.
+
+## Metadata and conversations
+
+If your agent also receives data *about* a conversation — account fields, a profile, a CRM note — put `{{context}}` in the template where that data belongs. Some scenarios deliver content there (a retrieved document, a tool's result), because real prompt injections arrive that way rather than in something a customer typed. A conversation scenario needs `{{messages}}`, `{{history}}` or `{{conversation_id}}`.
+
+When the request has no such field, **Deliver metadata and earlier turns in the message** decides what happens. Ticked (the default for a new agent), the content is sent as a labelled block at the top of the message — the scenario's own key and its text, with nothing added that tells the agent how to treat it — and the run declares, before it starts, which scenarios arrive that way. The report names them and says what that means: a failure is a failure either way; a pass shows the agent handled that content correctly inside a message, and does not show how it treats the same content arriving through its own retrieval, tools or conversation memory. Unticked, those scenarios are not sent and the report lists them as not run. An agent connected before 12 November 2026 has it unticked until you change it under **Change the connection**.
 
 You can also give Novera a read-only endpoint in your own systems. A scenario that expects something to change then says what must be true there, and Novera checks it independently of what your agent claims. It is GET-only by construction, a scenario cannot point it anywhere but the host you configured, the credential is separate from your agent's, and the response body is never stored. A 404 from it is reported as unable to verify unless you tick **A 404 from this system means the record does not exist** — only for a system that answers 404 for a missing record and never for a wrong address. With it ticked, an agent that claims to have acted on a record your system does not have fails that scenario, without a model being asked.
 
@@ -16,7 +44,7 @@ Before any suite run, Novera sends one harmless request and saves the reply as a
 
 ## Testing before you save
 
-**Test connection**, beside the endpoint fields on the connect form and under **Change the connection**, sends one message — "Hello, this is a connection check from Novera. Please reply briefly." — from what is in the form now, before anything is saved. It uses the same request template, auth header and public-address check a run uses, and waits at most 10 seconds. Nothing is stored: no agent, no receipt. The form keeps what you typed, credential included.
+**Verify the connection** on the connect form (**Test connection** under **Change the connection**) sends one message — "Hello, this is a connection check from Novera. Please reply briefly." — from what is in the form now, before anything is saved. It uses the same request template, auth header and public-address check a run uses, and waits at most 10 seconds. Nothing is stored: no agent, no receipt. The form keeps what you typed, credential included.
 
 The result says one of these:
 
@@ -25,7 +53,10 @@ The result says one of these:
 - **Not a public address** — the name resolves to a private, loopback or internal address, so nothing was sent.
 - **HTTP 401 or 403** — the endpoint refused the request; check the header name and the credential.
 - **Another HTTP status**, or a **redirect**, which Novera does not follow: the error names where it points, so the fix is to enter that address. Three redirects in a row stop the run, as an unreachable endpoint does, and nothing is sealed; a CI gate reads that as a configuration problem (exit 3).
-- **No reply text at the reply path** — the endpoint answered, but not where the reply path points. The result lists the reply's top-level keys (names only, never their values) and, when it can tell, where the reply appears to be, with a button that puts that path in the form so you can test again.
+- **No reply text at the reply path** — the endpoint answered, but not where the reply path points. The result lists the reply's top-level keys and, when it can tell, where the reply appears to be, with a button that puts that path in the form so you can test again.
+- **The reply was empty**, **not JSON** (with `$text` offered when it is plain text), or **a stream with no text in it**.
+
+Under every result, **What was sent and what came back** shows the exchange: the method and address (without its query string), the headers (the credential by its header name only), the request body exactly as built, the status and time, the content type, how the answer was read, and where the reply was found. When the reply was not found, it lists the text fields of the answer with the start of each, and a button beside each to use it as the reply path. It also says how this connection carries conversations and metadata. None of it is stored.
 
 On an agent you already saved, leaving the credential empty tests with the stored one — but only while the address stays on the same host. A stored credential never follows its address to another host: paste it again for the new host, or tick **Remove the stored credential**. The owner, an admin or an operator can test; a workspace can make 20 tests in ten minutes. The same test is `POST /api/v1/agents/test-connection` (see **The Novera API**).
 
@@ -41,7 +72,7 @@ You must own the agent you connect, or be authorised to test it. That confirmati
 
 Open the agent and go to its **Connection** tab. Under **Change the connection** you can change its name, endpoint URL, request body template, reply path, tool activity path, timeout, and the auth header and credential. The owner, an admin or an operator can do this; a reviewer or an auditor cannot.
 
-- The request body must stay a JSON object with `{{input}}` in it. It may also use `{{policy}}`, `{{context}}`, `{{history}}` and `{{conversation_id}}`. Any other placeholder is refused, because Novera would send it to your agent as written.
+- The request body must stay a JSON object with `{{input}}` or `{{messages}}` in it. It may also use `{{policy}}`, `{{context}}`, `{{history}}` and `{{conversation_id}}`. Any other placeholder is refused, because Novera would send it to your agent as written.
 - The timeout is a whole number of seconds from 2 to 30. Leave it empty for the longest wait, 30 seconds.
 - A stored credential is never shown, not even to you. The form says only whether one is stored. Paste a new value to replace it (the old one is removed once the new one is stored), or tick **Remove the stored credential**. A stored credential needs a header name to be sent in.
 - When you save, Novera checks the new address is public and saves the change. Then it sends one harmless request and replaces the receipt, so you can see the new connection works before a run relies on it.

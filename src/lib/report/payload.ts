@@ -96,6 +96,13 @@ export interface ReportPayload {
      */
     extension?: { base_suite: string; base_suite_digest: string; scenarios: number; extension_digest: string };
     /**
+     * Format 18, and only when some scenarios' metadata or earlier turns were delivered inside
+     * the message because the agent's request has no field for them (the run's manifest declares
+     * which, before it ran): the scenario ids by kind, and the sentence saying what a pass does
+     * and does not show. Absent on every other report; every reader renders nothing for it then.
+     */
+    delivery?: { in_message: { context: string[]; conversation: string[] }; note: string };
+    /**
      * Format 15, and only on a run sent in a language other than English: the language, how many
      * of the suite's scenarios were sent in it (the rest in English), and the digest of the
      * variants used. Absent on formats 1–14 and on English runs, which is what they all were.

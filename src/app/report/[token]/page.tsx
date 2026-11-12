@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { scoreWithheldAs, obligationLabel, type ReportPayload } from "@/lib/report/payload.ts";
 import { findingLead, gradedByLine } from "@/lib/report/graders.ts";
 import { categoryMeta } from "@/lib/evidence/categories.ts";
+import { scopedGradeOfReport } from "@/lib/evidence/grade.ts";
 import { loadReportByToken } from "@/lib/report/access.ts";
 import { completedBy } from "@/lib/report/completed-by.ts";
 import { uncorroboratedPasses, uncorroboratedSentence } from "@/lib/report/ci.ts";
@@ -81,6 +82,9 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
   // says what the release gate says, and the box is not drawn as a clean pass (final audit D-1,
   // 2026-10-28). Rendering only — nothing sealed changes, and older formats count none.
   const lonePasses = uncorroboratedPasses(payload);
+  // From the sealed counts, never from anything recomputed: null when the report has a
+  // whole-suite grade, or when under half the suite produced a verdict.
+  const scoped = scopedGradeOfReport(payload);
   // Stored beside the payload, not inside it: when the seal was applied. The run's own date
   // and duration are the sealed fields; this says when that evidence was fixed.
   const sealedAt = created_at ? `${new Date(created_at).toISOString().slice(0, 16).replace("T", " ")} UTC` : null;
@@ -150,7 +154,14 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
             <div
               className={`flex size-24 shrink-0 flex-col items-center justify-center rounded-xl border-2 ${lonePasses > 0 ? GRADE_STYLES.WITHHELD : GRADE_STYLES[payload.grade.band]}`}
             >
-              {payload.grade.band === "INCOMPLETE" || payload.grade.band === "WITHHELD" ? (
+              {scoped && lonePasses === 0 ? (
+                // Never a bare letter: the scope is inside the box with it.
+                <>
+                  <span className="text-[10px] font-bold uppercase tracking-wide">Scoped</span>
+                  <span className="text-[34px] font-bold leading-none tracking-tight">{scoped.band}</span>
+                  <span className="mt-1 text-[11px] font-semibold tabular-nums">{scoped.evaluated} of {scoped.planned}</span>
+                </>
+              ) : payload.grade.band === "INCOMPLETE" || payload.grade.band === "WITHHELD" ? (
                 // The word is the grade. It used to be a dash with the word in 12px beneath.
                 <span className="px-1 text-center text-[15px] font-bold uppercase leading-tight tracking-wide">
                   {payload.grade.band === "WITHHELD" ? "Withheld" : "Incomplete"}
@@ -171,6 +182,23 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
               >
                 {payload.grade.basis}
               </p>
+              {/* A report sealed before the scoped grade existed says only that the grade is withheld.
+                  The figures are computed here from its sealed counts, beside what was sealed. */}
+              {scoped && !payload.grade.basis.includes("Scoped grade") && (
+                <p className="mt-2 text-sm leading-relaxed text-ink">
+                  {scoped.sentence}{" "}
+                  <span className="text-ink-soft">Computed from the counts sealed in this report; the sealed text above is unchanged.</span>
+                </p>
+              )}
+              {scoped && (
+                <p className="mt-2 text-sm font-medium text-ink">
+                  {scoped.floorMeetsThreshold
+                    ? `Meets the ${payload.grade.threshold}% pass mark even if every scenario without a verdict is counted as a failure.`
+                    : scoped.meetsThreshold
+                      ? `Over the evaluated scenarios this meets the ${payload.grade.threshold}% pass mark; counting the scenarios without a verdict as failures, it does not. The evidence is incomplete until they have one.`
+                      : `Below the ${payload.grade.threshold}% pass mark over the evaluated scenarios.`}
+                </p>
+              )}
               {payload.grade.meets_threshold !== null && (
                 <p className="mt-2 text-sm font-medium text-ink">
                   {payload.grade.meets_threshold
@@ -603,7 +631,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
         )}
         {/* Format 15 onwards, and only for an extension or a run in another language. Both were
             declared in the run's manifest before anything was sent; absent otherwise. */}
-        {(run.extension || run.locale) && (
+        {(run.extension || run.locale || run.delivery) && (
           <div className="mt-4">
             <p className="leading-relaxed">How the suite was composed and sent, as declared before the run:</p>
             <dl className="mt-2 space-y-2 text-xs sm:space-y-1">
@@ -621,6 +649,13 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
                     <span className="break-all font-mono">{run.locale.locale_digest}</span>{" "}
                     <span className="text-ink-faint">(recorded by Novera)</span>
                   </dd>
+                </div>
+              )}
+              {/* Format 18: scenarios whose metadata or earlier turns went in the message. */}
+              {run.delivery && (
+                <div className="sm:flex sm:gap-4">
+                  <dt className="text-ink-soft sm:w-56 sm:shrink-0">Delivered in the message</dt>
+                  <dd className="min-w-0 break-words">{run.delivery.note} <span className="text-ink-faint">(recorded by Novera)</span></dd>
                 </div>
               )}
             </dl>

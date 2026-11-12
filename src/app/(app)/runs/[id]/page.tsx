@@ -393,7 +393,8 @@ export default async function RunPage({
   }));
 
   const runCoverage = coverage({ plannedCases, cases: statuses });
-  const grade = gradeRun({ coverage: runCoverage, threshold: (run.pass_threshold as number) ?? 80 });
+  // A run still in progress has no scope to state yet; a finished one says its scoped grade.
+  const grade = gradeRun({ coverage: runCoverage, threshold: (run.pass_threshold as number) ?? 80, scoped: run.status === "completed" });
 
   // Planned counts come from the suite, not from the rows: a category whose cases all
   // failed to execute must still appear, or the grid would quietly shrink to the part
@@ -617,7 +618,11 @@ export default async function RunPage({
   // The no-result scenarios, split by what their diagnoses say: retest now, or fix first
   // (src/lib/evidence/resolve.ts). Offered on a completed run only; an aborted run is rerun.
   const resolve = run.status === "completed"
-    ? resolvePlan(caseRows.map((c) => ({ runCaseId: c.id, scenarioId: c.caseId, status: c.status, diagnostic: c.diagnostic ?? null })))
+    ? resolvePlan(caseRows.map((c) => ({
+        runCaseId: c.id, scenarioId: c.caseId, status: c.status, diagnostic: c.diagnostic ?? null,
+        // Newest first: a retest recorded since the run that reached a verdict shows a fix was made.
+        retestReachedVerdict: ["pass", "fail"].includes(retestsByCase.get(c.id)?.[0]?.status ?? ""),
+      })))
     : { retestable: [], fixFirst: [] };
   const offerResolve = !exploratory && resolve.retestable.length + resolve.fixFirst.length > 0;
   const compareHere = deliverable.kind !== "share" && previousRun !== null;

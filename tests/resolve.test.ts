@@ -70,8 +70,9 @@ test("outcomes are derived from retest rows recorded since the panel opened, new
   const outcomes = resolveOutcomes(plan, retests, since);
   const disputed = verdictWords("no_verdict", "disputed");
   assert.deepEqual(outcomes.map((o) => [o.scenarioId, o.verdict, o.words]), [
-    ["T01", "pass", "Retest: passed"],
-    ["T02", "no_verdict", `Retest: ${disputed.charAt(0).toLowerCase()}${disputed.slice(1)}`],
+    // Said as what happened: a verdict was reached (and which), or there is still no result (and why).
+    ["T01", "pass", "Verdict reached: passed"],
+    ["T02", "no_verdict", `No result again: ${disputed.replace(/^No verdict: /, "")}`],
   ]);
   assert.equal(outcomes[0].detail, "Declined politely.");
   const none = resolveOutcomes(plan, [], since);

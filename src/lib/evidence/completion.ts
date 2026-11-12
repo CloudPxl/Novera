@@ -51,12 +51,13 @@ export interface Eligibility {
 /**
  * Which requested scenarios a completion may re-execute: each must be in the run's declaration,
  * have no result in the evidence as it stands, and be one a retest cannot harm — the diagnosis's
- * own rule (`repairFor(...).retry === "safe"`). Returned in suite order.
+ * own rule (`repairFor(...).retry === "safe"`) — or one whose cause needed a fix that a later
+ * retest has shown was made (`fixedSince`). Returned in suite order.
  */
 export function eligibleScenarios(args: {
   requested: readonly string[];
   suiteOrder: readonly string[];
-  merged: ReadonlyMap<string, { status: string; retry: "safe" | "check_first" | "fix_first" | null }>;
+  merged: ReadonlyMap<string, { status: string; retry: "safe" | "check_first" | "fix_first" | null; fixedSince?: boolean }>;
 }): Eligibility {
   const wanted = new Set(args.requested);
   const out: Eligibility = { ok: [], refused: [] };
@@ -65,6 +66,9 @@ export function eligibleScenarios(args: {
     const row = args.merged.get(id);
     if (!row) { out.refused.push({ id, why: "has no stored row in this run" }); continue; }
     if (row.status !== "error") { out.refused.push({ id, why: "already has a verdict" }); continue; }
+    // A cause that needed fixing, and a retest recorded since that reached a verdict: it was fixed.
+    // Never for a scenario that may already have acted (`check_first`): that one is not sent again.
+    if (row.retry === "fix_first" && row.fixedSince) continue;
     if (row.retry !== "safe") {
       out.refused.push({ id, why: row.retry === "fix_first" ? "would give the same answer until its cause is fixed" : "may already have acted in the agent's system, so it is not sent again automatically" });
       continue;

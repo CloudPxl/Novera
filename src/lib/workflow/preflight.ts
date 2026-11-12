@@ -3,11 +3,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { httpAgent } from "@/lib/agents/http.ts";
 import type { HttpAgentConfig } from "@/lib/agents/types.ts";
 import {
-  classifyPreflight, PREFLIGHT_LIMIT, PREFLIGHT_MESSAGE, PREFLIGHT_TIMEOUT_MS,
+  classifyPreflight, inspectPreflight, PREFLIGHT_LIMIT, PREFLIGHT_MESSAGE, PREFLIGHT_TIMEOUT_MS,
   type PreflightRefusal, type PreflightResult,
 } from "@/lib/agents/preflight.ts";
 import {
-  credentialProblem, newHttpConfig, nextHttpConfig, parseConnectionEdit, parseEndpointFields,
+  credentialProblem, newHttpConfig, nextHttpConfig, normaliseCredential, parseConnectionEdit, parseEndpointFields,
 } from "@/lib/agents/connection.ts";
 import { revealSecret } from "@/lib/store/secrets.ts";
 import { COUNT_UNAVAILABLE_MESSAGE, rateLimit } from "@/lib/support/rate-limit.ts";
@@ -28,6 +28,8 @@ export interface TestTarget {
   config: HttpAgentConfig;
   /** The header value, for this request only. Never returned or logged. */
   credential?: string;
+  /** What Novera adjusted before sending, in sentences. Never a value. */
+  notes?: string[];
 }
 
 /** Counts one test against the workspace's allowance, then sends the diagnostic message. */
@@ -44,8 +46,22 @@ export async function testConnection(workspaceId: string, target: TestTarget): P
   // The run's own adapter, with the test's deadline as its timeout: the same template filling,
   // the same header, the same public-address check before sending and at connection time.
   const adapter = httpAgent({ ...target.config, timeoutMs: PREFLIGHT_TIMEOUT_MS }, target.credential);
-  const result = await adapter.send({ input: PREFLIGHT_MESSAGE, policy: "" });
-  return { ok: true, result: classifyPreflight(result, target.config) };
+  const conversationId = crypto.randomUUID();
+  const result = await adapter.send({ input: PREFLIGHT_MESSAGE, policy: "", conversationId });
+  return {
+    ok: true,
+    result: {
+      ...classifyPreflight(result, target.config),
+      // Built by the adapter's own request builder, so it is what was sent. A platform that
+      // issues its own conversation ids is sent none on a first message.
+      inspector: inspectPreflight(result, target.config, {
+        message: PREFLIGHT_MESSAGE,
+        conversationId: target.config.conversationIdPath ? "" : conversationId,
+        credentialSent: Boolean(target.credential),
+        notes: target.notes,
+      }),
+    },
+  };
 }
 
 type Built = { ok: true; target: TestTarget } | { ok: false; code: PreflightRefusal; message: string };
@@ -54,16 +70,19 @@ type Built = { ok: true; target: TestTarget } | { ok: false; code: PreflightRefu
 export function targetFromFields(fields: {
   url: unknown; bodyTemplate: unknown; responsePath: unknown; toolActivityPath: unknown;
   timeoutSeconds?: unknown; authHeaderName: unknown; credential?: unknown;
+  headers?: unknown; streamPath?: unknown; conversationIdPath?: unknown; inlineChannels?: unknown; preset?: unknown;
 }): Built {
   const endpoint = parseEndpointFields(fields);
   if (!endpoint.ok) return { ok: false, code: "invalid_request", message: endpoint.error };
-  const credential = typeof fields.credential === "string" ? fields.credential : "";
-  if (credential) {
+  const typed = typeof fields.credential === "string" ? fields.credential : "";
+  if (typed) {
     if (!endpoint.value.authHeaderName) return { ok: false, code: "invalid_request", message: "Name the header the credential goes in." };
-    const problem = credentialProblem(credential);
+    const problem = credentialProblem(typed);
     if (problem) return { ok: false, code: "invalid_request", message: problem };
   }
-  return { ok: true, target: { config: newHttpConfig(endpoint.value), ...(credential ? { credential } : {}) } };
+  // Sent as saving would store it (`normaliseCredential`), so a test and a run cannot differ.
+  const { value: credential, note } = normaliseCredential(endpoint.value.authHeaderName, typed);
+  return { ok: true, target: { config: newHttpConfig(endpoint.value), ...(credential ? { credential } : {}), ...(note ? { notes: [note] } : {}) } };
 }
 
 async function storedCredential(admin: SupabaseClient, workspaceId: string, agentId: string): Promise<string | undefined> {
@@ -105,13 +124,16 @@ export async function targetFromEdit(admin: SupabaseClient, workspaceId: string,
     responsePath: form.get("responsePath"), toolActivityPath: form.get("toolActivityPath"),
     timeoutSeconds: form.get("timeoutSeconds"), authHeaderName: form.get("authHeaderName"),
     credential: form.get("credential"), removeCredential: form.get("removeCredential"),
+    headers: form.get("headers"), streamPath: form.get("streamPath"), conversationIdPath: form.get("conversationIdPath"),
+    inlineChannels: form.get("inlineChannels"), preset: form.get("preset"),
   }, (count ?? 0) > 0, agent.config.url);
   if (!parsed.ok) return { ok: false, code: "invalid_request", message: parsed.error };
   const edit = parsed.value;
 
   const config = nextHttpConfig(agent.config, edit);
-  const credential = edit.credential === "replace" ? edit.newCredential
+  const pasted = edit.credential === "replace" && edit.newCredential ? normaliseCredential(edit.authHeaderName, edit.newCredential) : null;
+  const credential = pasted ? pasted.value
     : edit.credential === "keep" ? await storedCredential(admin, workspaceId, agentId)
       : undefined;
-  return { ok: true, target: { config, ...(credential ? { credential } : {}) } };
+  return { ok: true, target: { config, ...(credential ? { credential } : {}), ...(pasted?.note ? { notes: [pasted.note] } : {}) } };
 }

@@ -12,6 +12,7 @@ import {
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { inputClass } from "@/components/ui/primitives.tsx";
 import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
+import { POLICY_STARTERS, unfilledPlaceholders } from "@/lib/agents/policy-starters.ts";
 
 const STARTER = `Refunds are granted within 14 days of purchase, once the requester's identity has been confirmed using the approved verification steps.
 Account changes, data exports and deletions require identity verification before any action is taken.
@@ -37,10 +38,32 @@ export function PolicyEditor({
   const [body, setBody] = useState(latest?.body ?? "");
   const changed = body.trim() !== (latest?.body ?? "").trim() && body.trim() !== "";
   const isExample = body.trim() === STARTER.trim();
+  const placeholders = unfilledPlaceholders(body);
 
   return (
     <form onSubmitCapture={keepValues} action={submit} className="mt-4">
       <input type="hidden" name="agentId" value={agentId} />
+      {/* How the text is used, said where it is written. */}
+      <p className="mb-3 rounded-control bg-sunken px-3 py-2 text-sm leading-relaxed text-ink-soft">
+        Each scenario in a suite carries its own expected behaviour and assertions; the AI graders read the agent&apos;s reply against those, and your agent is sent this policy only if its request has a <code className="rounded bg-surface px-1 py-0.5 font-mono text-ink">{"{{policy}}"}</code> field.
+        The policy version is named on every run and report, and a diagnosis of a failed scenario quotes it word for word to propose a change, so it has to say what your agent is actually held to.
+      </p>
+      {!latest && (
+        <div className="mb-3">
+          <p className="text-xs font-medium text-ink-soft">Start from a common set of rules, then replace every [[placeholder]] with your own:</p>
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            {POLICY_STARTERS.map((starter) => (
+              <button
+                key={starter.key} type="button" onClick={() => setBody(starter.body)}
+                className="rounded-control border border-line-strong bg-surface px-2.5 py-1.5 text-left text-xs text-ink transition-colors hover:bg-ground"
+              >
+                <span className="font-medium">{starter.label}</span>
+                <span className="block text-ink-faint">goes with {starter.goesWith}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {/* The label is visually redundant beside the section heading and not remotely
           redundant to a screen reader, which otherwise announces "edit text, blank"
           for the box a whole policy goes in. */}
@@ -70,6 +93,11 @@ export function PolicyEditor({
           Start from the example, then edit it
         </button>
       )}
+      {placeholders.length > 0 && (
+        <p role="status" className="mt-2 text-xs text-warning-text">
+          {placeholders.length} placeholder{placeholders.length === 1 ? "" : "s"} still to replace with your own rules, for example [[{placeholders[0]}]]. The text cannot be saved until none are left.
+        </p>
+      )}
       {isExample && (
         <p className="mt-2 text-xs text-warning-text">
           This is the example, word for word. Edit it to match the rules your agent is actually held to —
@@ -78,7 +106,7 @@ export function PolicyEditor({
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <SubmitButton size="sm" pendingLabel="Saving…" disabled={!changed}>
+        <SubmitButton size="sm" pendingLabel="Saving…" disabled={!changed || placeholders.length > 0}>
           {latest ? `Save as version ${latest.version + 1}` : "Save version 1"}
         </SubmitButton>
         {!changed && latest && (

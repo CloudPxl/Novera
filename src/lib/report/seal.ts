@@ -62,6 +62,11 @@ export function sealContents(payload: ReportPayload): SealItem[] {
       detail: `${run.locale.localised} of ${run.locale.of} scenarios sent in ${run.locale.name}, the rest in English; variant digest ${run.locale.locale_digest.slice(0, 12)}….`,
     });
   }
+  // Format 18, when some scenarios' content went in the message only.
+  if (run.delivery) {
+    const n = new Set([...run.delivery.in_message.context, ...run.delivery.in_message.conversation]).size;
+    items.push({ label: "Delivery", detail: `${n} scenario${n === 1 ? "" : "s"} delivered with metadata or earlier turns inside the message, as declared before the run.` });
+  }
   items.push({
     label: "Run",
     detail: `Run ${run.id}, dated ${run.date}${run.duration_ms != null ? `, and its duration (${(run.duration_ms / 1000).toFixed(1)} s)` : ""}.`,

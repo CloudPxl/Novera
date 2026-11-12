@@ -6,6 +6,7 @@ import { SubmitButton } from "@/components/ui/button.tsx";
 import { Field, inputClass } from "@/components/ui/primitives.tsx";
 import { useKeepValuesOnError } from "@/components/ui/keep-values.ts";
 import { ConnectionTest } from "../connection-test.tsx";
+import { AdvancedConnectionFields, ConnectionStarter, DeliveryChoice } from "../connection-fields.tsx";
 
 export function ConnectAgentForm() {
   const [state, submit] = useActionState<FormState, FormData>(connectAgent, {});
@@ -17,12 +18,7 @@ export function ConnectAgentForm() {
         <input id="name" name="name" required className={inputClass} placeholder="Northwind support bot" />
       </Field>
 
-      <Field label="Endpoint URL" htmlFor="url" hint="Where Novera should POST each scenario.">
-        <input
-          id="url" name="url" type="url" required className={inputClass}
-          placeholder="https://api.example.com/support/chat"
-        />
-      </Field>
+      <ConnectionStarter />
 
       {/* Most agents take the defaults; the probe right after connecting shows whether they
           do, and suggests a reply path from what came back. So the format is one click away
@@ -32,7 +28,7 @@ export function ConnectAgentForm() {
           <span>
             <span className="font-medium">Request and reply format</span>
             <span className="mt-0.5 block text-xs text-ink-faint">
-              Sends <code className="font-mono">{'{"message": "{{input}}"}'}</code>, reads the reply at <code className="font-mono">reply</code>. Change only if your endpoint differs.
+              What Novera sends and where it reads the reply. Filled in by the starting point above; a stream of events or plain text is read too.
             </span>
           </span>
           <span aria-hidden className="text-ink-faint transition-transform duration-200 group-open:rotate-90">›</span>
@@ -48,13 +44,14 @@ export function ConnectAgentForm() {
               <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{policy}}"}</code> where your
               policy should go, if your endpoint takes one. Add{" "}
               <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{context}}"}</code> if your
-              agent receives account or user metadata alongside the message — scenarios that attack that
-              channel are skipped, not rerouted through the message, when there is nowhere to put them. For
+              agent receives account or user metadata alongside the message. For
               conversation scenarios, add{" "}
               <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{history}}"}</code> (the earlier
-              turns, as a list of chat messages) or{" "}
+              turns, as a list of chat messages),{" "}
+              <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{messages}}"}</code> (the whole
+              chat list, ending with the scenario&apos;s message) or{" "}
               <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{"{{conversation_id}}"}</code> (if
-              your agent remembers conversations itself); without either, they are skipped too.
+              your agent remembers conversations itself). The option below decides what happens when there is no such field.
             </>
           }
         >
@@ -66,13 +63,14 @@ export function ConnectAgentForm() {
         </Field>
 
         <div className="grid gap-6 sm:grid-cols-2">
-          <Field label="Reply path" htmlFor="responsePath" hint="Dot path to the reply text, e.g. reply or choices.0.message.content">
+          <Field label="Reply path" htmlFor="responsePath" hint="Dot path to the reply text, e.g. reply or choices.0.message.content. $text reads a plain-text reply whole.">
             <input id="responsePath" name="responsePath" required defaultValue="reply" className={`${inputClass} font-mono text-xs`} />
           </Field>
           <Field label="Tool activity path" htmlFor="toolActivityPath" hint="Optional. Where your agent reports the actions it took.">
             <input id="toolActivityPath" name="toolActivityPath" className={`${inputClass} font-mono text-xs`} placeholder="tool_calls" />
           </Field>
         </div>
+        <AdvancedConnectionFields idPrefix="connect" defaults={{ headers: "", streamPath: "", conversationIdPath: "", inlineChannels: true, preset: "custom" }} />
         </div>
       </details>
 
@@ -88,14 +86,16 @@ export function ConnectAgentForm() {
           <Field label="Header name" htmlFor="authHeaderName">
             <input id="authHeaderName" name="authHeaderName" autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" className={`${inputClass} font-mono text-xs`} placeholder="authorization" />
           </Field>
-          <Field label="Header value" htmlFor="authValue" hint="Encrypted before it is stored. Never shown again.">
+          <Field label="Header value" htmlFor="authValue" hint="Encrypted before it is stored. Never shown again. A bare API token under authorization is sent as Bearer.">
             <input id="authValue" name="authValue" type="password" autoComplete="new-password" data-1p-ignore data-lpignore="true" data-form-type="other" className={`${inputClass} font-mono text-xs`} placeholder="Bearer …" />
           </Field>
         </div>
       </details>
 
+      <DeliveryChoice idPrefix="connect" defaultChecked />
+
       {/* Before anything is saved: the form's values, one message, and what came back. */}
-      <ConnectionTest idPrefix="connect" />
+      <ConnectionTest idPrefix="connect" label="1. Verify the connection" />
 
       <label className="flex gap-3 rounded-xl border border-line bg-ground/60 p-4 text-sm leading-relaxed">
         <input type="checkbox" name="attested" className="mt-0.5 size-4 shrink-0 accent-slate-900" />
@@ -116,7 +116,10 @@ export function ConnectAgentForm() {
         </p>
       )}
 
-      <SubmitButton pendingLabel="Connecting and testing…">Connect and test</SubmitButton>
+      <div className="flex flex-wrap items-center gap-3">
+        <SubmitButton pendingLabel="Saving and checking…">2. Save the agent and continue to its policy</SubmitButton>
+        <span className="text-xs text-ink-faint">Saves the connection, sends one check that is kept as its receipt, and opens the agent&apos;s setup steps.</span>
+      </div>
     </form>
   );
 }

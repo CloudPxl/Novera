@@ -28,19 +28,24 @@ It adds **Sample support agent (Novera test fixture)**: Novera's own scripted ag
 Open **Agents → Connect an agent** (also in the menu at the top right). The owner, an admin or an operator can do this.
 
 - **Name**: what you call the agent inside Novera, for example "Shop support bot". A sealed report shows this name, so choose one you are happy for a client to read.
-- **Endpoint URL**: the address from your developer.
+- **Start from**: if your agent runs on Dify, an OpenAI-compatible endpoint, Flowise, n8n, Voiceflow or Langflow, choose it and the request and reply format is filled in for you. Otherwise leave **Custom JSON endpoint**.
+- **Or paste a curl command**: your platform's API documentation shows a command beginning with `curl`. Paste it and press **Read the command and fill the form**. It is read in your browser, never run, and never sent to Novera; the form lists what it found and what is still to check.
+- **Endpoint URL**: the address from your developer or your platform.
 - **Request and reply format** (closed unless you open it): leave it alone if your developer said the defaults fit.
 - **Authentication** (closed unless you open it): only if the agent needs a key. Fill in **Header name** and **Header value**. The value is encrypted before it is stored and is never shown again, not even to you.
 
 Inside **Request and reply format** are three fields:
 
-- **Request body**: what Novera sends. Keep `{{input}}` where the customer's message goes. Your developer may add `{{policy}}` (your written rules), `{{context}}` (data about the customer, such as account details), and `{{history}}` or `{{conversation_id}}` for conversations of several messages. A scenario that needs a slot your agent does not have is recorded as not run, never sent another way.
+- **Request body**: what Novera sends. Keep `{{input}}` where the customer's message goes. Your developer may add `{{policy}}` (your written rules), `{{context}}` (data about the customer, such as account details), and `{{history}}` or `{{conversation_id}}` for conversations of several messages. What happens to a scenario that needs a slot your agent does not have is decided by the option described below.
 - **Reply path**: where the reply text is, such as `reply`.
 - **Tool activity path** (optional): where the agent lists the actions it took.
+- **Other headers**, **Stream path** and **Conversation id path** (all optional): filled in by a starting point when the platform needs them.
 
-## Step 2: press Test connection
+Below the format is one option, ticked for a new agent: **Deliver metadata and earlier turns in the message when the request has no field for them.** A few scenarios carry a document or a tool's result alongside the customer's message, or an earlier turn of the conversation. With the option ticked, an agent that takes only a message is sent that content as a labelled block at the top of the message, and the report names those scenarios and says what a pass there does and does not show. Unticked, they are not sent and the report lists them as not run.
 
-**Test connection** sends one short message, "Hello, this is a connection check from Novera. Please reply briefly.", from what is in the form right now. Nothing is saved, and the form keeps what you typed. It waits up to 10 seconds. What the result means:
+## Step 2: press 1. Verify the connection
+
+**1. Verify the connection** sends one short message, "Hello, this is a connection check from Novera. Please reply briefly.", from what is in the form right now. Nothing is saved, and the form keeps what you typed. It waits up to 10 seconds. What the result means:
 
 - **Connected: HTTP 200 in … ms**, with the first part of the agent's reply. It works. Read the reply: it should be your agent talking.
 - **Could not reach the endpoint within 10 s**: nothing came back. The address may have a typo, the agent may be switched off, or it may not be reachable from the internet. Check the address with your developer.
@@ -49,8 +54,11 @@ Inside **Request and reply format** are three fields:
 - **The endpoint answered with a redirect**: the address sends Novera somewhere else, and Novera does not follow. The message names where it points; if that is your agent, enter it as the address. A trailing slash, or `http` where the server wants `https`, is a common cause.
 - **The endpoint returned HTTP 429**: the agent is limiting how many messages it accepts. Ask your developer to allow Novera's traffic: during a test it sends at most one message every quarter of a second.
 - **The endpoint returned HTTP** with another number: the agent was reached but could not answer properly. A number from 500 up means it failed on its own side; ask your developer to check its logs. Other numbers usually mean the request body is not what the agent expects.
-- **HTTP 200, but there is no reply text at "reply"**: the agent answered, but the reply is somewhere else in its answer. The result lists the names of the fields it found, and when it can tell where the reply is, offers **Use this reply path**. Press it, then press **Test connection** again.
-- **HTTP 200, but the reply was not JSON**, or **was too large to read**: the agent answers in a format Novera cannot read. Ask your developer.
+- **HTTP 200, but there is no reply text at "reply"**: the agent answered, but the reply is somewhere else in its answer. The result lists the names of the fields it found, and when it can tell where the reply is, offers **Use this reply path**. Press it, then verify again.
+- **HTTP 200, and the reply was empty**: the agent answered with no text. Send it the same message yourself to see whether it answers.
+- **HTTP 200, but the reply was not JSON**: if the agent answers in plain text, the result offers the reply path `$text`, which reads the whole answer as the reply. An answer **too large to read** is one for your developer.
+
+Under the result, **What was sent and what came back** shows the exact request (your key is never shown), the status, the time, how the answer was read and where the reply was found. If the reply was not found, it lists the text fields in the answer; press **Use as reply path** beside the one that is your agent talking.
 
 A workspace can run 20 connection tests in ten minutes.
 
@@ -58,11 +66,13 @@ A workspace can run 20 connection tests in ten minutes.
 
 Tick **I own this agent, or I am authorised to test it.** Only test agents you own, or have written permission to test. The confirmation is recorded with your role, your user id (not your email) and the date, and it is copied onto every run and report.
 
-Press **Connect and test**. Novera saves the agent, sends one more harmless message, and keeps the answer as a **receipt** on the agent's **Connection** tab. Read it: it is how you know you are testing the agent you think you are. If that check did not work, the agent is still saved, the receipt says what went wrong, and you can fix it under **Change the connection**.
+Press **2. Save the agent and continue to its policy**. Novera saves the agent, sends one more harmless message, and keeps the answer as a **receipt** on the agent's **Connection** tab. Read it: it is how you know you are testing the agent you think you are. If that check did not work, the agent is still saved, the receipt says what went wrong, and you can fix it under **Change the connection**.
+
+The agent's page then shows **Three steps to the first report**: connection, policy, first run, with the next one marked. Under it, **What each suite tests** opens each suite: how many scenarios it has and how severe, what it exercises, how long it takes, how this agent will be sent its conversation and metadata scenarios, and a few of the scenarios themselves.
 
 ## Step 4: write the policy
 
-Open the agent's **Policy** tab and paste the rules the agent is meant to follow: when refunds are allowed, how a customer's identity is checked, what it must never say. Every answer is judged against this text. Each save creates a new numbered version, and earlier versions are kept, so every report says exactly which rules it used.
+Open the agent's **Policy** tab and paste the rules the agent is meant to follow: when refunds are allowed, how a customer's identity is checked, what it must never say. If you have nothing written down, three starting points are offered; each has `[[placeholders]]` where the rule is yours to state, and the text cannot be saved until every one is replaced, so a report never names someone else's rules as yours. Every answer is judged against this text. Each save creates a new numbered version, and earlier versions are kept, so every report says exactly which rules it used.
 
 ## Step 5: production or test target
 

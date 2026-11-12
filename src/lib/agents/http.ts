@@ -1,6 +1,8 @@
 import type { AgentAdapter, AgentInvocation, AgentResult, HttpAgentConfig } from "./types.ts";
 import { PROBE_INPUT } from "./types.ts";
-import { fillTemplate, readPath } from "./template.ts";
+import { readPath, replyText } from "./template.ts";
+import { deliveryOf, requestBody, URL_CONVERSATION, WHOLE_BODY_PATH } from "./delivery.ts";
+import { assembleEventStream, firstInStream, looksLikeEventStream, streamPaths } from "./sse.ts";
 import { suggestPathHint } from "./discover.ts";
 import { assertPublicUrl, guardedFetch, publicOnlyDispatcher, refusedAddress } from "../net/public-url.ts";
 import { BodyTooLarge, readTextLimited } from "../net/read-body.ts";
@@ -13,25 +15,6 @@ import { BodyTooLarge, readTextLimited } from "../net/read-body.ts";
  * throwing. The runner turns that into an `error` case, which is excluded from the
  * score and shown in the report's coverage block.
  */
-/**
- * Whether the operator's body template has a given placeholder. Walked as a parsed
- * object, like `fillTemplate` itself, so a placeholder nested three levels inside the
- * template still counts.
- */
-function templateCarries(template: unknown, placeholder: string): boolean {
-  if (typeof template === "string") return template.includes(placeholder);
-  if (Array.isArray(template)) return template.some((t) => templateCarries(t, placeholder));
-  if (template && typeof template === "object") {
-    return Object.values(template as Record<string, unknown>).some((t) => templateCarries(t, placeholder));
-  }
-  return false;
-}
-
-/** The conversation so far, in the role names chat APIs use. */
-function chatHistory(history: AgentInvocation["history"]): Array<{ role: "user" | "assistant"; content: string }> {
-  return (history ?? []).map((t) => ({ role: t.role === "customer" ? "user" : "assistant", content: t.content }));
-}
-
 /**
  * How long an agent has to answer one message: its configured timeout, never more than
  * 30 s. A run executes in slices inside a 60 s function, so a longer wait is not a
@@ -96,6 +79,10 @@ export function redirectNote(response: { status: number; headers: Headers }, req
 }
 
 export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAdapter {
+  // Conversation ids the agent issued, by Novera's own id for the conversation. In memory for
+  // this adapter only: a conversation's turns are all sent by one scenario's execution.
+  const issuedIds = new Map<string, string>();
+
   async function call(
     input: string,
     policy: string,
@@ -108,23 +95,18 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
     const headers: Record<string, string> = { "content-type": "application/json", ...config.headers };
     if (authValue && config.authHeaderName) headers[config.authHeaderName] = authValue;
 
-    const messages = chatHistory(history);
-    const body = fillTemplate(config.bodyTemplate, {
-      input,
-      policy,
-      // Serialised rather than spread, because the shape of a customer's metadata is
-      // theirs, not ours: one placeholder carries whatever the scenario declared.
-      context: JSON.stringify(context ?? {}),
-      history: JSON.stringify(messages),
-      // A single-message scenario still gets an id, so a stateful agent never mixes two
-      // scenarios into one conversation.
-      conversation_id: conversationId ?? crypto.randomUUID(),
-    }, { history: messages });
+    // A platform that issues its own conversation ids refuses one it did not issue: the first
+    // message of a conversation carries none, and later ones carry what the agent returned.
+    const ownId = conversationId ?? crypto.randomUUID();
+    const sentId = config.conversationIdPath ? issuedIds.get(ownId) ?? "" : ownId;
+    const body = requestBody(config, { input, policy, context, history, conversationId: sentId });
+    // Only ever in the path or query: `parseEndpointFields` refuses the placeholder in the host.
+    const url = config.url.split(URL_CONVERSATION).join(encodeURIComponent(sentId));
 
     // Checked on every call, not only when the agent was connected: what a hostname
     // resolves to can change afterwards.
     try {
-      await assertPublicUrl(config.url);
+      await assertPublicUrl(url);
     } catch (error) {
       return {
         ok: false, responseText: null, toolActivity: null, latencyMs: 0,
@@ -143,7 +125,7 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
 
     let response: Response;
     try {
-      response = await guardedFetch(config.url, {
+      response = await guardedFetch(url, {
         method: config.method ?? "POST",
         headers,
         body: JSON.stringify(body),
@@ -199,6 +181,7 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
       return { ...base, error: `The agent's reply could not be read: ${error instanceof Error ? error.message : String(error)}` };
     }
 
+    const contentType = response.headers.get("content-type");
     let parsed: unknown = null;
     try {
       parsed = storableText(JSON.parse(text));
@@ -218,24 +201,81 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
       };
     }
 
+    // A stream of server-sent events: the pieces of the reply, put back together in order.
+    if (parsed === null && looksLikeEventStream(contentType, text)) {
+      const stream = assembleEventStream(storableText(text), streamPaths(config.responsePath, config.streamPath));
+      const wire = { contentType, format: "event_stream" as const, pieces: stream.pieces, matchedPath: stream.matchedPath };
+      const sample = stream.events.slice(0, 40).map((e) => e.data);
+      if (stream.error) {
+        return { ok: false, responseText: null, toolActivity: null, statusCode: response.status, latencyMs: Date.now() - started, raw: sample, wire, error: stream.error };
+      }
+      if (stream.text === null || stream.text.trim() === "") {
+        return {
+          ok: false, responseText: null, toolActivity: null, statusCode: response.status, latencyMs: Date.now() - started, raw: sample, wire,
+          ...(stream.text !== null ? { emptyReply: true } : {}),
+          error: stream.text !== null
+            ? "The agent answered with an empty reply."
+            : `The agent answered with a stream of ${stream.events.length} event${stream.events.length === 1 ? "" : "s"}, and none carried text at "${streamPaths(config.responsePath, config.streamPath).join('" or "')}".`,
+        };
+      }
+      if (config.conversationIdPath && conversationId) {
+        const issued = firstInStream(stream.events, config.conversationIdPath);
+        if (typeof issued === "string" && issued) issuedIds.set(conversationId, issued);
+      }
+      const activity = config.toolActivityPath
+        ? stream.events.flatMap((e) => {
+            const found = e.data && typeof e.data === "object" ? readPath(e.data, config.toolActivityPath as string) : undefined;
+            return found === undefined || found === null || found === "" ? [] : Array.isArray(found) ? found : [found];
+          })
+        : [];
+      return {
+        ok: true, responseText: stream.text, toolActivity: activity.length ? activity : null,
+        statusCode: response.status, latencyMs: Date.now() - started, raw: sample, wire,
+      };
+    }
+
+    // An endpoint that answers in plain text, declared as such on the connection.
+    if (config.responsePath === WHOLE_BODY_PATH) {
+      const whole = storableText(text);
+      const wire = { contentType, format: "text" as const };
+      if (whole.trim() === "") {
+        return { ok: false, responseText: null, toolActivity: null, statusCode: response.status, latencyMs, raw: whole, wire, emptyReply: true, error: "The agent answered with an empty reply." };
+      }
+      return { ok: true, responseText: whole, toolActivity: null, statusCode: response.status, latencyMs, raw: whole, wire };
+    }
+
     if (parsed === null) {
       return {
         ok: false, responseText: null, toolActivity: null, statusCode: response.status, latencyMs,
-        raw: text,
+        raw: text, wire: { contentType, format: "text" },
         error: "Agent response was not valid JSON",
       };
     }
 
-    const extracted = readPath(parsed, config.responsePath);
+    const wire = { contentType, format: "json" as const, matchedPath: config.responsePath };
+    const extracted = replyText(parsed, config.responsePath);
     if (typeof extracted !== "string" || extracted.trim() === "") {
+      // The field is there and holds nothing: the agent said nothing. Not a wrong path.
+      if (typeof extracted === "string") {
+        return {
+          ok: false, responseText: null, toolActivity: null, statusCode: response.status, latencyMs,
+          raw: parsed, wire, emptyReply: true,
+          error: "The agent answered with an empty reply.",
+        };
+      }
       // The most common way an integration dies, and the least useful place to stop
       // talking. The response is right here; saying where the reply appears to be
       // turns a dead end into a one-line fix, at connection time and at run time both.
       return {
         ok: false, responseText: null, toolActivity: null, statusCode: response.status, latencyMs,
-        raw: parsed,
+        raw: parsed, wire,
         error: `No text found at response path "${config.responsePath}".${suggestPathHint(parsed)}`,
       };
+    }
+
+    if (config.conversationIdPath && conversationId) {
+      const issued = readPath(parsed, config.conversationIdPath);
+      if (typeof issued === "string" && issued) issuedIds.set(conversationId, issued);
     }
 
     return {
@@ -245,6 +285,7 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
       statusCode: response.status,
       latencyMs,
       raw: parsed,
+      wire,
     };
   }
 
@@ -252,8 +293,8 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
     probe: () => call(PROBE_INPUT, ""),
     send: (invocation: AgentInvocation) =>
       call(invocation.input, invocation.policy, invocation.context, invocation.history, invocation.conversationId, invocation.deadline),
-    acceptsContext: () => templateCarries(config.bodyTemplate, "{{context}}"),
-    acceptsConversation: () =>
-      templateCarries(config.bodyTemplate, "{{history}}") || templateCarries(config.bodyTemplate, "{{conversation_id}}"),
+    acceptsContext: () => deliveryOf(config).context !== "none",
+    acceptsConversation: () => deliveryOf(config).conversation !== "none",
+    delivery: () => deliveryOf(config),
   };
 }

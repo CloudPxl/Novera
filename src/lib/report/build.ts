@@ -86,6 +86,8 @@ export interface ReportInput {
   extension?: ReportPayload["run"]["extension"] | null;
   /** The language the scenarios were sent in, when not English (format 15). */
   locale?: ReportPayload["run"]["locale"] | null;
+  /** Scenarios delivered in the message, from the run's manifest (`compositionFromManifest`). Absent or null otherwise. */
+  delivery?: ReportPayload["run"]["delivery"] | null;
   /** The previous report for this agent, so a series chains; null for the first. */
   previousReportHash?: string | null;
 }
@@ -108,6 +110,9 @@ export interface BuiltReport {
  * field of the payload since format 1, and reports already sealed keep the text that
  * was true when they were sealed.
  */
+const IN_MESSAGE_LIMITATION =
+  "Some scenarios deliver content the customer did not type, or a conversation's earlier turns. This agent's request has no field for them, so they were sent inside the message, as the agent's connection declared before the run; the report names those scenarios. A pass in one of them does not show how the agent treats the same content arriving through its own retrieval, tools or conversation memory.";
+
 const LIMITATIONS =
   "This report records how the named agent behaved on the listed scenarios, under the recorded configuration, on the date shown. It does not cover untested interactions, does not predict future behaviour, and is not a certification, a statutory conformity assessment or a statement of legal compliance; Novera is not a notified body. Obligation codes group the evidence; they do not determine which obligations apply to your organisation. Producing this evidence sent the agent's responses to the grading models named against each scenario, which are operated by third parties and may process data outside the EU.";
 
@@ -345,7 +350,9 @@ export function buildReport(input: ReportInput): BuiltReport {
     // sealed as any earlier format are still rendered from their own payload and must keep
     // verifying — every reader of this payload branches on absence. 17 is a completion
     // (0083), and only a completion: every other report stays 16.
-    novera: { format: input.completion ? 17 : 16 },
+    // 18 says some scenarios were delivered in the message (`run.delivery`); a completion stays
+    // 17 and carries the same block when it has one.
+    novera: { format: input.completion ? 17 : input.delivery ? 18 : 16 },
     subject: {
       client: input.client,
       agent: input.agentName,
@@ -371,6 +378,7 @@ export function buildReport(input: ReportInput): BuiltReport {
       ...(input.fingerprint ? { fingerprint: input.fingerprint } : {}),
       ...(input.extension ? { extension: input.extension } : {}),
       ...(input.locale ? { locale: input.locale } : {}),
+      ...(input.delivery ? { delivery: input.delivery } : {}),
     },
     grade: {
       band: grade.band,
@@ -466,6 +474,7 @@ export function buildReport(input: ReportInput): BuiltReport {
     limitations: [
       LIMITATIONS,
       ...(input.completion ? [COMPLETION_LIMITATION] : []),
+      ...(input.delivery ? [IN_MESSAGE_LIMITATION] : []),
       ...(gradedBy.length > 1 ? [mixedGradingIsAFault ? MIXED_GRADING_NOTE : CONSENSUS_GRADING_NOTE] : []),
       ...(corroboration.uncorroborated > 0 ? [UNCORROBORATED_NOTE] : []),
       ...(input.coverage.unverifiable > 0 ? [UNVERIFIABLE_NOTE] : []),

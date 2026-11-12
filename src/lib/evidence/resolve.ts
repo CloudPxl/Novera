@@ -22,6 +22,8 @@ export interface ResolveItem {
   delayMs: number;
   /** Why a retest would only repeat the same answer, when it would. */
   blocked: string | null;
+  /** Set when a retest recorded after the run already reached a verdict: the cause was fixed. */
+  fixedBy?: "retest";
 }
 
 export interface ResolvePlan {
@@ -29,7 +31,34 @@ export interface ResolvePlan {
   fixFirst: ResolveItem[];
 }
 
-export function resolvePlan(cases: ReadonlyArray<{ runCaseId: string; scenarioId: string; status: string; diagnostic: DiagnosticReport | null }>): ResolvePlan {
+/**
+ * What a retest's outcome is called. "Retest failed" read as "the retest broke"; what happened is
+ * that the retest worked and the scenario's verdict is a fail. So the two are said apart: a
+ * verdict was reached (and which), or the retest again produced no result (and why).
+ */
+export function retestWords(verdict: CheckVerdict, words: string): string {
+  if (verdict === "pass") return "Verdict reached: passed";
+  if (verdict === "fail") return "Verdict reached: failed";
+  return `No result again: ${words.replace(/^No (verdict|result): /, "")}`;
+}
+
+/**
+ * The scenarios a completion run may now re-execute: the ones safe to retest, and the fix-first
+ * ones a retest has since shown produce a verdict — the fix was made. A retest's verdict is never
+ * itself put in a report: a person can retest as often as they like, so sealing a chosen retest
+ * would let the tested party pick the sample. The completion run sends the scenario once more,
+ * declared before it runs, and seals whatever that one execution produces.
+ */
+export function completable(plan: ResolvePlan, retests: ReadonlyArray<RetestRow>): ResolveItem[] {
+  const reached = new Set(retests.filter((r) => r.status === "pass" || r.status === "fail").map((r) => r.run_case_id));
+  return [...plan.retestable, ...plan.fixFirst.filter((item) => item.fixedBy === "retest" || reached.has(item.runCaseId))];
+}
+
+export function resolvePlan(cases: ReadonlyArray<{
+  runCaseId: string; scenarioId: string; status: string; diagnostic: DiagnosticReport | null;
+  /** The newest retest of this scenario reached a pass or a fail. */
+  retestReachedVerdict?: boolean;
+}>): ResolvePlan {
   const plan: ResolvePlan = { retestable: [], fixFirst: [] };
   for (const c of cases) {
     if (c.status !== "error" || !c.diagnostic) continue;
@@ -43,6 +72,7 @@ export function resolvePlan(cases: ReadonlyArray<{ runCaseId: string; scenarioId
       owner: d.userAction.owner,
       delayMs: d.retryPolicy.recommendedDelayMs,
       blocked: d.retryPolicy.isSafeToRetry ? null : d.retryPolicy.reasonIfBlocked,
+      ...(c.retestReachedVerdict ? { fixedBy: "retest" as const } : {}),
     };
     (d.retryPolicy.isSafeToRetry ? plan.retestable : plan.fixFirst).push(item);
   }
@@ -84,7 +114,7 @@ export function resolveOutcomes(plan: ResolvePlan, retests: ReadonlyArray<Retest
       runCaseId: item.runCaseId,
       scenarioId: item.scenarioId,
       verdict,
-      words: `Retest: ${words.charAt(0).toLowerCase()}${words.slice(1)}`,
+      words: retestWords(verdict, words),
       detail: newest.rationale ?? newest.error ?? null,
       at: newest.created_at,
     };
@@ -105,5 +135,5 @@ export function resolveSummary(outcomes: ReadonlyArray<ResolveOutcome>, plan: Re
   if (pending) parts.push(`${pending} not retested yet`);
   if (plan.fixFirst.length) parts.push(`${plan.fixFirst.length} need${plan.fixFirst.length === 1 ? "s" : ""} a fix first`);
   const lead = parts.length ? `${parts.join("; ")}.` : "Nothing to resolve.";
-  return `${lead} A retest never changes this report: once the causes are fixed, rerun the suite for a report without the gap.`;
+  return `${lead} A retest never changes this report. To get a report that includes ${transient === 1 ? "this scenario" : "these scenarios"}, complete the evidence below: each is run once more and a new report is sealed, with this one left as it is.`;
 }

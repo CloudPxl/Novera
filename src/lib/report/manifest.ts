@@ -9,13 +9,17 @@ import { suiteDigest } from "../suites/digest.ts";
 import { extensionDigestsOf, readExtension } from "../suites/extension.ts";
 import { LOCALE_NAMES, isVariantLocale, localise, type Locale } from "../suites/locales.ts";
 import type { SuiteCase } from "../runner/types.ts";
+import { deliveryOf } from "../agents/delivery.ts";
 
 /**
  * Bumped by hand when the way a run is executed changes in a way that could change a
  * verdict — slicing, concurrency, the consensus rule, the effect rule. Not the package
  * version, which moves for reasons that have nothing to do with grading.
  */
-export const RUNNER_VERSION = "1.0.0";
+// 1.1.0 (2026-11-12): a request the agent's server failed (HTTP 5xx outside the unreachable
+// set) is sent once more when sending it twice cannot act twice; a request with no field for
+// metadata or earlier turns may carry them in the message, declared in `in_message`.
+export const RUNNER_VERSION = "1.1.0";
 
 /**
  * What the run declared about itself **before it ran**.
@@ -118,6 +122,15 @@ export interface RunManifest {
    * every other run, and on every run declared before 2026-11-11.
    */
   completes?: { run_id: string; report_hash: string; scenario_ids: string[] };
+  /**
+   * Present only when this agent's request has no field for a scenario's metadata, or for a
+   * conversation's earlier turns, and its connection says to deliver them inside the message
+   * instead (`inlineChannels`): the declared scenarios whose metadata (`context`) or earlier turns
+   * (`conversation`) arrive that way. Declared before the run, so a report states it beside each
+   * such scenario. Absent: every scenario that was sent used the agent's own fields, as on every
+   * run declared before 2026-11-12.
+   */
+  in_message?: { context?: string[]; conversation?: string[] };
 }
 
 /**
@@ -196,8 +209,41 @@ export function agentConfigHash(config: unknown): string | null {
     model: c.model ?? null,
     provider: c.provider ?? null,
     system_prompt_sha256: typeof c.systemPrompt === "string" ? createHash("sha256").update(c.systemPrompt, "utf8").digest("hex") : null,
+    // Added 2026-11-12, and only when set: a connection that uses none of them digests exactly
+    // as it did before, so two runs either side of that date still compare as the same request.
+    ...(typeof c.streamPath === "string" && c.streamPath ? { stream_path: c.streamPath } : {}),
+    ...(typeof c.conversationIdPath === "string" && c.conversationIdPath ? { conversation_id_path: c.conversationIdPath } : {}),
+    ...(c.inlineChannels === true ? { inline_channels: true } : {}),
   };
   return contentHash(shape as unknown as Json);
+}
+
+/** What an HTTP agent's connection delivers in the message for want of a field, or null when nothing. */
+export function inMessageDelivery(config: unknown): { context?: "message"; conversation?: "message" } | null {
+  const c = (config ?? null) as { kind?: unknown; url?: unknown; bodyTemplate?: unknown; inlineChannels?: unknown } | null;
+  if (!c || c.kind !== "http" || c.inlineChannels !== true || typeof c.url !== "string") return null;
+  const how = deliveryOf({ url: c.url, bodyTemplate: (c.bodyTemplate ?? {}) as Record<string, unknown>, inlineChannels: true });
+  const out = {
+    ...(how.context === "message" ? { context: "message" as const } : {}),
+    ...(how.conversation === "message" ? { conversation: "message" as const } : {}),
+  };
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * Which of a run's declared scenarios reach the agent with their metadata or earlier turns inside
+ * the message, from the agent's connection and what each scenario carries. Null when none do.
+ */
+export function inMessageCaseIds(
+  config: unknown,
+  cases: ReadonlyArray<Pick<SuiteCase, "id" | "context" | "earlier_turns" | "persona">>,
+): { context?: string[]; conversation?: string[] } | null {
+  const how = inMessageDelivery(config);
+  if (!how) return null;
+  const context = how.context ? cases.filter((c) => c.context && Object.keys(c.context).length > 0).map((c) => c.id) : [];
+  const conversation = how.conversation ? cases.filter((c) => (c.earlier_turns?.length ?? 0) > 0 || Boolean(c.persona)).map((c) => c.id) : [];
+  const out = { ...(context.length ? { context } : {}), ...(conversation.length ? { conversation } : {}) };
+  return Object.keys(out).length ? out : null;
 }
 
 export function buildRunManifest(args: {
@@ -234,6 +280,8 @@ export function buildRunManifest(args: {
   verification?: unknown;
   /** Set only on a completion run (0083). */
   completes?: { runId: string; reportHash: string; scenarioIds: string[] } | null;
+  /** Set only when some declared scenarios are delivered in the message (`inMessageCaseIds`). */
+  inMessage?: { context?: string[]; conversation?: string[] } | null;
 }): { manifest: RunManifest; hash: string } {
   const routes = args.routes ?? DEFAULT_ROUTES;
   const manifest: RunManifest = {
@@ -289,6 +337,7 @@ export function buildRunManifest(args: {
     ...(args.completes
       ? { completes: { run_id: args.completes.runId, report_hash: args.completes.reportHash, scenario_ids: args.completes.scenarioIds } }
       : {}),
+    ...(args.inMessage && (args.inMessage.context?.length || args.inMessage.conversation?.length) ? { in_message: args.inMessage } : {}),
   };
 
   return { manifest, hash: contentHash(manifest as unknown as Json) };
@@ -386,6 +435,11 @@ export async function manifestForNewRun(args: {
       locale: localised?.digest && args.locale && args.locale !== "en"
         ? { code: args.locale, digest: localised.digest, caseIds: localised.localisedIds }
         : null,
+      // Of the scenarios this run declares, the ones the agent's request has no field for.
+      inMessage: inMessageCaseIds(
+        agent?.config ?? null,
+        (cases as unknown as SuiteCase[]).filter((c) => !args.completes || args.completes.scenarioIds.includes(String(c.id))),
+      ),
     });
 
     return { id, manifest, manifest_hash: hash };
@@ -422,6 +476,7 @@ export function fingerprintFromManifest(manifest: unknown): NonNullable<ReportPa
 export function compositionFromManifest(manifest: unknown): {
   extension: NonNullable<ReportPayload["run"]["extension"]> | null;
   locale: NonNullable<ReportPayload["run"]["locale"]> | null;
+  delivery: NonNullable<ReportPayload["run"]["delivery"]> | null;
 } {
   const m = (manifest ?? null) as Partial<RunManifest> | null;
   const total = Array.isArray(m?.suite?.case_ids) ? m!.suite!.case_ids.length : null;
@@ -436,5 +491,24 @@ export function compositionFromManifest(manifest: unknown): {
   const locale = m?.locale && isVariantLocale(m.locale) && m.locale_digest && Array.isArray(m.localised_case_ids) && total !== null
     ? { code: m.locale, name: LOCALE_NAMES[m.locale], localised: m.localised_case_ids.length, of: total, locale_digest: m.locale_digest }
     : null;
-  return { extension, locale };
+  const ids = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
+  const context = ids(m?.in_message?.context);
+  const conversation = ids(m?.in_message?.conversation);
+  const delivery = context.length || conversation.length ? { in_message: { context, conversation }, note: inMessageNote(context, conversation) } : null;
+  return { extension, locale, delivery };
+}
+
+/** The sentence a report carries about scenarios delivered in the message. Built from the declared ids only. */
+export function inMessageNote(context: readonly string[], conversation: readonly string[]): string {
+  const parts: string[] = [];
+  if (context.length) {
+    parts.push(`${context.length === 1 ? "Scenario" : "Scenarios"} ${context.join(", ")} carry content the customer did not type (a retrieved document, a tool's result or account data). `
+      + "This agent's request has no field for it, so it was sent as a labelled block at the top of the message, as the agent's connection declares.");
+  }
+  if (conversation.length) {
+    parts.push(`${conversation.length === 1 ? "Scenario" : "Scenarios"} ${conversation.join(", ")} ${conversation.length === 1 ? "is a conversation" : "are conversations"}. `
+      + "This agent's request has no field for earlier turns, so each later message carried them as a labelled block, with the agent's own earlier replies as it gave them.");
+  }
+  return `${parts.join(" ")} A failure in these scenarios is a failure either way. A pass shows the agent handled that content correctly inside a message; `
+    + "it does not show how the agent treats the same content arriving through its own retrieval, tools or conversation memory.";
 }

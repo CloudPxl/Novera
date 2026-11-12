@@ -41,6 +41,17 @@ export interface AgentResult {
    * a statement about Novera's slice, never a finding about the agent.
    */
   cutByNovera?: boolean;
+  /**
+   * How the answer was read, for the connection test's inspector: its content type as sent, the
+   * format Novera read it as, and — for a stream — how many events carried a piece of the reply.
+   * Never stored with a case.
+   */
+  wire?: { contentType: string | null; format: "json" | "event_stream" | "text"; pieces?: number; matchedPath?: string | null };
+  /**
+   * The request answered, and the reply field held an empty string: the agent said nothing.
+   * Distinct from a reply that is somewhere else in the response (a wrong path).
+   */
+  emptyReply?: boolean;
 }
 
 export interface AgentAdapter {
@@ -64,6 +75,12 @@ export interface AgentAdapter {
    * not run: sending the turns as unrelated messages would test something else.
    */
   acceptsConversation?(): boolean;
+  /**
+   * How this agent is sent a scenario's metadata and a conversation's earlier turns. Absent means
+   * its own fields. `message` is the labelled block of `inlineChannels`, which a run declares and
+   * a report states.
+   */
+  delivery?(): { context: ChannelDelivery; conversation: ChannelDelivery };
 }
 
 export interface HttpAgentConfig {
@@ -80,7 +97,29 @@ export interface HttpAgentConfig {
   /** Optional dot path to recorded tool calls, if the agent reports them. */
   toolActivityPath?: string;
   timeoutMs?: number;
+  /**
+   * Where a piece of the reply sits inside one event, for an agent that answers as a stream of
+   * server-sent events and names it differently from `responsePath`. Absent means the reply path.
+   */
+  streamPath?: string;
+  /**
+   * Where the agent's own conversation id sits in its reply, for a platform that issues one and
+   * refuses ids it did not issue. `{{conversation_id}}` is then empty on a conversation's first
+   * message and carries the id the agent returned on every later one. Absent: Novera's own id.
+   */
+  conversationIdPath?: string;
+  /**
+   * How a scenario's metadata and earlier turns reach an agent whose request has no field for
+   * them. True: as a labelled block at the top of the message, declared in the run's manifest and
+   * stated on the report beside each such scenario. Absent or false: those scenarios are not sent.
+   */
+  inlineChannels?: boolean;
+  /** Which starting point the connection was filled from. Informational; never read by a run. */
+  preset?: string;
 }
+
+/** How one kind of scenario content reaches an agent: its own field, the message, or not at all. */
+export type ChannelDelivery = "field" | "message" | "none";
 
 export interface ModelAgentConfig {
   kind: "model";

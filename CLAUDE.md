@@ -92,7 +92,11 @@ someone with the service role, not merely someone using the application.
 | A model provider receives only the data class its published terms allow: support messages only where identifiable data is allowed, customer content redacted where only that is, nothing of the customer's to free tiers that train on it; where a grader read placeholders, the vote, the case and the report say so | `src/lib/privacy/data-class.ts` in the router, `tests/privacy.test.ts` |
 | An agent's raw replies are kept only for the workspace's retention period (30–365 days, default 180); then the daily pass empties them and nothing else, leaving the verdict and a SHA-256 of the reply; a sealed report shows quoted personal data only as placeholders; a support conversation is erased 90 days after it last moved, and a probe receipt's reply emptied after 90 days | 0037 `expire_raw_evidence()`, 0038 `expire_inbound_and_probes()`, `verify:retention`; `buildReport` scrub |
 | Novera calls only public addresses — an agent or read-back URL resolving to a private, loopback or metadata address is refused when saved and on every call, and redirects are reported, not followed; every agent and model call has a deadline inside the slice that also bounds reading the answer, every answer read is capped (agent and read-back 256 KB, model 1 MB) and a webhook receiver's is never read, and a run idle for 24 hours is stopped, never sealed | `src/lib/net/public-url.ts`, `src/lib/net/read-body.ts`, 0040, `verify:slices` |
-| A customer's agent is paced (250 ms between sends) and an unreachable or rate-limiting endpoint is not a finding: HTTP 408/429/502/503/504 or no connection is a case error, never a fail, and three in a row halt the run (aborted, never sealed) with the reason; a redirect is never followed, its error names where it points, and three in a row halt the run as configuration (CI exit 3) — counted in send order, so a success sent before the failures began cannot reset the count while scenarios run in parallel; a reply's NUL or unpaired surrogate is stored as U+FFFD, never an aborted run | `src/lib/runner/execute.ts` (`AGENT_PACE_MS`, `isTransportFailure`, `isRedirectAnswer`), `tests/runner.test.ts`, `tests/sample-redirect.test.ts` |
+| A customer's agent is paced (250 ms between sends) and an unreachable or rate-limiting endpoint is not a finding: HTTP 408/429/502/503/504 or no connection is a case error, never a fail, and three in a row halt the run (aborted, never sealed) with the reason; a redirect is never followed, its error names where it points, and three in a row halt the run as configuration (CI exit 3) — counted in send order, so a success sent before the failures began cannot reset the count while scenarios run in parallel; a reply's NUL or unpaired surrogate is stored as U+FFFD, never an aborted run; an HTTP 5xx outside that set (the agent's own server failed) is sent once more after 1.5 s, only for a scenario that cannot act twice (no effect, not destructive) and never after a timeout, and whatever the endpoint answers at the protocol level — 4xx, 5xx twice, an empty reply — is no result with its cause said, never a pass and never a fail: a block in front of the agent and an agent that failed look the same from outside | `src/lib/runner/execute.ts` (`AGENT_PACE_MS`, `isTransportFailure`, `isRedirectAnswer`, `worthOneMoreAttempt`), `tests/runner.test.ts`, `tests/sample-redirect.test.ts`, `tests/universal-connection.test.ts` |
+| An agent on a known platform connects without a relay, through the one HTTP adapter: a preset or a pasted curl command only fills the stored fields (address, request body, reply path, header name), read in the browser and never run; a reply is read as JSON at a stored path (`*` for every element of a list), as a stream of server-sent events put back together in order (a replacement replaces, a stream error is no reply) or as plain text only when the connection says `$text` — never re-guessed during a run; a conversation id the agent issues is sent back, never Novera's own; a header that carries a credential is refused among the plain ones; a bare token under `authorization` is stored and sent as Bearer; the connection check shows the exact request without the credential or the query string, and stores nothing | `src/lib/agents/presets.ts`, `curl.ts`, `sse.ts`, `delivery.ts`, `http.ts`, `connection.ts`, `preflight.ts`, `tests/universal-connection.test.ts` |
+| A scenario's metadata or earlier turns reach an agent with no field for them only when its connection says to deliver them in the message (on for a new agent, off for one connected before 2026-11-12): as a block labelled with the scenario's own key, nothing added that tells the agent how to treat it; the run declares the scenario ids before it executes (`in_message`), and the report (format 18) names them and states that a pass there does not show how the agent treats the same content from its own retrieval, tools or memory; with the option off they are not sent | `deliveryOf` / `messageFor`, `inMessageCaseIds` in `src/lib/report/manifest.ts`, `src/lib/report/build.ts`, `tests/universal-connection.test.ts` |
+| A grade over part of a suite never appears without its scope: when a run has scenarios without a verdict and at least half the suite has one, the report shows a scoped grade — the letter over the evaluated scenarios, "x of y", and the floor (the pass rate if every scenario without a verdict had failed) — while the whole-suite band stays INCOMPLETE or WITHHELD, so the release gate, the API `outcome` and readiness read missing evidence as missing; for a report sealed earlier it is computed from the sealed counts and shown beside the sealed text | `scopedGrade` in `src/lib/evidence/grade.ts`, report page, scorecard, `tests/scoped-grade-onboarding.test.ts` |
+| A policy starting point cannot be saved as written (every `[[placeholder]]` must be replaced), and no policy is drafted from what the agent says about itself | `src/lib/agents/policy-starters.ts`, `savePolicyVersion`, `tests/scoped-grade-onboarding.test.ts` |
 | An aborted run is never sealed — stopped by a person (even mid-slice), idle for 24 hours, or ended by a failure; a stopped run sends its agent no further scenario; at most two slices grade on the shared trial keys at once, and a third waits rather than degrading everyone's verdicts | 0041 `claim_run_slice`, `src/lib/workflow/stop-run.ts`, `verify:slices` |
 | A webhook is signed (HMAC over timestamp and body), sent only to a public address, never follows a redirect, carries counts and links but no reply, input, policy or key, says when the run was against the sample fixture (`run.test_data`), is queued once per run and endpoint, and cannot be edited after it is queued; each attempt is claimed by one sender and counted, and delivery is at least once (receivers deduplicate by `Novera-Delivery`), one broken endpoint never holding up another; an endpoint's secret is sealed and shown once | 0042, 0046, `src/lib/webhooks/`, `verify:webhooks` |
 | A production failure is stored redacted — the original only as a hash — cannot be edited, and becomes a test only as a draft a person approves, linked to it for good; one sent through the API needs a `write` key, names it, and the same text twice is one record — each draft with its own R-number however many arrive at once (0077 refuses a duplicate; the recorder takes the next free one), a NUL or unpaired surrogate stored as U+FFFD and an impossible or future date refused | 0031, 0044, 0077, `src/lib/regressions/record.ts` |
@@ -108,7 +112,7 @@ someone with the service role, not merely someone using the application.
 | The in-app assistant can link only to this workspace's own paths and offer only a run the person presses; it never attests, never sees keys or policy text, and refuses key-shaped input before any model call | `src/lib/assistant/core.ts`, tested |
 | A report from a suite with a requirements sidecar carries, sealed, the requirement each scenario observes by source layer (binding legislation, Commission guidance, voluntary code, customer policy, Novera scenario), each scenario's observed outcome from the stored rows, a group status worded as observation (present / deficient / inconclusive — an uncorroborated pass or a missing verdict is never "present"), what the suite does not evaluate and why, and a boundary statement that it is not a determination that any obligation is met; a run whose scenarios differ from the mapping's gets no matrix | `src/lib/suites/sources.ts`, `src/lib/report/requirements-build.ts`, format 16, `tests/a50-requirements.test.ts` |
 | A review reaches a client only as a *new* sealed report that carries the original unchanged, names it by hash, and labels the reviewers as the tested party — never as a changed score | `src/lib/report/reissue.ts`, format 11 |
-| A no result is resolved beside a run, never inside it: a retest is a single-scenario check (B1), and a completion run (0083) re-executes only declared no-result scenarios a retest cannot harm, through `startRun`, under the same agent connection, policy version, suite, language and grading funding; its report (format 17, completions only) carries every other verdict from the stored rows of the runs it completes, recomputes every figure from the combined rows, names the completed report by digest and states which scenarios ran later and when; the completed report stays sealed and its page says a later report completes it; at most three completions deep, one in progress | 0083, `src/lib/evidence/completion.ts`, `src/lib/workflow/completion.ts`, `tests/completion.test.ts` |
+| A no result is resolved beside a run, never inside it: a retest is a single-scenario check (B1) whose verdict is never itself sealed (it can be repeated, so sealing a chosen one would let the tested party pick the sample), and a completion run (0083) re-executes only declared no-result scenarios a retest cannot harm — or ones whose cause needed a fix that a stored retest has since shown was made, never one that may already have acted — through `startRun`, under the same agent connection, policy version, suite, language and grading funding; its report (format 17, completions only) carries every other verdict from the stored rows of the runs it completes, recomputes every figure from the combined rows, names the completed report by digest and states which scenarios ran later and when; the completed report stays sealed and its page says a later report completes it; at most three completions deep, one in progress | 0083, `src/lib/evidence/completion.ts`, `src/lib/workflow/completion.ts`, `tests/completion.test.ts` |
 | A no result Novera caused is not recorded while it can still be avoided: a scenario the agent answered whose grading stopped only for grading capacity is held with its reply, never re-sent, and graded again from where it stopped (models that answered are not asked again; a tie is still settled only by a third vendor), up to four gradings; a run with a hold open is never completed, and its holds die with it; an insight reply is deferred the same way, its grading state sealed under a key the worker does not hold and bound to the scan, scenario and reply | 0084, `src/lib/judge/consensus.ts` (`PendingGrading`), `src/lib/runner/execute.ts`, `src/lib/insight/grading-state.ts`, `tests/grading-holds.test.ts`, `tests/insight-deferred-grading.test.ts`, `verify:insight-browser` |
 
 **A verdict is the finding of two models from different vendors.** A single judge drifted
@@ -140,8 +144,9 @@ gap** — the share of the suite that produced no verdict.
 
 **A conversation is graded whole.** A scenario with `earlier_turns` sends each turn with
 the conversation so far; rules apply to every turn and the judges read every reply. An
-agent with no `{{history}}` or `{{conversation_id}}` slot is not sent it — recorded as
-not run, never flattened into separate messages. A `persona` scenario continues after a
+agent with no `{{messages}}`, `{{history}}` or `{{conversation_id}}` slot is never sent it
+flattened into separate messages: it is recorded as not run, or, with the connection's delivery
+option on, each later message carries the earlier turns as a labelled block and the report says so. A `persona` scenario continues after a
 human-written opening with a model playing the customer; its lines are labelled
 simulated with their model, it never sees the assertions, and a report that includes one
 says no real customer took part. A retest runs the suite's own case,
@@ -181,8 +186,11 @@ the suite, versus fix what made the evidence unusable.
 
 **An attack has a channel.** A scenario may declare `context` — what the agent is told
 *about* a conversation rather than by the customer — and an indirect injection is
-delivered there. An agent with nowhere to receive it is recorded as an error, never sent
-the attack in its message instead: that would be a different test under the same name.
+delivered there. An agent with nowhere to receive it is never sent the attack in its message
+silently: that would be a different test under the same name. It is either not sent (recorded as
+an error), or — when the agent's connection says to deliver metadata in the message — sent as a
+labelled block, declared in the run's manifest and stated on the report with what a pass there
+does not show (2026-11-12).
 
 ## Stack and layout
 
@@ -214,7 +222,7 @@ src/app/solutions/    public landing pages (AI Act evidence, black-box testing, 
 src/lib/seo/          metadata helper, JSON-LD builders (no price, no Organization until published / the entity exists), OG card text
 src/app/api/          route handlers
 src/proxy.ts          security headers + nonce CSP
-src/lib/agents/       adapters, probe, trajectory, response-path discovery
+src/lib/agents/       adapters, probe, trajectory, response-path discovery; presets and the curl importer (form fillers), stream assembly, delivery (what is sent through which channel), policy starting points
 src/lib/runner/       execution, slicing, case orchestration
 src/lib/judge/        consensus, checks, effect rule, independence
 src/lib/evidence/     coverage, grade, read-back connectors
@@ -241,7 +249,7 @@ src/lib/builder/      the Suite Builder: curated packs, sources (parse, fetch on
 data/packs/           curated baseline packs — selections of eu-support v6, byte for byte (v1 packs from v5, deprecated)
 supabase/migrations/  schema + RLS; every table's erasure path ships with it
 data/suites/          versioned scenario suites (eu-support v1–v7; eu-gdpr-support v1–v2, e-commerce-refund v1, fintech-kyc v1–v2, eu-ai-transparency v1), calibration labels, and `.tiers.json` / `.locales.json` / `.sources.json` sidecars (triage tiers, language variants and requirement sources, not sealed into the suite)
-src/lib/suites/       validation, the suite digest, tiers by scenario definition, computed changelogs, the catalog (/scenarios?tab=catalog)
+src/lib/suites/       validation, the suite digest, tiers by scenario definition, computed changelogs, the catalog (/scenarios?tab=catalog), a suite's specification counted from its row (`spec.ts`)
 src/lib/ci/           CI gating: trigger parsing, commit dedupe and supersede decisions, the exit-code gate, the GitHub Actions workflow generator
 src/lib/checks/       the single-scenario check's label, verdict words and view state
 src/lib/insight/      public-demo insight scans: classification, gates, the worker protocol and secret, claim and event handling, grading a captured reply (deferred for capacity), the computed card, the scripted widget, fix suggestions, outreach templates, the rescan comparison
@@ -287,7 +295,7 @@ Scripts run with `--conditions=react-server` so `server-only` resolves to its no
 
 | Command | What it proves | Cost |
 |---|---|---|
-| `npm test` | 1593 unit tests | free |
+| `npm test` | 1620 unit tests | free |
 | `npm run typecheck` · `typecheck:6` | TypeScript 7's native checker (0.8 s) · TypeScript 6, which Next and typescript-eslint use. Run by path: both packages ship a `tsc` binary | free |
 | `npm run migrate` · `seed:suites` · `seed:docs` | schema, suites and docs are current. `migrate -- --check` is read-only: who can reach the ledger, what is pending, where the ledger and the files disagree | free |
 | `verify:db` · `verify:access` · `verify:tenancy` | append-only, RLS, erasure, cross-tenant isolation | free |
@@ -344,7 +352,7 @@ they drive the scripted fixture at `/api/test-agent`.
 
 - **A report payload change breaks every document already in a client's hands.** An added
   field ships with its absence branch in the same commit. Two reports were returning 500
-  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 16, a completion 17); `novera report verify` re-hashes all of them.
+  in production before this was caught. 18 sealed reports now span payload formats 1–11 (new ones are 16, a completion 17, and 18 when scenarios were delivered in the message); `novera report verify` re-hashes all of them.
 - **A model's rendering of our data is not our data.** The judge echoed assertions back
   with the numbering the prompt added; storing that verbatim made every failed case render
   as fully passing.
@@ -385,6 +393,11 @@ they drive the scripted fixture at `/api/test-agent`.
 - **Motion is drawn over a finished state, never needed to reach one.** `Reveal` hid every block at
   opacity 0 with JavaScript off. Server-render the end state; `useMotion()` only replays it, and
   `docs/DESIGN.md` holds the layout, accent and motion system.
+- **Something that answers for the agent seals an invented reply.** A relay written to connect
+  one platform returned a canned sentence whenever the platform failed; Novera graded that
+  sentence as the agent's and a retest "reached a verdict" on text nobody's agent wrote. The same
+  relay turned a firewall's block page into HTTP 500 — which is why a protocol-level answer is
+  never a pass or a fail. Connect the platform directly; a failure upstream stays a failure.
 - **A page must not render a sentence a stranger supplied.** `/sign-in?problem=` printed
   whatever arrived inside Novera's own alert box, on the page that asks for a password.
 

@@ -1,6 +1,6 @@
 import { Badge, Tooltip } from "@/components/ui/primitives.tsx";
 import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
-import type { Grade } from "@/lib/evidence/grade.ts";
+import { scopedGrade, type Grade } from "@/lib/evidence/grade.ts";
 import type { Coverage } from "@/lib/evidence/coverage.ts";
 import { describeVendor, type GradingHealth } from "@/lib/evidence/grading-health.ts";
 import { emptyAbortNote } from "@/lib/billing/allowance.ts";
@@ -71,6 +71,11 @@ export function Scorecard({
   // Two reasons for no letter: the run did not finish, or it finished and the evidence
   // does not support one. Both hide the badge; only the wording differs.
   const ungraded = grade.band === "INCOMPLETE" || grade.band === "WITHHELD";
+  // The grade over what was evaluated, with its scope, once the run has finished. Never while
+  // it is still running: its scope is not known yet.
+  const scoped = ungraded && status === "completed"
+    ? scopedGrade({ passed: coverage.passed, graded: coverage.graded, planned: coverage.planned, threshold: grade.threshold })
+    : null;
 
   return (
     <section className="rounded-panel border border-line bg-surface p-5 shadow-card sm:p-6">
@@ -80,7 +85,13 @@ export function Scorecard({
           <div
             className={`grid size-24 shrink-0 place-items-center rounded-full border-4 ${BAND_RING[grade.band]}`}
           >
-            {ungraded ? (
+            {scoped ? (
+              <span className="flex flex-col items-center">
+                <span className="text-[10px] font-bold uppercase tracking-wide">Scoped</span>
+                <span className="text-3xl font-bold leading-none">{scoped.band}</span>
+                <span className="tnum mt-0.5 text-[11px] font-semibold">{scoped.evaluated} of {scoped.planned}</span>
+              </span>
+            ) : ungraded ? (
               <span className="text-center text-xs font-bold uppercase leading-tight tracking-wide">
                 {grade.band === "WITHHELD" ? <>Grade<br />withheld</> : <>Not<br />graded</>}
               </span>
@@ -91,9 +102,9 @@ export function Scorecard({
               </>
             )}
           </div>
-          {!ungraded && (
+          {(!ungraded || scoped) && (
             <p className="mt-2 text-center text-xs text-ink-faint sm:w-24">
-              pass mark {grade.threshold}%
+              {scoped ? `${scoped.score}% of evaluated · floor ${scoped.floorScore}%` : `pass mark ${grade.threshold}%`}
             </p>
           )}
         </div>
@@ -131,8 +142,8 @@ export function Scorecard({
           {/* No letter is as loud as a letter, and says why in one marker (never inside the sentence above). */}
           {ungraded && (
             <div className="mt-2 flex flex-wrap items-baseline text-xs font-medium text-ink-soft">
-              <span>{grade.band === "WITHHELD" ? "Why the grade is withheld" : "Why there is no grade"}</span>
-              <ExplainTrigger id={grade.band === "WITHHELD" ? "grade_withheld" : "grade_incomplete"} />
+              <span>{scoped ? "What a scoped grade is" : grade.band === "WITHHELD" ? "Why the grade is withheld" : "Why there is no grade"}</span>
+              <ExplainTrigger id={scoped ? "grade_scoped" : grade.band === "WITHHELD" ? "grade_withheld" : "grade_incomplete"} />
             </div>
           )}
 

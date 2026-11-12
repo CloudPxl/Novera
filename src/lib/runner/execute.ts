@@ -94,6 +94,49 @@ export function isTransportFailure(result: Partial<AgentResult> & { ok: boolean 
   return !(result.error ?? "").startsWith("Not sent");
 }
 
+/**
+ * One more attempt, for a request the agent's server failed: how long after the first, and when
+ * it is made at all.
+ *
+ * A single HTTP 500 is a common no-result, and many are gone a second later. So a message that
+ * got one is sent once more — only a message that cannot
+ * act on anything twice (the scenario declares no effect and is not destructive), never after a
+ * timeout (the wait would be doubled, and the first request may still be running), and never
+ * when the slice has no room for it. What the second attempt answers is the result. If it fails
+ * the same way, the error says both attempts did, because "twice, 1.5 s apart, while other
+ * scenarios were answered" is a different fact from "once".
+ *
+ * It is still not a verdict. An endpoint that answers 5xx or 4xx to one scenario has produced
+ * no reply to grade: something in front of the agent may have rejected the input, or the agent
+ * may have failed on it, and from outside those look the same (in the run that prompted this, a
+ * relay turned a firewall's block page into HTTP 500). Calling the first a pass and the second a
+ * fail would be a guess about which it was.
+ */
+export const AGENT_RETRY_AFTER_MS = 1_500;
+
+export function worthOneMoreAttempt(result: Partial<AgentResult> & { ok: boolean }, testCase: Pick<SuiteCase, "effect" | "destructive">): boolean {
+  if (result.ok || result.cutByNovera || result.timedOut) return false;
+  if (testCase.effect || testCase.destructive) return false;
+  // Only where the agent's own server answered that it failed. An unreachable or rate-limiting
+  // endpoint (`isTransportFailure`) is not asked again: three of those in a row end the run, and
+  // a second request to an endpoint that is refusing them is the opposite of pacing.
+  return result.statusCode !== undefined && result.statusCode >= 500 && result.statusCode <= 599 && !isTransportFailure(result);
+}
+
+/** The second attempt's result, saying so when it failed as the first did. */
+export function afterSecondAttempt(first: AgentResult, second: AgentResult): AgentResult {
+  // Cut short by Novera's own slice: the first attempt is what was observed.
+  if (second.cutByNovera) return first;
+  if (second.ok) return second;
+  const same = first.statusCode !== undefined && first.statusCode === second.statusCode;
+  return {
+    ...second,
+    error: same
+      ? `${second.error ?? `Agent returned HTTP ${second.statusCode}`} on two attempts ${AGENT_RETRY_AFTER_MS / 1000} s apart.`
+      : `${second.error ?? "The agent produced no response."} A first attempt ${AGENT_RETRY_AFTER_MS / 1000} s earlier also failed${first.statusCode !== undefined ? ` (HTTP ${first.statusCode})` : ""}.`,
+  };
+}
+
 // In memory only, for the halt decision: never persisted, never part of a record.
 const transportOutcomes = new WeakSet<object>();
 const redirectOutcomes = new WeakSet<object>();
@@ -188,6 +231,8 @@ export async function executeCase(args: {
    * before it, and every model call is bounded by it. Undefined outside a sliced run.
    */
   hardStop?: number;
+  /** The gap before a failed request's one further attempt. `AGENT_RETRY_AFTER_MS` unless a test says otherwise. */
+  retryAfterMs?: number;
 }): Promise<CaseOutcome> {
   const { testCase, agent, policy, verifier, agentIsProduction, hardStop } = args;
   const judge = hardStop === undefined ? args.judge : withDeadline(args.judge, hardStop);
@@ -244,7 +289,8 @@ export async function executeCase(args: {
       error:
         "This scenario delivers its input as conversation metadata, and this agent has "
         + "no {{context}} slot in its request template. It was not run, rather than run "
-        + "as a different test.",
+        + "as a different test. To run it, add the slot, or tick the delivery option on the "
+        + "agent's Connection tab: the content is then sent in the message and the report says so.",
     };
   }
 
@@ -273,7 +319,8 @@ export async function executeCase(args: {
       error:
         "This scenario is a conversation, and this agent's request template has no "
         + "{{history}} or {{conversation_id}} slot to carry one. It was not run, rather "
-        + "than run as separate messages.",
+        + "than run as separate messages. To run it, add a slot, or tick the delivery option on the "
+        + "agent's Connection tab: the earlier turns are then sent in the message and the report says so.",
     };
   }
 
@@ -344,6 +391,23 @@ export async function executeCase(args: {
         ok: false, responseText: null, toolActivity: null, latencyMs: 0,
         error: `The agent could not be asked: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
       };
+    }
+
+    // One more attempt for a request the server failed, when sending it twice cannot act twice.
+    if (worthOneMoreAttempt(result, testCase)) {
+      const first = result;
+      await new Promise((resolve) => setTimeout(resolve, args.retryAfterMs ?? AGENT_RETRY_AFTER_MS));
+      try {
+        result = afterSecondAttempt(first, await agent.send({
+          input: message,
+          policy,
+          ...(agentDeadline !== undefined ? { deadline: agentDeadline } : {}),
+          ...(testCase.context ? { context: testCase.context } : {}),
+          ...(isConversation ? { history: [...history], conversationId } : {}),
+        }));
+      } catch {
+        result = first;
+      }
     }
 
     if (!isConversation) {

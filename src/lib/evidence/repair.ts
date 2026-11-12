@@ -104,12 +104,12 @@ export function repairFor(row: NoVerdictRow): Repair | null {
   if (/^This scenario delivers its input as conversation metadata/.test(error)) {
     return make({ reason: "no_metadata_slot", label: "Not run: no metadata channel", owner: "your configuration", agentReceived: "no", retry: "fix_first",
       happened: "Not sent: the attack arrives as conversation metadata, and the agent's request template has no {{context}} slot to carry it.",
-      next: "Add a {{context}} slot to the agent's request template, if your agent reads metadata, and rerun." });
+      next: "Add a {{context}} slot to the agent's request template, if your agent reads metadata, or tick the delivery option on its Connection tab so the content is sent in the message (the report then says so). Then rerun." });
   }
   if (/^This scenario is a conversation, and this agent's request template has no/.test(error)) {
     return make({ reason: "no_conversation_slot", label: "Not run: no conversation channel", owner: "your configuration", agentReceived: "no", retry: "fix_first",
       happened: "Not sent: this is a conversation, and the agent's request template has no {{history}} or {{conversation_id}} slot.",
-      next: "Add a {{history}} or {{conversation_id}} slot to the agent's request template, and rerun." });
+      next: "Add a {{messages}}, {{history}} or {{conversation_id}} slot to the agent's request template, or tick the delivery option on its Connection tab so earlier turns are sent in the message (the report then says so). Then rerun." });
   }
   if (/time slice was ending/.test(error)) {
     return make({ reason: "cut_by_slice", label: "Cut short by Novera", owner: "Novera's graders",
@@ -160,11 +160,30 @@ export function repairFor(row: NoVerdictRow): Repair | null {
     }
     const http = /^Agent returned HTTP (\d+)/.exec(error);
     if (http) {
-      return make({ reason: "agent_http_error", label: `Agent answered HTTP ${http[1]}`, owner: "your agent", ...received(),
-        happened: `The agent's endpoint answered with HTTP ${http[1]} instead of a reply.`,
-        next: Number(http[1]) === 401 || Number(http[1]) === 403
-          ? "Check the agent's auth header on its page, then retest."
-          : "Check the agent's logs for this request, then retest." });
+      const code = Number(http[1]);
+      const twice = /on two attempts/.test(error);
+      return make({ reason: "agent_http_error", label: `Agent answered HTTP ${http[1]}${twice ? ", twice" : ""}`, owner: "your agent", ...received(),
+        happened: twice
+          ? `The agent's endpoint answered HTTP ${http[1]} to this scenario on two attempts, so it produced no reply to grade. `
+            + "From outside, an input rejected by something in front of the agent and an agent that failed on the input look the same, so this is recorded as no result, not as a pass or a failure."
+          : `The agent's endpoint answered with HTTP ${http[1]} instead of a reply.`,
+        next: code === 401 || code === 403
+          ? "Check the agent's auth header on its page, then retest. If a firewall or content filter in front of the agent rejects this input on purpose, that is the behaviour to note for this scenario."
+          : twice
+            ? "Look for this request in the agent's logs, and in any gateway or filter in front of it, then retest."
+            : "Check the agent's logs for this request, then retest." });
+    }
+    if (/answered with an empty reply/.test(error)) {
+      return make({ reason: "agent_malformed", label: "Agent answered with nothing", owner: "your agent", ...received(),
+        happened: "The agent's endpoint answered, and the reply text was empty, so there was nothing to grade.",
+        next: "Send the agent this message yourself and see whether it answers; an empty reply usually means the agent, or a filter on its output, withheld the text. Then retest." });
+    }
+    if (/stream ended with an error|and none carried text at/.test(error)) {
+      return make({ reason: "agent_malformed", label: "Stream carried no reply", owner: "your agent", ...received(),
+        happened: /stream ended with an error/.test(error)
+          ? "The agent answered as a stream of events, and the stream ended in an error before a reply."
+          : "The agent answered as a stream of events, and none of them carried reply text where the connection reads it.",
+        next: "Check what the endpoint streams for this message; the agent's page can test it with one message." });
     }
     if (/not valid JSON/.test(error)) {
       return make({ reason: "agent_malformed", label: "Reply was not JSON", owner: "your agent", ...received(),

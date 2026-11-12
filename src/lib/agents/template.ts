@@ -31,12 +31,32 @@ export function fillTemplate(
   return template;
 }
 
-/** Reads "a.b.0.c" out of a parsed JSON response. Returns undefined rather than throwing. */
+/**
+ * Reads "a.b.0.c" out of a parsed JSON response. Returns undefined rather than throwing.
+ *
+ * A `*` segment stands for every element of a list: "*.payload.message" reads that field from
+ * each element. The result is then a list of what was found (nothing found is undefined), which
+ * is how a reply sent as several message bubbles is read as one reply (`replyText`).
+ */
 export function readPath(source: unknown, path: string): unknown {
   if (!path) return undefined;
+  return readSegments(source, path.split("."));
+}
+
+function readSegments(source: unknown, segments: string[]): unknown {
   let current: unknown = source;
-  for (const segment of path.split(".")) {
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
     if (current === null || current === undefined) return undefined;
+    if (segment === "*") {
+      if (!Array.isArray(current)) return undefined;
+      const rest = segments.slice(i + 1);
+      const found = current
+        .map((item) => (rest.length ? readSegments(item, rest) : item))
+        .flatMap((v) => (Array.isArray(v) ? v : [v]))
+        .filter((v) => v !== undefined && v !== null);
+      return found.length ? found : undefined;
+    }
     if (Array.isArray(current)) {
       const index = Number(segment);
       if (!Number.isInteger(index)) return undefined;
@@ -48,4 +68,18 @@ export function readPath(source: unknown, path: string): unknown {
     }
   }
   return current;
+}
+
+/**
+ * The reply text at a path: the string there, or — for a `*` path — the strings found, one per
+ * line in the order the response carried them. Anything else is not a reply.
+ */
+export function replyText(source: unknown, path: string): string | undefined {
+  const value = readPath(source, path);
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && path.split(".").includes("*")) {
+    const lines = value.filter((v): v is string => typeof v === "string" && v.trim() !== "");
+    return lines.length ? lines.join("\n") : undefined;
+  }
+  return undefined;
 }

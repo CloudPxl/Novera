@@ -1,5 +1,6 @@
-import type { AgentResult } from "./types.ts";
+import type { AgentResult, HttpAgentConfig } from "./types.ts";
 import { discoverShape } from "./discover.ts";
+import { deliveryOf, requestBody } from "./delivery.ts";
 
 /**
  * "Test connection": one diagnostic message from a connection that has not been saved, and
@@ -63,6 +64,102 @@ export interface PreflightResult {
   topLevelKeys?: string[];
   /** Where the reply appears to be, when that differs from the configured path. */
   suggestedPath?: string | null;
+  /** The exchange itself, for the person configuring it: what was sent and how the answer was read. */
+  inspector?: PreflightInspector;
+}
+
+/**
+ * What one connection check sent and received, shown to the person who typed the connection and
+ * to nobody else: nothing here is stored. The credential is named by its header only.
+ */
+export interface PreflightInspector {
+  request: {
+    method: string;
+    /** Origin and path. A query string can carry a token, so it is not repeated here. */
+    address: string;
+    /** `name: value` for fixed headers; the credential's header shows no value. */
+    headers: string[];
+    body: string;
+    bodyTruncated: boolean;
+  };
+  response: {
+    contentType: string | null;
+    /** How Novera read the answer; null when nothing readable arrived. */
+    format: "json" | "event_stream" | "text" | null;
+    /** For a stream: how many events carried a piece of the reply. */
+    pieces: number | null;
+    /** Where the reply text was read; null when it was not found. */
+    matchedPath: string | null;
+  };
+  /** The text fields of a JSON answer, for choosing the reply path when it was not found. */
+  fields: Array<{ path: string; preview: string }>;
+  /** How conversations and metadata reach this agent, and anything Novera adjusted. */
+  notes: string[];
+}
+
+const INSPECTOR_BODY_CHARS = 1500;
+const INSPECTOR_FIELDS = 12;
+const INSPECTOR_PREVIEW = 70;
+
+/** How this connection carries conversations and metadata, in the words the form uses. */
+export function deliveryNotes(config: Pick<HttpAgentConfig, "bodyTemplate" | "url" | "inlineChannels" | "conversationIdPath">): string[] {
+  const how = deliveryOf(config);
+  return [
+    how.conversation === "field"
+      ? config.conversationIdPath
+        ? `Conversations: carried by the id the agent returns at "${config.conversationIdPath}".`
+        : "Conversations: carried by the request's own fields."
+      : how.conversation === "message"
+        ? "Conversations: the request has no field for earlier turns, so they are sent as a labelled block at the top of the message. A report says so beside each such scenario."
+        : "Conversations: the request has no field for earlier turns, so conversation scenarios are not sent. Add {{messages}}, {{history}} or {{conversation_id}}, or tick the delivery option.",
+    how.context === "field"
+      ? "Metadata: carried by the request's {{context}} field."
+      : how.context === "message"
+        ? "Metadata: the request has no {{context}} field, so a scenario's metadata is sent as a labelled block at the top of the message. A report says so beside each such scenario."
+        : "Metadata: the request has no {{context}} field, so scenarios that deliver content as metadata are not sent. Add {{context}}, or tick the delivery option.",
+  ];
+}
+
+export function inspectPreflight(
+  result: AgentResult,
+  config: HttpAgentConfig,
+  sent: { message: string; conversationId: string; credentialSent: boolean; notes?: string[] },
+): PreflightInspector {
+  const body = JSON.stringify(requestBody(config, { input: sent.message, policy: "", conversationId: sent.conversationId }), null, 2);
+  let address = config.url;
+  try {
+    const u = new URL(config.url.split("{{conversation_id}}").join(encodeURIComponent(sent.conversationId)));
+    address = `${u.origin}${u.pathname}`;
+  } catch {
+    address = config.url.split("?")[0];
+  }
+  const headers = [
+    "content-type: application/json",
+    ...Object.entries(config.headers ?? {}).map(([k, v]) => `${k}: ${v}`),
+    ...(config.authHeaderName && sent.credentialSent ? [`${config.authHeaderName}: (your credential, not shown)`] : []),
+  ];
+  const json = result.wire?.format === "json" || (!result.wire && result.raw && typeof result.raw === "object");
+  const fields = json && !result.ok
+    ? discoverShape(result.raw).paths.slice(0, INSPECTOR_FIELDS).map((p) => ({
+        path: p.path,
+        preview: p.preview.length > INSPECTOR_PREVIEW ? `${p.preview.slice(0, INSPECTOR_PREVIEW)}…` : p.preview,
+      }))
+    : [];
+  return {
+    request: {
+      method: config.method ?? "POST", address, headers,
+      body: body.length > INSPECTOR_BODY_CHARS ? `${body.slice(0, INSPECTOR_BODY_CHARS)}…` : body,
+      bodyTruncated: body.length > INSPECTOR_BODY_CHARS,
+    },
+    response: {
+      contentType: result.wire?.contentType ?? null,
+      format: result.wire?.format ?? (json ? "json" : null),
+      pieces: result.wire?.format === "event_stream" ? result.wire.pieces ?? 0 : null,
+      matchedPath: result.ok ? result.wire?.matchedPath ?? config.responsePath : null,
+    },
+    fields,
+    notes: [...(sent.notes ?? []), ...deliveryNotes(config)],
+  };
 }
 
 /** A reply cut for the result card, on a character boundary that does not split a surrogate pair. */
@@ -97,7 +194,12 @@ export function classifyPreflight(
     return {
       ...base, outcome: "ok", ok: true,
       headline: `Connected: HTTP ${status ?? 200} in ${latency ?? 0} ms`,
-      detail: `The reply was read at "${config.responsePath}". This test is not saved; saving the agent sends one more check and keeps its receipt.`,
+      detail: (result.wire?.format === "event_stream"
+        ? `The agent answered as a stream; the reply is the ${result.wire.pieces ?? 0} piece${result.wire.pieces === 1 ? "" : "s"} read at "${result.wire.matchedPath ?? config.responsePath}", in order.`
+        : result.wire?.format === "text"
+          ? "The agent answered in plain text; the whole body is the reply."
+          : `The reply was read at "${config.responsePath}".`)
+        + " This test is not saved; saving the agent sends one more check and keeps its receipt.",
       replyPreview: preview, replyTruncated: truncated,
     };
   }
@@ -180,11 +282,33 @@ export function classifyPreflight(
     };
   }
 
+  if (result.emptyReply) {
+    return {
+      ...base, outcome: "no_reply_at_path", ok: false,
+      headline: `HTTP ${status}, and the reply was empty`,
+      detail: `The endpoint answered, and the text at "${config.responsePath}" was empty. Check that the agent answers this message with text; in a run, an empty reply to a customer's message is not a reply.`,
+    };
+  }
+
+  if (result.wire?.format === "event_stream") {
+    return {
+      ...base, outcome: "no_reply_at_path", ok: false,
+      headline: `HTTP ${status}, a stream, but no text was found in it`,
+      detail: /stream ended with an error/.test(error)
+        ? error
+        : `The endpoint answered as a stream of events, and none carried text at "${config.responsePath}". Set the stream path to the field each event carries its piece of the reply in.`,
+    };
+  }
+
   if (typeof result.raw === "string" || result.raw === undefined || result.raw === null) {
+    const plain = typeof result.raw === "string" && result.raw.trim() !== "" && !/^\s*</.test(result.raw);
     return {
       ...base, outcome: "not_json", ok: false,
       headline: `HTTP ${status}, but the reply was not JSON`,
-      detail: "Novera reads the reply text from a JSON response. Check that the endpoint answers with JSON.",
+      detail: plain
+        ? "The endpoint answered with text rather than JSON. If that text is the agent's reply, set the reply path to $text and the whole body is read as the reply."
+        : "Novera reads the reply text from a JSON response. Check that the endpoint answers with JSON.",
+      ...(plain ? { suggestedPath: "$text" } : {}),
     };
   }
 

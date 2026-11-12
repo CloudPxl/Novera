@@ -78,14 +78,20 @@ export async function planCompletion(args: {
   const cases = Array.isArray(suite?.cases) ? (suite!.cases as Array<{ id: string; effect?: unknown; destructive?: unknown }>) : [];
   const scenario = new Map(cases.map((c) => [c.id, c]));
 
-  const byId = new Map<string, { status: string; retry: "safe" | "check_first" | "fix_first" | null }>();
+  // Retests recorded against these rows that reached a verdict: proof a fix-first cause was fixed.
+  const { data: retests } = merged.length
+    ? await client.from("case_retests").select("run_case_id, status").in("run_case_id", merged.map((r) => r.id)).in("status", ["pass", "fail"])
+    : { data: [] };
+  const fixed = new Set((retests ?? []).map((r) => r.run_case_id as string));
+
+  const byId = new Map<string, { status: string; retry: "safe" | "check_first" | "fix_first" | null; fixedSince?: boolean }>();
   for (const row of merged) {
     const repair = repairFor(noVerdictRow(row, {
       observationStatus: observed.get(row.id) ?? null,
       scenario: scenario.get(row.case_id) ?? null,
       toolCalls: normaliseTrajectory(row.tool_activity).filter((e) => e.type === "tool_call").length,
     }));
-    byId.set(row.case_id, { status: String(row.status), retry: repair?.retry ?? null });
+    byId.set(row.case_id, { status: String(row.status), retry: repair?.retry ?? null, fixedSince: fixed.has(row.id) });
   }
 
   const declared = ((manifest.suite as { case_ids?: unknown } | undefined)?.case_ids);

@@ -26,6 +26,9 @@ import { githubWorkflow, WORKFLOW_PATH } from "@/lib/ci/workflow.ts";
 import { appOrigin } from "@/lib/webhooks/deliver.ts";
 import { formatWhen } from "@/lib/format/when.ts";
 import { can } from "@/lib/auth/permissions.ts";
+import { formatExtraHeaders } from "@/lib/agents/connection.ts";
+import { deliveryOf } from "@/lib/agents/delivery.ts";
+import { SetupSteps, SuiteSpecCards, type SpecSuite } from "./suite-spec.tsx";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { scheduleState } from "@/lib/schedules/cadence.ts";
 
@@ -132,6 +135,28 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
   const latestPolicy = policies?.[0];
   const config = agent.config as { url?: string; responsePath?: string; toolActivityPath?: string };
   const latestCompleted = (runs ?? []).find((r) => r.status === "completed");
+
+  // What each suite tests, counted from its row: the newest version of each key, the launcher's
+  // default first. Read only where it is shown (the overview before a first run, and Runs).
+  const showSetup = !archivedAt && (!latestPolicy || (runs ?? []).length === 0);
+  // Suites arrive newest version first within a key, so the first row of each key is the newest.
+  const newestOfKey = new Map<string, string>();
+  for (const s of suites ?? []) if (!newestOfKey.has(s.key as string)) newestOfKey.set(s.key as string, s.id as string);
+  const newestIds = [...newestOfKey.values()];
+  const { data: suiteRows } = (tab === "overview" && showSetup) || tab === "runs"
+    ? await db.from("suites").select("id, key, version, name, cases").in("id", newestIds.length ? newestIds : ["00000000-0000-0000-0000-000000000000"])
+    : { data: [] };
+  const defaultSuiteId = (suites ?? []).find((s) => s.key === "eu-support")?.id as string | undefined;
+  const specSuites: SpecSuite[] = ((suiteRows ?? []) as unknown as SpecSuite[])
+    .filter((s) => Array.isArray(s.cases))
+    .sort((a, b) => Number(b.id === defaultSuiteId) - Number(a.id === defaultSuiteId) || a.name.localeCompare(b.name));
+  const agentDelivery = (agent.config as { kind?: string }).kind === "http" && typeof config.url === "string"
+    ? deliveryOf({
+        url: config.url,
+        bodyTemplate: ((agent.config as { bodyTemplate?: Record<string, unknown> }).bodyTemplate ?? {}),
+        inlineChannels: (agent.config as { inlineChannels?: boolean }).inlineChannels === true,
+      })
+    : null;
   const latestSummary = latestCompleted ? summariseRun({ status: "completed", payload: (payloadOf.get(latestCompleted.id as string) as never) ?? null, scheduleId: null, apiKeyName: null }) : null;
   const nextSchedule = scheduleViews.find((v) => v.state !== "cancelled") ?? null;
 
@@ -195,6 +220,17 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
 
       {isNoveraFixture(agent.config as AgentConfig) && <FixtureNote className="mb-6" />}
 
+      {/* Until the first run exists: where this agent stands and the one next thing to do. */}
+      {showSetup && tab === "overview" && (
+        <SetupSteps
+          agentId={agent.id}
+          connection={!latestProbe ? "unchecked" : latestProbe.error ? "failed" : "answered"}
+          policyVersion={latestPolicy ? (latestPolicy.version as number) : null}
+          hasRun={(runs ?? []).length > 0}
+          canRun={entitlement.canRun}
+        />
+      )}
+
       <TabNav label="Agent sections" current={tab} tabs={[
         { key: "overview", label: "Overview", href: `/agents/${agent.id}` },
         { key: "policy", label: "Policy", href: `/agents/${agent.id}?tab=policy`, count: (policies ?? []).length },
@@ -225,6 +261,13 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
             </Rows>
           </Panel>
         )}
+        {tab === "overview" && showSetup && specSuites.length > 0 && (
+          <section id="what-each-suite-tests" className="mt-6 scroll-mt-24">
+            <h2 className="type-h3">What each suite tests</h2>
+            <p className="mt-1 mb-3 text-sm text-ink-soft">Counted from the suite itself. Open one to see what it exercises, how this agent will be sent it, and some of its scenarios.</p>
+            <SuiteSpecCards suites={specSuites} delivery={agentDelivery} open={defaultSuiteId} />
+          </section>
+        )}
         {tab === "runs" && (
             <section>
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -241,6 +284,18 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                     ? <Link href={blockedRemedy.href} className="font-medium underline underline-offset-2">{blockedRemedy.label}</Link>
                     : "An owner or admin of this workspace can choose a plan."}
                 </div>
+              )}
+
+              {specSuites.length > 0 && (
+                <details className="group mt-3 rounded-panel border border-line">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-panel px-4 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                    <span>What each suite tests</span>
+                    <span aria-hidden className="text-ink-faint transition-transform duration-200 group-open:rotate-90">›</span>
+                  </summary>
+                  <div className="border-t border-line p-3">
+                    <SuiteSpecCards suites={specSuites} delivery={agentDelivery} />
+                  </div>
+                </details>
               )}
 
               {runs && runs.length > 0 ? (
@@ -396,6 +451,11 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                   toolActivityPath: config.toolActivityPath ?? "",
                   timeoutSeconds: (agent.config as { timeoutMs?: number }).timeoutMs ? String(Math.round((agent.config as { timeoutMs: number }).timeoutMs / 1000)) : "",
                   authHeaderName: (agent.config as { authHeaderName?: string }).authHeaderName ?? "",
+                  headers: formatExtraHeaders((agent.config as { headers?: Record<string, string> }).headers),
+                  streamPath: (agent.config as { streamPath?: string }).streamPath ?? "",
+                  conversationIdPath: (agent.config as { conversationIdPath?: string }).conversationIdPath ?? "",
+                  inlineChannels: (agent.config as { inlineChannels?: boolean }).inlineChannels === true,
+                  preset: (agent.config as { preset?: string }).preset ?? "",
                 }}
               />
             )}

@@ -216,7 +216,7 @@ export function RetestHistory({ retests }: { retests: Retest[] }) {
         {retests.map((r) => (
           <li key={r.id} className="flex flex-wrap items-center gap-2 text-xs text-ink-soft">
             <Badge tone={r.status === "pass" ? "pass" : r.status === "fail" ? "fail" : "error"}>
-              {r.status === "error" ? "no result" : r.status}
+              {r.status === "error" ? "no result again" : `verdict reached: ${r.status === "pass" ? "passed" : "failed"}`}
             </Badge>
             <span>against policy v{r.policyVersion ?? "?"}</span>
             <time dateTime={r.createdAt} className="tnum text-ink-faint">

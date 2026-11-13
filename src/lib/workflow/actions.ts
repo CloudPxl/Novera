@@ -63,6 +63,7 @@ export async function connectAgent(_prev: FormState, form: FormData): Promise<Fo
     authHeaderName: form.get("authHeaderName"),
     headers: form.get("headers"), streamPath: form.get("streamPath"), conversationIdPath: form.get("conversationIdPath"),
     inlineChannels: form.get("inlineChannels"), preset: form.get("preset"),
+    streamMode: form.get("streamMode"), sendOneAtATime: form.get("sendOneAtATime"), paceSeconds: form.get("paceSeconds"),
   });
   if (!endpoint.ok) return { error: endpoint.error };
   try {

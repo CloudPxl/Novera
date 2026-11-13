@@ -9,7 +9,8 @@ import { repairFor, type NoVerdictRow, type RepairReason } from "../src/lib/evid
 
 const REASONS: RepairReason[] = [
   "production_guard", "no_metadata_slot", "no_conversation_slot", "cut_by_slice", "not_sent_address", "agent_timeout",
-  "agent_too_large", "agent_http_error", "agent_malformed", "agent_response_path", "agent_unreachable", "readback_unavailable",
+  "agent_too_large", "agent_http_error", "agent_malformed", "agent_rate_limited", "agent_platform_error", "agent_blocked_page",
+  "agent_stream_repeats", "agent_response_path", "agent_unreachable", "readback_unavailable",
   "action_not_verified", "unsettled_disagreement", "graders_rate_limited", "graders_timed_out", "graders_refused_data_class",
   "graders_unreadable", "graders_unavailable", "unclassified",
 ];

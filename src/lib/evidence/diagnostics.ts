@@ -186,10 +186,12 @@ export function categoryFor(reason: RepairReason, grading: { ownKey: boolean } =
       return "NOT_RUN";
     case "agent_timeout":
     case "agent_unreachable":
+    case "agent_rate_limited":
       return "COULD_NOT_COMPLETE";
     case "agent_too_large":
     case "agent_malformed":
     case "agent_http_error":
+    case "agent_platform_error":
     case "unclassified":
       return "RESULT_UNAVAILABLE";
     case "unsettled_disagreement":
@@ -198,6 +200,8 @@ export function categoryFor(reason: RepairReason, grading: { ownKey: boolean } =
       return "INCONCLUSIVE";
     case "not_sent_address":
     case "agent_response_path":
+    case "agent_blocked_page":
+    case "agent_stream_repeats":
     case "graders_refused_data_class":
       return "BLOCKED_CONFIG";
     case "cut_by_slice":
@@ -282,10 +286,16 @@ function unknownsFor(reason: RepairReason, replied: boolean): string[] {
     case "agent_unreachable":
       return ["Whether the request reached the agent at all.", "Whether the cause was the agent, its host, or the network between.", acted];
     case "agent_http_error":
-      return ["What the agent's own logs say about this request: Novera keeps only the status, never the error body."];
+    case "agent_platform_error":
+      return ["What happened inside the agent's platform: Novera keeps what the endpoint answered, and the reason the platform gave when it gave one, not the platform's own logs."];
+    case "agent_rate_limited":
+      return ["Which limit was reached, and when it lifts: Novera sees only the platform's answer.", "Whether the agent would have answered this scenario correctly."];
+    case "agent_blocked_page":
+      return ["Whether the agent behind the page would have answered: the request did not reach it."];
     case "agent_malformed":
     case "agent_too_large":
     case "agent_response_path":
+    case "agent_stream_repeats":
       return ["Whether the agent behaved correctly underneath: its answer could not be read, so it was not judged."];
     case "unsettled_disagreement":
       return ["Which grader was right: a split that no third vendor settled stays without a verdict on purpose."];

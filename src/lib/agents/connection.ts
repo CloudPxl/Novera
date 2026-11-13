@@ -67,6 +67,13 @@ function validPath(path: string): boolean {
   return path.length <= MAX_PATH_CHARS && /^([\w-]+|\*)(\.([\w-]+|\*))*$/.test(path);
 }
 
+/** Query parameter names that carry a credential. */
+const CREDENTIAL_PARAM = /^(api[_-]?key|apikey|key|token|access[_-]?token|auth|auth[_-]?token|secret|client[_-]?secret|code|sig|signature|password|pwd)$/i;
+
+/** The gap a connection may ask for between two sends, in seconds. */
+export const MIN_PACE_SECONDS = 0.25;
+export const MAX_PACE_SECONDS = 10;
+
 /** Fixed, non-secret request headers: at most this many, each value at most this long. */
 export const MAX_EXTRA_HEADERS = 10;
 export const MAX_HEADER_VALUE = 500;
@@ -170,6 +177,12 @@ export interface EndpointFields {
   /** Deliver metadata and earlier turns in the message when the request has no field for them. */
   inlineChannels: boolean;
   preset: string | null;
+  /** "whole": each streamed event carries the whole reply so far. */
+  streamMode: "whole" | null;
+  /** One scenario in flight at a time. */
+  sendOneAtATime: boolean;
+  /** The least gap between two sends, in ms; null is the default. */
+  paceMs: number | null;
   /**
    * Whether the caller sent the four fields above at all (the forms do; an older API caller does
    * not). When it did not, an edit keeps what the agent has rather than clearing it.
@@ -191,6 +204,7 @@ export function parseEndpointFields(fields: {
   url: unknown; bodyTemplate: unknown; responsePath: unknown; toolActivityPath: unknown;
   timeoutSeconds?: unknown; authHeaderName: unknown;
   headers?: unknown; streamPath?: unknown; conversationIdPath?: unknown; inlineChannels?: unknown; preset?: unknown;
+  streamMode?: unknown; sendOneAtATime?: unknown; paceSeconds?: unknown;
 }): Parsed<EndpointFields> {
   const url = str(fields.url).trim();
   const responsePath = str(fields.responsePath).trim();
@@ -223,6 +237,12 @@ export function parseEndpointFields(fields: {
   if (parsedUrl.username || parsedUrl.password) {
     return { ok: false, error: "Put a credential in the auth header, not in the address: the address's host is quoted on reports." };
   }
+  // A key in the query string would be stored with the address, in plain text, and shown wherever
+  // the address is. It belongs under Authentication, where it is encrypted.
+  const keyParam = [...parsedUrl.searchParams.keys()].find((k) => CREDENTIAL_PARAM.test(k));
+  if (keyParam) {
+    return { ok: false, error: `The address carries "${keyParam}" in its query string, which looks like a credential. Remove it from the address and put it under Authentication with the header your platform accepts (for example x-api-key, x-functions-key or authorization): it is then stored encrypted and never shown.` };
+  }
 
   const body = parseBodyTemplate(str(fields.bodyTemplate) || DEFAULT_BODY_TEMPLATE);
   if (!body.ok) return body;
@@ -253,7 +273,20 @@ export function parseEndpointFields(fields: {
     return { ok: false, error: `${authHeaderName} is the credential's header, so it cannot also be listed under other headers.` };
   }
   const streamPath = str(fields.streamPath).trim();
-  if (streamPath && !validPath(streamPath)) return { ok: false, error: "The stream path is a dot path such as answer or choices.0.delta.content." };
+  if (streamPath && streamPath !== WHOLE_BODY && !validPath(streamPath)) {
+    return { ok: false, error: `The stream path is a dot path such as answer or choices.0.delta.content, or ${WHOLE_BODY} when each event carries plain text.` };
+  }
+  const streamModeRaw = str(fields.streamMode).trim();
+  if (streamModeRaw && streamModeRaw !== "whole" && streamModeRaw !== "pieces") return { ok: false, error: "The stream reading is either pieces or whole text." };
+  const paceRaw = str(fields.paceSeconds).trim();
+  let paceMs: number | null = null;
+  if (paceRaw) {
+    const n = Number(paceRaw.replace(",", "."));
+    if (!Number.isFinite(n) || n < MIN_PACE_SECONDS || n > MAX_PACE_SECONDS) {
+      return { ok: false, error: `The gap between messages is a number of seconds from ${MIN_PACE_SECONDS} to ${MAX_PACE_SECONDS}.` };
+    }
+    paceMs = Math.round(n * 1000);
+  }
   const conversationIdPath = str(fields.conversationIdPath).trim();
   if (conversationIdPath && !validPath(conversationIdPath)) return { ok: false, error: "The conversation id path is a dot path such as conversation_id." };
   if (conversationIdPath && !JSON.stringify(body.value).includes("{{conversation_id}}") && !url.includes("{{conversation_id}}")) {
@@ -271,6 +304,9 @@ export function parseEndpointFields(fields: {
       conversationIdPath: conversationIdPath || null,
       inlineChannels: fields.inlineChannels === "on" || fields.inlineChannels === true,
       preset: /^[a-z0-9-]{1,40}$/.test(preset) ? preset : null,
+      streamMode: streamModeRaw === "whole" ? "whole" : null,
+      sendOneAtATime: fields.sendOneAtATime === "on" || fields.sendOneAtATime === true,
+      paceMs,
       advancedShown: typeof fields.headers === "string",
     },
   };
@@ -305,6 +341,9 @@ export function newHttpConfig(fields: EndpointFields): HttpAgentConfig {
     ...(fields.conversationIdPath ? { conversationIdPath: fields.conversationIdPath } : {}),
     ...(fields.inlineChannels ? { inlineChannels: true } : {}),
     ...(fields.preset ? { preset: fields.preset } : {}),
+    ...(fields.streamMode ? { streamMode: fields.streamMode } : {}),
+    ...(fields.sendOneAtATime ? { sendOneAtATime: true } : {}),
+    ...(fields.paceMs !== null ? { paceMs: fields.paceMs } : {}),
   };
 }
 
@@ -316,6 +355,7 @@ export function parseConnectionEdit(fields: {
   name: unknown; url: unknown; bodyTemplate: unknown; responsePath: unknown; toolActivityPath: unknown;
   timeoutSeconds: unknown; authHeaderName: unknown; credential: unknown; removeCredential: unknown;
   headers?: unknown; streamPath?: unknown; conversationIdPath?: unknown; inlineChannels?: unknown; preset?: unknown;
+  streamMode?: unknown; sendOneAtATime?: unknown; paceSeconds?: unknown;
 }, hasStoredCredential: boolean, currentUrl?: string): Parsed<ConnectionEdit> {
   const name = str(fields.name).trim();
   const credential = str(fields.credential);
@@ -392,6 +432,12 @@ export function nextHttpConfig(current: HttpAgentConfig, edit: ConnectionEdit): 
     if (edit.inlineChannels) next.inlineChannels = true;
     else delete next.inlineChannels;
     if (edit.preset) next.preset = edit.preset;
+    if (edit.streamMode) next.streamMode = edit.streamMode;
+    else delete next.streamMode;
+    if (edit.sendOneAtATime) next.sendOneAtATime = true;
+    else delete next.sendOneAtATime;
+    if (edit.paceMs !== null) next.paceMs = edit.paceMs;
+    else delete next.paceMs;
   }
   return next;
 }
@@ -399,7 +445,7 @@ export function nextHttpConfig(current: HttpAgentConfig, edit: ConnectionEdit): 
 /** Field names, as an audit line names them. Never a value. */
 export type ChangedField =
   | "name" | "url" | "bodyTemplate" | "responsePath" | "toolActivityPath" | "timeout" | "authHeaderName" | "credential"
-  | "headers" | "streamPath" | "conversationIdPath" | "delivery";
+  | "headers" | "streamPath" | "conversationIdPath" | "delivery" | "streamMode" | "pacing";
 
 /** Order-insensitive JSON equality, enough for a template a person edits. */
 function sameJson(a: unknown, b: unknown): boolean {
@@ -435,6 +481,8 @@ export function changedConnectionFields(
   if ((b.streamPath ?? null) !== (a.streamPath ?? null)) out.push("streamPath");
   if ((b.conversationIdPath ?? null) !== (a.conversationIdPath ?? null)) out.push("conversationIdPath");
   if (Boolean(b.inlineChannels) !== Boolean(a.inlineChannels)) out.push("delivery");
+  if ((b.streamMode ?? null) !== (a.streamMode ?? null)) out.push("streamMode");
+  if (Boolean(b.sendOneAtATime) !== Boolean(a.sendOneAtATime) || (b.paceMs ?? null) !== (a.paceMs ?? null)) out.push("pacing");
   return out;
 }
 

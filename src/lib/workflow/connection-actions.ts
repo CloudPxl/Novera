@@ -37,6 +37,7 @@ export async function testAgentConnection(form: FormData): Promise<PreflightView
         authHeaderName: form.get("authHeaderName"), credential: form.get("authValue"),
         headers: form.get("headers"), streamPath: form.get("streamPath"), conversationIdPath: form.get("conversationIdPath"),
         inlineChannels: form.get("inlineChannels"), preset: form.get("preset"),
+        streamMode: form.get("streamMode"), sendOneAtATime: form.get("sendOneAtATime"), paceSeconds: form.get("paceSeconds"),
       });
   if (!built.ok) return { refused: built.message };
 

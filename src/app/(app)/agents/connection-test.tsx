@@ -99,7 +99,9 @@ function Result({ view, onUsePath }: { view: PreflightView; onUsePath: (path: st
   );
 }
 
-const FORMAT_WORDS = { json: "JSON", event_stream: "a stream of server-sent events", text: "plain text" } as const;
+const FORMAT_WORDS = {
+  json: "JSON", event_stream: "a stream of server-sent events", json_lines: "JSON lines", text_stream: "a text stream", text: "plain text",
+} as const;
 
 /**
  * What was sent and how the answer was read, for the person configuring the connection. Prove
@@ -129,7 +131,13 @@ function Inspector({ inspector, statusCode, latencyMs, onUsePath }: {
           <dt className="text-ink-faint">Read as</dt>
           <dd>{response.format ? FORMAT_WORDS[response.format] : "nothing readable"}{response.pieces !== null ? `, ${response.pieces} piece${response.pieces === 1 ? "" : "s"} of the reply` : ""}</dd>
           <dt className="text-ink-faint">Reply read at</dt>
-          <dd>{response.matchedPath ? <code className={mono}>{response.matchedPath}</code> : "not found"}</dd>
+          <dd>{response.matchedPath ? <code className={mono}>{response.matchedPath}</code> : "not found"}{response.structured ? ", structured data read as JSON" : ""}</dd>
+          {response.eventKinds && (
+            <>
+              <dt className="text-ink-faint">Events</dt>
+              <dd className="[overflow-wrap:anywhere]">{Object.entries(response.eventKinds).map(([k, n]) => `${k} ×${n}`).join(", ")}</dd>
+            </>
+          )}
         </dl>
         <div>
           <p className="text-ink-faint">Request body{request.bodyTruncated ? " (cut)" : ""}</p>

@@ -23,6 +23,9 @@ export interface EditableConnection {
   conversationIdPath: string;
   inlineChannels: boolean;
   preset: string;
+  streamMode: string;
+  sendOneAtATime: boolean;
+  paceSeconds: string;
 }
 
 const code = "rounded bg-sunken px-1 py-0.5 font-mono text-ink";

@@ -94,7 +94,7 @@ With a key that has `write`, `POST /api/v1/agents/test-connection` sends one dia
 
 or `{"agent_id": "…"}` alone to test a saved agent with its stored credential. `auth_value` is used for that one request and never stored or returned.
 
-A test answers `200` with `outcome` — `ok`, `timeout`, `unreachable`, `refused_address`, `unauthorized`, `http_error`, `redirect`, `too_large`, `not_json` or `no_reply_at_path` — and `status_code`, `latency_ms`, a `headline` and `detail` in words, and `"stored": false`. On `ok` it adds `reply_preview` (at most 200 characters); on `no_reply_at_path` it adds `top_level_keys`, names only, and `suggested_path` when one can be found. Gate on `outcome`; the sentences may change.
+A test answers `200` with `outcome` — `ok`, `timeout`, `unreachable`, `refused_address`, `unauthorized`, `http_error`, `redirect`, `too_large`, `not_json`, `no_reply_at_path`, `rate_limited`, `platform_error`, `web_page`, `empty_reply` or `stream_repeats` — and `status_code`, `latency_ms`, a `headline` and `detail` in words, and `"stored": false`. On `ok` it adds `reply_preview` (at most 200 characters); on `no_reply_at_path` it adds `top_level_keys`, names only, and `suggested_path` when one can be found. Gate on `outcome`; the sentences may change.
 
 ## Recording a failure from production
 

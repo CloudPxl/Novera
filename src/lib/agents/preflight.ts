@@ -44,6 +44,11 @@ export const PREFLIGHT_OUTCOMES = [
   "too_large",
   "not_json",
   "no_reply_at_path",
+  "rate_limited",
+  "platform_error",
+  "web_page",
+  "empty_reply",
+  "stream_repeats",
 ] as const;
 export type PreflightOutcome = (typeof PREFLIGHT_OUTCOMES)[number];
 
@@ -85,9 +90,13 @@ export interface PreflightInspector {
   response: {
     contentType: string | null;
     /** How Novera read the answer; null when nothing readable arrived. */
-    format: "json" | "event_stream" | "text" | null;
+    format: "json" | "event_stream" | "json_lines" | "text_stream" | "text" | null;
     /** For a stream: how many events carried a piece of the reply. */
     pieces: number | null;
+    /** For a stream: how many events of each kind arrived, in order of first arrival. */
+    eventKinds?: Record<string, number>;
+    /** The value at the reply path was structured data, read as its JSON text. */
+    structured?: boolean;
     /** Where the reply text was read; null when it was not found. */
     matchedPath: string | null;
   };
@@ -154,12 +163,27 @@ export function inspectPreflight(
     response: {
       contentType: result.wire?.contentType ?? null,
       format: result.wire?.format ?? (json ? "json" : null),
-      pieces: result.wire?.format === "event_stream" ? result.wire.pieces ?? 0 : null,
+      pieces: isStream(result.wire?.format) ? result.wire?.pieces ?? 0 : null,
       matchedPath: result.ok ? result.wire?.matchedPath ?? config.responsePath : null,
+      ...(result.wire?.eventKinds && Object.keys(result.wire.eventKinds).length ? { eventKinds: result.wire.eventKinds } : {}),
+      ...(result.wire?.structured ? { structured: true } : {}),
     },
     fields,
     notes: [...(sent.notes ?? []), ...deliveryNotes(config)],
   };
+}
+
+function isStream(format: string | undefined): boolean {
+  return format === "event_stream" || format === "json_lines" || format === "text_stream";
+}
+
+/** Past this, a reply is slow enough that long conversations may not fit a run's time slice. */
+export const SLOW_REPLY_MS = 20_000;
+
+/** The platform's quoted reason from an adapter error, as its own sentence, or nothing. */
+function said(error: string): string {
+  const m = /Its platform said: "([\s\S]*?)"\.?(?:\s|$)/.exec(error);
+  return m ? ` It said: "${m[1]}".` : "";
 }
 
 /** A reply cut for the result card, on a character boundary that does not split a surrogate pair. */
@@ -194,13 +218,54 @@ export function classifyPreflight(
     return {
       ...base, outcome: "ok", ok: true,
       headline: `Connected: HTTP ${status ?? 200} in ${latency ?? 0} ms`,
-      detail: (result.wire?.format === "event_stream"
-        ? `The agent answered as a stream; the reply is the ${result.wire.pieces ?? 0} piece${result.wire.pieces === 1 ? "" : "s"} read at "${result.wire.matchedPath ?? config.responsePath}", in order.`
+      detail: (isStream(result.wire?.format)
+        ? `The agent answered as ${result.wire?.format === "json_lines" ? "JSON lines" : result.wire?.format === "text_stream" ? "a text stream" : "a stream"}; the reply is the ${result.wire?.pieces ?? 0} piece${result.wire?.pieces === 1 ? "" : "s"} read at "${result.wire?.matchedPath ?? config.responsePath}", ${result.wire?.pieces ? "in order" : "from the stream's final event"}.`
         : result.wire?.format === "text"
           ? "The agent answered in plain text; the whole body is the reply."
-          : `The reply was read at "${config.responsePath}".`)
+          : result.wire?.structured
+            ? `The value at "${config.responsePath}" is structured data, not text; a run grades it as the JSON shown.`
+            : `The reply was read at "${config.responsePath}".`)
+        + (latency !== null && latency > SLOW_REPLY_MS ? ` The reply took ${seconds(latency)}: a run gives each message at most 30 s, and a conversation scenario sends several, so a slow agent leaves some of them without a result.` : "")
         + " This test is not saved; saving the agent sends one more check and keeps its receipt.",
       replyPreview: preview, replyTruncated: truncated,
+    };
+  }
+
+  // What the adapter classified, before the status-based reading below.
+  const kind = result.failure?.kind;
+  if (kind === "throttled") {
+    return {
+      ...base, outcome: "rate_limited", ok: false,
+      headline: status === 429 || status === null ? "The endpoint is limiting requests" : `HTTP ${status}, and the platform refused it as over a limit`,
+      detail: `The agent's platform refused this message as over a rate, quota or concurrency limit.${said(error)} In a run, Novera waits and sends again, then slows to one message at a time; a limit that does not lift stops the run after three scenarios, recorded as errors, never as failed scenarios. Check the platform's plan and limits.`,
+    };
+  }
+  if (kind === "web_page") {
+    return {
+      ...base, outcome: "web_page", ok: false,
+      headline: `HTTP ${status ?? 200}, but a web page answered, not the agent`,
+      detail: `${error.replace(/^The agent's address answered HTTP \d+ /, "The address answered ")}`,
+    };
+  }
+  if (kind === "repeated_stream") {
+    return {
+      ...base, outcome: "stream_repeats", ok: false,
+      headline: `HTTP ${status ?? 200}, a stream that repeats the whole reply in every event`,
+      detail: "Each event carries the whole reply so far, not the next piece of it. Set the stream to \"whole text\" under the connection's advanced settings, and the last event is read as the reply.",
+    };
+  }
+  if (kind === "platform_error" && status !== null && status >= 200 && status < 300) {
+    return {
+      ...base, outcome: "platform_error", ok: false,
+      headline: isStream(result.wire?.format) ? `HTTP ${status}, and the stream ended in an error` : `HTTP ${status}, and the answer was an error`,
+      detail: `The agent's platform answered with an error instead of a reply.${said(error)} This is usually the agent's own configuration on the platform: a missing input variable, a step that failed, a model or key it could not use. Fix it there, then test again.`,
+    };
+  }
+  if (kind === "empty" && result.wire?.finished) {
+    return {
+      ...base, outcome: "empty_reply", ok: false,
+      headline: `HTTP ${status ?? 200}, and the agent's answer was empty`,
+      detail: `The stream finished normally without any reply text.${said(error)} On a workflow platform, this usually means the path the message took ends without an answer step, or that step's text is empty. Check the agent's flow for this message.`,
     };
   }
 
@@ -236,7 +301,7 @@ export function classifyPreflight(
     return {
       ...base, outcome: "unauthorized", ok: false,
       headline: `The endpoint returned HTTP ${status} — check the header or token`,
-      detail: "The request reached the endpoint and was refused. Check the header name and the credential under Authentication.",
+      detail: `The request reached the endpoint and was refused. Check the header name and the credential under Authentication.${said(error)}`,
     };
   }
 
@@ -268,9 +333,9 @@ export function classifyPreflight(
     return {
       ...base, outcome: "http_error", ok: false,
       headline: `The endpoint returned HTTP ${status}`,
-      detail: status >= 500
+      detail: (status >= 500
         ? "The endpoint was reached and failed while answering. Check its logs; a test sends one short message."
-        : "The endpoint was reached and did not accept the request. Check the address and the request body.",
+        : "The endpoint was reached and did not accept the request. Check the address and the request body.") + said(error),
     };
   }
 
@@ -290,13 +355,13 @@ export function classifyPreflight(
     };
   }
 
-  if (result.wire?.format === "event_stream") {
+  if (isStream(result.wire?.format)) {
+    const kinds = Object.keys(result.wire?.eventKinds ?? {});
     return {
       ...base, outcome: "no_reply_at_path", ok: false,
       headline: `HTTP ${status}, a stream, but no text was found in it`,
-      detail: /stream ended with an error/.test(error)
-        ? error
-        : `The endpoint answered as a stream of events, and none carried text at "${config.responsePath}". Set the stream path to the field each event carries its piece of the reply in.`,
+      detail: `The endpoint answered as a stream of events, and none carried text at "${config.responsePath}". Set the stream path to the field each event carries its piece of the reply in.`
+        + (kinds.length ? ` The events were: ${kinds.slice(0, 8).join(", ")}.` : ""),
     };
   }
 

@@ -10,6 +10,7 @@ import type { VerificationConnector, VerificationObservation } from "../evidence
 import { coverage, coverageByObligation, coverageByCategory, type Coverage, type ObligationCoverage, type CategoryCoverage } from "../evidence/coverage.ts";
 import type { CaseOutcome, ConversationTurn, HeldCase, RunCaseRecord, RunStore, Suite, SuiteCase } from "./types.ts";
 import { conversationInput, conversationResponse, mergeToolActivity } from "./conversation.ts";
+import { quotedReason } from "../agents/upstream-error.ts";
 
 export interface ExecuteRunArgs {
   runId: string;
@@ -48,10 +49,24 @@ export interface ExecuteRunArgs {
    * this slice. Default 0 (no pacing). A customer's endpoint is not ours to hammer.
    */
   paceMs?: number;
+  /** Send one scenario at a time: the connection says its platform needs it. */
+  oneAtATime?: boolean;
+  /** Start slow, one at a time with a gap: an earlier slice of this run met a platform limit. */
+  startSlow?: boolean;
+  /**
+   * Send the adapter's harmless check message before the first scenario of a run that has
+   * recorded nothing yet, and end the run before any scenario when it gets no usable reply.
+   */
+  probeFirst?: boolean;
+  /** Test seams: the waits before a throttled message is sent again, and the first slow gap. */
+  throttleWaitsMs?: readonly number[];
+  slowGapStartMs?: number;
 }
 
 /** Production pacing between sends to a customer's agent (ms). */
 export const AGENT_PACE_MS = 250;
+/** The longest gap a connection may ask for between two sends (ms). */
+export const MAX_AGENT_PACE_MS = 10_000;
 
 /** Consecutive transport failures that end a run. */
 export const TRANSPORT_HALT_AFTER = 3;
@@ -90,6 +105,8 @@ export function isRedirectAnswer(result: Partial<AgentResult> & { ok: boolean })
  */
 export function isTransportFailure(result: Partial<AgentResult> & { ok: boolean }): boolean {
   if (result.ok || result.cutByNovera) return false;
+  // A limit stated in a 2xx body or inside a stream is the endpoint's availability too.
+  if (result.failure?.kind === "throttled") return true;
   if (result.statusCode !== undefined) return TRANSPORT_STATUS.has(result.statusCode);
   return !(result.error ?? "").startsWith("Not sent");
 }
@@ -123,6 +140,56 @@ export function worthOneMoreAttempt(result: Partial<AgentResult> & { ok: boolean
   return result.statusCode !== undefined && result.statusCode >= 500 && result.statusCode <= 599 && !isTransportFailure(result);
 }
 
+/**
+ * A platform that says it is over a limit is asked again after a wait: 2 s, then 5 s, or what its
+ * Retry-After asks (at most 20 s), while the slice has room. A 429 refused the request at the door,
+ * so it is sent again for any scenario and any turn. A limit stated inside an answer (a stream that
+ * ended "too many requests") may come after the platform ran part of its work, so it is sent again
+ * only for the first message of a scenario that cannot act twice.
+ */
+export const THROTTLE_WAITS_MS = [2_000, 5_000] as const;
+
+export function mayResendThrottled(result: AgentResult, testCase: Pick<SuiteCase, "effect" | "destructive">, turnNumber: number): boolean {
+  if (result.ok || result.failure?.kind !== "throttled") return false;
+  if (result.failure.refusedAtDoor) return true;
+  return turnNumber === 1 && !testCase.effect && !testCase.destructive;
+}
+
+/**
+ * After the first limit, the slice sends one scenario at a time with a gap that starts here and
+ * doubles with each further limit, up to the ceiling.
+ */
+export const SLOW_GAP_START_MS = 2_000;
+export const SLOW_GAP_MAX_MS = 8_000;
+
+/**
+ * The run's end when one cause repeats: three scenarios in a row failing the same way, and the
+ * harmless check message sent right after failing too. Whatever the scenarios were, the
+ * connection answers nothing usable, and sending the rest would record the same error for each.
+ * When the check message *is* answered, the cause is in those scenarios (a filter that refuses
+ * attack-shaped input, a branch of the agent's flow that ends without an answer) and the run
+ * continues. Also the run's end when that check, sent before the first scenario, gets no usable
+ * reply. A CI gate reads it as configuration (exit 3).
+ */
+export const CONNECTION_HALT_PREFIX = "Connection check failed; run halted.";
+
+/** The failures that count towards one repeating cause. Limits, transport and redirects have their own halts. */
+const BREAKER_KINDS = new Set(["refused_auth", "refused_input", "platform_error", "web_page", "unreadable", "path_miss", "repeated_stream", "empty", "too_large", "timeout"]);
+
+function haltAfterRepeat(caseError: string, probeError: string | undefined, same: boolean): string {
+  return `${CONNECTION_HALT_PREFIX} Three scenarios in a row failed the same way, and the check message Novera sent right after `
+    + `${same ? "failed the same way" : "got no usable reply either"}, so the cause is the agent's connection, not the scenarios. `
+    + `The last scenario recorded: ${caseError}${!same && probeError ? ` The check message got: ${probeError}` : ""} `
+    + "They are recorded as errors, never as failures of the agent; the remaining scenarios were not sent, and no report is sealed. "
+    + "Fix the connection (the agent's page tests it with one message), then start the run again.";
+}
+
+export function haltBeforeFirst(probeError: string): string {
+  return `${CONNECTION_HALT_PREFIX} Before the first scenario, Novera sent its harmless check message, and it got no usable reply: ${probeError} `
+    + "No scenario was sent, nothing was recorded, and no run allowance was spent. "
+    + "Fix the connection (the agent's page tests it with one message), then start the run again.";
+}
+
 /** The second attempt's result, saying so when it failed as the first did. */
 export function afterSecondAttempt(first: AgentResult, second: AgentResult): AgentResult {
   // Cut short by Novera's own slice: the first attempt is what was observed.
@@ -140,9 +207,11 @@ export function afterSecondAttempt(first: AgentResult, second: AgentResult): Age
 // In memory only, for the halt decision: never persisted, never part of a record.
 const transportOutcomes = new WeakSet<object>();
 const redirectOutcomes = new WeakSet<object>();
+const failureOutcomes = new WeakMap<object, { signature: string; kind: string; error: string }>();
 function flagTransport<T extends object>(outcome: T, result: AgentResult): T {
   if (isTransportFailure(result)) transportOutcomes.add(outcome);
   else if (isRedirectAnswer(result)) redirectOutcomes.add(outcome);
+  if (result.failure) failureOutcomes.set(outcome, { signature: result.failure.signature, kind: result.failure.kind, error: result.error ?? "" });
   return outcome;
 }
 
@@ -233,6 +302,10 @@ export async function executeCase(args: {
   hardStop?: number;
   /** The gap before a failed request's one further attempt. `AGENT_RETRY_AFTER_MS` unless a test says otherwise. */
   retryAfterMs?: number;
+  /** Called the moment the agent's platform says it is over a limit, so the run slows down. */
+  onThrottle?: () => void;
+  /** Waits before a throttled message is sent again. `THROTTLE_WAITS_MS` unless a test says otherwise. */
+  throttleWaitsMs?: readonly number[];
 }): Promise<CaseOutcome> {
   const { testCase, agent, policy, verifier, agentIsProduction, hardStop } = args;
   const judge = hardStop === undefined ? args.judge : withDeadline(args.judge, hardStop);
@@ -393,8 +466,41 @@ export async function executeCase(args: {
       };
     }
 
-    // One more attempt for a request the server failed, when sending it twice cannot act twice.
-    if (worthOneMoreAttempt(result, testCase)) {
+    // The platform said it is over a limit: wait and send again, while the slice has room.
+    const send = () => agent.send({
+      input: message,
+      policy,
+      ...(agentDeadline !== undefined ? { deadline: agentDeadline } : {}),
+      ...(testCase.context ? { context: testCase.context } : {}),
+      ...(isConversation ? { history: [...history], conversationId } : {}),
+    });
+    const waits = args.throttleWaitsMs ?? THROTTLE_WAITS_MS;
+    const waited: number[] = [];
+    while (result.failure?.kind === "throttled") {
+      args.onThrottle?.();
+      if (waited.length >= waits.length || !mayResendThrottled(result, testCase, turnNumber)) break;
+      const pause = result.failure.retryAfterMs ?? waits[waited.length];
+      if (agentDeadline !== undefined && Date.now() + pause + 2_000 >= agentDeadline) break;
+      await new Promise((resolve) => setTimeout(resolve, pause));
+      waited.push(pause);
+      let again: AgentResult;
+      try {
+        again = await send();
+      } catch {
+        break;
+      }
+      // Cut short by Novera's own slice: what was observed is the limit.
+      if (again.cutByNovera) break;
+      result = again;
+    }
+    if (waited.length && !result.ok) {
+      result = { ...result, error: `${result.error ?? "The agent produced no response."} Sent ${waited.length + 1} times, waiting ${waited.map((w) => `${Math.round(w / 100) / 10} s`).join(" and ")} between, while its platform said it was over a limit.` };
+    }
+
+    // One more attempt for a request the server failed, when sending it twice cannot act twice:
+    // only the first message, because a platform that keeps the conversation itself may already
+    // hold a later turn the transcript would then show once.
+    if (turnNumber === 1 && worthOneMoreAttempt(result, testCase)) {
       const first = result;
       await new Promise((resolve) => setTimeout(resolve, args.retryAfterMs ?? AGENT_RETRY_AFTER_MS));
       try {
@@ -716,8 +822,35 @@ function everyJudgeRateLimited(record: RunCaseRecord): boolean {
  *    There is nothing to grade, and asking the judge to grade an absence is how a
  *    broken integration turns into a plausible-looking verdict.
  */
+/**
+ * The check message before a run's first scenario. A limit or an unreachable endpoint is given
+ * one more chance after a short wait (the first request of a run often meets a cold start); a
+ * slice that is ending sends nothing and decides nothing. Returns the halt sentence, or null when
+ * the connection answered.
+ */
+export async function probeBeforeFirst(agent: AgentAdapter, deadline?: number, waitMs = 2_000): Promise<string | null> {
+  const ask = async (): Promise<AgentResult> => {
+    try {
+      return await agent.probe();
+    } catch (thrown) {
+      return { ok: false, responseText: null, toolActivity: null, latencyMs: 0, error: `The agent could not be asked: ${thrown instanceof Error ? thrown.message : String(thrown)}` };
+    }
+  };
+  let check = await ask();
+  if (check.ok || check.cutByNovera) return null;
+  const transient = check.failure ? ["throttled", "unreachable", "timeout"].includes(check.failure.kind) : isTransportFailure(check);
+  const pause = check.failure?.retryAfterMs ?? waitMs;
+  if (transient && (deadline === undefined || Date.now() + pause + 5_000 < deadline)) {
+    await new Promise((resolve) => setTimeout(resolve, pause));
+    check = await ask();
+    if (check.ok || check.cutByNovera) return null;
+  }
+  return haltBeforeFirst(check.error ?? "the agent produced no response.");
+}
+
 export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
-  const { runId, suite, agent, policy, judge, store, concurrency = 3, skipCaseIds, deadline } = args;
+  const { runId, suite, agent, policy, judge, store, skipCaseIds, deadline } = args;
+  const concurrency = args.oneAtATime ? 1 : args.concurrency ?? 3;
   const paceMs = Math.max(0, args.paceMs ?? 0);
 
   await store.markRunning(runId);
@@ -768,6 +901,21 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   let lastRedirectSeq = 0;
   let sendSeq = 0;
   let lastTransportSeq = 0;
+  // The last transport failure's sentence, so a halt says what the platform said.
+  let lastTransportError = "";
+  // A platform that said it is over a limit: from then on one scenario at a time, with a gap
+  // that doubles with each further limit (`SLOW_GAP_START_MS` → `SLOW_GAP_MAX_MS`).
+  const gapStart = args.slowGapStartMs ?? SLOW_GAP_START_MS;
+  const gapMax = gapStart * (SLOW_GAP_MAX_MS / SLOW_GAP_START_MS);
+  let slowGap = args.startSlow ? gapStart : 0;
+  let inFlight = 0;
+  const onThrottle = () => { slowGap = slowGap ? Math.min(slowGap * 2, gapMax) : gapStart; };
+  // One cause repeating (`CONNECTION_HALT_PREFIX`): its signature, how many in a row by send
+  // order, and causes a check message already showed to be about the scenarios, not the connection.
+  let streak: { signature: string; count: number; lastSeq: number } | null = null;
+  const clearedSignatures = new Set<string>();
+  let probing = false;
+  let connectionHalt: string | null = null;
 
   // Held cases (0084): never sent again; graded where their grading stopped, once due.
   const outstanding = new Map<string, HeldCase>((args.held ?? []).map((h) => [h.caseId, h]));
@@ -861,46 +1009,64 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
         return;
       }
 
-      if (transportHalted || redirectHalted) return;
+      if (transportHalted || redirectHalted || connectionHalt) return;
 
-      if (paceMs > 0) {
-        const slot = Math.max(Date.now(), nextSendAt);
-        // Waiting out the gap must not carry the send past the slice.
-        if ((deadline !== undefined && slot >= deadline) || (hardStop !== undefined && slot >= hardStop)) {
+      // Slowed by a limit: wait until nothing else is in flight, so one scenario is sent at a time.
+      while (slowGap > 0 && inFlight > 0) {
+        if (transportHalted || redirectHalted || connectionHalt || stopped || lostLease) return;
+        if (deadline !== undefined && Date.now() >= deadline) {
           ranOutOfTime = true;
           return;
         }
-        nextSendAt = slot + paceMs;
-        const wait = slot - Date.now();
-        if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-        if (transportHalted || redirectHalted) return;
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
-
-      // A person pressed Stop: no further message goes to their agent.
-      if (stopped || (store.isStopped && await store.isStopped(runId))) {
-        stopped = true;
-        return;
-      }
-      // Nor from a slice that no longer holds the run: the one that took it over sends
-      // what is left. Checked before each scenario, never in the middle of one.
-      if (lostLease || (store.holdsRun && !(await store.holdsRun(runId)))) {
-        lostLease = true;
-        return;
-      }
-
-      if (hardStop !== undefined && startedThisSlice > 0 && hardStop - Date.now() < caseNeedsMs(testCase, slowestAgentMs)) {
-        ranOutOfTime = true;
-        return;
-      }
-      startedThisSlice++;
+      inFlight++;
+      let outcome: CaseOutcome;
       const seq = ++sendSeq;
+      try {
+        const gap = Math.max(paceMs, slowGap);
+        if (gap > 0) {
+          const slot = Math.max(Date.now(), nextSendAt);
+          // Waiting out the gap must not carry the send past the slice.
+          if ((deadline !== undefined && slot >= deadline) || (hardStop !== undefined && slot >= hardStop)) {
+            ranOutOfTime = true;
+            return;
+          }
+          nextSendAt = slot + gap;
+          const wait = slot - Date.now();
+          if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+          if (transportHalted || redirectHalted || connectionHalt) return;
+        }
 
-      const outcome: CaseOutcome = await executeCase({
-        testCase, agent, policy, judge,
-        verifier: args.verifier,
-        agentIsProduction: args.agentIsProduction,
-        hardStop,
-      });
+        // A person pressed Stop: no further message goes to their agent.
+        if (stopped || (store.isStopped && await store.isStopped(runId))) {
+          stopped = true;
+          return;
+        }
+        // Nor from a slice that no longer holds the run: the one that took it over sends
+        // what is left. Checked before each scenario, never in the middle of one.
+        if (lostLease || (store.holdsRun && !(await store.holdsRun(runId)))) {
+          lostLease = true;
+          return;
+        }
+
+        if (hardStop !== undefined && startedThisSlice > 0 && hardStop - Date.now() < caseNeedsMs(testCase, slowestAgentMs)) {
+          ranOutOfTime = true;
+          return;
+        }
+        startedThisSlice++;
+
+        outcome = await executeCase({
+          testCase, agent, policy, judge,
+          verifier: args.verifier,
+          agentIsProduction: args.agentIsProduction,
+          hardStop,
+          onThrottle,
+          ...(args.throttleWaitsMs ? { throttleWaitsMs: args.throttleWaitsMs } : {}),
+        });
+      } finally {
+        inFlight--;
+      }
       records[index] = caseRecord(testCase, outcome);
       slowestAgentMs = Math.max(slowestAgentMs, records[index].latencyMs ?? 0);
       // The agent answered and only grading capacity is missing: keep the reply and finish the
@@ -915,6 +1081,7 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
       if (heldNow) {
         if (seq > lastTransportSeq) consecutiveTransport = 0;
         if (seq > lastRedirectSeq) consecutiveRedirect = 0;
+        if (streak && seq > streak.lastSeq) streak = null;
         if (everyJudgeRateLimited(records[index])) {
           consecutiveQuotaFailures++;
           if (consecutiveQuotaFailures >= 2) quotaExhausted = true;
@@ -939,9 +1106,38 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
       if (transportOutcomes.has(outcome)) {
         consecutiveTransport++;
         lastTransportSeq = Math.max(lastTransportSeq, seq);
+        lastTransportError = records[index].error ?? "";
         if (consecutiveTransport >= TRANSPORT_HALT_AFTER) transportHalted = true;
       } else if (seq > lastTransportSeq) {
         consecutiveTransport = 0;
+      }
+
+      // One cause repeating, by the same send-order rule as transport failures.
+      const failure = failureOutcomes.get(outcome);
+      if (failure && BREAKER_KINDS.has(failure.kind) && !clearedSignatures.has(failure.signature)) {
+        streak = streak && streak.signature === failure.signature
+          ? { signature: failure.signature, count: streak.count + 1, lastSeq: Math.max(streak.lastSeq, seq) }
+          : { signature: failure.signature, count: 1, lastSeq: seq };
+        if (streak.count >= TRANSPORT_HALT_AFTER && !probing && !connectionHalt) {
+          probing = true;
+          const repeated = streak.signature;
+          let check: AgentResult;
+          try {
+            check = await agent.probe();
+          } catch (thrown) {
+            check = { ok: false, responseText: null, toolActivity: null, latencyMs: 0, error: thrown instanceof Error ? thrown.message : String(thrown) };
+          }
+          probing = false;
+          if (check.ok || check.cutByNovera) {
+            // The connection answers: the cause is in those scenarios. Not probed for again.
+            clearedSignatures.add(repeated);
+            streak = null;
+          } else {
+            connectionHalt = haltAfterRepeat(failure.error, check.error, check.failure?.signature === repeated);
+          }
+        }
+      } else if (streak && seq > streak.lastSeq) {
+        streak = null;
       }
       if (redirectOutcomes.has(outcome)) {
         consecutiveRedirect++;
@@ -964,8 +1160,12 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   let error: string | undefined;
 
   try {
+    // A run that has recorded nothing yet proves the connection first, with one harmless message.
+    if (args.probeFirst && alreadyDone.size === 0 && outstanding.size === 0) {
+      connectionHalt = await probeBeforeFirst(agent, deadline);
+    }
     await resumeDue();
-    await Promise.all(Array.from({ length: Math.min(concurrency, suite.cases.length) }, worker));
+    if (!connectionHalt) await Promise.all(Array.from({ length: Math.min(concurrency, suite.cases.length) }, worker));
     // Only held cases left: wait for the next one to fall due if this slice has room for it,
     // rather than end the slice and leave the run waiting on the next call.
     while (outstanding.size > 0 && !ranOutOfTime && !stopped && !lostLease && !transportHalted && !redirectHalted) {
@@ -988,10 +1188,14 @@ export async function executeRun(args: ExecuteRunArgs): Promise<RunSummary> {
   // A catch-path error, a stop or a lost lease keeps its own precedence below.
   if (transportHalted && status === "completed" && !stopped && !lostLease) {
     status = "aborted";
-    error = TRANSPORT_HALT_MESSAGE;
+    const said = quotedReason(lastTransportError);
+    error = said ? `${TRANSPORT_HALT_MESSAGE} The agent's platform said: "${said}".` : TRANSPORT_HALT_MESSAGE;
   } else if (redirectHalted && status === "completed" && !stopped && !lostLease) {
     status = "aborted";
     error = REDIRECT_HALT_MESSAGE;
+  } else if (connectionHalt && status === "completed" && !stopped && !lostLease) {
+    status = "aborted";
+    error = connectionHalt;
   }
 
   const saved = records.filter(Boolean);

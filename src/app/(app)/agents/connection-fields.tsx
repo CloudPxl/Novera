@@ -14,7 +14,8 @@ function fill(form: HTMLFormElement | null | undefined, values: Record<string, s
   for (const [name, value] of Object.entries(values)) {
     if (value === undefined) continue;
     const field = form.elements.namedItem(name);
-    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) field.value = value;
+    if (field instanceof HTMLInputElement && field.type === "checkbox") field.checked = value === "on";
+    else if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) field.value = value;
   }
 }
 
@@ -152,6 +153,11 @@ export interface AdvancedDefaults {
   conversationIdPath: string;
   inlineChannels: boolean;
   preset: string;
+  /** "whole" or "" (pieces). */
+  streamMode?: string;
+  sendOneAtATime?: boolean;
+  /** Seconds as typed, or "". */
+  paceSeconds?: string;
 }
 
 /**
@@ -162,6 +168,7 @@ export function AdvancedConnectionFields({ idPrefix, defaults }: { idPrefix: str
   return (
     <>
       <input type="hidden" name="preset" defaultValue={defaults.preset} />
+      <InputVariables idPrefix={idPrefix} />
       <Field
         label="Other headers" htmlFor={`${idPrefix}-headers`}
         hint={<>Optional, one per line as <code className={code}>Name: value</code>. Stored as written and never secret: a header that carries a key belongs under Authentication.</>}
@@ -176,6 +183,24 @@ export function AdvancedConnectionFields({ idPrefix, defaults }: { idPrefix: str
           <input id={`${idPrefix}-conversation`} name="conversationIdPath" defaultValue={defaults.conversationIdPath} className={`${inputClass} font-mono text-xs`} placeholder="conversation_id" />
         </Field>
       </div>
+      <div className="grid gap-6 sm:grid-cols-2">
+        <Field label="Stream reading" htmlFor={`${idPrefix}-stream-mode`} hint="How a streamed reply is put together. Most platforms send the next piece in each event; some send the whole reply so far each time, and the connection test says which.">
+          <select id={`${idPrefix}-stream-mode`} name="streamMode" defaultValue={defaults.streamMode === "whole" ? "whole" : "pieces"} className={inputClass}>
+            <option value="pieces">Each event adds the next piece</option>
+            <option value="whole">Each event carries the whole reply so far</option>
+          </select>
+        </Field>
+        <Field label="Gap between messages (seconds)" htmlFor={`${idPrefix}-pace`} hint="Optional, 0.25 to 10. During a run Novera waits at least this long between two messages to this agent. Empty is 0.25 s.">
+          <input id={`${idPrefix}-pace`} name="paceSeconds" inputMode="decimal" defaultValue={defaults.paceSeconds ?? ""} className={inputClass} placeholder="0.25" />
+        </Field>
+      </div>
+      <label htmlFor={`${idPrefix}-one`} className="flex gap-3 text-sm leading-relaxed">
+        <input id={`${idPrefix}-one`} type="checkbox" name="sendOneAtATime" defaultChecked={defaults.sendOneAtATime === true} className="mt-0.5 size-4 shrink-0 accent-slate-900" />
+        <span>
+          <span className="font-medium">Send one scenario at a time.</span>{" "}
+          <span className="text-ink-soft">For a platform that allows one request at a time, or keeps memory per user rather than per conversation. A run takes longer. Whatever this says, Novera slows to one at a time when a platform reports it is over a limit.</span>
+        </span>
+      </label>
     </>
   );
 }
@@ -199,5 +224,58 @@ export function DeliveryChoice({ idPrefix, defaultChecked }: { idPrefix: string;
         </span>
       </span>
     </label>
+  );
+}
+
+/**
+ * Input variables for a platform that takes them beside the message (a Dify app's Start node,
+ * a workflow's inputs). Written into the request body's `inputs` object, the same field a person
+ * could type in the body: nothing here is stored on its own, and nothing is sent until the
+ * connection is tested or saved.
+ */
+function InputVariables({ idPrefix }: { idPrefix: string }) {
+  const box = useRef<HTMLTextAreaElement>(null);
+  const [said, setSaid] = useState<string | null>(null);
+  function applyToBody() {
+    const form = box.current?.closest("form");
+    const body = form?.elements.namedItem("bodyTemplate");
+    if (!(body instanceof HTMLTextAreaElement || body instanceof HTMLInputElement)) return;
+    const pairs: Array<[string, string]> = [];
+    for (const line of (box.current?.value ?? "").split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const colon = line.indexOf(":");
+      const name = (colon < 0 ? line : line.slice(0, colon)).trim();
+      if (!/^[A-Za-z_][\w-]{0,63}$/.test(name)) {
+        setSaid(`"${name}" is not a variable name: letters, digits, _ and -, starting with a letter or _.`);
+        return;
+      }
+      pairs.push([name, colon < 0 ? "" : line.slice(colon + 1).trim()]);
+    }
+    let template: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(body.value || "{}");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+      template = parsed as Record<string, unknown>;
+    } catch {
+      setSaid("The request body is not a JSON object yet, so the variables could not be added to it.");
+      return;
+    }
+    const inputs = template.inputs && typeof template.inputs === "object" && !Array.isArray(template.inputs) ? { ...(template.inputs as Record<string, unknown>) } : {};
+    for (const [name, value] of pairs) inputs[name] = value;
+    template.inputs = inputs;
+    body.value = JSON.stringify(template, null, 2);
+    setSaid(pairs.length ? `Added to the request body's inputs: ${pairs.map(([n]) => n).join(", ")}.` : "Nothing to add.");
+  }
+  return (
+    <Field
+      label="Input variables" htmlFor={`${idPrefix}-inputs`}
+      hint={<>Optional. For an agent that expects variables beside the message, such as a Dify app&apos;s Start node: one per line as <code className={code}>name: value</code>. Added to the request body&apos;s <code className={code}>inputs</code>; a value can be <code className={code}>{"{{context}}"}</code> to carry a scenario&apos;s metadata there.</>}
+    >
+      <textarea id={`${idPrefix}-inputs`} ref={box} rows={2} className={`${inputClass} font-mono text-xs`} placeholder={"customer_tier: standard\norder_id: NW-1001"} spellCheck={false} />
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <Button type="button" variant="secondary" size="sm" onClick={applyToBody}>Add to the request body</Button>
+        {said && <p role="status" className="text-xs text-ink-soft">{said}</p>}
+      </div>
+    </Field>
   );
 }

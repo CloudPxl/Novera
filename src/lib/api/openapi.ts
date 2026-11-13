@@ -91,7 +91,7 @@ export function buildOpenApi() {
           description:
             `${scopeNote("write")} Sends one diagnostic message — "Hello, this is a connection check from Novera. Please reply briefly." — to a connection described in the body, or to a saved agent (\`agent_id\`, on its stored credential), and says what came back. ` +
             "The same function as \"Test connection\" on the connect and edit forms: the same request template, header and public-address check a run uses, a 10-second deadline, and nothing stored — no agent, no probe receipt. " +
-            "A test result is always 200 with a stable `outcome`: `ok`, `timeout`, `unreachable`, `refused_address`, `unauthorized` (HTTP 401 or 403), `http_error`, `redirect`, `too_large`, `not_json` or `no_reply_at_path` (with `top_level_keys`, names only, and `suggested_path` when one can be found). " +
+            "A test result is always 200 with a stable `outcome`: `ok`, `timeout`, `unreachable`, `refused_address`, `unauthorized` (HTTP 401 or 403), `http_error`, `redirect`, `too_large`, `not_json`, `no_reply_at_path` (with `top_level_keys`, names only, and `suggested_path` when one can be found), `rate_limited` (the platform said it is over a rate, quota or concurrency limit), `platform_error` (an error in a 2xx answer or a stream), `web_page` (a sign-in page, firewall or bot check answered), `empty_reply` (a stream that finished with no text) or `stream_repeats` (each event repeats the whole reply so far). " +
             "20 tests per workspace in ten minutes, shared with the forms.",
           security: bearer,
           requestBody: {
@@ -542,7 +542,7 @@ export function buildOpenApi() {
           type: "object",
           required: ["outcome", "ok", "headline", "detail", "status_code", "latency_ms", "stored"],
           properties: {
-            outcome: { type: "string", enum: ["ok", "timeout", "unreachable", "refused_address", "unauthorized", "http_error", "redirect", "too_large", "not_json", "no_reply_at_path"] },
+            outcome: { type: "string", enum: ["ok", "timeout", "unreachable", "refused_address", "unauthorized", "http_error", "redirect", "too_large", "not_json", "no_reply_at_path", "rate_limited", "platform_error", "web_page", "empty_reply", "stream_repeats"] },
             ok: { type: "boolean", description: "True only for `ok`: the reply text was found at the reply path." },
             headline: { type: "string", description: "One sentence for a person. The wording may change; `outcome` does not." },
             detail: { type: "string" },

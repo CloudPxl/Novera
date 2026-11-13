@@ -46,12 +46,59 @@ export interface AgentResult {
    * format Novera read it as, and — for a stream — how many events carried a piece of the reply.
    * Never stored with a case.
    */
-  wire?: { contentType: string | null; format: "json" | "event_stream" | "text"; pieces?: number; matchedPath?: string | null };
+  wire?: {
+    contentType: string | null;
+    format: "json" | "event_stream" | "json_lines" | "text_stream" | "text";
+    pieces?: number;
+    matchedPath?: string | null;
+    /** The value at the reply path was not text (an object, a list, a number) and was read as its JSON. */
+    structured?: boolean;
+    /** How many events of each kind a stream carried, for the connection check. */
+    eventKinds?: Record<string, number>;
+    /** The stream said it was done (`message_end`, `workflow_finished`, …). */
+    finished?: boolean;
+    /** Every piece repeated the text before it: the platform streams the whole text so far. */
+    cumulative?: boolean;
+  };
   /**
    * The request answered, and the reply field held an empty string: the agent said nothing.
    * Distinct from a reply that is somewhere else in the response (a wrong path).
    */
   emptyReply?: boolean;
+  /**
+   * What kind of failure this was, set by the HTTP adapter on every `ok: false`. In memory only:
+   * the runner reads it to back off from a limit and to tell one systemic cause from a scenario's
+   * own outcome. The stored record is the error sentence.
+   */
+  failure?: AgentFailure;
+}
+
+/**
+ * Every way an answer can fail to be a reply, as one closed set.
+ *  - refused_auth: 401/403, the credential or the address's access rules.
+ *  - refused_input: another 4xx: the request was refused as malformed or unacceptable.
+ *  - throttled: a limit on how much or how fast (429, or a body or stream naming one).
+ *  - platform_error: the platform failed: 5xx, or an error stated in a 2xx body or stream.
+ *  - web_page: a web page answered (a sign-in page, a firewall, a bot check), not the API.
+ *  - redirect: a 3xx, never followed.
+ *  - unreadable: the body is in no format the connection reads.
+ *  - path_miss: readable, and nothing at the reply path.
+ *  - empty: the reply field was there and empty, or a stream finished with no text.
+ *  - repeated_stream: a stream that repeats the whole text in each piece, read as pieces.
+ *  - too_large · timeout · unreachable · not_sent (Novera refused to send, or the slice ended).
+ */
+export type FailureKind =
+  | "refused_auth" | "refused_input" | "throttled" | "platform_error" | "web_page" | "redirect"
+  | "unreadable" | "path_miss" | "empty" | "repeated_stream" | "too_large" | "timeout" | "unreachable" | "not_sent";
+
+export interface AgentFailure {
+  kind: FailureKind;
+  /** Stable across scenarios for one cause: `http:401`, `stream:too_many_requests`, `path`, … */
+  signature: string;
+  /** How long the platform asked to wait before trying again (Retry-After), when it said. */
+  retryAfterMs?: number;
+  /** The request was refused before the agent acted on it (a 429 or 401 at the door). */
+  refusedAtDoor?: boolean;
 }
 
 export interface AgentAdapter {
@@ -114,6 +161,18 @@ export interface HttpAgentConfig {
    * stated on the report beside each such scenario. Absent or false: those scenarios are not sent.
    */
   inlineChannels?: boolean;
+  /**
+   * How a streamed reply is put together. Absent: each event carries the next piece, appended in
+   * order. "whole": each event carries the whole reply so far, and the last one is the reply.
+   */
+  streamMode?: "whole";
+  /**
+   * How hard a run may press this agent. `sendOneAtATime`: one scenario in flight, for a platform
+   * that allows one request at a time or keeps state per user rather than per conversation.
+   * `paceMs`: the least gap between two sends (250 by default, at most 10,000).
+   */
+  sendOneAtATime?: boolean;
+  paceMs?: number;
   /** Which starting point the connection was filled from. Informational; never read by a run. */
   preset?: string;
 }

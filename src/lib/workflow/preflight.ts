@@ -71,6 +71,7 @@ export function targetFromFields(fields: {
   url: unknown; bodyTemplate: unknown; responsePath: unknown; toolActivityPath: unknown;
   timeoutSeconds?: unknown; authHeaderName: unknown; credential?: unknown;
   headers?: unknown; streamPath?: unknown; conversationIdPath?: unknown; inlineChannels?: unknown; preset?: unknown;
+  streamMode?: unknown; sendOneAtATime?: unknown; paceSeconds?: unknown;
 }): Built {
   const endpoint = parseEndpointFields(fields);
   if (!endpoint.ok) return { ok: false, code: "invalid_request", message: endpoint.error };
@@ -126,6 +127,7 @@ export async function targetFromEdit(admin: SupabaseClient, workspaceId: string,
     credential: form.get("credential"), removeCredential: form.get("removeCredential"),
     headers: form.get("headers"), streamPath: form.get("streamPath"), conversationIdPath: form.get("conversationIdPath"),
     inlineChannels: form.get("inlineChannels"), preset: form.get("preset"),
+    streamMode: form.get("streamMode"), sendOneAtATime: form.get("sendOneAtATime"), paceSeconds: form.get("paceSeconds"),
   }, (count ?? 0) > 0, agent.config.url);
   if (!parsed.ok) return { ok: false, code: "invalid_request", message: parsed.error };
   const edit = parsed.value;

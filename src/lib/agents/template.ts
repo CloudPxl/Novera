@@ -60,7 +60,8 @@ function readSegments(source: unknown, segments: string[]): unknown {
     if (Array.isArray(current)) {
       const index = Number(segment);
       if (!Number.isInteger(index)) return undefined;
-      current = current[index];
+      // -1 is the last item, for a reply that is the last message of a list.
+      current = current[index < 0 ? current.length + index : index];
     } else if (typeof current === "object") {
       current = (current as Record<string, unknown>)[segment];
     } else {

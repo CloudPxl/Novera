@@ -19,7 +19,13 @@ import { deliveryOf } from "../agents/delivery.ts";
 // 1.1.0 (2026-11-12): a request the agent's server failed (HTTP 5xx outside the unreachable
 // set) is sent once more when sending it twice cannot act twice; a request with no field for
 // metadata or earlier turns may carry them in the message, declared in `in_message`.
-export const RUNNER_VERSION = "1.1.0";
+// 1.2.0 (2026-11-13): a run first sends one harmless check message and ends before any scenario
+// when it gets no usable reply; a platform that says it is over a limit is waited out (2 s, 5 s
+// or its Retry-After) and the run slows to one at a time; one cause repeating on three scenarios
+// ends the run only when the check message fails too; a 5xx is sent again only on a first
+// message; streams that finish empty, end in an error, repeat the whole text or arrive as JSON
+// lines are read for what they are, and the platform's own reason is quoted.
+export const RUNNER_VERSION = "1.2.0";
 
 /**
  * What the run declared about itself **before it ran**.
@@ -214,6 +220,8 @@ export function agentConfigHash(config: unknown): string | null {
     ...(typeof c.streamPath === "string" && c.streamPath ? { stream_path: c.streamPath } : {}),
     ...(typeof c.conversationIdPath === "string" && c.conversationIdPath ? { conversation_id_path: c.conversationIdPath } : {}),
     ...(c.inlineChannels === true ? { inline_channels: true } : {}),
+    // Added 2026-11-13 on the same terms: how a streamed reply is put together.
+    ...(c.streamMode === "whole" ? { stream_mode: "whole" } : {}),
   };
   return contentHash(shape as unknown as Json);
 }

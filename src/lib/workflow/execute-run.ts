@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentConfig } from "../agents/types.ts";
 import { buildAgentAdapter } from "../agents/factory.ts";
 import { buildVerifier } from "../evidence/connectors/index.ts";
-import { AGENT_PACE_MS, executeRun, type RunSummary } from "../runner/execute.ts";
+import { AGENT_PACE_MS, MAX_AGENT_PACE_MS, executeRun, type RunSummary } from "../runner/execute.ts";
 import type { RunCaseRecord } from "../runner/types.ts";
 import { coverage, coverageByObligation, coverageByCategory } from "../evidence/coverage.ts";
 import type { Suite } from "../runner/types.ts";
@@ -173,6 +173,12 @@ async function reportFor(client: SupabaseClient, workspaceId: string, ctx: RunCo
  * run rather than taking those as arguments: what gets executed is whatever the run
  * committed to when it was created, not whatever is current now.
  */
+/** The gap between two sends to this agent: its connection's own, within 250 ms … 10 s. */
+export function pacingFor(config: { kind?: string; paceMs?: unknown } | null | undefined): number {
+  const own = config?.kind === "http" && typeof config.paceMs === "number" && Number.isFinite(config.paceMs) ? config.paceMs : AGENT_PACE_MS;
+  return Math.min(Math.max(own, AGENT_PACE_MS), MAX_AGENT_PACE_MS);
+}
+
 export async function startRunExecution(args: {
   client: SupabaseClient;
   workspaceId: string;
@@ -191,8 +197,10 @@ export async function startRunExecution(args: {
   // What an earlier attempt already graded. Cases are never re-sent to the agent:
   // a second verdict over the same scenario would be new evidence replacing old.
   const { data: existing } = await client
-    .from("run_cases").select("case_id").eq("run_id", runId);
+    .from("run_cases").select("case_id, error").eq("run_id", runId);
   const recorded = new Set((existing ?? []).map((c) => c.case_id as string));
+  // An earlier slice met a platform limit: this one starts slow rather than meet it again at full pace.
+  const metLimit = (existing ?? []).some((c) => typeof c.error === "string" && /over a limit|^Agent returned HTTP 429\b/.test(c.error));
 
   // The rubric was declared with the run (its digest is in the manifest). A deploy that changed
   // the grading instructions between two slices would grade the rest of the run under another
@@ -274,7 +282,12 @@ export async function startRunExecution(args: {
     // true one. The column has a value for every agent, so pass it.
     agentIsProduction: agent.is_production !== false,
     deadline,
-    paceMs: AGENT_PACE_MS,
+    // The connection's own pacing when it states one (never below the default, at most 10 s).
+    paceMs: pacingFor(agent.config),
+    oneAtATime: agent.config?.kind === "http" && agent.config.sendOneAtATime === true,
+    startSlow: metLimit,
+    // Before the first scenario: one harmless message proves the connection answers at all.
+    probeFirst: true,
   });
 
   // Out of time, not out of luck: the caller invokes this again and it picks up.

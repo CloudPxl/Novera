@@ -28,6 +28,10 @@ export interface ConnectionPreset {
   edit?: string;
   /** How conversations are carried, in a sentence, for the form. */
   conversation: string;
+  /** Each streamed event carries the whole reply so far. */
+  streamMode?: "whole";
+  /** The platform allows one request at a time. */
+  sendOneAtATime?: boolean;
 }
 
 export const CUSTOM_PRESET = "custom";
@@ -55,6 +59,18 @@ export const PRESETS: readonly ConnectionPreset[] = [
     conversation: "Dify issues its own conversation id: the first message of a conversation carries none, later ones carry the id Dify returned.",
   },
   {
+    key: "dify-workflow",
+    label: "Dify workflow app (non-chat)",
+    about: "Dify's workflows/run API, for a workflow that takes inputs and returns outputs rather than chatting. The message goes in the query input; the reply is the workflow's text output.",
+    urlExample: "https://api.dify.ai/v1/workflows/run",
+    bodyTemplate: { inputs: { query: "{{input}}" }, response_mode: "blocking", user: "novera-evaluation" },
+    responsePath: "data.outputs.text",
+    streamPath: "data.text",
+    authHeaderName: "authorization",
+    edit: "Rename query and text to your workflow's own input and output variable names (Start node and End node), and add its other input variables.",
+    conversation: "A workflow has no conversation: conversation scenarios are not sent unless the delivery option puts the earlier turns in the message.",
+  },
+  {
     key: "openai",
     label: "OpenAI-compatible chat completions",
     about: "Any endpoint that takes a list of chat messages at /chat/completions: a gateway, a proxy or your own agent behind that API.",
@@ -65,6 +81,17 @@ export const PRESETS: readonly ConnectionPreset[] = [
     authHeaderName: "authorization",
     edit: "Replace your-model in the request body with the model or agent name your endpoint expects.",
     conversation: "The earlier turns travel in the messages list, as chat endpoints expect.",
+  },
+  {
+    key: "openai-responses",
+    label: "OpenAI Responses API",
+    about: "An endpoint that takes input at /v1/responses and answers with output items.",
+    urlExample: "https://api.example.com/v1/responses",
+    bodyTemplate: { model: "your-model", input: "{{messages}}" },
+    responsePath: "output.*.content.*.text",
+    authHeaderName: "authorization",
+    edit: "Replace your-model in the request body with the model or agent name your endpoint expects.",
+    conversation: "The earlier turns travel in the input list.",
   },
   {
     key: "anthropic",
@@ -96,6 +123,17 @@ export const PRESETS: readonly ConnectionPreset[] = [
     bodyTemplate: { action: "sendMessage", chatInput: "{{input}}", sessionId: "{{conversation_id}}" },
     responsePath: "output",
     conversation: "Each scenario gets its own session id.",
+  },
+  {
+    key: "langgraph",
+    label: "LangGraph run (wait for the result)",
+    about: "A LangGraph deployment's stateless runs/wait endpoint. The reply is the last message of the graph's output.",
+    urlExample: "https://langgraph.example.com/runs/wait",
+    bodyTemplate: { assistant_id: "agent", input: { messages: "{{messages}}" } },
+    responsePath: "messages.-1.content",
+    authHeaderName: "x-api-key",
+    edit: "Replace agent with your graph's assistant id, and check that your graph's state keeps its messages under messages.",
+    conversation: "The earlier turns travel in the messages list.",
   },
   {
     key: "voiceflow",
@@ -137,7 +175,10 @@ export function detectPreset(rawUrl: string): ConnectionPreset | null {
   const host = url.hostname.toLowerCase();
   const path = url.pathname.replace(/\/+$/, "");
   const is = (key: string) => presetByKey(key);
+  if (/\/workflows\/run$/.test(path)) return is("dify-workflow");
   if (host === "api.dify.ai" || host.endsWith(".dify.ai") || /\/chat-messages$/.test(path)) return is("dify");
+  if (/\/v1\/responses$/.test(path)) return is("openai-responses");
+  if (/\/runs\/wait$/.test(path)) return is("langgraph");
   if (host.endsWith("voiceflow.com")) return is("voiceflow");
   if (/\/chat\/completions$/.test(path)) return is("openai");
   if (host === "api.anthropic.com" || /\/v1\/messages$/.test(path)) return is("anthropic");
@@ -178,6 +219,7 @@ export function normalisePresetUrl(presetKey: string, rawUrl: string): { url: st
 export function presetFormValues(preset: ConnectionPreset): {
   bodyTemplate: string; responsePath: string; toolActivityPath: string; streamPath: string;
   conversationIdPath: string; authHeaderName: string; headers: string; preset: string;
+  streamMode: string; sendOneAtATime: string;
 } {
   return {
     bodyTemplate: JSON.stringify(preset.bodyTemplate, null, 2),
@@ -188,5 +230,7 @@ export function presetFormValues(preset: ConnectionPreset): {
     authHeaderName: preset.authHeaderName ?? "",
     headers: Object.entries(preset.headers ?? {}).map(([k, v]) => `${k}: ${v}`).join("\n"),
     preset: preset.key,
+    streamMode: preset.streamMode ?? "pieces",
+    sendOneAtATime: preset.sendOneAtATime ? "on" : "",
   };
 }

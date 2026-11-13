@@ -54,7 +54,16 @@ The result says one of these:
 - **HTTP 401 or 403** — the endpoint refused the request; check the header name and the credential.
 - **Another HTTP status**, or a **redirect**, which Novera does not follow: the error names where it points, so the fix is to enter that address. Three redirects in a row stop the run, as an unreachable endpoint does, and nothing is sealed; a CI gate reads that as a configuration problem (exit 3).
 - **No reply text at the reply path** — the endpoint answered, but not where the reply path points. The result lists the reply's top-level keys and, when it can tell, where the reply appears to be, with a button that puts that path in the form so you can test again.
-- **The reply was empty**, **not JSON** (with `$text` offered when it is plain text), or **a stream with no text in it**.
+- **The reply was empty**, **not JSON** (with `$text` offered when it is plain text), or **a stream with no text in it** (the result lists the kinds of event the stream carried, so you can see where the text is).
+- **The endpoint is limiting requests**: the platform answered HTTP 429, or said inside its answer that a rate, quota or concurrency limit was reached. Its words are quoted. In a run, Novera waits and sends again, then slows to one message at a time.
+- **The answer was an error** or **the stream ended in an error**: the platform answered with an error instead of a reply, often its own configuration (a missing input variable, a failed step, a model or key it could not use). Its words are quoted.
+- **A web page answered, not the agent**: a sign-in page, a firewall or a bot check answered at the address. Check the address and its access rules.
+- **The agent's answer was empty**: a stream finished normally without any text. On a workflow platform, the path the message took ends without an answer step.
+- **A stream that repeats the whole reply in every event**: set **Stream reading** to "whole text" and test again.
+
+Novera reads JSON, server-sent event streams, JSON lines and the AI SDK's text stream. A reply at the reply path that is structured data rather than text (a workflow's decision object, say) is read as its JSON and graded as that. A list's last item is `-1`, as in `messages.-1.content`.
+
+**Input variables** (under the advanced fields) adds named values to the request body's `inputs`, for an agent that expects them beside the message, such as a Dify app's Start-node variables. **Stream reading**, **Gap between messages** and **Send one scenario at a time** say how a run should treat a platform with its own limits. A key in the address's query string (`?code=`, `?api_key=`, `?token=`) is refused: put it under Authentication, where it is encrypted.
 
 Under every result, **What was sent and what came back** shows the exchange: the method and address (without its query string), the headers (the credential by its header name only), the request body exactly as built, the status and time, the content type, how the answer was read, and where the reply was found. When the reply was not found, it lists the text fields of the answer with the start of each, and a button beside each to use it as the reply path. It also says how this connection carries conversations and metadata. None of it is stored.
 

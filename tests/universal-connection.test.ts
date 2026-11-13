@@ -70,7 +70,8 @@ test("a streamed answer is its pieces in order; a replacement replaces; an error
   const failed = 'data: {"event":"message","answer":"Par"}\n\ndata: {"event":"error","status":400,"code":"invalid_param","message":"bad input"}\n\n';
   const err = assembleEventStream(failed, ["answer"]);
   assert.equal(err.text, null);
-  assert.match(err.error ?? "", /stream ended with an error \(invalid_param: bad input\)/);
+  assert.match(err.error ?? "", /stream ended with an error before a reply\. Its platform said: "invalid_param: bad input"\./);
+  assert.equal(err.limit, false);
 
   // A chat-completion stream: the reply path's streaming spelling, and the end marker ignored.
   const openai = 'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\ndata: {"choices":[{"delta":{"content":"Hi"}}]}\n\ndata: {"choices":[{"delta":{"content":" there"}}]}\n\ndata: [DONE]\n\n';
@@ -90,7 +91,7 @@ test("the adapter reads a stream, a plain-text reply and an empty reply for what
   const streamed = await httpAgent(dify).send({ input: "hi", policy: "" });
   assert.equal(streamed.ok, true);
   assert.equal(streamed.responseText, "Hello there");
-  assert.deepEqual(streamed.wire, { contentType: "text/event-stream", format: "event_stream", pieces: 2, matchedPath: "answer" });
+  assert.deepEqual(streamed.wire, { contentType: "text/event-stream", format: "event_stream", pieces: 2, matchedPath: "answer", eventKinds: { message: 2 }, finished: false });
 
   mockGuardedFetch(t, async () => new Response("Hello from a plain endpoint", { status: 200, headers: { "content-type": "text/plain" } }));
   const notDeclared = await httpAgent({ kind: "http", url: "https://plain.example/chat", bodyTemplate: { message: "{{input}}" }, responsePath: "reply" }).send({ input: "hi", policy: "" });
@@ -120,7 +121,10 @@ test("a platform that issues conversation ids is sent none first, then the one i
   await agent.send({ input: "one", policy: "", conversationId: "novera-1", history: [] });
   await agent.send({ input: "two", policy: "", conversationId: "novera-1", history: [{ role: "customer", content: "one" }, { role: "agent", content: "reply 1" }] });
   await agent.send({ input: "other scenario", policy: "", conversationId: "novera-2" });
-  assert.deepEqual(sent.map((s) => s.body.conversation_id), ["", "issued-77", ""], "never Novera's own id, and never another conversation's");
+  assert.deepEqual(sent.map((s) => s.body.conversation_id), [undefined, "issued-77", undefined], "never Novera's own id, and never another conversation's");
+  // Left out on a first message, not sent empty: some platforms refuse an empty id as invalid.
+  assert.equal("conversation_id" in sent[0].body, false);
+  assert.deepEqual(sent[0].body.inputs, {}, "the rest of the template is unchanged");
   assert.equal(agent.acceptsConversation?.(), true);
 
   // An address that keys the conversation: only in the path, encoded, one per conversation.
@@ -235,8 +239,8 @@ test("every preset is a connection the parser accepts, and none needs code of it
     assert.equal(parsed.ok, true, `${preset.key}: ${"error" in parsed ? parsed.error : ""}`);
     const config = newHttpConfig((parsed as { value: Parameters<typeof newHttpConfig>[0] }).value);
     assert.equal(config.preset, preset.key);
-    // Every platform preset can carry a conversation by its own means.
-    if (preset.key !== "custom") assert.equal(deliveryOf(config).conversation, "field", preset.key);
+    // Every chat platform preset can carry a conversation by its own means; a workflow app has none.
+    if (preset.key !== "custom" && preset.key !== "dify-workflow") assert.equal(deliveryOf(config).conversation, "field", preset.key);
   }
   const dify = presetByKey("dify")!;
   assert.deepEqual(dify.bodyTemplate, { inputs: {}, query: "{{input}}", response_mode: "streaming", user: "novera-evaluation", conversation_id: "{{conversation_id}}" });

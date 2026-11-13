@@ -124,7 +124,8 @@ test("200 without a reply at the path: top-level keys only, never values, and a 
 });
 
 test("every outcome code is stable and the API answer carries no credential field", () => {
-  assert.deepEqual([...PREFLIGHT_OUTCOMES], ["ok", "timeout", "unreachable", "refused_address", "unauthorized", "http_error", "redirect", "too_large", "not_json", "no_reply_at_path"]);
+  assert.deepEqual([...PREFLIGHT_OUTCOMES], ["ok", "timeout", "unreachable", "refused_address", "unauthorized", "http_error", "redirect", "too_large", "not_json", "no_reply_at_path",
+    "rate_limited", "platform_error", "web_page", "empty_reply", "stream_repeats"]);
   const answer = preflightAnswer(classifyPreflight(res({ ok: true, responseText: "hi", statusCode: 200, raw: { reply: "hi" } }), config));
   assert.equal(answer.outcome, "ok");
   assert.equal(answer.stored, false);

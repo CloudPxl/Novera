@@ -22,6 +22,16 @@ If a run stops being advanced — the page was closed, a pipeline died — and g
 
 Runs continue through failure. One dead endpoint on scenario three still leaves the rest of the suite as evidence.
 
+## When your agent's platform pushes back
+
+Before the first scenario, a run sends your agent one harmless check message, the same one **Test connection** sends. If nothing usable comes back (a refused key, a missing input variable, a web page instead of the API), the run stops there: no scenario is sent, nothing is recorded, no run is spent, and the run page says what came back.
+
+Scenarios go to your agent three at a time, a quarter of a second apart, unless its connection asks for one at a time or a longer gap. When the platform says it is over a limit (HTTP 429, or a rate, quota or concurrency error inside its answer), Novera waits 2 seconds, then 5 (or what the platform asks for, up to 20), and sends that scenario again. A limit reported inside an answer is retried only for a scenario's first message and only when the scenario cannot act on anything, because the platform may have run part of its work. From the first limit on, the run sends one scenario at a time with a gap that grows up to 8 seconds. A limit that does not lift stops the run after three scenarios in a row.
+
+When three scenarios in a row fail the same way (the same error code, the same empty answer, the same missing field), Novera sends the check message again. If that fails too, the cause is the connection, not the scenarios, and the run stops; the rest are not sent. If the check message is answered, the cause is in those scenarios (a filter that refuses some messages, a branch of the agent's flow that ends without an answer) and the run continues. A run stopped either way is never sealed, and a CI gate reads it as a configuration problem (exit 3).
+
+Whenever the platform said why it refused or failed, its words are quoted on the scenario: an error code and message, cleaned to one line and with anything that looks like a key, an address or a card number replaced.
+
 Three things are counted separately and never as passes: a scenario that errored, a scenario that never ran, and a scenario whose expected action nothing could evidence. If scenarios never ran, the grade is `INCOMPLETE` and the remedy is to run the suite again. If everything ran and the evidence still does not support a letter, the grade is `WITHHELD`, and the remedy is different.
 
 ## Reading one scenario

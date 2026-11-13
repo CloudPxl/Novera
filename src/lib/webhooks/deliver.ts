@@ -7,7 +7,7 @@ import { SIGNATURE_HEADER, signatureFor } from "./sign.ts";
 import { pipelineOutcome } from "../report/outcome.ts";
 import type { ReportPayload } from "../report/payload.ts";
 import { discardBody } from "../net/read-body.ts";
-import { isRedirectHalt, isTransportHalt } from "../ci/gate.ts";
+import { isConnectionHalt, isRedirectHalt, isTransportHalt } from "../ci/gate.ts";
 import { isNoveraFixture } from "../agents/environment.ts";
 import type { AgentConfig } from "../agents/types.ts";
 
@@ -234,7 +234,7 @@ export async function runEventBody(db: SupabaseClient, workspaceId: string, runI
 }
 
 /**
- * Why a run ended early, as one of six fixed sentences. The run's own error text is for the
+ * Why a run ended early, as one of seven fixed sentences. The run's own error text is for the
  * workspace — the Stop button writes the person's email address into it, and a failure can
  * carry an agent's or the database's words — while a webhook goes to a third party's system
  * (audit R7: the stopper's email reached the receiver). The run page keeps the full text.
@@ -247,6 +247,7 @@ export function abortedReason(run: { error: string | null; stopped_by: string | 
   // The CI gate's reading of the same run (exit 4), so a receiver and a pipeline agree (final audit D-10).
   if (isTransportHalt(run.error)) return "Halted: the agent could not be reached or was rate-limiting. This is not a finding about the agent.";
   if (isRedirectHalt(run.error)) return "Halted: the agent's address answers with a redirect, which Novera does not follow. This is not a finding about the agent.";
+  if (isConnectionHalt(run.error)) return "Halted: the agent's connection gave no usable reply to a check message. This is not a finding about the agent.";
   return "Ended by an error outside any scenario; the run page says what happened.";
 }
 

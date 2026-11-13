@@ -92,7 +92,10 @@ export function requestBody(
   const earlier = chatHistory(args.history);
   const message = messageFor(config, args.input, args.context, args.history);
   const messages = [...earlier, { role: "user" as const, content: message }];
-  return fillTemplate(config.bodyTemplate, {
+  // A platform that issues its own conversation ids gets none on a conversation's first message:
+  // the field is left out rather than sent empty, which some platforms refuse as invalid.
+  const template = config.conversationIdPath && !args.conversationId ? withoutField(config.bodyTemplate, "{{conversation_id}}") : config.bodyTemplate;
+  return fillTemplate(template, {
     input: message,
     policy: args.policy,
     // Serialised rather than spread, because the shape of a customer's metadata is
@@ -109,3 +112,15 @@ function chatHistory(history: AgentInvocation["history"]): Array<{ role: "user" 
   return (history ?? []).map((t) => ({ role: t.role === "customer" ? "user" : "assistant", content: t.content }));
 }
 
+
+/** The template without any field whose whole value is the placeholder, at any depth. */
+export function withoutField(template: Record<string, unknown>, placeholder: string): Record<string, unknown> {
+  const walk = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(walk);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== placeholder).map(([k, v]) => [k, walk(v)]));
+    }
+    return value;
+  };
+  return walk(template) as Record<string, unknown>;
+}

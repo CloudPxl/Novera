@@ -1,3 +1,5 @@
+import { isLimitSignal, quotedReason } from "../agents/upstream-error.ts";
+
 /**
  * Why a scenario has no verdict, and what to do about it — read from what was stored.
  *
@@ -30,6 +32,10 @@ export type RepairReason =
   | "agent_too_large"
   | "agent_http_error"
   | "agent_malformed"
+  | "agent_rate_limited"
+  | "agent_platform_error"
+  | "agent_blocked_page"
+  | "agent_stream_repeats"
   | "agent_response_path"
   | "agent_unreachable"
   | "readback_unavailable"
@@ -84,7 +90,20 @@ export function retryWords(r: Pick<Repair, "retry" | "agentReceived">): string {
     : "Retest freely: this scenario asks your agent to take no action, and it reported none.";
 }
 
+/**
+ * Why a scenario has no verdict. When the agent's platform said why (an error code and message,
+ * stored quoted in the error since runner 1.2.0, or in the older stream wording), its words are
+ * part of what happened: "the stream ended in an error" alone sent people looking in the wrong place.
+ */
 export function repairFor(row: NoVerdictRow): Repair | null {
+  const repair = classify(row);
+  if (!repair) return null;
+  const quoted = quotedReason(row.error);
+  if (!quoted || repair.happened.includes(quoted) || repair.owner === "Novera's graders") return repair;
+  return { ...repair, happened: `${repair.happened} The agent's platform said: "${quoted}".` };
+}
+
+function classify(row: NoVerdictRow): Repair | null {
   if (row.status !== "error") return null;
   const error = row.error ?? "";
   // When the agent did receive it, whether a retry can repeat something depends on
@@ -158,6 +177,36 @@ export function repairFor(row: NoVerdictRow): Repair | null {
         happened: "The agent's reply was larger than Novera reads, so it was not graded.",
         next: "Check what the agent returns for this message; a support reply is a few kilobytes." });
     }
+    // A limit on how much or how fast, said by the platform: at the door (HTTP 429), in a 2xx
+    // body, or inside a stream. The agent's availability, not its behaviour.
+    const quoted = quotedReason(error);
+    const limited = /refused it as over a limit|with an error instead of a reply, over a limit/.test(error)
+      || /^Agent returned HTTP 429\b/.test(error)
+      || (/stream ended with an error/.test(error) && isLimitSignal(quoted ? { code: null, message: quoted, status: null } : null));
+    if (limited) {
+      const atDoor = /^Agent returned HTTP 429\b/.test(error);
+      return make({ reason: "agent_rate_limited", label: "Agent's platform over a limit", owner: "your agent",
+        ...(atDoor ? { agentReceived: "no" as const, retry: "safe" as const } : received()),
+        happened: atDoor
+          ? "The agent's platform refused this scenario as over a rate, quota or concurrency limit, before the agent handled it."
+          : "The agent's platform stopped this scenario as over a rate, quota or concurrency limit, so no reply came back.",
+        next: "Check the platform's plan and limits (requests per minute, monthly quota, model credits), then retest. Novera waits and slows down when a platform says it is limited; a limit that does not lift stops the run." });
+    }
+    if (/answered with a web page|answered HTTP \d+ with a web page/.test(error)) {
+      return make({ reason: "agent_blocked_page", label: "A web page answered", owner: "your configuration", agentReceived: "no", retry: "fix_first",
+        happened: "A web page answered instead of the agent's API: a sign-in page, a firewall or a bot check usually answers like this, so the request did not reach the agent.",
+        next: "Check the endpoint address, and allow Novera's requests through whatever is in front of the agent, then test the connection on the agent's page." });
+    }
+    if (/sends the whole reply so far in every event/.test(error)) {
+      return make({ reason: "agent_stream_repeats", label: "Stream read the wrong way", owner: "your configuration", ...received(), retry: "fix_first",
+        happened: "The agent streamed its reply as the whole text so far in every event, and the connection reads each event as the next piece, so the reply could not be put together without repeating text.",
+        next: "Set the connection's stream to \"whole text\" on the agent's page, then retest." });
+    }
+    if (/with an error instead of a reply/.test(error)) {
+      return make({ reason: "agent_platform_error", label: "Agent's platform answered with an error", owner: "your agent", ...received(),
+        happened: "The agent's platform answered with an error instead of a reply.",
+        next: "Fix what the platform names in the agent's own configuration there (a missing input variable, a failed step, a model or key), test the connection, then retest." });
+    }
     const http = /^Agent returned HTTP (\d+)/.exec(error);
     if (http) {
       const code = Number(http[1]);
@@ -173,17 +222,34 @@ export function repairFor(row: NoVerdictRow): Repair | null {
             ? "Look for this request in the agent's logs, and in any gateway or filter in front of it, then retest."
             : "Check the agent's logs for this request, then retest." });
     }
+    if (/stream finished normally and carried no reply text/.test(error)) {
+      return make({ reason: "agent_malformed", label: "Agent answered with nothing", owner: "your agent", ...received(),
+        happened: "The agent's platform finished its answer normally, and the answer carried no text, so there was nothing to grade.",
+        next: "Send the agent this message on its platform and follow the path it takes: on a workflow platform, a branch that ends without an answer step, or an answer step with empty text, ends this way. Then retest." });
+    }
     if (/answered with an empty reply/.test(error)) {
       return make({ reason: "agent_malformed", label: "Agent answered with nothing", owner: "your agent", ...received(),
         happened: "The agent's endpoint answered, and the reply text was empty, so there was nothing to grade.",
         next: "Send the agent this message yourself and see whether it answers; an empty reply usually means the agent, or a filter on its output, withheld the text. Then retest." });
     }
-    if (/stream ended with an error|and none carried text at/.test(error)) {
+    if (/stream ended with an error/.test(error)) {
+      return make({ reason: "agent_platform_error", label: "Agent's stream ended in an error", owner: "your agent", ...received(),
+        happened: quoted
+          ? "The agent answered as a stream of events, and its platform ended the stream with an error before a reply."
+          : "The agent answered as a stream of events, and its platform ended the stream with an error before a reply, without saying why.",
+        next: "Fix what the platform names in the agent's own configuration there, test the connection on the agent's page, then retest." });
+    }
+    // Before runner 1.2.0 a stream that finished with no text was stored with this wording too,
+    // so only the newer sentence (which lists the events) is read as a path to fix.
+    if (/and none carried text at/.test(error) && !/The events were:/.test(error)) {
       return make({ reason: "agent_malformed", label: "Stream carried no reply", owner: "your agent", ...received(),
-        happened: /stream ended with an error/.test(error)
-          ? "The agent answered as a stream of events, and the stream ended in an error before a reply."
-          : "The agent answered as a stream of events, and none of them carried reply text where the connection reads it.",
-        next: "Check what the endpoint streams for this message; the agent's page can test it with one message." });
+        happened: "The agent answered as a stream of events, and none of them carried reply text where the connection reads it. Either the agent said nothing, or its text is in a field the connection does not read.",
+        next: "Test the connection on the agent's page: it lists the events the stream carries. Then retest." });
+    }
+    if (/and none carried text at/.test(error)) {
+      return make({ reason: "agent_response_path", label: "Stream text not where expected", owner: "your configuration", ...received(), retry: "fix_first",
+        happened: "The agent answered as a stream of events, and none of them carried reply text where the connection reads it.",
+        next: "Test the connection on the agent's page: it lists the events the stream carried. Set the stream path to the field that holds the text, then retest." });
     }
     if (/not valid JSON/.test(error)) {
       return make({ reason: "agent_malformed", label: "Reply was not JSON", owner: "your agent", ...received(),

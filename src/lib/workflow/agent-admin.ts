@@ -79,6 +79,7 @@ export async function updateAgentConnection(_prev: FormState, form: FormData): P
     credential: form.get("credential"), removeCredential: form.get("removeCredential"),
     headers: form.get("headers"), streamPath: form.get("streamPath"), conversationIdPath: form.get("conversationIdPath"),
     inlineChannels: form.get("inlineChannels"), preset: form.get("preset"),
+    streamMode: form.get("streamMode"), sendOneAtATime: form.get("sendOneAtATime"), paceSeconds: form.get("paceSeconds"),
   }, storedIds.length > 0, current.url);
   if (!parsed.ok) return { error: parsed.error };
   const edit = parsed.value;

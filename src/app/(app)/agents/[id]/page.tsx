@@ -456,6 +456,9 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                   conversationIdPath: (agent.config as { conversationIdPath?: string }).conversationIdPath ?? "",
                   inlineChannels: (agent.config as { inlineChannels?: boolean }).inlineChannels === true,
                   preset: (agent.config as { preset?: string }).preset ?? "",
+                  streamMode: (agent.config as { streamMode?: string }).streamMode ?? "",
+                  sendOneAtATime: (agent.config as { sendOneAtATime?: boolean }).sendOneAtATime === true,
+                  paceSeconds: typeof (agent.config as { paceMs?: number }).paceMs === "number" ? String((agent.config as { paceMs: number }).paceMs / 1000) : "",
                 }}
               />
             )}

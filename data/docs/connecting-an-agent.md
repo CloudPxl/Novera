@@ -63,6 +63,8 @@ The result says one of these:
 
 Novera reads JSON, server-sent event streams, JSON lines and the AI SDK's text stream. A reply at the reply path that is structured data rather than text (a workflow's decision object, say) is read as its JSON and graded as that. A list's last item is `-1`, as in `messages.-1.content`.
 
+For a Dify app, **Test connection** also asks the app for the input variables its Start node declares (Dify's `/v1/parameters`, on the same host with the same key) and lists them, marking the required ones the request body does not carry. **Add them to the request body** writes them into `inputs` with the app's defaults; give each required one a value, test again and save. Nothing is added on its own: a run sends what is saved.
+
 **Input variables** (under the advanced fields) adds named values to the request body's `inputs`, for an agent that expects them beside the message, such as a Dify app's Start-node variables. **Stream reading**, **Gap between messages** and **Send one scenario at a time** say how a run should treat a platform with its own limits. A key in the address's query string (`?code=`, `?api_key=`, `?token=`) is refused: put it under Authentication, where it is encrypted.
 
 Under every result, **What was sent and what came back** shows the exchange: the method and address (without its query string), the headers (the credential by its header name only), the request body exactly as built, the status and time, the content type, how the answer was read, and where the reply was found. When the reply was not found, it lists the text fields of the answer with the start of each, and a button beside each to use it as the reply path. It also says how this connection carries conversations and metadata. None of it is stored.

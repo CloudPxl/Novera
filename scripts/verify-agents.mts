@@ -60,6 +60,7 @@ const WINDOW_MS = 3_000;
 const WINDOW_MAX = 3;
 const windowHits: number[] = [];
 const concurrent = { now: 0, maxAfterLimit: 0, limited: false };
+const flakySeen = new Set<string>();
 
 const routes: Record<string, (b: Record<string, unknown>, res: ServerResponse) => void | Promise<void>> = {
   "/dify": (b, res) => sse(res, [
@@ -89,6 +90,18 @@ const routes: Record<string, (b: Record<string, unknown>, res: ServerResponse) =
     }
     windowHits.push(now);
     sse(res, [{ event: "message", answer: "Answered inside the window." }, { event: "message_end" }]);
+  },
+  // A step's dependency failing once per message: the workflow finishes failed, no error event follows.
+  "/dify-flaky": (b, res) => {
+    const key = textOf(b);
+    if (key !== "" && !flakySeen.has(key)) {
+      flakySeen.add(key);
+      return sse(res, [
+        { event: "node_finished", data: { node_type: "http-request", title: "Order lookup", status: "failed", error: "Reached maximum retries (0) for URL" } },
+        { event: "workflow_finished", data: { status: "failed", error: "Reached maximum retries (0) for URL" } },
+      ]);
+    }
+    sse(res, [{ event: "message", answer: "Looked it up on the second try." }, { event: "message_end" }]);
   },
   "/dify-missing-var": (_b, res) => sse(res, [{ event: "error", status: 400, code: "invalid_param", message: "customer_tier is required in input form" }]),
   "/login": (_b, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end("<!doctype html><html><head><title>Sign in</title></head><body>Please sign in</body></html>"); },
@@ -164,6 +177,12 @@ try {
       "a flow branch with no answer step: those scenarios are no result, the rest graded, the run completes",
       `${empty.length} without a result (${[...reasons].join(", ")}), ${r.probes} check message(s)`);
     report([...reasons].every((l) => l === "Agent answered with nothing"), "…and each says the agent answered with nothing, owned by the agent");
+  }
+
+  {
+    const r = await run(dify("/dify-flaky"));
+    report(r.summary.status === "completed" && r.saved.length === cases.length && r.saved.every((c) => c.status === "pass"),
+      "a workflow step failing once per message is sent once more and every scenario recovers", `${r.saved.filter((c) => c.status === "pass").length}/${cases.length}, ${r.sends} sends`);
   }
 
   {

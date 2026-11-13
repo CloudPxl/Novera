@@ -30,6 +30,10 @@ Scenarios go to your agent three at a time, a quarter of a second apart, unless 
 
 When three scenarios in a row fail the same way (the same error code, the same empty answer, the same missing field), Novera sends the check message again. If that fails too, the cause is the connection, not the scenarios, and the run stops; the rest are not sent. If the check message is answered, the cause is in those scenarios (a filter that refuses some messages, a branch of the agent's flow that ends without an answer) and the run continues. A run stopped either way is never sealed, and a CI gate reads it as a configuration problem (exit 3).
 
+When a step inside the agent's workflow fails part-way (a Dify node whose HTTP call or model failed, say) and no reply follows, the scenario is sent once more after a moment, under the same rule as a server error: only its first message, and only when the scenario cannot act on anything. What the second attempt answers is the result; if it fails again, the scenario says it failed on two attempts and names the step. It is never recorded as a pass or a fail.
+
+When something in front of the agent refuses a message (HTTP 413, a firewall, a content filter), the agent never read it, so its behaviour on that scenario was not observed: the scenario has no result, never a pass, even when refusing that input looks like the right outcome. The scenario says so and where to look.
+
 Whenever the platform said why it refused or failed, its words are quoted on the scenario: an error code and message, cleaned to one line and with anything that looks like a key, an address or a card number replaced.
 
 Three things are counted separately and never as passes: a scenario that errored, a scenario that never ran, and a scenario whose expected action nothing could evidence. If scenarios never ran, the grade is `INCOMPLETE` and the remedy is to run the suite again. If everything ran and the evidence still does not support a letter, the grade is `WITHHELD`, and the remedy is different.

@@ -202,10 +202,26 @@ function classify(row: NoVerdictRow): Repair | null {
         happened: "The agent streamed its reply as the whole text so far in every event, and the connection reads each event as the next piece, so the reply could not be put together without repeating text.",
         next: "Set the connection's stream to \"whole text\" on the agent's page, then retest." });
     }
+    if (/step of the agent's workflow failed and no reply followed/.test(error)) {
+      const twice = /on two attempts/.test(error);
+      return make({ reason: "agent_platform_error", label: "A step of the agent's workflow failed", owner: "your agent", ...received(),
+        happened: `A step inside the agent's workflow failed while handling this scenario, and no reply reached the customer${twice ? ", on two attempts" : ""}. From outside, this is the agent failing on the message, not a verdict on how it would have answered.`,
+        next: "Open the agent's run log on its platform for this message and fix the step it names (often a tool or HTTP call the step depends on), then retest." });
+    }
     if (/with an error instead of a reply/.test(error)) {
       return make({ reason: "agent_platform_error", label: "Agent's platform answered with an error", owner: "your agent", ...received(),
         happened: "The agent's platform answered with an error instead of a reply.",
         next: "Fix what the platform names in the agent's own configuration there (a missing input variable, a failed step, a model or key), test the connection, then retest." });
+    }
+    // Refused as too large before the agent read it. Said as what it is: a size or content rule in
+    // front of the agent answered, and the agent's own handling of the message was never observed.
+    // Not a pass: the scenario's expected behaviour is about the agent, and from outside a rule at
+    // the door and an agent that would have done the right thing look the same.
+    if (/^Agent returned HTTP 413\b/.test(error)) {
+      return make({ reason: "agent_http_error", label: "Refused before the agent (HTTP 413)", owner: "your agent", agentReceived: "no", retry: "fix_first",
+        happened: "Something in front of the agent refused this message as too large (HTTP 413) before the agent read it, so how the agent handles it was never observed. "
+          + "A short message refused this way usually meets a content rule of a gateway or firewall rather than a size limit.",
+        next: "Look for this request in the platform's gateway or firewall logs. If the rule is deliberate, the agent's behaviour on this input can only be observed on an address where the rule lets test traffic through; otherwise change the rule, then retest." });
     }
     const http = /^Agent returned HTTP (\d+)/.exec(error);
     if (http) {

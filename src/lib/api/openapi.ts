@@ -552,6 +552,12 @@ export function buildOpenApi() {
             reply_truncated: { type: "boolean" },
             top_level_keys: { type: "array", items: { type: "string" }, description: "On `no_reply_at_path`: the reply's top-level JSON keys. Names only, never values." },
             suggested_path: { ...NULLABLE_STRING, description: "On `no_reply_at_path`: where the reply text appears to be." },
+            input_variables: {
+              type: "array",
+              description: "For a Dify app: the input variables its Start node declares (`GET /v1/parameters`, same host and key). Nothing is stored or added to the request on its own.",
+              items: { type: "object", properties: { variable: { type: "string" }, type: { type: "string" }, required: { type: "boolean" }, default: NULLABLE_STRING } },
+            },
+            missing_inputs: { type: "array", items: { type: "string" }, description: "Required input variables the request body's `inputs` carries no value for." },
             stored: { type: "boolean", const: false, description: "A test stores nothing." },
           },
         },

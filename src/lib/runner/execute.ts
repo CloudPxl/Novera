@@ -134,9 +134,12 @@ export const AGENT_RETRY_AFTER_MS = 1_500;
 export function worthOneMoreAttempt(result: Partial<AgentResult> & { ok: boolean }, testCase: Pick<SuiteCase, "effect" | "destructive">): boolean {
   if (result.ok || result.cutByNovera || result.timedOut) return false;
   if (testCase.effect || testCase.destructive) return false;
-  // Only where the agent's own server answered that it failed. An unreachable or rate-limiting
+  // A workflow, or one of its steps, that failed part-way on the platform: the same kind of
+  // failure, reported inside an answer instead of as a status.
+  // Otherwise only where the agent's own server answered that it failed. An unreachable or rate-limiting
   // endpoint (`isTransportFailure`) is not asked again: three of those in a row end the run, and
   // a second request to an endpoint that is refusing them is the opposite of pacing.
+  if (result.failure?.transient && !isTransportFailure(result)) return true;
   return result.statusCode !== undefined && result.statusCode >= 500 && result.statusCode <= 599 && !isTransportFailure(result);
 }
 
@@ -823,8 +826,9 @@ function everyJudgeRateLimited(record: RunCaseRecord): boolean {
  *    broken integration turns into a plausible-looking verdict.
  */
 /**
- * The check message before a run's first scenario. A limit or an unreachable endpoint is given
- * one more chance after a short wait (the first request of a run often meets a cold start); a
+ * The check message before a run's first scenario. A limit, an unreachable endpoint or a failed
+ * workflow step is given one more chance after a short wait (the first request of a run often
+ * meets a cold start); a
  * slice that is ending sends nothing and decides nothing. Returns the halt sentence, or null when
  * the connection answered.
  */
@@ -838,7 +842,8 @@ export async function probeBeforeFirst(agent: AgentAdapter, deadline?: number, w
   };
   let check = await ask();
   if (check.ok || check.cutByNovera) return null;
-  const transient = check.failure ? ["throttled", "unreachable", "timeout"].includes(check.failure.kind) : isTransportFailure(check);
+  // A limit, a cold start, or a workflow step whose dependency failed once.
+  const transient = check.failure ? ["throttled", "unreachable", "timeout"].includes(check.failure.kind) || check.failure.transient === true : isTransportFailure(check);
   const pause = check.failure?.retryAfterMs ?? waitMs;
   if (transient && (deadline === undefined || Date.now() + pause + 5_000 < deadline)) {
     await new Promise((resolve) => setTimeout(resolve, pause));

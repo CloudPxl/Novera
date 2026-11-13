@@ -10,6 +10,7 @@ import {
   credentialProblem, newHttpConfig, nextHttpConfig, normaliseCredential, parseConnectionEdit, parseEndpointFields,
 } from "@/lib/agents/connection.ts";
 import { revealSecret } from "@/lib/store/secrets.ts";
+import { discoverDifyInputs, missingInputs } from "@/lib/agents/dify-parameters.ts";
 import { COUNT_UNAVAILABLE_MESSAGE, rateLimit } from "@/lib/support/rate-limit.ts";
 
 /**
@@ -47,11 +48,16 @@ export async function testConnection(workspaceId: string, target: TestTarget): P
   // the same header, the same public-address check before sending and at connection time.
   const adapter = httpAgent({ ...target.config, timeoutMs: PREFLIGHT_TIMEOUT_MS }, target.credential);
   const conversationId = crypto.randomUUID();
-  const result = await adapter.send({ input: PREFLIGHT_MESSAGE, policy: "", conversationId });
+  // A Dify app's declared inputs, asked of its own host under the same key, alongside the message.
+  const [result, declared] = await Promise.all([
+    adapter.send({ input: PREFLIGHT_MESSAGE, policy: "", conversationId }),
+    discoverDifyInputs(target.config, target.credential),
+  ]);
   return {
     ok: true,
     result: {
       ...classifyPreflight(result, target.config),
+      ...(declared ? { inputForm: { variables: declared, missing: missingInputs(declared, target.config.bodyTemplate) } } : {}),
       // Built by the adapter's own request builder, so it is what was sent. A platform that
       // issues its own conversation ids is sent none on a first message.
       inspector: inspectPreflight(result, target.config, {

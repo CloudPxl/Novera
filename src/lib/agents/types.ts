@@ -99,6 +99,11 @@ export interface AgentFailure {
   retryAfterMs?: number;
   /** The request was refused before the agent acted on it (a 429 or 401 at the door). */
   refusedAtDoor?: boolean;
+  /**
+   * The platform's own processing failed part-way (a workflow or one of its steps): the kind of
+   * failure a second attempt often clears, sent again under `worthOneMoreAttempt`'s rule.
+   */
+  transient?: boolean;
 }
 
 export interface AgentAdapter {

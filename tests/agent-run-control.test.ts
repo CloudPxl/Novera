@@ -85,10 +85,12 @@ test("after a limit the run sends one scenario at a time, every scenario recorde
   let inFlight = 0;
   let maxInFlight = 0;
   let calls = 0;
+  const sentAt: number[] = [];
   const agent: AgentAdapter = {
     probe: async () => ok("hello"),
     send: async () => {
       const n = ++calls;
+      sentAt.push(Date.now());
       inFlight++;
       // Once limited, more than one in flight is what the slow mode prevents.
       if (n > 3) maxInFlight = Math.max(maxInFlight, inFlight);
@@ -99,13 +101,14 @@ test("after a limit the run sends one scenario at a time, every scenario recorde
     },
     acceptsContext: () => true,
   };
-  const before = Date.now();
   const summary = await executeRun({ runId: "r", suite: suiteOf(6), agent, policy: "p", judge, store, concurrency: 3, throttleWaitsMs: [20, 20], slowGapStartMs: 40 });
   assert.equal(summary.status, "completed");
   assert.deepEqual(saved.map((r) => r.caseId).sort(), ["S1", "S2", "S3", "S4", "S5", "S6"], "each scenario once");
   assert.ok(saved.every((r) => r.status === "pass"), "the throttled scenario recovered");
   assert.equal(maxInFlight, 1, "one at a time after the limit");
-  assert.ok(Date.now() - before >= 3 * 40, "the slow gap applied between the later sends");
+  // The sends that started after the limit was reported are spaced by the slow gap (timer slack allowed).
+  const late = sentAt.slice(4);
+  for (let i = 1; i < late.length; i++) assert.ok(late[i] - late[i - 1] >= 35, `gap ${late[i] - late[i - 1]} ms between later sends`);
 });
 
 test("one cause repeating stops the run only when the check message fails the same way", async () => {
@@ -167,6 +170,9 @@ test("the first check gives a limit or a cold start one more chance", async () =
   const agent = agentWith(() => ok(), () => (++n === 1 ? LIMIT_429 : ok("hello")));
   assert.equal(await probeBeforeFirst(agent, undefined, 5), null);
   assert.equal(agent.probes, 2);
+  let m = 0;
+  const flakyStep = agentWith(() => ok(), () => (++m === 1 ? failing({ kind: "platform_error", signature: "stream:node_failed:http-request", transient: true }, "A step of the agent's workflow failed and no reply followed.") : ok("hello")));
+  assert.equal(await probeBeforeFirst(flakyStep, undefined, 5), null, "a workflow step failing once does not stop the run");
   const down = agentWith(() => ok(), () => failing({ kind: "unreachable", signature: "unreachable:econnrefused" }, "Request failed: connect ECONNREFUSED"));
   const said = await probeBeforeFirst(down, undefined, 5);
   assert.match(said ?? "", /ECONNREFUSED/);
@@ -209,4 +215,23 @@ test("one at a time, when the connection says so", async () => {
   };
   await executeRun({ runId: "r", suite: suiteOf(5), agent, policy: "p", judge, store: memoryStore().store, oneAtATime: true });
   assert.equal(max, 1);
+});
+
+test("a workflow step that failed is sent once more, and only where sending twice cannot act twice", async () => {
+  const STEP = failing({ kind: "platform_error", signature: "stream:node_failed:http-request", transient: true }, 'A step of the agent\'s workflow failed and no reply followed. Its platform said: "[http-request] Order lookup: 502".');
+  const flaky = agentWith((_i, n) => (n === 1 ? STEP : ok("recovered")));
+  const recovered = await executeCase({ testCase: caseOf("W1"), agent: flaky, policy: "p", judge, retryAfterMs: 5 });
+  assert.equal(flaky.sent.length, 2);
+  assert.equal(recovered.status, "pass");
+
+  const acts = agentWith(() => STEP);
+  const kept = await executeCase({ testCase: caseOf("W2", { effect: { kind: "refund" } as never }), agent: acts, policy: "p", judge, retryAfterMs: 5 });
+  assert.equal(acts.sent.length, 1, "a scenario that may act is never sent again by Novera alone");
+  assert.equal(kept.status, "error");
+
+  const twice = agentWith(() => STEP);
+  const both = await executeCase({ testCase: caseOf("W3"), agent: twice, policy: "p", judge, retryAfterMs: 5 });
+  assert.equal(twice.sent.length, 2);
+  assert.equal(both.status, "error", "a step failing twice is still no result, never a fail");
+  assert.match(both.error ?? "", /on two attempts/);
 });

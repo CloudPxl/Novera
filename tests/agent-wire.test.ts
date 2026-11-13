@@ -73,8 +73,27 @@ const CASES: Case[] = [
   // The agent said nothing.
   { name: "a chatflow that finished normally with no answer text", config: dify, kind: "empty", reason: "agent_malformed", owner: "your agent",
     response: () => answer(events({ event: "workflow_started" }, { event: "node_finished", data: { status: "succeeded" } }, { event: "workflow_finished", data: { status: "succeeded", outputs: { answer: "" } } }, { event: "message_end" }), 200, SSE) },
-  { name: "a chatflow whose step failed and then finished empty", config: dify, kind: "empty", said: /HTTP Request: connection refused/,
-    response: () => answer(events({ event: "node_finished", data: { title: "HTTP Request", status: "failed", error: "connection refused" } }, { event: "message_end" }), 200, SSE) },
+  { name: "a chatflow whose step failed and then finished with no reply", config: dify, kind: "platform_error", said: /\[http-request\] HTTP Request: connection refused/, reason: "agent_platform_error", owner: "your agent",
+    response: () => answer(events({ event: "node_finished", data: { node_type: "http-request", title: "HTTP Request", status: "failed", error: "connection refused" } }, { event: "message_end" }), 200, SSE) },
+  // Run ee506934: a step fails, the workflow finishes failed, and no error event follows.
+  { name: "a chatflow whose workflow finished failed, with no error event", config: dify, kind: "platform_error", said: /workflow_failed: \[http-request\] Order lookup: Reached maximum retries \(0\) for URL/, reason: "agent_platform_error",
+    response: () => answer(events(
+      { event: "workflow_started", data: {} },
+      { event: "node_finished", data: { node_type: "question-classifier", title: "Classifier", status: "succeeded" } },
+      { event: "node_finished", data: { node_type: "http-request", title: "Order lookup", status: "failed", error: "Reached maximum retries (0) for URL https://orders.example/api" } },
+      { event: "workflow_finished", data: { status: "failed", error: "Reached maximum retries (0) for URL https://orders.example/api", outputs: null } },
+    ), 200, SSE) },
+  { name: "a stream cut off after a step failed", config: dify, kind: "platform_error", said: /\[llm\] LLM: Model quota/,
+    response: () => answer(events({ event: "workflow_started" }, { event: "node_finished", data: { node_type: "llm", title: "LLM", status: "failed", error: "Model quota exceeded? no: Model quota" } }), 200, SSE) },
+  { name: "a step that failed and was handled, with an answer after it, is a reply", config: dify, ok: "Our order system is unavailable; a person will follow up.",
+    response: () => answer(events(
+      { event: "node_finished", data: { node_type: "http-request", title: "Order lookup", status: "exception", error: "timeout" } },
+      { event: "message", answer: "Our order system is unavailable; a person will follow up." },
+      { event: "workflow_finished", data: { status: "partial-succeeded", outputs: { answer: "Our order system is unavailable; a person will follow up." } } },
+      { event: "message_end" },
+    ), 200, SSE) },
+  { name: "HTTP 413 on a short message: refused before the agent, never a pass", config: dify, kind: "refused_input", reason: "agent_http_error", owner: "your agent",
+    response: () => answer("<html><head><title>413 Request Entity Too Large</title></head></html>", 413, "text/html") },
   { name: "an empty JSON reply field", config: plain, kind: "empty", reason: "agent_malformed",
     response: () => answer(JSON.stringify({ reply: "" })) },
   { name: "an empty body", config: plain, kind: "unreadable", reason: "agent_malformed",
@@ -276,4 +295,21 @@ test("property: any status, type and body gives a result, never a throw, an empt
       assert.notEqual(repair?.reason, "unclassified", `unclassified: ${where} → ${result.error}`);
     }
   }
+});
+
+test("a failed workflow step is marked for one more attempt; a limit or a refusal is not", async (t) => {
+  mockGuardedFetch(t, async () => answer(events({ event: "node_finished", data: { node_type: "http-request", title: "Order lookup", status: "failed", error: "502" } }, { event: "workflow_finished", data: { status: "failed", error: "502" } }), 200, SSE));
+  const r = await httpAgent(dify).send({ input: "hi", policy: "" });
+  assert.equal(r.failure?.transient, true);
+  assert.equal(r.failure?.kind, "platform_error");
+  const repair = repairFor(row(r.error ?? ""));
+  assert.match(repair!.happened, /\[http-request\] Order lookup: 502/);
+});
+
+test("HTTP 413 says what it is: a rule in front of the agent, the agent's behaviour unobserved", () => {
+  const repair = repairFor(row("Agent returned HTTP 413."))!;
+  assert.equal(repair.label, "Refused before the agent (HTTP 413)");
+  assert.equal(repair.agentReceived, "no");
+  assert.equal(repair.retry, "fix_first");
+  assert.match(repair.happened, /never observed/);
 });

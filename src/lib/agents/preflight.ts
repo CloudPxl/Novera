@@ -1,3 +1,4 @@
+import type { DifyInput } from "./dify-parameters.ts";
 import type { AgentResult, HttpAgentConfig } from "./types.ts";
 import { discoverShape } from "./discover.ts";
 import { deliveryOf, requestBody } from "./delivery.ts";
@@ -71,6 +72,11 @@ export interface PreflightResult {
   suggestedPath?: string | null;
   /** The exchange itself, for the person configuring it: what was sent and how the answer was read. */
   inspector?: PreflightInspector;
+  /**
+   * A Dify app's declared input variables (`GET /v1/parameters`), and the required ones the
+   * request body's `inputs` does not carry. Only to fill the form; never sent on its own.
+   */
+  inputForm?: { variables: DifyInput[]; missing: string[] };
 }
 
 /**

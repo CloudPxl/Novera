@@ -65,6 +65,12 @@ test("the panel never offers a completion the server refuses: one rule, for ever
     ["check first: the read-back did not answer", { ...base, actsOnTheWorld: true, observationStatus: "unavailable" }],
     ["check first: a timeout on a scenario that acts", { ...base, replied: false, actsOnTheWorld: true, error: "The agent did not answer within 30 s." }],
     ["fix first: no metadata channel", { ...base, replied: false, error: "This scenario delivers its input as conversation metadata, and this agent has no slot for it." }],
+    // Runner 1.2.0's causes take the same road: one rule decides, whatever the cause.
+    ["safe: a workflow step failed", { ...base, replied: false, error: 'A step of the agent\'s workflow failed and no reply followed. Its platform said: "[http-request] Order lookup: 502".' }],
+    ["check first: a workflow step failed on a scenario that acts", { ...base, replied: false, actsOnTheWorld: true, error: 'A step of the agent\'s workflow failed and no reply followed. Its platform said: "[http-request] x".' }],
+    ["fix first: refused before the agent (HTTP 413)", { ...base, replied: false, error: "Agent returned HTTP 413." }],
+    ["safe: refused at the door as over a limit", { ...base, replied: false, error: "Agent returned HTTP 429: the agent's platform refused it as over a limit." }],
+    ["fix first: a web page answered", { ...base, replied: false, error: 'The agent\'s address answered HTTP 200 with a web page titled "Sign in" instead of the agent\'s reply.' }],
   ];
   const seen = new Set<string>();
   for (const [name, row] of rows) {

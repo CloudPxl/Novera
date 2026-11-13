@@ -228,6 +228,29 @@ export function DeliveryChoice({ idPrefix, defaultChecked }: { idPrefix: string;
 }
 
 /**
+ * Writes name/value pairs into the request body's `inputs` object in the surrounding form, as a
+ * person editing the body would. Returns what it did, in a sentence.
+ */
+export function addToInputs(form: HTMLFormElement | null | undefined, pairs: ReadonlyArray<readonly [string, string]>): string {
+  const body = form?.elements.namedItem("bodyTemplate");
+  if (!(body instanceof HTMLTextAreaElement || body instanceof HTMLInputElement)) return "The request body field was not found.";
+  let template: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(body.value || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+    template = parsed as Record<string, unknown>;
+  } catch {
+    return "The request body is not a JSON object yet, so the variables could not be added to it.";
+  }
+  const inputs = template.inputs && typeof template.inputs === "object" && !Array.isArray(template.inputs) ? { ...(template.inputs as Record<string, unknown>) } : {};
+  for (const [name, value] of pairs) inputs[name] = value;
+  template.inputs = inputs;
+  body.value = JSON.stringify(template, null, 2);
+  body.closest("details")?.setAttribute("open", "");
+  return pairs.length ? `Added to the request body's inputs: ${pairs.map(([n]) => n).join(", ")}.` : "Nothing to add.";
+}
+
+/**
  * Input variables for a platform that takes them beside the message (a Dify app's Start node,
  * a workflow's inputs). Written into the request body's `inputs` object, the same field a person
  * could type in the body: nothing here is stored on its own, and nothing is sent until the
@@ -238,8 +261,6 @@ function InputVariables({ idPrefix }: { idPrefix: string }) {
   const [said, setSaid] = useState<string | null>(null);
   function applyToBody() {
     const form = box.current?.closest("form");
-    const body = form?.elements.namedItem("bodyTemplate");
-    if (!(body instanceof HTMLTextAreaElement || body instanceof HTMLInputElement)) return;
     const pairs: Array<[string, string]> = [];
     for (const line of (box.current?.value ?? "").split(/\r?\n/)) {
       if (!line.trim()) continue;
@@ -251,20 +272,7 @@ function InputVariables({ idPrefix }: { idPrefix: string }) {
       }
       pairs.push([name, colon < 0 ? "" : line.slice(colon + 1).trim()]);
     }
-    let template: Record<string, unknown>;
-    try {
-      const parsed = JSON.parse(body.value || "{}");
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
-      template = parsed as Record<string, unknown>;
-    } catch {
-      setSaid("The request body is not a JSON object yet, so the variables could not be added to it.");
-      return;
-    }
-    const inputs = template.inputs && typeof template.inputs === "object" && !Array.isArray(template.inputs) ? { ...(template.inputs as Record<string, unknown>) } : {};
-    for (const [name, value] of pairs) inputs[name] = value;
-    template.inputs = inputs;
-    body.value = JSON.stringify(template, null, 2);
-    setSaid(pairs.length ? `Added to the request body's inputs: ${pairs.map(([n]) => n).join(", ")}.` : "Nothing to add.");
+    setSaid(addToInputs(form, pairs));
   }
   return (
     <Field

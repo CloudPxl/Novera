@@ -278,7 +278,11 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
       const base = { statusCode: response.status, latencyMs: Date.now() - started, raw: sample, wire };
       if (stream.error) {
         const sig = `stream:${signaturePart(stream.upstream)}`;
-        return failed(stream.limit ? { kind: "throttled", signature: sig } : { kind: "platform_error", signature: sig }, stream.error, base);
+        return failed(stream.limit
+          ? { kind: "throttled", signature: sig }
+          // A workflow that failed part-way is often a step's dependency failing once: sent again
+          // under the same rule as an HTTP 5xx (`worthOneMoreAttempt`).
+          : { kind: "platform_error", signature: sig, ...(stream.workflowFailed ? { transient: true } : {}) }, stream.error, base);
       }
       if (stream.cumulative) {
         return failed({ kind: "repeated_stream", signature: "stream:cumulative" },
@@ -286,11 +290,17 @@ export function httpAgent(config: HttpAgentConfig, authValue?: string): AgentAda
           base);
       }
       if (stream.text === null || stream.text.trim() === "") {
+        // A step of the agent's workflow failed and no reply followed, whether or not the stream
+        // went on to say it finished: the failure is the cause, not the reply path.
+        if (stream.failedStep) {
+          const type = /^\[([^\]]+)\]/.exec(stream.failedStep)?.[1] ?? "step";
+          return failed({ kind: "platform_error", signature: `stream:node_failed:${type.toLowerCase()}`, transient: true },
+            `A step of the agent's workflow failed and no reply followed. Its platform said: "${stream.failedStep}".`, base);
+        }
         if (stream.text !== null) {
-          const step = stream.failedStep ? ` A step reported failing first. Its platform said: "${stream.failedStep}".` : "";
-          return failed({ kind: "empty", signature: stream.failedStep ? "stream:empty_after_failed_step" : "stream:empty" },
+          return failed({ kind: "empty", signature: "stream:empty" },
             stream.finished
-              ? `The agent's stream finished normally and carried no reply text: the agent answered with an empty reply.${step}`
+              ? "The agent's stream finished normally and carried no reply text: the agent answered with an empty reply."
               : "The agent answered with an empty reply.",
             { ...base, emptyReply: true });
         }

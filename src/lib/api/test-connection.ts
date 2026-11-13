@@ -70,6 +70,10 @@ export function preflightAnswer(r: PreflightResult) {
     latency_ms: r.latencyMs,
     ...(r.replyPreview !== undefined ? { reply_preview: r.replyPreview, reply_truncated: Boolean(r.replyTruncated) } : {}),
     ...(r.topLevelKeys !== undefined ? { top_level_keys: r.topLevelKeys, suggested_path: r.suggestedPath ?? null } : {}),
+    ...(r.inputForm ? {
+      input_variables: r.inputForm.variables.map((v) => ({ variable: v.variable, type: v.type, required: v.required, default: v.defaultValue })),
+      missing_inputs: r.inputForm.missing,
+    } : {}),
     stored: false,
   };
 }

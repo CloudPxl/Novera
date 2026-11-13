@@ -1,6 +1,6 @@
 import { replyText } from "./template.ts";
 import { WHOLE_BODY_PATH } from "./delivery.ts";
-import { isLimitSignal, platformSaid, readUpstreamError, upstreamQuote, type UpstreamError } from "./upstream-error.ts";
+import { isLimitSignal, platformSaid, readUpstreamError, sanitiseUpstream, upstreamQuote, type UpstreamError } from "./upstream-error.ts";
 
 /**
  * Reading a reply that arrives in pieces: server-sent events, JSON lines, or a text stream.
@@ -57,8 +57,13 @@ export interface AssembledStream {
   cumulative: boolean;
   /** How many events of each kind arrived, for the connection check. */
   eventKinds: Record<string, number>;
-  /** A step the platform reported as failed without ending the stream, quoted when no text came. */
+  /**
+   * A step of the agent's workflow the platform reported as failed (Dify `node_finished` with
+   * status failed or exception: node type, title, error), quoted when no reply followed.
+   */
   failedStep: string | null;
+  /** The workflow itself reported failing (`workflow_finished` failed), or a step failed and no reply followed. */
+  workflowFailed: boolean;
 }
 
 /** Whether a body is an event stream, by its content type or by how it begins. */
@@ -236,7 +241,7 @@ export function assembleEvents(
   let failedStep: string | null = null;
   const result = (over: Partial<AssembledStream>): AssembledStream => ({
     text: null, events, pieces: pieces.length, matchedPath, error: null, upstream: null, limit: false,
-    finished, cumulative: false, eventKinds, failedStep, ...over,
+    finished, cumulative: false, eventKinds, failedStep, workflowFailed: false, ...over,
   });
 
   for (const event of events) {
@@ -248,14 +253,25 @@ export function assembleEvents(
     const failedWorkflow = kind === "workflow_finished" && stated !== null;
     const bareError = !kind.includes(".") && d !== null && Object.keys(d).every((k) => k === "error" || k === "type") && stated !== null;
     if (ERROR_KINDS.has(kind) || failedWorkflow || bareError) {
-      const upstream = stated ?? (d && typeof d.message === "string" ? { code: null, message: d.message, status: null } : null);
+      const said = stated ?? (d && typeof d.message === "string" ? { code: null, message: d.message, status: null } : null);
+      // A failed workflow names the step that failed when one was reported before it.
+      const upstream = failedWorkflow && failedStep ? { code: "workflow_failed", message: failedStep, status: null } : said;
       return result({
         error: `The agent's stream ended with an error before a reply.${platformSaid(upstreamQuote(upstream))}`,
-        upstream, limit: isLimitSignal(upstream),
+        upstream, limit: isLimitSignal(upstream), workflowFailed: failedWorkflow,
       });
     }
-    // A step that failed without ending the stream: remembered, in case nothing is said after it.
-    if (kind === "node_finished" && stated) failedStep = upstreamQuote(stated);
+    // A step that failed without ending the stream (Dify: `failed`, or `exception` when the
+    // workflow handles the error itself): remembered, in case no reply follows it.
+    if (kind === "node_finished" && d) {
+      const node = d.data && typeof d.data === "object" && !Array.isArray(d.data) ? (d.data as Record<string, unknown>) : null;
+      if (node && (node.status === "failed" || node.status === "exception")) {
+        const type = typeof node.node_type === "string" && node.node_type ? `[${node.node_type}] ` : "";
+        const title = typeof node.title === "string" && node.title ? `${node.title}: ` : "";
+        const error = typeof node.error === "string" && node.error.trim() ? node.error : "failed without saying why";
+        failedStep = sanitiseUpstream(`${type}${title}${error}`);
+      }
+    }
 
     if (FINISH_KINDS.has(kind)) {
       finished = true;

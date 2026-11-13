@@ -2,7 +2,8 @@
 
 import { useRef, useState, useTransition } from "react";
 import { testAgentConnection, type PreflightView } from "@/lib/workflow/connection-actions.ts";
-import type { PreflightInspector } from "@/lib/agents/preflight.ts";
+import type { PreflightInspector, PreflightResult } from "@/lib/agents/preflight.ts";
+import { addToInputs } from "./connection-fields.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Badge } from "@/components/ui/primitives.tsx";
 
@@ -94,6 +95,7 @@ function Result({ view, onUsePath }: { view: PreflightView; onUsePath: (path: st
           </Button>
         </p>
       )}
+      {r.inputForm && <DeclaredInputs form={r.inputForm} />}
       {r.inspector && <Inspector inspector={r.inspector} statusCode={r.statusCode} latencyMs={r.latencyMs} onUsePath={onUsePath} />}
     </div>
   );
@@ -162,5 +164,39 @@ function Inspector({ inspector, statusCode, latencyMs, onUsePath }: {
         </ul>
       </div>
     </details>
+  );
+}
+
+/**
+ * The input variables a Dify app declares, with the required ones the request body does not carry.
+ * Adding them only writes into the form's request body; the person still tests and saves it.
+ */
+export function DeclaredInputs({ form }: { form: NonNullable<PreflightResult["inputForm"]> }) {
+  const anchor = useRef<HTMLDivElement>(null);
+  const [said, setSaid] = useState<string | null>(null);
+  const missing = new Set(form.missing);
+  const add = () => setSaid(addToInputs(anchor.current?.closest("form"), form.variables.map((v) => [v.variable, v.defaultValue ?? (v.options?.[0] ?? "")] as const)));
+  return (
+    <div ref={anchor} className="mt-3 rounded-control bg-surface px-3 py-2 text-xs leading-relaxed text-ink-soft ring-1 ring-line">
+      <p className="font-medium text-ink">
+        This Dify app declares {form.variables.length} input variable{form.variables.length === 1 ? "" : "s"}
+        {form.missing.length ? `; ${form.missing.length} required one${form.missing.length === 1 ? " is" : "s are"} missing from the request body` : ""}.
+      </p>
+      <ul className="mt-1 space-y-0.5">
+        {form.variables.map((v) => (
+          <li key={v.variable} className="[overflow-wrap:anywhere]">
+            <code className="rounded bg-sunken px-1 py-0.5 font-mono text-ink">{v.variable}</code>
+            {" "}{v.type}{v.required ? ", required" : ", optional"}
+            {v.defaultValue !== null ? `, default "${v.defaultValue}"` : ""}
+            {missing.has(v.variable) && <span className="font-medium text-fail-text"> — missing</span>}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 flex flex-wrap items-center gap-2">
+        <Button type="button" variant="secondary" size="sm" onClick={add}>Add them to the request body</Button>
+        <span>Defaults are filled in where the app has one. Give every required variable a value before testing again: a run sends what is saved, nothing more.</span>
+      </p>
+      {said && <p role="status" className="mt-1">{said}</p>}
+    </div>
   );
 }

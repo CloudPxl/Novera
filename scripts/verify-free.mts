@@ -19,7 +19,7 @@ import { createClient } from "@supabase/supabase-js";
 const FREE = [
   "verify:db", "verify:tenancy", "verify:identity", "verify:builder", "verify:access", "verify:byok", "verify:throttle", "verify:imports",
   "verify:regressions", "verify:retention", "verify:api", "verify:mcp", "verify:webhooks",
-  "verify:schedules", "verify:leases", "verify:slices",
+  "verify:schedules", "verify:leases", "verify:slices", "verify:agents",
   // A database deployed a minute ago has jobs whose first run is still to come.
   "verify:cron -- --allow-new",
 ];

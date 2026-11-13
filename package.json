@@ -43,6 +43,7 @@
     "insight-worker:build": "esbuild workers/insight-browser/src/main.ts --bundle --platform=node --format=esm --target=node20 --external:playwright --outfile=workers/insight-browser/dist/worker.mjs",
     "insight-worker:secret": "node --no-warnings --conditions=react-server --env-file=.env.local scripts/insight-worker-secret.mts",
     "verify:insight-browser": "npm run insight-worker:build && node --no-warnings --conditions=react-server scripts/verify-insight-browser.mts",
+    "verify:agents": "node --no-warnings --conditions=react-server scripts/verify-agents.mts",
     "verify:slices": "node --conditions=react-server --env-file=.env.local scripts/verify-slices.mts",
     "measure:throughput": "node --conditions=react-server --env-file=.env.local scripts/measure-throughput.mts",
     "verify:webhooks": "node --conditions=react-server --env-file=.env.local scripts/verify-webhooks.mts",

@@ -10,7 +10,7 @@ const TICK_BUDGET_MS = 45_000;
 
 /**
  * The schedule clock's one entry point. pg_cron calls it through pg_net, and only when
- * a schedule is due or a scheduled run is still in progress (0036). It starts and
+ * a schedule is due or any run is still in progress (0036, widened 2026-11-13). It starts and
  * advances runs; it never reads or returns anything a workspace owns — only counts.
  */
 export async function POST(request: Request) {
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Not authorised." }, { status: 401, headers: { "Cache-Control": "no-store" } });
   }
 
-  const report = await runScheduleTick({ client: serviceClient(), deadline: began + TICK_BUDGET_MS });
+  const report = await runScheduleTick({ client: serviceClient(), deadline: began + TICK_BUDGET_MS, origin: new URL(request.url).origin });
   return Response.json({ ...report, ms: Date.now() - began }, { headers: { "Cache-Control": "no-store" } });
 }
 

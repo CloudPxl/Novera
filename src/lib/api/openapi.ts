@@ -667,6 +667,12 @@ export function buildOpenApi() {
             started: { type: "boolean", description: "False when another call was already working on the run, or it was already over." },
             done: { type: "boolean" },
             waiting: { type: "string", const: "grading_capacity", description: "Present when the run waits for a free grading slot on the shared trial keys." },
+            queue: {
+              type: "object",
+              description: "Where the run waits, when it waits: for one of Novera's shared grading slots (`slots`) or behind other runs testing the same agent (`agent`). Position 1 is next. The server continues the run on its own; calling again is safe.",
+              properties: { reason: { type: "string", enum: ["slots", "agent"] }, position: { type: "integer", minimum: 1 } },
+              required: ["reason", "position"],
+            },
             graded: { type: "integer" },
             passed: { type: "integer" },
             failed: { type: "integer" },

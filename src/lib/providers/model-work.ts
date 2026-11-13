@@ -4,6 +4,7 @@ import { createRoutedChat, type RoutedChat, type RoutedAttempt } from "../router
 import { connectionsForWorkspace } from "./workspace-connections.ts";
 import { workspaceEntitlement } from "../auth/entitlement.ts";
 import type { JudgeSource } from "../billing/entitlement.ts";
+import { instanceCooldowns } from "../router/key-pool.ts";
 
 /**
  * The model behind a workspace's own work — diagnosing a failure, drafting scenarios from its
@@ -145,7 +146,7 @@ export async function workspaceChat(args: { client: SupabaseClient; workspaceId:
       if (refusal) return { error: refusal };
     }
     const calls: CallRecord[] = [];
-    return { chat: observedChat(createRoutedChat({ connections, routes }), calls), funding: await fundingOf(args, source), calls };
+    return { chat: observedChat(createRoutedChat({ connections, routes, cooldowns: instanceCooldowns }), calls), funding: await fundingOf(args, source), calls };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "No model is available for this workspace right now." };
   }

@@ -39,7 +39,8 @@ import { menuItemClass } from "@/components/ui/menu-item.ts";
 import { SubmitButton } from "@/components/ui/button.tsx";
 import { ButtonLink } from "@/components/ui/button-link.tsx";
 import { LiveRun } from "./live.tsx";
-import { RunActivity, RunOverview } from "./overview.tsx";
+import { RunActivity, RunOverview, RunTiming } from "./overview.tsx";
+import { summariseTiming, type TimedCase } from "@/lib/workflow/timing.ts";
 import { TabNav } from "@/components/ui/page.tsx";
 import { Scorecard, type Corroboration } from "./scorecard.tsx";
 import { CaseTable, CategoryCard, type CaseRow } from "./case-table.tsx";
@@ -167,7 +168,7 @@ export default async function RunPage({
         await db
           .from("run_cases")
           .select(
-            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by, tool_activity, transcript, raw_expired_at, raw_sha256, judge_attempts, created_at",
+            "id, case_id, category, obligation, severity, status, input, expected, assertions, failed_assertions, response_text, rationale, error, latency_ms, judge_model, judge_agreement, judge_votes, evidence_gap, settled_by, tool_activity, transcript, raw_expired_at, raw_sha256, judge_attempts, created_at, timing:usage->timing",
           )
           .eq("run_id", id)
           .order("case_id")
@@ -442,6 +443,10 @@ export default async function RunPage({
         ? (c.turn_checks as Array<{ checks?: unknown }>).reduce((n, t) => n + (Array.isArray(t?.checks) ? t.checks.length : 0), 0)
         : 0),
   ]));
+  // Where the time went (src/lib/workflow/timing.ts): only once the run has settled, from the rows read above.
+  const timing = settled && rows.length
+    ? summariseTiming(rows as unknown as TimedCase[], { createdAt: run.created_at as string, startedAt: (run.started_at as string | null) ?? null })
+    : null;
   const caseRows: CaseRow[] = rows.map((c) => ({
     id: c.id as string,
     caseId: c.case_id as string,
@@ -835,6 +840,7 @@ export default async function RunPage({
               recorded={caseRows.length}
               planned={plannedCases}
               status={run.status as string}
+              timing={timing}
             />
           )}
           {tab === "overview" && undisclosedReviews > 0 && <ReissueReport runId={run.id} pending={undisclosedReviews} />}
@@ -1059,6 +1065,7 @@ export default async function RunPage({
 
           {tab === "evidence" && (
             <div className="mt-6 space-y-6">
+              {timing && <RunTiming timing={timing} />}
           {readiness && report?.token && (
             <ReadinessPanel explain={explainEntries(CLIENT_EXPLAINS.readiness)} state={readiness.state} label={READINESS_LABEL[readiness.state]} checks={readiness.checks} token={report.token as string} />
           )}

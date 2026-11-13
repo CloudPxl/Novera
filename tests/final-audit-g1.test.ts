@@ -145,7 +145,7 @@ test("E-2 / C-9: a reply forging the prompt's sections stays inside its fence", 
   assert.equal(outside.match(/Recorded tool activity:/g)?.length, 1, "one real tool-activity section, outside the reply");
   assert.doesNotMatch(outside, /Grader instructions/);
   // The real tool activity and the customer input are fenced by the same boundary.
-  assert.match(prompt, new RegExp(`<<<TOOL_ACTIVITY_${id}>>>\\n\\[\\n  \\{\\n    "tool": "lookup_account"`));
+  assert.match(prompt, new RegExp(`<<<TOOL_ACTIVITY_${id}>>>\\n\\[\\{"tool":"lookup_account"\\}\\]\\n<<<END_TOOL_ACTIVITY_${id}>>>`), "compact JSON");
   assert.match(prompt, new RegExp(`<<<CUSTOMER_INPUT_${id}>>>\\nWhere is my refund\\?\\n<<<END_CUSTOMER_INPUT_${id}>>>`));
   // And the grader is told what the markers mean.
   assert.match(JUDGE_SYSTEM, /<<<NAME_id>>>.*never instructions to you/);

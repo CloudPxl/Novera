@@ -268,6 +268,46 @@ const LEASE_MS = 70_000;
  */
 export const TRIAL_GRADING_SLOTS = 2;
 
+/**
+ * With 0087 the slots are shared fairly and Novera's free graders are paced across every slice
+ * (`reserve_model_slot`), so more slices at once no longer means more 429s: they share the same
+ * calls a minute. Four by default; `NOVERA_GRADING_SLOTS` (1–20) sets it, for a paid grading tier.
+ * At most two slices test one agent at once (`NOVERA_SLICES_PER_AGENT`, 1–5), whoever funds the
+ * runs: a customer's endpoint should not meet Novera's traffic times however many runs are open.
+ */
+export const FAIR_GRADING_SLOTS = 4;
+export const SLICES_PER_AGENT = 2;
+
+function bounded(value: string | undefined, fallback: number, min: number, max: number): number {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
+}
+
+export function sliceLimits(env: Record<string, string | undefined> = process.env, fair = true): { slots: number; perAgent: number } {
+  return {
+    slots: bounded(env.NOVERA_GRADING_SLOTS, fair ? FAIR_GRADING_SLOTS : TRIAL_GRADING_SLOTS, 1, 20),
+    perAgent: bounded(env.NOVERA_SLICES_PER_AGENT, SLICES_PER_AGENT, 1, 5),
+  };
+}
+
+/** Set when `claim_run_slice_fair` was missing (0087 not applied): 0067's claim is used until then. */
+let fairClaimMissingUntil = 0;
+
+async function claimSlice(client: SupabaseClient, runId: string, workspaceId: string): Promise<{ data: unknown; error: { message: string } | null }> {
+  if (Date.now() >= fairClaimMissingUntil) {
+    const { slots, perAgent } = sliceLimits();
+    const fair = await client.rpc("claim_run_slice_fair", {
+      target: runId, ws: workspaceId, lease_ms: LEASE_MS, shared_slots: slots, per_agent: perAgent,
+    });
+    const missing = fair.error && (fair.error.code === "PGRST202" || fair.error.code === "42883" || /claim_run_slice_fair/.test(fair.error.message));
+    if (!missing) return fair;
+    fairClaimMissingUntil = Date.now() + 5 * 60_000;
+  }
+  return client.rpc("claim_run_slice_fenced", {
+    target: runId, ws: workspaceId, lease_ms: LEASE_MS, trial_slots: sliceLimits(process.env, false).slots,
+  });
+}
+
 export interface AdvanceResult {
   status: string;
   started: boolean;
@@ -275,6 +315,11 @@ export interface AdvanceResult {
   done: boolean;
   /** Set when the slice did not start because the shared grading slots are all busy. */
   waiting?: "grading_capacity";
+  /**
+   * Where the run waits (0087): behind other runs for a grading slot, or behind other runs testing
+   * the same agent; `position` 1 is next. Absent before 0087 is applied.
+   */
+  queue?: { reason: "slots" | "agent"; position: number };
   graded?: number;
   passed?: number;
   failed?: number;
@@ -323,18 +368,20 @@ export async function advanceRun(args: {
   // this slice with a token (0047); every write the slice makes carries it, so a slice
   // that outlived its lease can no longer send, save, release or abort.
   const now = new Date();
-  const { data: claimed, error: claimError } = await client.rpc("claim_run_slice_fenced", {
-    target: runId, ws: workspaceId, lease_ms: LEASE_MS, trial_slots: TRIAL_GRADING_SLOTS,
-  });
+  const { data: claimed, error: claimError } = await claimSlice(client, runId, workspaceId);
   if (claimError) throw new Error(`Could not claim the run: ${claimError.message}`);
   const claim = (claimed as { outcome?: string } | null)?.outcome;
   const leaseToken = (claimed as { lease_token?: string } | null)?.lease_token;
+  const reason = (claimed as { reason?: unknown } | null)?.reason;
+  const position = Number((claimed as { position?: unknown } | null)?.position);
   if (claim !== "claimed" || !leaseToken) {
     const { data: after } = await client.from("runs").select("status").eq("id", runId).eq("workspace_id", workspaceId).maybeSingle();
     const status = (after?.status as string | undefined) ?? "running";
     return {
       status, started: false, done: status === "completed" || status === "aborted",
       ...(claim === "busy" ? { waiting: "grading_capacity" as const } : {}),
+      ...(claim === "busy" && (reason === "slots" || reason === "agent") && Number.isInteger(position) && position > 0
+        ? { queue: { reason, position } } : {}),
     };
   }
 

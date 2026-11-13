@@ -20,6 +20,14 @@ export interface Connection {
    */
   fallbackApiKey?: string;
   /**
+   * Every key for this connection, the primary first (`<NAME>_API_KEYS`, comma-separated, then
+   * `<NAME>_API_KEY` and `<NAME>_API_KEY_FALLBACK`, duplicates dropped). A key that answers 429 or
+   * 401 cools down on its own and the next one is tried at once, without waiting
+   * (`src/lib/router/key-pool.ts`). Keys add capacity only when each has its own limit: keys of
+   * one organisation share its tokens per minute. Absent means `[apiKey, fallbackApiKey]`.
+   */
+  apiKeys?: string[];
+  /**
    * Whose credential this is. Ours are held to the data ceilings in
    * `src/lib/privacy/data-class.ts`; a customer's own key is their choice of processor.
    * Absent means ours — the stricter reading.
@@ -75,20 +83,35 @@ export function connectionsFromEnv(rawEnv: NodeJS.ProcessEnv = process.env): Map
   }
   // The paid Gemini key (AI Studio, billed): its own connection with its own ceiling
   // (src/lib/privacy/data-class.ts), never confused with the free tier above.
-  if (env.GEMINI_API_KEY) {
-    const fallback = env.GEMINI_API_KEY_FALLBACK;
-    connections.set("gemini", { name: "gemini", provider: googleProvider, apiKey: env.GEMINI_API_KEY, ...(fallback ? { fallbackApiKey: fallback } : {}) });
+  const gemini = keyPool(env, "GEMINI");
+  if (gemini.length) {
+    connections.set("gemini", { name: "gemini", provider: googleProvider, ...pooled(gemini) });
   }
   if (env.ANTHROPIC_API_KEY) {
     connections.set("anthropic", { name: "anthropic", provider: anthropicProvider, apiKey: env.ANTHROPIC_API_KEY });
   }
   for (const [name, baseUrl] of Object.entries(OPENAI_COMPATIBLE_HOSTS)) {
-    const key = env[`${name.toUpperCase()}_API_KEY`];
-    if (key) {
-      const fallback = env[`${name.toUpperCase()}_API_KEY_FALLBACK`];
-      connections.set(name, { name, provider: openAiCompatibleProvider(baseUrl), apiKey: key, ...(fallback ? { fallbackApiKey: fallback } : {}) });
-    }
+    const keys = keyPool(env, name.toUpperCase());
+    if (keys.length) connections.set(name, { name, provider: openAiCompatibleProvider(baseUrl), ...pooled(keys) });
   }
 
   return connections;
+}
+
+/**
+ * A provider's keys from the environment: `<PREFIX>_API_KEYS` (comma-separated), then
+ * `<PREFIX>_API_KEY`, then `<PREFIX>_API_KEY_FALLBACK`, each cleaned like a single key, empty
+ * entries and duplicates dropped, at most eight.
+ */
+export function keyPool(env: Record<string, string | undefined>, prefix: string): string[] {
+  const listed = (env[`${prefix}_API_KEYS`] ?? "").split(",").map((k) => cleanKey(k));
+  const keys: string[] = [];
+  for (const key of [...listed, cleanKey(env[`${prefix}_API_KEY`]), cleanKey(env[`${prefix}_API_KEY_FALLBACK`])]) {
+    if (key && !keys.includes(key) && keys.length < 8) keys.push(key);
+  }
+  return keys;
+}
+
+function pooled(keys: string[]): Pick<Connection, "apiKey" | "fallbackApiKey" | "apiKeys"> {
+  return { apiKey: keys[0], ...(keys[1] ? { fallbackApiKey: keys[1] } : {}), apiKeys: keys };
 }

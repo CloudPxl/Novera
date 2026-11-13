@@ -609,7 +609,7 @@ export async function executeCase(args: {
       status: "fail",
       rationale: describeFailures(checkFailures),
       latencyMs: agentResult.latencyMs,
-      usage: { agent: agentResult.usage ?? null, judge: {} },
+      usage: { agent: agentResult.usage ?? null, judge: {}, timing: { agent_ms: agentTimeOf(agentResult.latencyMs, finalTranscript), grading_ms: 0, grading_wait_ms: 0 } satisfies CaseTiming },
       // No model was asked, so there is nothing to attribute or corroborate. Saying
       // "graded by X" or "uncorroborated" here would both be untrue.
       judgeModel: null,
@@ -647,7 +647,7 @@ export async function executeCase(args: {
       status: "fail",
       rationale: observation.detail,
       latencyMs: agentResult.latencyMs,
-      usage: { agent: agentResult.usage ?? null, judge: {} },
+      usage: { agent: agentResult.usage ?? null, judge: {}, timing: { agent_ms: agentTimeOf(agentResult.latencyMs, finalTranscript), grading_ms: 0, grading_wait_ms: 0 } satisfies CaseTiming },
       judgeModel: null,
       judgeAttempts: [],
       judgeVotes: [],
@@ -683,6 +683,26 @@ export interface ExecutedCase {
 }
 
 /**
+ * Where a case's time went (2026-11-13), stored in its `usage` (never in a report): the agent's
+ * own reply time, summed over a conversation's turns — never the simulated customer's, which is
+ * Novera's model call — and the time Novera's graders took, with the part of it spent waiting
+ * for a grader's rate limit. A case a rule or the read-back settled spent no grading time.
+ */
+export interface CaseTiming {
+  agent_ms: number;
+  grading_ms: number;
+  grading_wait_ms: number;
+}
+
+export function agentTimeOf(latencyMs: number | null, transcript: ConversationTurn[] | null): number {
+  if (transcript) {
+    const turns = transcript.filter((t) => t.role === "agent").map((t) => t.latencyMs ?? 0);
+    if (turns.length) return turns.reduce((a, b) => a + b, 0);
+  }
+  return Math.max(0, latencyMs ?? 0);
+}
+
+/**
  * The model-graded end of a case: consensus over the reply, then the effect rule. One function
  * for a case graded as it ran and for a held case resumed in a later slice (0084), so a resumed
  * case is graded exactly as a fresh one would have been.
@@ -696,6 +716,7 @@ export async function gradeWithModels(args: {
 }): Promise<CaseOutcome> {
   const { testCase, judge, executed, observation, resume } = args;
   const transcript = executed.transcript;
+  const gradingStarted = Date.now();
   const isConversation = transcript !== null;
 
   // Two models must agree. A single judge was measured at 25% verdict drift on
@@ -737,6 +758,11 @@ export async function gradeWithModels(args: {
     usage: {
       agent: executed.agentUsage,
       judge: verdict.usage,
+      timing: {
+        agent_ms: agentTimeOf(executed.latencyMs, transcript),
+        grading_ms: Date.now() - gradingStarted,
+        grading_wait_ms: verdict.attempts.reduce((sum, a) => sum + (a.waitedMs ?? 0), 0),
+      } satisfies CaseTiming,
     },
     judgeModel: verdict.servedBy ? `${verdict.servedBy.connection}/${verdict.servedBy.model}` : null,
     judgeAttempts: verdict.attempts,

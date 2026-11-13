@@ -162,14 +162,14 @@ function ours(name: string, behaviour: (model: string) => Promise<string>): Conn
 test("the pacer hands out one slot per interval per model, and refuses a slot further than the caller can wait", () => {
   const pacer = new Pacer({ slow: 1_000 });
   const a = { connection: "slow", model: "a" };
-  assert.equal(pacer.reserve(a, 5_000, 0), 0);
-  assert.equal(pacer.reserve(a, 5_000, 0), 1_000);
-  assert.equal(pacer.reserve(a, 5_000, 400), 1_600);
-  assert.equal(pacer.reserve(a, 1_000, 400), null, "the next slot is 2.6 s away");
-  assert.equal(pacer.reserve(a, 5_000, 400), 2_600, "a refused reservation took no slot");
-  assert.equal(pacer.reserve({ connection: "slow", model: "b" }, 0, 400), 0, "another model on the connection has its own queue");
-  assert.equal(pacer.reserve({ connection: "fast", model: "x" }, 0, 0), 0, "an unlisted connection is never paced");
-  assert.equal(pacer.reserve({ connection: "fast", model: "x" }, 0, 0), 0);
+  assert.equal(pacer.reserve(a, 5_000, 1, 0), 0);
+  assert.equal(pacer.reserve(a, 5_000, 1, 0), 1_000);
+  assert.equal(pacer.reserve(a, 5_000, 1, 400), 1_600);
+  assert.equal(pacer.reserve(a, 1_000, 1, 400), null, "the next slot is 2.6 s away");
+  assert.equal(pacer.reserve(a, 5_000, 1, 400), 2_600, "a refused reservation took no slot");
+  assert.equal(pacer.reserve({ connection: "slow", model: "b" }, 0, 1, 400), 0, "another model on the connection has its own queue");
+  assert.equal(pacer.reserve({ connection: "fast", model: "x" }, 0, 1, 0), 0, "an unlisted connection is never paced");
+  assert.equal(pacer.reserve({ connection: "fast", model: "x" }, 0, 1, 0), 0);
   assert.equal(PACE_MS.mistral >= 30_000, true, "Mistral's free tier is two requests a minute per model");
   assert.equal(PACE_MS.groq >= 7_000, true, "Groq's free tier is 8,000 tokens a minute, a grading call about 900");
   assert.equal(PACE_MS.gemini, undefined, "the paid key is not paced");

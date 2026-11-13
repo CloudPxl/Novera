@@ -8,7 +8,9 @@ import type { RunCaseRecord } from "../runner/types.ts";
 import { coverage, coverageByObligation, coverageByCategory } from "../evidence/coverage.ts";
 import type { Suite } from "../runner/types.ts";
 import { supabaseRunStore } from "../store/supabase-run-store.ts";
-import { CircuitBreaker, createRoutedChat, Pacer } from "../router/execute.ts";
+import { CircuitBreaker, createRoutedChat, SharedPacer } from "../router/execute.ts";
+import { instanceCooldowns } from "../router/key-pool.ts";
+import { AGENT_LIMIT_ERROR } from "./timing.ts";
 import { connectionsForWorkspace } from "../providers/workspace-connections.ts";
 import { prepareReport, storeReport, type PreparedReport, type ReportArgs } from "./run.ts";
 import { reportEnvironment } from "../agents/environment.ts";
@@ -200,7 +202,7 @@ export async function startRunExecution(args: {
     .from("run_cases").select("case_id, error").eq("run_id", runId);
   const recorded = new Set((existing ?? []).map((c) => c.case_id as string));
   // An earlier slice met a platform limit: this one starts slow rather than meet it again at full pace.
-  const metLimit = (existing ?? []).some((c) => typeof c.error === "string" && /over a limit|^Agent returned HTTP 429\b/.test(c.error));
+  const metLimit = (existing ?? []).some((c) => typeof c.error === "string" && AGENT_LIMIT_ERROR.test(c.error));
 
   // The rubric was declared with the run (its digest is in the manifest). A deploy that changed
   // the grading instructions between two slices would grade the rest of the run under another
@@ -218,8 +220,14 @@ export async function startRunExecution(args: {
   // recorded which of the two funded it, at the moment it was created.
   const { connections, routes } = await connectionsForWorkspace({ client, workspaceId });
   // One breaker for the slice: a vendor that keeps failing is skipped by the next case
-  // instead of being waited on again. The next slice starts with a clean slate.
-  const judge = createRoutedChat({ connections, routes, breaker: new CircuitBreaker(), pacer: new Pacer() });
+  // instead of being waited on again. The next slice starts with a clean slate. The pacing is
+  // shared by every slice (0087), and a key at its limit is skipped by every slice this server
+  // instance runs (`instanceCooldowns`).
+  const judge = createRoutedChat({
+    connections, routes, breaker: new CircuitBreaker(),
+    pacer: new SharedPacer((args) => client.rpc("reserve_model_slot", args)),
+    cooldowns: instanceCooldowns,
+  });
 
   // The runner marks a run completed when its last scenario is recorded. That write is held
   // back here until the report is built (final audit C-3, 2026-10-28): marked first, a report

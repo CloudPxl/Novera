@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { advanceRun, RunRefusal, startRun } from "../workflow/start-run.ts";
+import { dispatchSlice } from "../workflow/dispatch.ts";
 import { announceMissedRuns, deliverDue, notifyRunFinished, notifySchedulePaused } from "../webhooks/deliver.ts";
 import { RESEAL_AFTER_MS, RESEAL_FROM, sealCompletedRun } from "../workflow/execute-run.ts";
 import { nextOccurrence, type ScheduleTiming } from "./cadence.ts";
@@ -54,7 +55,12 @@ export interface TickReport {
   delivered: number;
   /** Completed runs whose missing report this tick sealed. */
   sealed?: number;
+  /** Unscheduled runs no slice held that this tick asked to continue (`dispatch.ts`). */
+  dispatched?: number;
 }
+
+/** How many unattended runs one tick asks to continue. Each ask is a request that answers at once. */
+const MAX_DISPATCHED_PER_TICK = 10;
 
 /** How far back the sweep looks for a completed run with no report, and how many it seals per tick. */
 const RESEAL_LOOKBACK_MS = 3 * 86_400_000;
@@ -113,6 +119,13 @@ export async function runScheduleTick(args: {
   /** When this invocation must hand back by (epoch ms). */
   deadline: number;
   now?: Date;
+  /**
+   * This deployment's origin. With it, the tick also asks each unscheduled run that is in flight
+   * and held by no slice to continue: the backstop for a chain of slices that broke (a function
+   * killed mid-slice) when no page is open (2026-11-13).
+   */
+  origin?: string;
+  dispatch?: (origin: string, runId: string) => Promise<boolean>;
 }): Promise<TickReport> {
   const { client, deadline } = args;
   const now = args.now ?? new Date();
@@ -163,6 +176,21 @@ export async function runScheduleTick(args: {
     });
     if (result?.started) report.advanced += 1;
     if (result?.started && result.done) report.finished += 1;
+  }
+
+  if (args.origin && deadline - Date.now() > 8_000) {
+    const { data: loose } = await client
+      .from("runs").select("id, workspace_id, lease_until")
+      .is("schedule_id", null).in("status", ["queued", "running"])
+      .order("created_at").limit(CANDIDATES);
+    const idle = (loose ?? []).filter((r) => !r.lease_until || Date.parse(r.lease_until as string) < Date.now());
+    const dispatch = args.dispatch ?? dispatchSlice;
+    let dispatched = 0;
+    for (const r of roundRobin(idle, (x) => x.workspace_id as string, MAX_DISPATCHED_PER_TICK)) {
+      if (deadline - Date.now() < 6_000) break;
+      if (await dispatch(args.origin, r.id as string)) dispatched += 1;
+    }
+    if (dispatched) report.dispatched = dispatched;
   }
 
   if (deadline - Date.now() > 10_000) report.sealed = await sealMissedReports({ client, deadline: deadline - 2_000, now });

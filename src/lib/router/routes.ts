@@ -153,11 +153,17 @@ export const DEFAULT_ROUTES: RouteTable = {
     { connection: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free" },
   ],
   // Drafting is latency-sensitive and low-stakes: a human approves every draft.
+  //
+  // 2026-11-13: the paid Gemini key leads. Drafting shares Groq's eight thousand tokens a minute
+  // with the cross-vendor second opinion, and a run's simulated customer drafts on this route
+  // while its scenarios are graded: three runs at once spent Groq's minute in seconds and the
+  // second opinions waited. Gemini's paid tier peaked at 47 of its 1,000 requests a minute in the
+  // same test. Groq stays behind it for when the month's budget is spent.
   draft: [
+    { connection: "gemini", model: "gemini-3.8-flash" },
     { connection: "groq", model: "openai/gpt-oss-20b" },
     { connection: "mistral", model: "ministral-3b-latest" },
     { connection: "groq", model: "openai/gpt-oss-120b" },
-    { connection: "gemini", model: "gemini-3.8-flash" },
   ],
 };
 

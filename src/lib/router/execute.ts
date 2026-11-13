@@ -3,6 +3,7 @@ import { PROVIDER_TIMEOUT_MS, ProviderError, type ChatRequest, type ChatResponse
 import type { Connection } from "../providers/registry.ts";
 import type { Candidate, RouteTable, Task } from "./routes.ts";
 import { allows, ceilingFor, classify, describeClass, type DataClass } from "../privacy/data-class.ts";
+import { KeyCooldowns, keysOf } from "./key-pool.ts";
 
 /**
  * Runs a chat request down a route, falling back on failure.
@@ -42,6 +43,12 @@ export interface RoutedAttempt {
   retryAfterMs?: number;
   /** The provider was sent the request with detectable personal data replaced. */
   redacted?: true;
+  /**
+   * How long this attempt waited before it was sent: for its model's next paced slot, or a short
+   * Retry-After waited out. Present only when it waited; the grading time a case reports is
+   * Novera's, and this is the part of it spent waiting for capacity (2026-11-13).
+   */
+  waitedMs?: number;
   /** Not sent at all: the request's data class exceeds what this provider may receive. */
   refused?: true;
 }
@@ -173,7 +180,15 @@ export const PACE_WAIT_MAX_MS = 20_000;
  * caller can wait is not reserved, and the router moves to the next candidate instead of sending
  * a request that would be refused.
  */
-export class Pacer {
+/**
+ * Reserves a model's next call slot. `capacity` is how many keys with their own limits the
+ * connection holds: each adds a slot per interval.
+ */
+export interface SlotReserver {
+  reserve(candidate: Candidate, maxWait: number, capacity?: number): number | null | Promise<number | null>;
+}
+
+export class Pacer implements SlotReserver {
   private next = new Map<string, number>();
   private readonly intervals: Readonly<Record<string, number>>;
 
@@ -182,14 +197,61 @@ export class Pacer {
   }
 
   /** Milliseconds to wait before calling, or null when the slot is more than `maxWait` away. */
-  reserve(candidate: Candidate, maxWait: number, now = Date.now()): number | null {
-    const gap = this.intervals[candidate.connection];
-    if (!gap) return 0;
+  reserve(candidate: Candidate, maxWait: number, capacity = 1, now = Date.now()): number | null {
+    const interval = this.intervals[candidate.connection];
+    if (!interval) return 0;
+    const gap = Math.ceil(interval / Math.max(1, capacity));
     const key = `${candidate.connection}/${candidate.model}`;
     const slot = Math.max(now, this.next.get(key) ?? 0);
     if (slot - now > maxWait) return null;
     this.next.set(key, slot + gap);
     return slot - now;
+  }
+}
+
+/**
+ * The same pacing, shared by every slice on every server instance (0087, 2026-11-13). A pacer per
+ * slice let two runs grading at once each send Groq its eight calls a minute: sixteen against a
+ * limit of eight, so both met 429s, their breakers opened, and the second opinions that were
+ * left came late or not at all. The next slot of each model is one row in Postgres, reserved in
+ * one statement. If that function is not there (0087 not applied) or cannot be reached, this
+ * slice paces on its own, as before, and asks the database again five minutes later.
+ */
+export type SlotRpc = (args: { slot_key: string; interval_ms: number; max_wait_ms: number }) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+
+export class SharedPacer implements SlotReserver {
+  private static unavailableUntil = 0;
+  private readonly rpc: SlotRpc;
+  private readonly local: Pacer;
+  private readonly intervals: Readonly<Record<string, number>>;
+
+  constructor(rpc: SlotRpc, intervals: Readonly<Record<string, number>> = paceIntervals()) {
+    this.rpc = rpc;
+    this.intervals = intervals;
+    this.local = new Pacer(intervals);
+  }
+
+  async reserve(candidate: Candidate, maxWait: number, capacity = 1): Promise<number | null> {
+    const interval = this.intervals[candidate.connection];
+    if (!interval) return 0;
+    if (Date.now() < SharedPacer.unavailableUntil) return this.local.reserve(candidate, maxWait, capacity);
+    try {
+      const { data, error } = await this.rpc({
+        slot_key: `${candidate.connection}/${candidate.model}`,
+        interval_ms: Math.ceil(interval / Math.max(1, capacity)),
+        max_wait_ms: Math.max(0, Math.floor(maxWait)),
+      });
+      if (error || typeof data !== "number") throw new Error(error?.message ?? "no slot returned");
+      return data < 0 ? null : data;
+    } catch {
+      SharedPacer.unavailableUntil = Date.now() + 5 * 60_000;
+      return this.local.reserve(candidate, maxWait, capacity);
+    }
+  }
+
+  /** For tests: forget that the database's function was missing. */
+  static resetForTests(): void {
+    SharedPacer.unavailableUntil = 0;
   }
 }
 
@@ -210,8 +272,10 @@ export interface RouterOptions {
   onFallback?: (attempt: RoutedAttempt) => void;
   /** Shared by every request of one slice, so a failing vendor is asked once, not per case. */
   breaker?: CircuitBreaker;
-  /** Shared by every request of one slice, so Novera's free keys are called at their rate. */
-  pacer?: Pacer;
+  /** Shared by every request of one slice (or, `SharedPacer`, every slice), so Novera's free keys are called at their rate. */
+  pacer?: SlotReserver;
+  /** Which keys are at their limit. One per server instance unless a test gives its own. */
+  cooldowns?: KeyCooldowns;
 }
 
 export interface RouteRequestOptions {
@@ -275,6 +339,9 @@ export type RoutedChat = (
 
 export function createRoutedChat(options: RouterOptions): RoutedChat {
   const { connections, routes, onFallback, breaker, pacer } = options;
+  // Production passes `instanceCooldowns`, shared by every slice a server instance runs; a router
+  // given none keeps its own.
+  const cooldowns = options.cooldowns ?? new KeyCooldowns();
 
   return async function routedChat(task, request, options) {
     const attempts: RoutedAttempt[] = [];
@@ -393,9 +460,32 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
         timeoutMs = Math.min(timeoutMs, left);
       }
 
+      // Every key of this connection is at its limit for this model: not asked, and the next
+      // candidate is tried at once. Not recorded with the breaker, which closes a whole vendor:
+      // the same keys may still answer for another model.
+      const keys = keysOf(connection);
+      const ready = cooldowns.ready(keys, candidate.model);
+      if (ready.length === 0) {
+        const left = cooldowns.soonest(keys, candidate.model);
+        const attempt: RoutedAttempt = {
+          connection: candidate.connection,
+          model: candidate.model,
+          ok: false,
+          error: `not asked: every ${candidate.connection} key was rate-limited for this model, the first free again in ${Math.ceil(left / 1000)} s`,
+          ms: 0,
+          reason: "rate_limited",
+          retryAfterMs: left,
+        };
+        attempts.push(attempt);
+        onFallback?.(attempt);
+        continue;
+      }
+
+      let waited = 0;
       if (ours && pacer) {
         const room = options?.deadline === undefined ? PACE_WAIT_MAX_MS : options.deadline - Date.now() - MIN_CALL_MS;
-        const wait = pacer.reserve(candidate, Math.min(PACE_WAIT_MAX_MS, room));
+        const paceStart = Date.now();
+        const wait = await pacer.reserve(candidate, Math.min(PACE_WAIT_MAX_MS, room), ready.length);
         if (wait === null) {
           const attempt: RoutedAttempt = {
             connection: candidate.connection,
@@ -411,54 +501,70 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
           onFallback?.(attempt);
           continue;
         }
-        if (wait > 0) {
-          await new Promise((r) => setTimeout(r, wait));
-          if (options?.deadline !== undefined) timeoutMs = Math.min(timeoutMs, options.deadline - Date.now());
-        }
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+        waited = Date.now() - paceStart;
+        if (options?.deadline !== undefined) timeoutMs = Math.min(timeoutMs, options.deadline - Date.now());
       }
+      const waitedMark = () => {
+        const mark = waited > 0 ? { waitedMs: waited } : {};
+        waited = 0;
+        return mark;
+      };
 
       let started = Date.now();
       try {
-        let response: ChatResponse;
+        let response: ChatResponse | undefined;
+        let lastKey = ready[0];
         try {
-          try {
-            response = await connection.provider.chat({ ...outgoing, model: candidate.model, timeoutMs }, connection.apiKey);
-          } catch (primary) {
-            // A second key for the same provider, tried once on a rate limit or a refused key.
-            const status = primary instanceof ProviderError ? primary.status : undefined;
-            if (!connection.fallbackApiKey || (status !== 429 && status !== 401)) throw primary;
-            const switched: RoutedAttempt = {
-              connection: candidate.connection, model: candidate.model, ok: false, ms: Date.now() - started,
-              error: `${(primary as Error).message} (tried again on the connection's fallback key)`,
-              reason: reasonFor(primary), ...marks,
-            };
-            attempts.push(switched);
-            onFallback?.(switched);
-            started = Date.now();
-            response = await connection.provider.chat({ ...outgoing, model: candidate.model, timeoutMs }, connection.fallbackApiKey);
+          // The connection's keys in order, skipping those at their limit: a 429 or a refused key
+          // moves to the next one at once, never after a wait (2026-11-13). The last key's
+          // failure is the attempt's.
+          for (let i = 0; i < ready.length; i++) {
+            lastKey = ready[i];
+            try {
+              response = await connection.provider.chat({ ...outgoing, model: candidate.model, timeoutMs }, ready[i]);
+              cooldowns.answered(ready[i], candidate.model);
+              break;
+            } catch (thrown) {
+              const status = thrown instanceof ProviderError ? thrown.status : undefined;
+              if (status === 429) cooldowns.limited(ready[i], candidate.model, (thrown as ProviderError).retryAfterMs);
+              else if (status === 401 || status === 403) cooldowns.refused(ready[i]);
+              if ((status !== 429 && status !== 401 && status !== 403) || i === ready.length - 1) throw thrown;
+              const switched: RoutedAttempt = {
+                connection: candidate.connection, model: candidate.model, ok: false, ms: Date.now() - started,
+                error: `${(thrown as Error).message} (tried again at once on the connection's next key)`,
+                reason: reasonFor(thrown), ...marks, ...waitedMark(),
+              };
+              attempts.push(switched);
+              onFallback?.(switched);
+              started = Date.now();
+            }
           }
         } catch (first) {
-          // A short rate limit is worth waiting for once, if the case's deadline leaves room for
-          // the wait and the call: up to 8 s when settling a tie, 3 s otherwise. Anything else
-          // fails over to the next candidate as usual.
+          // A short rate limit on the last key is worth waiting for once, if the case's deadline
+          // leaves room for the wait and the call: up to 8 s when settling a tie, 3 s otherwise.
+          // Anything else fails over to the next candidate as usual.
           const wait = first instanceof ProviderError && first.status === 429 ? first.retryAfterMs : undefined;
           const room = options?.deadline === undefined ? Infinity : options.deadline - Date.now() - (wait ?? 0) - MIN_CALL_MS;
           const maxWait = options?.settling ? SETTLING_WAIT_MAX_MS : RATE_LIMIT_WAIT_MAX_MS;
           if (wait === undefined || wait > maxWait || room < MIN_CALL_MS) throw first;
           const limited: RoutedAttempt = {
             connection: candidate.connection, model: candidate.model, ok: false, ms: Date.now() - started,
-            error: (first as Error).message, reason: "rate_limited", retryAfterMs: wait, ...marks,
+            error: (first as Error).message, reason: "rate_limited", retryAfterMs: wait, ...marks, ...waitedMark(),
           };
           attempts.push(limited);
           onFallback?.(limited);
           await new Promise((r) => setTimeout(r, wait));
+          waited = wait;
           started = Date.now();
           response = await connection.provider.chat(
             { ...outgoing, model: candidate.model, timeoutMs: Math.min(timeoutMs, room) },
-            connection.fallbackApiKey ?? connection.apiKey,
+            lastKey,
           );
+          cooldowns.answered(lastKey, candidate.model);
         }
-        attempts.push({ connection: candidate.connection, model: candidate.model, ok: true, ms: Date.now() - started, ...marks });
+        if (!response) throw new Error("no key answered");
+        attempts.push({ connection: candidate.connection, model: candidate.model, ok: true, ms: Date.now() - started, ...marks, ...waitedMark() });
         breaker?.record(candidate.connection, { ok: true });
         if (ours) await recordSpend({ connection: candidate.connection, model: candidate.model, purpose: task, usage: response.usage });
         return { ...response, servedBy: candidate, attempts };
@@ -473,6 +579,7 @@ export function createRoutedChat(options: RouterOptions): RoutedChat {
           reason: reasonFor(error),
           ...(retryAfter !== undefined ? { retryAfterMs: retryAfter } : {}),
           ...marks,
+          ...waitedMark(),
         };
         attempts.push(attempt);
         breaker?.record(candidate.connection, attempt);

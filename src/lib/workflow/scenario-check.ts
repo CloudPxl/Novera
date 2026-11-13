@@ -15,6 +15,7 @@ import { resolveSuiteRef } from "../ci/server.ts";
 import { redact } from "../redact/pii.ts";
 import { declaredLocalisation } from "./localised-run.ts";
 import { CHECK_LIMIT, LIMIT_UNAVAILABLE, limitRefusal, readSlot, type SlotDecision } from "../checks/single.ts";
+import { instanceCooldowns } from "../router/key-pool.ts";
 
 /**
  * A single-scenario check: one scenario sent to one agent and graded through `executeCase`, the
@@ -137,7 +138,7 @@ export const DEFAULT_DEPS: CheckDeps = {
     const adapter = await buildAgentAdapter({ client, workspaceId, agentId, config: agent.config as AgentConfig });
     const { connections, routes } = await connectionsForWorkspace({ client, workspaceId });
     return executeCase({
-      testCase, agent: adapter, policy, judge: createRoutedChat({ connections, routes }),
+      testCase, agent: adapter, policy, judge: createRoutedChat({ connections, routes, cooldowns: instanceCooldowns }),
       verifier: await buildVerifier({ client, workspaceId, agentId, verification: agent.verification }),
       agentIsProduction: agent.is_production !== false,
       hardStop,

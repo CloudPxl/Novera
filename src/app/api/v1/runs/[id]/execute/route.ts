@@ -1,6 +1,8 @@
 import { authenticateApiKey } from "@/lib/api/auth.ts";
 import { apiJson } from "@/lib/api/respond.ts";
 import { serviceClient } from "@/lib/supabase/service.ts";
+import { after } from "next/server";
+import { chainAfterSlice } from "@/lib/workflow/dispatch.ts";
 import { advanceRun } from "@/lib/workflow/start-run.ts";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +22,12 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   if (!UUID.test(id)) return apiJson({ error: "No such run in this workspace." }, 404);
 
-  const result = await advanceRun({ client: serviceClient(), workspaceId: auth.caller.workspaceId, runId: id });
+  const client = serviceClient();
+  const result = await advanceRun({ client, workspaceId: auth.caller.workspaceId, runId: id });
   if (!result) return apiJson({ error: "No such run in this workspace." }, 404);
+  // The server asks for the next slice itself too; calling again stays safe (the lease refuses).
+  const origin = new URL(request.url).origin;
+  after(() => chainAfterSlice({ client, origin, runId: id, result }).catch(() => []));
   if (result.error) return apiJson({ ...result, error: "The run stopped with an error. GET the run for details." }, 500);
   return apiJson(result);
 }

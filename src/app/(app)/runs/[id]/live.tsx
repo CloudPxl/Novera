@@ -14,6 +14,7 @@ import { stopRun } from "@/lib/workflow/stop-run.ts";
 import { EMPTY_ABORT_IS_FREE } from "@/lib/billing/allowance.ts";
 import type { FormState } from "@/lib/workflow/actions.ts";
 import { heldSentence, stallState, stalledSentence, type RunProgress } from "@/lib/workflow/stalled.ts";
+import { bottleneck, recentCases, seconds, summariseTiming, type TimedCase } from "@/lib/workflow/timing.ts";
 
 type Status = "queued" | "running" | "completed" | "aborted";
 
@@ -27,6 +28,8 @@ interface CaseRow {
   error: string | null;
   judge_model: string | null;
   judge_agreement: string | null;
+  latency_ms?: number | null;
+  timing?: TimedCase["timing"];
 }
 
 /**
@@ -74,6 +77,8 @@ export function LiveRun({
   const [failure, setFailure] = useState(initialError);
   // Set when the server said every shared grading slot is busy; cleared once a slice starts.
   const [waiting, setWaiting] = useState(false);
+  // Where the run waits, when the server said (0087): for a grading slot, or behind runs on the same agent.
+  const [queue, setQueue] = useState<{ reason: "slots" | "agent"; position: number } | null>(null);
   const [stopState, stop, stopping] = useActionState<FormState, FormData>(stopRun, {});
   const [progress, setProgress] = useState<RunProgress>(initialProgress);
   const [now, setNow] = useState(renderedAt);
@@ -92,7 +97,7 @@ export function LiveRun({
   const poll = useCallback(async () => {
     const db = browserClient();
     const [{ data: rows }, { data: run }] = await Promise.all([
-      db.from("run_cases").select("case_id, created_at, obligation, severity, status, rationale, error, judge_model, judge_agreement")
+      db.from("run_cases").select("case_id, created_at, obligation, severity, status, rationale, error, judge_model, judge_agreement, latency_ms, timing:usage->timing")
         .eq("run_id", runId).order("case_id"),
       db.from("runs").select("status, error, created_at, started_at, lease_until").eq("id", runId).maybeSingle(),
     ]);
@@ -151,6 +156,7 @@ export function LiveRun({
         }
         if (!cancelled.current) {
           setWaiting(body.waiting === "grading_capacity");
+          setQueue(body.waiting === "grading_capacity" && body.queue && typeof body.queue.position === "number" ? body.queue : null);
           if (body.started) setRegrading(typeof body.regrading === "number" ? body.regrading : 0);
           if (body.started) setFailure(null);
         }
@@ -218,6 +224,9 @@ export function LiveRun({
   const stall = stallState(progress, now);
   const showStalled = running && !waiting && attempted && inFlight === 0 && stall.kind === "stalled";
   const showHeld = running && !waiting && inFlight === 0 && stall.kind === "held";
+  // Whose side the time is on: the newest scenarios for what is slow now, every scenario for the totals.
+  const whole = summariseTiming(cases, { createdAt: progress.createdAt, startedAt: progress.startedAt });
+  const holdup = bottleneck(summariseTiming(recentCases(cases), {}), { queue, regrading });
 
   return (
     <>
@@ -264,13 +273,14 @@ export function LiveRun({
 
         {running && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <p role="status" className="text-sm text-ink-soft">
-              {waiting
-                ? "Waiting for a grading slot: other trial runs are using Novera's shared graders. It continues on its own."
-                : regrading > 0
-                  ? `${regrading} answered scenario${regrading === 1 ? " is" : "s are"} waiting for a second grader: Novera's graders were busy, so the reply is kept and graded again shortly. Your agent is not asked again.`
-                  : ""}
-            </p>
+            <div className="min-w-0 flex-1 basis-64">
+              <p role="status" className="text-sm text-ink">
+                {waiting && !queue
+                  ? "Waiting for a grading slot: other runs are using Novera's shared AI graders. It continues on its own."
+                  : holdup.sentence}
+              </p>
+              <TimingLine summary={whole} />
+            </div>
             <form action={stop}>
               <input type="hidden" name="runId" value={runId} />
               <button
@@ -363,5 +373,16 @@ export function LiveRun({
         )}
       </section>
     </>
+  );
+}
+
+/** Queue wait, the agent's reply time and Novera's grading time, from the stored rows. */
+export function TimingLine({ summary }: { summary: ReturnType<typeof summariseTiming> }) {
+  if (summary.queuedMs === null && summary.agentCases === 0 && summary.gradedCases === 0) return null;
+  return (
+    <p className="mt-1 text-xs text-ink-faint tabular-nums">
+      Queue wait {seconds(summary.queuedMs)} · Your agent {seconds(summary.agentAvgMs)} a reply · Novera&apos;s AI grading {seconds(summary.gradingAvgMs)} a scenario
+      {summary.gradingWaitMs > 0 && <> · {seconds(summary.gradingWaitMs)} of grading spent waiting for rate limits</>}
+    </p>
   );
 }

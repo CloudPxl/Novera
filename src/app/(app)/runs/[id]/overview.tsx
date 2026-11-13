@@ -4,6 +4,7 @@ import { Panel, Rows } from "@/components/ui/page.tsx";
 import { ExplainTrigger } from "@/components/ui/explain-trigger.tsx";
 import type { Readiness } from "@/lib/report/readiness.ts";
 import { nothingToLookAt } from "./triage.ts";
+import { seconds, type TimingSummary } from "@/lib/workflow/timing.ts";
 
 const STATUS = { pass: { tone: "pass", word: "passed" }, fail: { tone: "fail", word: "failed" }, error: { tone: "error", word: "no result" } } as const;
 
@@ -12,7 +13,7 @@ const STATUS = { pass: { tone: "pass", word: "passed" }, fail: { tone: "fail", w
  * first, five shown), and what changed against its baseline. Each line opens the place where it
  * is investigated; the evidence itself is one tab away, never here.
  */
-export function RunOverview({ runId, readiness, findings, comparison, gradersMoved, canCompare, undecided, recorded, planned, status }: {
+export function RunOverview({ runId, readiness, findings, comparison, gradersMoved, canCompare, undecided, recorded, planned, status, timing }: {
   runId: string;
   readiness: { label: string; state: Readiness; gap: string | null } | null;
   findings: Array<{ caseId: string; status: "pass" | "fail" | "error"; severity: string; title: string; category: string }>;
@@ -26,6 +27,8 @@ export function RunOverview({ runId, readiness, findings, comparison, gradersMov
   /** Scenarios the suite declared, and the run's status: a stopped run's unrun scenarios are said (final audit D-12). */
   planned?: number;
   status?: string;
+  /** Where the run's time went, from its stored rows. */
+  timing?: TimingSummary | null;
 }) {
   const ready = readiness?.state === "READY_TO_SHARE";
   return (
@@ -104,8 +107,42 @@ export function RunOverview({ runId, readiness, findings, comparison, gradersMov
             )}
           </div>
         </section>
+
+        {timing && <RunTiming timing={timing} />}
       </div>
     </div>
+  );
+}
+
+/**
+ * Where a run's time went: waiting for a slot, the agent answering, Novera's AI graders grading.
+ * Every figure is read from stored rows (`src/lib/workflow/timing.ts`); a scenario recorded before
+ * 2026-11-13 has its agent time and no grading time.
+ */
+export function RunTiming({ timing }: { timing: TimingSummary }) {
+  if (timing.queuedMs === null && timing.agentCases === 0 && timing.gradedCases === 0) return null;
+  const share = timing.gradingTotalMs > 0 ? Math.round((timing.gradingWaitMs / timing.gradingTotalMs) * 100) : 0;
+  return (
+    <section aria-labelledby="ov-time" className="break-inside-avoid">
+      <h2 id="ov-time" className="type-h2">Where the time went</h2>
+      <dl className="mt-3 grid grid-cols-1 gap-px overflow-hidden rounded-shell border border-line bg-line text-sm sm:grid-cols-3">
+        <div className="bg-surface px-4 py-3">
+          <dt className="text-xs text-ink-faint">Queue wait</dt>
+          <dd className="mt-1 font-semibold tnum">{seconds(timing.queuedMs)}</dd>
+          <dd className="text-xs text-ink-soft">before the first scenario</dd>
+        </div>
+        <div className="bg-surface px-4 py-3">
+          <dt className="text-xs text-ink-faint">Your agent</dt>
+          <dd className="mt-1 font-semibold tnum">{seconds(timing.agentAvgMs)} a reply</dd>
+          <dd className="text-xs text-ink-soft tnum">{seconds(timing.agentTotalMs)} over {timing.agentCases} scenarios{timing.agentLimited ? `, ${timing.agentLimited} over its platform's limit` : ""}</dd>
+        </div>
+        <div className="bg-surface px-4 py-3">
+          <dt className="text-xs text-ink-faint">Novera&apos;s AI grading</dt>
+          <dd className="mt-1 font-semibold tnum">{seconds(timing.gradingAvgMs)} a scenario</dd>
+          <dd className="text-xs text-ink-soft tnum">{timing.gradedCases ? `${seconds(timing.gradingTotalMs)} over ${timing.gradedCases} scenarios${share ? `, ${share}% waiting for rate limits` : ""}` : "no scenario needed a model"}</dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 

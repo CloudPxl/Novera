@@ -1,7 +1,8 @@
 /**
  * Installs, inspects or removes the schedule clock: a pg_cron job that calls
  * /api/cron/tick through pg_net once a minute — but only when a schedule is due or a
- * scheduled run is still in progress, so an idle database makes no request at all.
+ * run is still in progress (scheduled or not, since 2026-11-13: the tick also asks an unattended
+ * run to continue), so an idle database makes no request at all.
  *
  *   npm run schedules:clock -- install [--url https://www.nover.space/api/cron/tick]
  *   npm run schedules:clock -- install --url http://host.docker.internal:3100/api/cron/tick   (a local stack)
@@ -77,7 +78,7 @@ try {
         select 1 from public.run_schedules
         where next_run_at <= now() and paused_at is null and cancelled_at is null
       ) or exists (
-        select 1 from public.runs where schedule_id is not null and status in ('queued', 'running')
+        select 1 from public.runs where status in ('queued', 'running')
       ) or exists (
         select 1 from public.webhook_deliveries where status = 'pending' and next_attempt_at <= now()
       ) or exists (

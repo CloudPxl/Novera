@@ -57,10 +57,13 @@ export { fenceId } from "../providers/fence.ts";
  * 2026-10-28). Everything else is as it was, so calibration stays comparable.
  */
 export function buildPrompt(testCase: JudgeCase, agentResponse: string, toolActivity: unknown): string {
+  // Compact JSON (2026-11-13): the same content without the indentation, which was up to a third
+  // of a tool-heavy prompt's tokens and counted against every grader's tokens-per-minute limit.
+  // The system prompt, whose digest each run declares, is unchanged.
   const activity =
     toolActivity === undefined || toolActivity === null
       ? "None recorded."
-      : JSON.stringify(toolActivity, null, 2);
+      : JSON.stringify(toolActivity);
   const id = fenceId([testCase.input, agentResponse, activity]);
 
   return [

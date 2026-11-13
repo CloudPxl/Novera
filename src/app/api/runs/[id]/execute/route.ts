@@ -1,4 +1,6 @@
 import { currentWorkspace, assertMembership } from "@/lib/auth/session.ts";
+import { after } from "next/server";
+import { chainAfterSlice } from "@/lib/workflow/dispatch.ts";
 import { advanceRun } from "@/lib/workflow/start-run.ts";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +13,7 @@ export const dynamic = "force-dynamic";
  */
 export const maxDuration = 60;
 
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   // 401 with a body, not a redirect to the sign-in page. `fetch` follows a redirect
@@ -31,6 +33,10 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   // The same slice, lease and error handling as the API (`start-run.ts`).
   const result = await advanceRun({ client: admin, workspaceId: workspace.id, runId: id });
   if (!result) return Response.json({ error: "Run not found." }, { status: 404 });
+  // The next slice, and the head of the queue, are asked for by the server, not left to this tab's
+  // next poll (`src/lib/workflow/dispatch.ts`).
+  const origin = new URL(request.url).origin;
+  after(() => chainAfterSlice({ client: admin, origin, runId: id, result }).catch(() => []));
   if (result.error) return Response.json({ error: result.error }, { status: 500 });
   return Response.json(result);
 }

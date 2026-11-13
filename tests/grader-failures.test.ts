@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { KeyCooldowns } from "../src/lib/router/key-pool.ts";
 import assert from "node:assert/strict";
 import {
   CircuitBreaker, createRoutedChat, describeAttempt, describeFailures, reasonFor, type RoutedAttempt, RATE_LIMIT_WAIT_MAX_MS,
@@ -63,7 +64,9 @@ test("a vendor whose breaker is open is skipped with the reason, and the next on
   const breaker = new CircuitBreaker();
   const chat = createRoutedChat({
     connections: new Map([
-      ["groq", { name: "groq", provider: provider(async () => { groqCalls++; throw new ProviderError("groq", "limit", 429); }), apiKey: "k" }],
+      // A 429 now cools the key for its model and the next ask skips it without a call
+      // (tests/key-pool.test.ts); the breaker is for a vendor that keeps erroring.
+      ["groq", { name: "groq", provider: provider(async () => { groqCalls++; throw new ProviderError("groq", "overloaded", 503); }), apiKey: "k" }],
       ["mistral", { name: "mistral", provider: provider(async () => "fine"), apiKey: "k" }],
     ]),
     routes: { judge: [{ connection: "groq", model: "g" }, { connection: "mistral", model: "m" }] } as never,
@@ -76,7 +79,7 @@ test("a vendor whose breaker is open is skipped with the reason, and the next on
   const third = await ask();
   assert.equal(groqCalls, 2, "the third case does not wait on groq again");
   assert.equal(third.attempts[0].reason, "skipped_open_circuit");
-  assert.match(third.attempts[0].error ?? "", /was rate-limited repeatedly/);
+  assert.match(third.attempts[0].error ?? "", /failed repeatedly/);
   assert.equal(third.servedBy.connection, "mistral");
 });
 
@@ -179,16 +182,18 @@ test("a fallback key for the same connection is tried once on 429 or 401, never 
     const chat = createRoutedChat({
       connections: new Map([["groq", { name: "groq", provider: stub(status), apiKey: "primary-secret", fallbackApiKey: "fallback-secret" }]]),
       routes: { judge: [{ connection: "groq", model: "g" }] } as never,
+      cooldowns: new KeyCooldowns(),
     });
     const out = await chat("judge", { messages: [{ role: "user", content: "x" }] }, { data: "public" });
     assert.deepEqual(keys, ["primary-secret", "fallback-secret"], String(status));
-    assert.match(out.attempts[0].error ?? "", /fallback key/);
+    assert.match(out.attempts[0].error ?? "", /next key/);
     assert.ok(!JSON.stringify(out.attempts).includes("secret"), "no key in the attempts");
   }
   keys.length = 0;
   const chat = createRoutedChat({
     connections: new Map([["groq", { name: "groq", provider: stub(500), apiKey: "primary-secret", fallbackApiKey: "fallback-secret" }]]),
     routes: { judge: [{ connection: "groq", model: "g" }] } as never,
+    cooldowns: new KeyCooldowns(),
   });
   await assert.rejects(() => chat("judge", { messages: [{ role: "user", content: "x" }] }, { data: "public" }));
   assert.deepEqual(keys, ["primary-secret"], "a server error is not a key problem");
